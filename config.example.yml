@@ -9,3 +9,7 @@ report_dir: "./reports"
 
 tls_skip_verify: true
 ca_file: null
+
+log_level: "INFO"
+log_json: false
+report_format: "json"

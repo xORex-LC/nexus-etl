@@ -5,7 +5,6 @@ from pathlib import Path
 import os
 import yaml
 
-
 @dataclass(frozen=True)
 class Settings:
     """
@@ -34,6 +33,13 @@ class Settings:
             Отключить проверку TLS сертификата.
         ca_file: str | None
             Путь к CA-файлу (если используется проверка TLS через CA).
+
+        log_level: str
+            Уровень логирования.
+        log_json: bool
+            Логировать в JSON формате.
+        report_format: str
+            Формат отчётов.
     """
     host: str | None = None
     port: int | None = None
@@ -47,6 +53,9 @@ class Settings:
     tls_skip_verify: bool = False
     ca_file: str | None = None
 
+    log_level: str = "INFO"
+    log_json: bool = False
+    report_format: str = "json"
 
 @dataclass(frozen=True)
 class LoadedSettings:
@@ -63,7 +72,6 @@ class LoadedSettings:
     """
     settings: Settings
     sources_used: list[str]
-
 
 def readYamlConfig(path: Path) -> dict:
     """
@@ -93,7 +101,6 @@ def readYamlConfig(path: Path) -> dict:
             return {}
         return data
 
-
 def envGet(name: str) -> str | None:
     """
     Назначение:
@@ -112,7 +119,6 @@ def envGet(name: str) -> str | None:
         return None
     return v.strip()
 
-
 def parseInt(value: str | None) -> int | None:
     """
     Назначение:
@@ -130,7 +136,6 @@ def parseInt(value: str | None) -> int | None:
     if value is None:
         return None
     return int(value)
-
 
 def parseBool(value: str | None) -> bool | None:
     """
@@ -159,6 +164,44 @@ def parseBool(value: str | None) -> bool | None:
         return False
     raise ValueError(f"Invalid boolean env value: {value}")
 
+def parseIntAny(value: int | str | None) -> int | None:
+    """
+    Назначение:
+        Нормализует целочисленное значение (int/str/None) в int|None.
+
+    Входные данные:
+        value: int | str | None
+
+    Выходные данные:
+        int | None
+    """
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value.strip())
+    raise ValueError(f"Invalid int value type: {type(value)}")
+
+
+def parseBoolAny(value: bool | str | None) -> bool | None:
+    """
+    Назначение:
+        Нормализует булевое значение (bool/str/None) в bool|None.
+
+    Входные данные:
+        value: bool | str | None
+
+    Выходные данные:
+        bool | None
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return parseBool(value.strip())
+    raise ValueError(f"Invalid bool value type: {type(value)}")
 
 def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings:
     """
@@ -201,6 +244,9 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "report_dir": envGet("ANKEY_REPORT_DIR"),
         "tls_skip_verify": envGet("ANKEY_TLS_SKIP_VERIFY"),
         "ca_file": envGet("ANKEY_CA_FILE"),
+        "log_level": envGet("ANKEY_LOG_LEVEL"),
+        "log_json": envGet("ANKEY_LOG_JSON"),
+        "report_format": envGet("ANKEY_REPORT_FORMAT"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -217,6 +263,10 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
 
         "tls_skip_verify": cfg.get("tls_skip_verify", defaults.tls_skip_verify),
         "ca_file": cfg.get("ca_file", defaults.ca_file),
+
+        "log_level": cfg.get("log_level", defaults.log_level),
+        "log_json": cfg.get("log_json", defaults.log_json),
+        "report_format": cfg.get("report_format", defaults.report_format)
     }
 
     if env["host"] is not None:
@@ -240,6 +290,13 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
     if env["ca_file"] is not None:
         merged["ca_file"] = env["ca_file"]
 
+    if env["log_level"] is not None:
+        merged["log_level"] = env["log_level"]
+    if env["log_json"] is not None:
+        merged["log_json"] = parseBool(env["log_json"])
+    if env["report_format"] is not None:
+        merged["report_format"] = env["report_format"]
+
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
     for k, v in cli_overrides.items():
@@ -249,14 +306,17 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
 
     settings = Settings(
         host=merged["host"],
-        port=merged["port"],
+        port=parseIntAny(merged["port"]),
         api_username=merged["api_username"],
         api_password=merged["api_password"],
         cache_dir=merged["cache_dir"],
         log_dir=merged["log_dir"],
         report_dir=merged["report_dir"],
-        tls_skip_verify=bool(merged["tls_skip_verify"]),
+        tls_skip_verify=parseBoolAny(merged["tls_skip_verify"]) or False,
         ca_file=merged["ca_file"],
+        log_level=merged["log_level"],
+        log_json=parseBoolAny(merged["log_json"]) or False,
+        report_format=merged["report_format"],
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)
