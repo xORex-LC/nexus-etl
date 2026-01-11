@@ -5,17 +5,11 @@ import sys
 import time
 import uuid
 from pathlib import Path
-import typer
-import logging
-import sys
-import time
 
-from .loggingSetup import createCommandLogger, logEvent, StdStreamToLogger, TeeStream
-from .reporter import createEmptyReport, finalizeReport, writeReportJson
-from .timeUtils import getDurationMs
+import typer
 
 from .config import loadSettings, Settings
-from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger
+from .loggingSetup import createCommandLogger, logEvent, StdStreamToLogger, TeeStream
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs
@@ -213,59 +207,6 @@ def runCommand(
 
         if exitCode is not None:
             raise typer.Exit(code=exitCode)
-
-def runCommand(
-    ctx: typer.Context,
-    commandName: str,
-    csvPath: str | None,
-    requireApiFlag: bool,
-    requireCsvFlag: bool,
-    execute,
-) -> None:
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    sources = ctx.obj["sources"]
-
-    logger, logFilePath = createCommandLogger(
-        commandName=commandName,
-        logDir=settings.log_dir,
-        runId=runId,
-        logLevel=settings.log_level,
-    )
-    report = createEmptyReport(runId, commandName, sources)
-    report.meta.csv_path = csvPath
-
-    stdoutLogger = StdStreamToLogger(logger, level=logging.INFO, runId=runId, component="stdout")
-    stderrLogger = StdStreamToLogger(logger, level=logging.ERROR, runId=runId, component="stderr")
-
-    originalStdout = sys.stdout
-    originalStderr = sys.stderr
-    sys.stdout = TeeStream(originalStdout, stdoutLogger)
-    sys.stderr = TeeStream(originalStderr, stderrLogger)
-
-    startMonotonic = time.monotonic()
-    try:
-        if requireCsvFlag:
-            requireCsv(csvPath)
-        if requireApiFlag:
-            requireApi(settings)
-        printRunHeader(runId, commandName, settings, sources)
-        execute()
-    finally:
-        sys.stdout.flush()
-        sys.stderr.flush()
-        sys.stdout = originalStdout
-        sys.stderr = originalStderr
-        durationMs = getDurationMs(startMonotonic, time.monotonic())
-        finalizeReport(
-            report=report,
-            durationMs=durationMs,
-            logFile=logFilePath,
-            cacheDir=settings.cache_dir,
-            reportDir=settings.report_dir,
-        )
-        writeReportJson(report, settings.report_dir, f"report_{commandName}_{runId}")
-
 
 @app.callback()
 def main(
