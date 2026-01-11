@@ -133,6 +133,7 @@ def createCommandLogger(commandName: str, logDir: str, runId: str, logLevel: str
     logger = logging.getLogger(loggerName)
     logger.handlers.clear()
     logger.propagate = False
+    logger.addFilter(EnsureFieldsFilter(runId, "app"))
 
     level = mapLogLevel(logLevel)
     logger.setLevel(level)

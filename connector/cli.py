@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import sys
+import time
 import uuid
 from pathlib import Path
 import typer
@@ -12,7 +15,10 @@ from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .timeUtils import getDurationMs
 
 from .config import loadSettings, Settings
+from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger
+from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
+from .timeUtils import getDurationMs
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
@@ -208,11 +214,66 @@ def runCommand(
         if exitCode is not None:
             raise typer.Exit(code=exitCode)
 
+def runCommand(
+    ctx: typer.Context,
+    commandName: str,
+    csvPath: str | None,
+    requireApiFlag: bool,
+    requireCsvFlag: bool,
+    execute,
+) -> None:
+    runId = ctx.obj["runId"]
+    settings: Settings = ctx.obj["settings"]
+    sources = ctx.obj["sources"]
+
+    logger, logFilePath = createCommandLogger(
+        commandName=commandName,
+        logDir=settings.log_dir,
+        runId=runId,
+        logLevel=settings.log_level,
+    )
+    report = createEmptyReport(runId, commandName, sources)
+    report.meta.csv_path = csvPath
+
+    stdoutLogger = StdStreamToLogger(logger, level=logging.INFO, runId=runId, component="stdout")
+    stderrLogger = StdStreamToLogger(logger, level=logging.ERROR, runId=runId, component="stderr")
+
+    originalStdout = sys.stdout
+    originalStderr = sys.stderr
+    sys.stdout = TeeStream(originalStdout, stdoutLogger)
+    sys.stderr = TeeStream(originalStderr, stderrLogger)
+
+    startMonotonic = time.monotonic()
+    try:
+        if requireCsvFlag:
+            requireCsv(csvPath)
+        if requireApiFlag:
+            requireApi(settings)
+        printRunHeader(runId, commandName, settings, sources)
+        execute()
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        sys.stdout = originalStdout
+        sys.stderr = originalStderr
+        durationMs = getDurationMs(startMonotonic, time.monotonic())
+        finalizeReport(
+            report=report,
+            durationMs=durationMs,
+            logFile=logFilePath,
+            cacheDir=settings.cache_dir,
+            reportDir=settings.report_dir,
+        )
+        writeReportJson(report, settings.report_dir, f"report_{commandName}_{runId}")
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
     config: str | None = typer.Option(None, "--config", help="Path to config.yml"),
     runId: str | None = typer.Option(None, "--run-id", help="Run identifier (UUID). If omitted, generated."),
+    logLevel: str | None = typer.Option(None, "--log-level", help="Log level: ERROR|WARN|INFO|DEBUG"),
+    logJson: bool | None = typer.Option(None, "--log-json", help="Enable JSON logging (reserved)"),
     logDir: str | None = typer.Option(None, "--log-dir", help="Directory for logs."),
     reportDir: str | None = typer.Option(None, "--report-dir", help="Directory for reports."),
     cacheDir: str | None = typer.Option(None, "--cache-dir", help="Directory for cache (SQLite later)."),
@@ -223,8 +284,6 @@ def main(
     apiPasswordFile: str | None = typer.Option(None, "--api-password-file", help="Read API password from file"),
     tlsSkipVerify: bool | None = typer.Option(None, "--tls-skip-verify", help="Disable TLS verification"),
     caFile: str | None = typer.Option(None, "--ca-file", help="CA file path"),
-    logLevel: str | None = typer.Option(None, "--log-level", help="Log level: ERROR|WARN|INFO|DEBUG"),
-    logJson: bool | None = typer.Option(None, "--log-json", help="Enable JSON log format (reserved)"),
 ):
     """
     Назначение:
@@ -255,6 +314,8 @@ def main(
         "port": port,
         "api_username": apiUsername,
         "api_password": apiPassword,
+        "log_level": logLevel,
+        "log_json": logJson,
         "log_dir": logDir,
         "report_dir": reportDir,
         "cache_dir": cacheDir,

@@ -12,7 +12,10 @@ def test_help_shows_commands():
     assert "cache" in result.stdout
 
 def test_import_requires_csv():
-    result = runner.invoke(app, ["import"])
+    result = runner.invoke(
+        app,
+        ["--host", "1.2.3.4", "--port", "5456", "--api-username", "user", "--api-password", "pass", "import"],
+    )
     assert result.exit_code == 2
     assert "--csv is required" in result.stderr or "ERROR: --csv is required" in result.stdout
 
