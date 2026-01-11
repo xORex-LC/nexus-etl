@@ -4,49 +4,105 @@ import uuid
 from pathlib import Path
 import typer
 
-from .config import load_settings, Settings
-from .sanitize import mask_secret
+from .config import loadSettings, Settings
+from .sanitize import maskSecret
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
-cache_app = typer.Typer(no_args_is_help=True)
-user_app = typer.Typer(no_args_is_help=True)  # зарезервировано на будущее (ТЗ допускает)
+cacheApp = typer.Typer(no_args_is_help=True)
+userApp = typer.Typer(no_args_is_help=True)  # резерв под будущие команды
 
 
-def _ensure_dir(path: str) -> None:
+def ensureDir(path: str) -> None:
+    """
+    Назначение:
+        Создаёт каталог, если он отсутствует.
+
+    Входные данные:
+        path: str
+            Путь к каталогу.
+
+    Выходные данные:
+        None
+
+    Алгоритм:
+        - Path(path).mkdir(parents=True, exist_ok=True)
+    """
     Path(path).mkdir(parents=True, exist_ok=True)
 
 
-def _require_csv(csv_path: str | None) -> None:
-    if not csv_path:
+def requireCsv(csvPath: str | None) -> None:
+    """
+    Назначение:
+        Базовая проверка наличия CSV-файла (требование ТЗ для import/validate).
+
+    Входные данные:
+        csvPath: str | None
+            Путь к CSV.
+
+    Выходные данные:
+        None
+
+    Поведение:
+        - Если csvPath не задан или файл не существует — завершает процесс с exit code 2.
+    """
+    if not csvPath:
         typer.echo("ERROR: --csv is required", err=True)
         raise typer.Exit(code=2)
-    p = Path(csv_path)
+
+    p = Path(csvPath)
     if not p.exists() or not p.is_file():
-        typer.echo(f"ERROR: CSV file not found: {csv_path}", err=True)
+        typer.echo(f"ERROR: CSV file not found: {csvPath}", err=True)
         raise typer.Exit(code=2)
 
 
-def _require_api(s: Settings) -> None:
+def requireApi(settings: Settings) -> None:
+    """
+    Назначение:
+        Проверяет наличие параметров API для команд, которым нужен REST доступ.
+
+    Входные данные:
+        settings: Settings
+            Итоговые настройки после мерджа.
+
+    Выходные данные:
+        None
+
+    Поведение:
+        - Если чего-то не хватает — exit code 2.
+    """
     missing = []
-    if not s.host:
+    if not settings.host:
         missing.append("host")
-    if not s.port:
+    if not settings.port:
         missing.append("port")
-    if not s.api_username:
+    if not settings.api_username:
         missing.append("api_username")
-    if not s.api_password:
+    if not settings.api_password:
         missing.append("api_password")
+
     if missing:
         typer.echo(f"ERROR: missing API settings: {', '.join(missing)}", err=True)
         raise typer.Exit(code=2)
 
 
-def _print_run_header(run_id: str, cmd: str, settings: Settings, sources: list[str]) -> None:
+def printRunHeader(runId: str, command: str, settings: Settings, sources: list[str]) -> None:
+    """
+    Назначение:
+        Печатает безопасную сводку параметров запуска (без секретов).
+
+    Входные данные:
+        runId: str
+        command: str
+        settings: Settings
+        sources: list[str]
+
+    Выходные данные:
+        None
+    """
     typer.echo(
-        f"run_id={run_id} command={cmd} "
+        f"run_id={runId} command={command} "
         f"host={settings.host} port={settings.port} api_username={settings.api_username} "
-        f"api_password={mask_secret(settings.api_password)} "
-        f"sources={sources}"
+        f"api_password={maskSecret(settings.api_password)} sources={sources}"
     )
 
 
@@ -54,103 +110,150 @@ def _print_run_header(run_id: str, cmd: str, settings: Settings, sources: list[s
 def main(
     ctx: typer.Context,
     config: str | None = typer.Option(None, "--config", help="Path to config.yml"),
-    run_id: str | None = typer.Option(None, "--run-id", help="Run identifier (UUID). If omitted, generated."),
-    log_dir: str | None = typer.Option(None, "--log-dir", help="Directory for logs."),
-    report_dir: str | None = typer.Option(None, "--report-dir", help="Directory for reports."),
-    cache_dir: str | None = typer.Option(None, "--cache-dir", help="Directory for cache (SQLite later)."),
-    # API overrides
+    runId: str | None = typer.Option(None, "--run-id", help="Run identifier (UUID). If omitted, generated."),
+    logDir: str | None = typer.Option(None, "--log-dir", help="Directory for logs."),
+    reportDir: str | None = typer.Option(None, "--report-dir", help="Directory for reports."),
+    cacheDir: str | None = typer.Option(None, "--cache-dir", help="Directory for cache (SQLite later)."),
     host: str | None = typer.Option(None, "--host", help="API host/IP"),
     port: int | None = typer.Option(None, "--port", help="API port"),
-    api_username: str | None = typer.Option(None, "--api-username", help="API username"),
-    api_password: str | None = typer.Option(None, "--api-password", help="API password (avoid; use env/file)"),
-    api_password_file: str | None = typer.Option(None, "--api-password-file", help="Read API password from file"),
-    # TLS
-    tls_skip_verify: bool | None = typer.Option(None, "--tls-skip-verify", help="Disable TLS verification"),
-    ca_file: str | None = typer.Option(None, "--ca-file", help="CA file path"),
+    apiUsername: str | None = typer.Option(None, "--api-username", help="API username"),
+    apiPassword: str | None = typer.Option(None, "--api-password", help="API password (avoid; use env/file)"),
+    apiPasswordFile: str | None = typer.Option(None, "--api-password-file", help="Read API password from file"),
+    tlsSkipVerify: bool | None = typer.Option(None, "--tls-skip-verify", help="Disable TLS verification"),
+    caFile: str | None = typer.Option(None, "--ca-file", help="CA file path"),
 ):
-    # Read password from file if provided (CLI has priority, but file is still CLI input)
-    if api_password_file and not api_password:
-        p = Path(api_password_file)
+    """
+    Назначение:
+        Глобальная инициализация CLI:
+        - генерирует/принимает run_id
+        - загружает настройки (CLI > ENV > config > defaults)
+        - создаёт каталоги log/report/cache
+        - сохраняет всё в ctx.obj для подкоманд
+
+    Входные данные:
+        Параметры CLI, описанные в ТЗ (Блок 4).
+
+    Выходные данные:
+        None (но записывает данные в ctx.obj).
+    """
+    if apiPasswordFile and not apiPassword:
+        p = Path(apiPasswordFile)
         if not p.exists() or not p.is_file():
-            typer.echo(f"ERROR: api-password-file not found: {api_password_file}", err=True)
+            typer.echo(f"ERROR: api-password-file not found: {apiPasswordFile}", err=True)
             raise typer.Exit(code=2)
-        api_password = p.read_text(encoding="utf-8").strip()
+        apiPassword = p.read_text(encoding="utf-8").strip()
 
-    if not run_id:
-        run_id = str(uuid.uuid4())
+    if not runId:
+        runId = str(uuid.uuid4())
 
-    cli_overrides = {
+    cliOverrides = {
         "host": host,
         "port": port,
-        "api_username": api_username,
-        "api_password": api_password,
-        "log_dir": log_dir,
-        "report_dir": report_dir,
-        "cache_dir": cache_dir,
-        "tls_skip_verify": tls_skip_verify,
-        "ca_file": ca_file,
+        "api_username": apiUsername,
+        "api_password": apiPassword,
+        "log_dir": logDir,
+        "report_dir": reportDir,
+        "cache_dir": cacheDir,
+        "tls_skip_verify": tlsSkipVerify,
+        "ca_file": caFile,
     }
-    loaded = load_settings(config_path=config, cli_overrides=cli_overrides)
+    loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
 
-    # Ensure dirs exist (по ТЗ это важно; на этапе 1 — просто создаём)
-    _ensure_dir(loaded.settings.log_dir)
-    _ensure_dir(loaded.settings.report_dir)
-    _ensure_dir(loaded.settings.cache_dir)
+    ensureDir(loaded.settings.log_dir)
+    ensureDir(loaded.settings.report_dir)
+    ensureDir(loaded.settings.cache_dir)
 
-    # прокидываем дальше
     ctx.obj = {
-        "run_id": run_id,
+        "runId": runId,
         "settings": loaded.settings,
         "sources": loaded.sources_used,
-        "config_path": config,
+        "configPath": config,
     }
 
 
 @app.command()
-def validate(
-    ctx: typer.Context,
-    csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
-):
-    _require_csv(csv)
-    run_id = ctx.obj["run_id"]
+def validate(ctx: typer.Context, csv: str | None = typer.Option(None, "--csv", help="Path to input CSV")):
+    """
+    Назначение:
+        Команда validate (этап 1 — заглушка).
+        По ТЗ: проверяет CSV без API и формирует отчёт.
+
+    Входные данные:
+        --csv: путь к CSV
+
+    Выходные данные:
+        На этапе 1 — только проверка наличия CSV + вывод заглушки.
+    """
+    requireCsv(csv)
+    runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
     sources = ctx.obj["sources"]
-    _print_run_header(run_id, "validate", settings, sources)
+    printRunHeader(runId, "validate", settings, sources)
     typer.echo("validate: not implemented yet (stage 1)")
 
 
 @app.command("import")
-def import_(
-    ctx: typer.Context,
-    csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
-):
-    _require_csv(csv)
-    run_id = ctx.obj["run_id"]
+def importEmployees(ctx: typer.Context, csv: str | None = typer.Option(None, "--csv", help="Path to input CSV")):
+    """
+    Назначение:
+        Команда import (этап 1 — заглушка).
+        По ТЗ: импорт/обновление сотрудников из CSV через REST API.
+
+    Входные данные:
+        --csv: путь к CSV
+
+    Выходные данные:
+        На этапе 1 — только проверка наличия CSV + вывод заглушки.
+    """
+    requireCsv(csv)
+    runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
     sources = ctx.obj["sources"]
-    _print_run_header(run_id, "import", settings, sources)
+    printRunHeader(runId, "import", settings, sources)
     typer.echo("import: not implemented yet (stage 1)")
 
 
 @app.command("check-api")
-def check_api(ctx: typer.Context):
-    run_id = ctx.obj["run_id"]
+def checkApi(ctx: typer.Context):
+    """
+    Назначение:
+        Команда check-api (этап 1 — заглушка).
+        По ТЗ: проверка доступности API и корректности учётных данных.
+
+    Входные данные:
+        Использует настройки API из конфигов/ENV/CLI.
+
+    Выходные данные:
+        На этапе 1 — только проверка, что настройки API заданы.
+    """
+    runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
     sources = ctx.obj["sources"]
-    _require_api(settings)
-    _print_run_header(run_id, "check-api", settings, sources)
+    requireApi(settings)
+    printRunHeader(runId, "check-api", settings, sources)
     typer.echo("check-api: not implemented yet (stage 1)")
 
 
-@cache_app.command("refresh")
-def cache_refresh(ctx: typer.Context):
-    run_id = ctx.obj["run_id"]
+@cacheApp.command("refresh")
+def cacheRefresh(ctx: typer.Context):
+    """
+    Назначение:
+        Команда cache refresh (этап 1 — заглушка).
+        По ТЗ: обновляет локальный кэш (в будущем SQLite) из API.
+
+    Входные данные:
+        Использует настройки API из конфигов/ENV/CLI.
+
+    Выходные данные:
+        На этапе 1 — только проверка, что настройки API заданы.
+    """
+    runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
     sources = ctx.obj["sources"]
-    _require_api(settings)
-    _print_run_header(run_id, "cache refresh", settings, sources)
+    requireApi(settings)
+    printRunHeader(runId, "cache refresh", settings, sources)
     typer.echo("cache refresh: not implemented yet (stage 1)")
 
 
-app.add_typer(cache_app, name="cache")
-app.add_typer(user_app, name="user")
+app.add_typer(cacheApp, name="cache")
+app.add_typer(userApp, name="user")

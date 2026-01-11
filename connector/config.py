@@ -8,29 +8,81 @@ import yaml
 
 @dataclass(frozen=True)
 class Settings:
-    # API
+    """
+    Назначение:
+        Консолидированные настройки приложения после мерджа:
+        CLI > ENV > config > defaults.
+
+    Поля:
+        host: str | None
+            IP/hostname API.
+        port: int | None
+            Порт API.
+        api_username: str | None
+            Пользователь API.
+        api_password: str | None
+            Пароль пользователя API.
+
+        cache_dir: str
+            Каталог кэша.
+        log_dir: str
+            Каталог логов.
+        report_dir: str
+            Каталог отчётов.
+
+        tls_skip_verify: bool
+            Отключить проверку TLS сертификата.
+        ca_file: str | None
+            Путь к CA-файлу (если используется проверка TLS через CA).
+    """
     host: str | None = None
     port: int | None = None
     api_username: str | None = None
     api_password: str | None = None
 
-    # Paths
     cache_dir: str = "./cache"
     log_dir: str = "./logs"
     report_dir: str = "./reports"
 
-    # Misc
     tls_skip_verify: bool = False
     ca_file: str | None = None
 
 
 @dataclass(frozen=True)
 class LoadedSettings:
+    """
+    Назначение:
+        Результат загрузки настроек с информацией об источниках.
+
+    Поля:
+        settings: Settings
+            Итоговые настройки.
+        sources_used: list[str]
+            Список источников, которые реально участвовали в формировании
+            настроек (например: ["config", "env", "cli"]).
+    """
     settings: Settings
     sources_used: list[str]
 
 
-def _read_yaml_config(path: Path) -> dict:
+def readYamlConfig(path: Path) -> dict:
+    """
+    Назначение:
+        Читает YAML конфиг, возвращает словарь настроек.
+
+    Входные данные:
+        path: Path
+            Путь к YAML файлу конфигурации.
+
+    Выходные данные:
+        dict
+            Словарь с настройками из YAML или пустой dict, если файл
+            отсутствует/некорректен.
+
+    Алгоритм:
+        - Проверить существование и тип файла.
+        - Прочитать YAML и убедиться, что верхний уровень — dict.
+    """
     if not path.exists():
         return {}
     if not path.is_file():
@@ -42,61 +94,117 @@ def _read_yaml_config(path: Path) -> dict:
         return data
 
 
-def _env_get(name: str) -> str | None:
+def envGet(name: str) -> str | None:
+    """
+    Назначение:
+        Получает переменную окружения и нормализует значение.
+
+    Входные данные:
+        name: str
+            Имя переменной окружения.
+
+    Выходные данные:
+        str | None
+            Строка без пробелов по краям или None, если пусто/не задано.
+    """
     v = os.getenv(name)
     if v is None or v.strip() == "":
         return None
     return v.strip()
 
 
-def load_settings(
-    config_path: str | None,
-    cli_overrides: dict,
-) -> LoadedSettings:
+def parseInt(value: str | None) -> int | None:
     """
-    Priority: CLI > ENV > config > defaults
+    Назначение:
+        Преобразует строку в int, если значение задано.
+
+    Входные данные:
+        value: str | None
+
+    Выходные данные:
+        int | None
+
+    Исключения:
+        ValueError — если строка не является целым числом.
+    """
+    if value is None:
+        return None
+    return int(value)
+
+
+def parseBool(value: str | None) -> bool | None:
+    """
+    Назначение:
+        Преобразует строковое значение в bool по набору допустимых вариантов.
+
+    Входные данные:
+        value: str | None
+
+    Выходные данные:
+        bool | None
+
+    Допустимые значения (case-insensitive):
+        true/1/yes/y  -> True
+        false/0/no/n  -> False
+
+    Исключения:
+        ValueError — если значение не распознано как bool.
+    """
+    if value is None:
+        return None
+    vv = value.lower()
+    if vv in ("1", "true", "yes", "y"):
+        return True
+    if vv in ("0", "false", "no", "n"):
+        return False
+    raise ValueError(f"Invalid boolean env value: {value}")
+
+
+def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings:
+    """
+    Назначение:
+        Загружает настройки приложения, применяя приоритет:
+        CLI > ENV > config > defaults.
+
+    Входные данные:
+        config_path: str | None
+            Путь к YAML конфигу. Если None — конфиг не читается.
+        cli_overrides: dict
+            Словарь значений из CLI. Значения None считаются "не задано".
+
+    Выходные данные:
+        LoadedSettings
+            Итоговые настройки и список использованных источников.
+
+    Алгоритм:
+        1) Сформировать defaults.
+        2) Прочитать config (если задан).
+        3) Прочитать ENV (если задано хоть что-то).
+        4) Наложить CLI overrides (только не-None).
     """
     sources: list[str] = []
     defaults = Settings()
 
-    # 1) config file
     cfg: dict = {}
     if config_path:
-        cfg = _read_yaml_config(Path(config_path))
+        cfg = readYamlConfig(Path(config_path))
         if cfg:
             sources.append("config")
 
-    # 2) env
     env = {
-        "host": _env_get("ANKEY_API_HOST"),
-        "port": _env_get("ANKEY_API_PORT"),
-        "api_username": _env_get("ANKEY_API_USERNAME"),
-        "api_password": _env_get("ANKEY_API_PASSWORD"),
-        "cache_dir": _env_get("ANKEY_CACHE_DIR"),
-        "log_dir": _env_get("ANKEY_LOG_DIR"),
-        "report_dir": _env_get("ANKEY_REPORT_DIR"),
-        "tls_skip_verify": _env_get("ANKEY_TLS_SKIP_VERIFY"),
-        "ca_file": _env_get("ANKEY_CA_FILE"),
+        "host": envGet("ANKEY_API_HOST"),
+        "port": envGet("ANKEY_API_PORT"),
+        "api_username": envGet("ANKEY_API_USERNAME"),
+        "api_password": envGet("ANKEY_API_PASSWORD"),
+        "cache_dir": envGet("ANKEY_CACHE_DIR"),
+        "log_dir": envGet("ANKEY_LOG_DIR"),
+        "report_dir": envGet("ANKEY_REPORT_DIR"),
+        "tls_skip_verify": envGet("ANKEY_TLS_SKIP_VERIFY"),
+        "ca_file": envGet("ANKEY_CA_FILE"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
 
-    def parse_int(v: str | None) -> int | None:
-        if v is None:
-            return None
-        return int(v)
-
-    def parse_bool(v: str | None) -> bool | None:
-        if v is None:
-            return None
-        vv = v.lower()
-        if vv in ("1", "true", "yes", "y"):
-            return True
-        if vv in ("0", "false", "no", "n"):
-            return False
-        raise ValueError(f"Invalid boolean env value: {v}")
-
-    # merge config -> env -> cli
     merged = {
         "host": cfg.get("host", defaults.host),
         "port": cfg.get("port", defaults.port),
@@ -111,11 +219,10 @@ def load_settings(
         "ca_file": cfg.get("ca_file", defaults.ca_file),
     }
 
-    # apply env
     if env["host"] is not None:
         merged["host"] = env["host"]
     if env["port"] is not None:
-        merged["port"] = parse_int(env["port"])
+        merged["port"] = parseInt(env["port"])
     if env["api_username"] is not None:
         merged["api_username"] = env["api_username"]
     if env["api_password"] is not None:
@@ -129,14 +236,12 @@ def load_settings(
         merged["report_dir"] = env["report_dir"]
 
     if env["tls_skip_verify"] is not None:
-        merged["tls_skip_verify"] = parse_bool(env["tls_skip_verify"])
+        merged["tls_skip_verify"] = parseBool(env["tls_skip_verify"])
     if env["ca_file"] is not None:
         merged["ca_file"] = env["ca_file"]
 
-    # 3) apply CLI overrides (only those explicitly passed)
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
-
     for k, v in cli_overrides.items():
         if v is None:
             continue

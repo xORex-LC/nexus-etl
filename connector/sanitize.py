@@ -1,4 +1,20 @@
-def mask_secret(value: str | None) -> str | None:
+def maskSecret(value: str | None) -> str | None:
+    """
+    Назначение:
+        Маскирует секреты для безопасного вывода в stdout/logs.
+
+    Входные данные:
+        value: str | None
+            Исходное значение (например, пароль).
+
+    Выходные данные:
+        str | None
+            Если value задано — возвращает '***', иначе None.
+
+    Алгоритм:
+        - Если значение отсутствует, вернуть None.
+        - Иначе вернуть фиксированную маску '***'.
+    """
     if value is None:
         return None
     return "***"
