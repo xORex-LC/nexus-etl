@@ -398,8 +398,6 @@ def main(
         "cache_dir": cacheDir,
         "tls_skip_verify": tlsSkipVerify,
         "ca_file": caFile,
-        "log_level": logLevel,
-        "log_json": logJson,
     }
     loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
 
