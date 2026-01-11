@@ -9,10 +9,13 @@ from pathlib import Path
 import typer
 
 from .config import loadSettings, Settings
+from .csvReader import CsvFormatError, readEmployeeRows
 from .loggingSetup import createCommandLogger, logEvent, StdStreamToLogger, TeeStream
+from .models import ValidationErrorItem
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs
+from .validator import validateEmployeeRow
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
@@ -208,6 +211,139 @@ def runCommand(
         if exitCode is not None:
             raise typer.Exit(code=exitCode)
 
+
+def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bool) -> None:
+    runId = ctx.obj["runId"]
+    settings: Settings = ctx.obj["settings"]
+    sources = ctx.obj["sources"]
+
+    startMonotonic = time.monotonic()
+
+    logger, logFilePath = createCommandLogger(
+        commandName="validate",
+        logDir=settings.log_dir,
+        runId=runId,
+        logLevel=settings.log_level,
+    )
+
+    report = createEmptyReport(runId=runId, command="validate", configSources=sources)
+    report.meta.csv_path = csvPath
+
+    originalStdout = sys.stdout
+    originalStderr = sys.stderr
+
+    stdoutLoggerStream = StdStreamToLogger(logger, logging.INFO, runId, "stdout")
+    stderrLoggerStream = StdStreamToLogger(logger, logging.ERROR, runId, "stderr")
+
+    sys.stdout = TeeStream(originalStdout, stdoutLoggerStream)
+    sys.stderr = TeeStream(originalStderr, stderrLoggerStream)
+
+    exitCode: int | None = None
+    rows_processed = 0
+    failed_rows = 0
+    warning_rows = 0
+    matchkey_seen: dict[str, int] = {}
+    usr_org_tab_seen: dict[str, int] = {}
+
+    try:
+        logEvent(logger, logging.INFO, runId, "core", "Validate started")
+        printRunHeader(runId, "validate", settings, sources)
+
+        try:
+            requireCsv(csvPath)
+        except typer.Exit:
+            logEvent(logger, logging.ERROR, runId, "csv", "CSV is missing or not accessible")
+            typer.echo("ERROR: invalid or missing CSV (see logs/report)", err=True)
+            exitCode = 2
+            return
+
+        try:
+            for csvRow in readEmployeeRows(csvPath, hasHeader=csvHasHeader):
+                employee, result = validateEmployeeRow(csvRow)
+                rows_processed += 1
+
+                if result.match_key_complete:
+                    prev_line = matchkey_seen.get(result.match_key)
+                    if prev_line is not None:
+                        result.errors.append(
+                            ValidationErrorItem(
+                                code="DUPLICATE_MATCHKEY",
+                                field="matchKey",
+                                message=f"duplicate of line {prev_line}",
+                            )
+                        )
+                    else:
+                        matchkey_seen[result.match_key] = result.line_no
+
+                if result.usr_org_tab_num:
+                    prev_line = usr_org_tab_seen.get(result.usr_org_tab_num)
+                    if prev_line is not None:
+                        result.errors.append(
+                            ValidationErrorItem(
+                                code="DUPLICATE_USR_ORG_TAB_NUM",
+                                field="usrOrgTabNum",
+                                message=f"duplicate of line {prev_line}",
+                            )
+                        )
+                    else:
+                        usr_org_tab_seen[result.usr_org_tab_num] = result.line_no
+
+                status = "valid" if result.valid else "invalid"
+                if not result.valid:
+                    failed_rows += 1
+                if result.warnings:
+                    warning_rows += 1
+
+                report.items.append(
+                    {
+                        "row_id": f"line:{result.line_no}",
+                        "line_no": result.line_no,
+                        "match_key": result.match_key,
+                        "status": status,
+                        "errors": [
+                            {"code": e.code, "field": e.field, "message": e.message} for e in result.errors
+                        ],
+                        "warnings": [
+                            {"code": w.code, "field": w.field, "message": w.message} for w in result.warnings
+                        ],
+                    }
+                )
+        except CsvFormatError as exc:
+            logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
+            typer.echo(f"ERROR: CSV format error: {exc}", err=True)
+            exitCode = 2
+            return
+        except OSError as exc:
+            logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
+            typer.echo(f"ERROR: CSV read error: {exc}", err=True)
+            exitCode = 2
+            return
+
+        report.meta.csv_rows_total = rows_processed
+        report.meta.csv_rows_processed = rows_processed
+        report.summary.failed = failed_rows
+        report.summary.warnings = warning_rows
+        report.summary.skipped = 0
+
+        exitCode = 1 if failed_rows > 0 else 0
+
+    finally:
+        durationMs = getDurationMs(startMonotonic, time.monotonic())
+        finalizeReport(
+            report=report,
+            durationMs=durationMs,
+            logFile=logFilePath,
+            cacheDir=settings.cache_dir,
+            reportDir=settings.report_dir,
+        )
+        reportPath = writeReportJson(report, settings.report_dir, f"report_validate_{runId}")
+        logEvent(logger, logging.INFO, runId, "report", f"Report written: {reportPath}")
+
+        sys.stdout = originalStdout
+        sys.stderr = originalStderr
+
+        if exitCode is not None:
+            raise typer.Exit(code=exitCode)
 @app.callback()
 def main(
     ctx: typer.Context,
@@ -279,8 +415,12 @@ def main(
     }
 
 @app.command()
-def validate(ctx: typer.Context, csv: str | None = typer.Option(None, "--csv", help="Path to input CSV")):
-    runCommand(ctx, "validate", csv, requiresCsv=True, requiresApiAccess=False)
+def validate(
+    ctx: typer.Context,
+    csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
+    csvHasHeader: bool = typer.Option(False, "--csv-has-header", help="CSV includes header row"),
+):
+    runValidateCommand(ctx, csv, csvHasHeader)
 
 @app.command("import")
 def importEmployees(ctx: typer.Context, csv: str | None = typer.Option(None, "--csv", help="Path to input CSV")):
