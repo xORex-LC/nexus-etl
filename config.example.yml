@@ -1,0 +1,11 @@
+host: "10.27.38.172"
+port: 8473
+api_username: "Ankey"
+api_password: "P@ssw0rd"
+
+cache_dir: "./cache"
+log_dir: "./logs"
+report_dir: "./reports"
+
+tls_skip_verify: true
+ca_file: null
