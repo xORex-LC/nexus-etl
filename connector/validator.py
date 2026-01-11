@@ -24,9 +24,10 @@ def buildMatchKey(employee: EmployeeInput) -> str:
 
 
 def parseBooleanStrict(value: str) -> bool:
-    if value == "true":
+    normalized = value.strip().lower()
+    if normalized == "true":
         return True
-    if value == "false":
+    if normalized == "false":
         return False
     raise ValueError("Invalid boolean value")
 
@@ -155,7 +156,7 @@ def validateEmployeeRow(csvRow: CsvRow) -> tuple[EmployeeInput, ValidationRowRes
     match_key_complete = all([last_name, first_name, middle_name, personnel_number])
 
     result = ValidationRowResult(
-        line_no=csvRow.line_no,
+        line_no=csvRow.file_line_no,
         match_key=match_key,
         match_key_complete=match_key_complete,
         usr_org_tab_num=usr_org_tab_num,

@@ -39,10 +39,12 @@ def readEmployeeRows(csvPath: str, hasHeader: bool) -> Iterator[CsvRow]:
         for csv_line_no, row in enumerate(reader, start=1):
             if csv_line_no == 1 and hasHeader:
                 continue
+            if len(row) == 0 or (len(row) == 1 and row[0].strip() == ""):
+                continue
             data_line_no += 1
             if len(row) != EXPECTED_COLUMNS:
                 raise CsvFormatError(
                     f"Invalid column count at line {csv_line_no}: expected {EXPECTED_COLUMNS}, got {len(row)}"
                 )
             values = [parseNull(v) for v in row]
-            yield CsvRow(line_no=data_line_no, values=values)
+            yield CsvRow(file_line_no=csv_line_no, data_line_no=data_line_no, values=values)

@@ -109,15 +109,16 @@ def printRunHeader(runId: str, command: str, settings: Settings, sources: list[s
         f"run_id={runId} command={command} "
         f"host={settings.host} port={settings.port} api_username={settings.api_username} "
         f"api_password={maskSecret(settings.api_password)} sources={sources}"
-        f"log_level={settings.log_level} log_json={settings.log_json} "
+        f" log_level={settings.log_level} log_json={settings.log_json} "
     )
 
-def runCommand(
+def runWithReport(
     ctx: typer.Context,
     commandName: str,
     csvPath: str | None,
     requiresCsv: bool,
     requiresApiAccess: bool,
+    runner,
 ) -> None:
     """
     Назначение:
@@ -190,8 +191,7 @@ def runCommand(
                 exitCode = 2
                 return
 
-        # На этапе 2 команды ещё заглушки
-        typer.echo(f"{commandName}: not implemented yet (stage 2)")
+        exitCode = runner(logger, report)
 
     finally:
         durationMs = getDurationMs(startMonotonic, time.monotonic())
@@ -212,54 +212,41 @@ def runCommand(
             raise typer.Exit(code=exitCode)
 
 
-def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bool) -> None:
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    sources = ctx.obj["sources"]
+def runCommand(
+    ctx: typer.Context,
+    commandName: str,
+    csvPath: str | None,
+    requiresCsv: bool,
+    requiresApiAccess: bool,
+) -> None:
+    def execute(_logger, _report) -> int:
+        # На этапе 2 команды ещё заглушки
+        typer.echo(f"{commandName}: not implemented yet (stage 2)")
+        return 0
 
-    startMonotonic = time.monotonic()
-
-    logger, logFilePath = createCommandLogger(
-        commandName="validate",
-        logDir=settings.log_dir,
-        runId=runId,
-        logLevel=settings.log_level,
+    runWithReport(
+        ctx=ctx,
+        commandName=commandName,
+        csvPath=csvPath,
+        requiresCsv=requiresCsv,
+        requiresApiAccess=requiresApiAccess,
+        runner=execute,
     )
 
-    report = createEmptyReport(runId=runId, command="validate", configSources=sources)
-    report.meta.csv_path = csvPath
 
-    originalStdout = sys.stdout
-    originalStderr = sys.stderr
+def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bool) -> None:
+    runId = ctx.obj["runId"]
 
-    stdoutLoggerStream = StdStreamToLogger(logger, logging.INFO, runId, "stdout")
-    stderrLoggerStream = StdStreamToLogger(logger, logging.ERROR, runId, "stderr")
-
-    sys.stdout = TeeStream(originalStdout, stdoutLoggerStream)
-    sys.stderr = TeeStream(originalStderr, stderrLoggerStream)
-
-    exitCode: int | None = None
-    rows_processed = 0
-    failed_rows = 0
-    warning_rows = 0
-    matchkey_seen: dict[str, int] = {}
-    usr_org_tab_seen: dict[str, int] = {}
-
-    try:
-        logEvent(logger, logging.INFO, runId, "core", "Validate started")
-        printRunHeader(runId, "validate", settings, sources)
-
-        try:
-            requireCsv(csvPath)
-        except typer.Exit:
-            logEvent(logger, logging.ERROR, runId, "csv", "CSV is missing or not accessible")
-            typer.echo("ERROR: invalid or missing CSV (see logs/report)", err=True)
-            exitCode = 2
-            return
+    def execute(logger, report) -> int:
+        rows_processed = 0
+        failed_rows = 0
+        warning_rows = 0
+        matchkey_seen: dict[str, int] = {}
+        usr_org_tab_seen: dict[str, int] = {}
 
         try:
             for csvRow in readEmployeeRows(csvPath, hasHeader=csvHasHeader):
-                employee, result = validateEmployeeRow(csvRow)
+                _employee, result = validateEmployeeRow(csvRow)
                 rows_processed += 1
 
                 if result.match_key_complete:
@@ -311,13 +298,11 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         except CsvFormatError as exc:
             logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
             typer.echo(f"ERROR: CSV format error: {exc}", err=True)
-            exitCode = 2
-            return
+            return 2
         except OSError as exc:
             logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
             typer.echo(f"ERROR: CSV read error: {exc}", err=True)
-            exitCode = 2
-            return
+            return 2
 
         report.meta.csv_rows_total = rows_processed
         report.meta.csv_rows_processed = rows_processed
@@ -325,25 +310,16 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         report.summary.warnings = warning_rows
         report.summary.skipped = 0
 
-        exitCode = 1 if failed_rows > 0 else 0
+        return 1 if failed_rows > 0 else 0
 
-    finally:
-        durationMs = getDurationMs(startMonotonic, time.monotonic())
-        finalizeReport(
-            report=report,
-            durationMs=durationMs,
-            logFile=logFilePath,
-            cacheDir=settings.cache_dir,
-            reportDir=settings.report_dir,
-        )
-        reportPath = writeReportJson(report, settings.report_dir, f"report_validate_{runId}")
-        logEvent(logger, logging.INFO, runId, "report", f"Report written: {reportPath}")
-
-        sys.stdout = originalStdout
-        sys.stderr = originalStderr
-
-        if exitCode is not None:
-            raise typer.Exit(code=exitCode)
+    runWithReport(
+        ctx=ctx,
+        commandName="validate",
+        csvPath=csvPath,
+        requiresCsv=True,
+        requiresApiAccess=False,
+        runner=execute,
+    )
 @app.callback()
 def main(
     ctx: typer.Context,

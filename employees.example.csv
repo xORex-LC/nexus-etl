@@ -1,0 +1,7 @@
+email;lastName;firstName;middleName;isLogonDisable;userName;phone;password;personnelNumber;managerId;organization_id;position;avatarId;usrOrgTabNum
+ivanov.i@domain.ru;Иванов;Иван;Иванович;false;ivanov-i;1001;TestPass#1;000001;;10;Инженер;;4001000001
+petrova.p@domain.ru;Петрова;Полина;Сергеевна;false;petrova-p;1002;TestPass#2;000002;101;10;Специалист;;4001000002
+sidorov.s@domain.ru;Сидоров;Сергей;Андреевич;true;sidorov-s;1003;TestPass#3;000003;101;20;Руководитель;;4001000003
+badbool@domain.ru;Ошибка;Булево;Значение;TRUE;badbool-u;1004;TestPass#4;000004;;20;Тестировщик;;4001000004
+dupkey@domain.ru;Иванов;Иван;Иванович;false;dupkey-u;1005;TestPass#5;000001;;10;Инженер;;4001000005
+dupusr@domain.ru;Дубликат;ТабНомер;Орг;false;dupusr-u;1006;TestPass#6;000006;;10;Аналитик;;4001000003

@@ -9,7 +9,8 @@ class CsvRow:
     Назначение:
         Нормализованная строка CSV.
     """
-    line_no: int
+    file_line_no: int
+    data_line_no: int
     values: list[str | None]
 
 
