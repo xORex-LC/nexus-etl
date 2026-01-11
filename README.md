@@ -1,6 +1,6 @@
 # AnkeyIDM---Employee-Data-Synchronization
 
-CLI коннектор для импорта сотрудников в Ankey HR через REST API.
+CLI коннектор для импорта сотрудников в Ankey IDM через REST API.
 
 ## Быстрый старт (dev)
 python -m venv .venv
