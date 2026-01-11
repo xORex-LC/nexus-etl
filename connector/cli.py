@@ -3,6 +3,13 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 import typer
+import logging
+import sys
+import time
+
+from .loggingSetup import createCommandLogger, logEvent, StdStreamToLogger, TeeStream
+from .reporter import createEmptyReport, finalizeReport, writeReportJson
+from .timeUtils import getDurationMs
 
 from .config import loadSettings, Settings
 from .sanitize import maskSecret
@@ -10,7 +17,6 @@ from .sanitize import maskSecret
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
 userApp = typer.Typer(no_args_is_help=True)  # резерв под будущие команды
-
 
 def ensureDir(path: str) -> None:
     """
@@ -28,7 +34,6 @@ def ensureDir(path: str) -> None:
         - Path(path).mkdir(parents=True, exist_ok=True)
     """
     Path(path).mkdir(parents=True, exist_ok=True)
-
 
 def requireCsv(csvPath: str | None) -> None:
     """
@@ -53,7 +58,6 @@ def requireCsv(csvPath: str | None) -> None:
     if not p.exists() or not p.is_file():
         typer.echo(f"ERROR: CSV file not found: {csvPath}", err=True)
         raise typer.Exit(code=2)
-
 
 def requireApi(settings: Settings) -> None:
     """
@@ -84,7 +88,6 @@ def requireApi(settings: Settings) -> None:
         typer.echo(f"ERROR: missing API settings: {', '.join(missing)}", err=True)
         raise typer.Exit(code=2)
 
-
 def printRunHeader(runId: str, command: str, settings: Settings, sources: list[str]) -> None:
     """
     Назначение:
@@ -103,8 +106,107 @@ def printRunHeader(runId: str, command: str, settings: Settings, sources: list[s
         f"run_id={runId} command={command} "
         f"host={settings.host} port={settings.port} api_username={settings.api_username} "
         f"api_password={maskSecret(settings.api_password)} sources={sources}"
+        f"log_level={settings.log_level} log_json={settings.log_json} "
     )
 
+def runCommand(
+    ctx: typer.Context,
+    commandName: str,
+    csvPath: str | None,
+    requiresCsv: bool,
+    requiresApiAccess: bool,
+) -> None:
+    """
+    Назначение:
+        Унифицированная обвязка выполнения команд:
+        - создаёт логгер + файл лога
+        - создаёт report.json skeleton
+        - валидирует обязательные входы (CSV/API)
+        - перенаправляет stdout/stderr в лог (tee)
+        - гарантирует запись отчёта в finally
+
+    Входные данные:
+        ctx: typer.Context
+        commandName: str
+        csvPath: str | None
+        requiresCsv: bool
+        requiresApiAccess: bool
+
+    Выходные данные:
+        None
+
+    Поведение:
+        - На ошибках обязательных параметров: пишет ошибку в лог и report и завершает exit code 2.
+    """
+    runId = ctx.obj["runId"]
+    settings: Settings = ctx.obj["settings"]
+    sources = ctx.obj["sources"]
+
+    startMonotonic = time.monotonic()
+
+    logger, logFilePath = createCommandLogger(
+        commandName=commandName,
+        logDir=settings.log_dir,
+        runId=runId,
+        logLevel=settings.log_level,
+    )
+
+    report = createEmptyReport(runId=runId, command=commandName, configSources=sources)
+    report.meta.csv_path = csvPath
+
+    originalStdout = sys.stdout
+    originalStderr = sys.stderr
+
+    stdoutLoggerStream = StdStreamToLogger(logger, logging.INFO, runId, "stdout")
+    stderrLoggerStream = StdStreamToLogger(logger, logging.ERROR, runId, "stderr")
+
+    sys.stdout = TeeStream(originalStdout, stdoutLoggerStream)
+    sys.stderr = TeeStream(originalStderr, stderrLoggerStream)
+
+    exitCode: int | None = None
+
+    try:
+        logEvent(logger, logging.INFO, runId, "core", "Command started")
+        printRunHeader(runId, commandName, settings, sources)
+
+        if requiresApiAccess:
+            try:
+                requireApi(settings)
+            except typer.Exit:
+                logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
+                typer.echo("ERROR: missing API settings (see logs/report)", err=True)
+                exitCode = 2
+                return
+
+        if requiresCsv:
+            try:
+                requireCsv(csvPath)
+            except typer.Exit:
+                logEvent(logger, logging.ERROR, runId, "csv", "CSV is missing or not accessible")
+                typer.echo("ERROR: invalid or missing CSV (see logs/report)", err=True)
+                exitCode = 2
+                return
+
+        # На этапе 2 команды ещё заглушки
+        typer.echo(f"{commandName}: not implemented yet (stage 2)")
+
+    finally:
+        durationMs = getDurationMs(startMonotonic, time.monotonic())
+        finalizeReport(
+            report=report,
+            durationMs=durationMs,
+            logFile=logFilePath,
+            cacheDir=settings.cache_dir,
+            reportDir=settings.report_dir,
+        )
+        reportPath = writeReportJson(report, settings.report_dir, f"report_{commandName}_{runId}")
+        logEvent(logger, logging.INFO, runId, "report", f"Report written: {reportPath}")
+
+        sys.stdout = originalStdout
+        sys.stderr = originalStderr
+
+        if exitCode is not None:
+            raise typer.Exit(code=exitCode)
 
 @app.callback()
 def main(
@@ -121,6 +223,8 @@ def main(
     apiPasswordFile: str | None = typer.Option(None, "--api-password-file", help="Read API password from file"),
     tlsSkipVerify: bool | None = typer.Option(None, "--tls-skip-verify", help="Disable TLS verification"),
     caFile: str | None = typer.Option(None, "--ca-file", help="CA file path"),
+    logLevel: str | None = typer.Option(None, "--log-level", help="Log level: ERROR|WARN|INFO|DEBUG"),
+    logJson: bool | None = typer.Option(None, "--log-json", help="Enable JSON log format (reserved)"),
 ):
     """
     Назначение:
@@ -156,6 +260,8 @@ def main(
         "cache_dir": cacheDir,
         "tls_skip_verify": tlsSkipVerify,
         "ca_file": caFile,
+        "log_level": logLevel,
+        "log_json": logJson,
     }
     loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
 
@@ -170,90 +276,21 @@ def main(
         "configPath": config,
     }
 
-
 @app.command()
 def validate(ctx: typer.Context, csv: str | None = typer.Option(None, "--csv", help="Path to input CSV")):
-    """
-    Назначение:
-        Команда validate (этап 1 — заглушка).
-        По ТЗ: проверяет CSV без API и формирует отчёт.
-
-    Входные данные:
-        --csv: путь к CSV
-
-    Выходные данные:
-        На этапе 1 — только проверка наличия CSV + вывод заглушки.
-    """
-    requireCsv(csv)
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    sources = ctx.obj["sources"]
-    printRunHeader(runId, "validate", settings, sources)
-    typer.echo("validate: not implemented yet (stage 1)")
-
+    runCommand(ctx, "validate", csv, requiresCsv=True, requiresApiAccess=False)
 
 @app.command("import")
 def importEmployees(ctx: typer.Context, csv: str | None = typer.Option(None, "--csv", help="Path to input CSV")):
-    """
-    Назначение:
-        Команда import (этап 1 — заглушка).
-        По ТЗ: импорт/обновление сотрудников из CSV через REST API.
-
-    Входные данные:
-        --csv: путь к CSV
-
-    Выходные данные:
-        На этапе 1 — только проверка наличия CSV + вывод заглушки.
-    """
-    requireCsv(csv)
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    sources = ctx.obj["sources"]
-    printRunHeader(runId, "import", settings, sources)
-    typer.echo("import: not implemented yet (stage 1)")
-
+    runCommand(ctx, "import", csv, requiresCsv=True, requiresApiAccess=True)
 
 @app.command("check-api")
 def checkApi(ctx: typer.Context):
-    """
-    Назначение:
-        Команда check-api (этап 1 — заглушка).
-        По ТЗ: проверка доступности API и корректности учётных данных.
-
-    Входные данные:
-        Использует настройки API из конфигов/ENV/CLI.
-
-    Выходные данные:
-        На этапе 1 — только проверка, что настройки API заданы.
-    """
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    sources = ctx.obj["sources"]
-    requireApi(settings)
-    printRunHeader(runId, "check-api", settings, sources)
-    typer.echo("check-api: not implemented yet (stage 1)")
-
+    runCommand(ctx, "check-api", None, requiresCsv=False, requiresApiAccess=True)
 
 @cacheApp.command("refresh")
 def cacheRefresh(ctx: typer.Context):
-    """
-    Назначение:
-        Команда cache refresh (этап 1 — заглушка).
-        По ТЗ: обновляет локальный кэш (в будущем SQLite) из API.
-
-    Входные данные:
-        Использует настройки API из конфигов/ENV/CLI.
-
-    Выходные данные:
-        На этапе 1 — только проверка, что настройки API заданы.
-    """
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    sources = ctx.obj["sources"]
-    requireApi(settings)
-    printRunHeader(runId, "cache refresh", settings, sources)
-    typer.echo("cache refresh: not implemented yet (stage 1)")
-
+    runCommand(ctx, "cache-refresh", None, requiresCsv=False, requiresApiAccess=True)
 
 app.add_typer(cacheApp, name="cache")
 app.add_typer(userApp, name="user")

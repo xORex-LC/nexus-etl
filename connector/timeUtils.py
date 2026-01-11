@@ -8,15 +8,9 @@ def getNowIso() -> str:
     Назначение:
         Возвращает текущее время в ISO 8601 с timezone.
 
-    Входные данные:
-        Нет.
-
     Выходные данные:
         str
             Например: 2026-01-11T18:22:10+01:00
-
-    Алгоритм:
-        - datetime.now().astimezone().isoformat()
     """
     return datetime.now().astimezone().isoformat()
 

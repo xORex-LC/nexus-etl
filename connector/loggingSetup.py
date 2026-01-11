@@ -2,28 +2,50 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TextIO
 
-
-class StdStreamToLogger(TextIO):
+class EnsureFieldsFilter(logging.Filter):
     """
     Назначение:
-        Перехват stdout/stderr и отправка текста в logging.
-        Требование ТЗ: транслировать stdout/stderr в лог файл.
+        Гарантирует наличие полей runId и component в LogRecord,
+        чтобы форматтер не падал KeyError.
+
+    Входные данные:
+        runId: str
+            Идентификатор запуска.
+        defaultComponent: str
+            Компонент по умолчанию, если не задан.
+    """
+
+    def __init__(self, runId: str, defaultComponent: str = "core"):
+        super().__init__()
+        self.runId = runId
+        self.defaultComponent = defaultComponent
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not hasattr(record, "runId"):
+            record.runId = self.runId
+        if not hasattr(record, "component"):
+            record.component = self.defaultComponent
+        return True
+
+class StdStreamToLogger:
+    """
+    Назначение:
+        Перехват stdout/stderr и логирование построчно.
 
     Входные данные:
         logger: logging.Logger
-            Логгер команды.
         level: int
-            Уровень логирования для перенаправленного текста.
-
-    Выходные данные:
-        Объект-стрим, совместимый с sys.stdout/sys.stderr.
+        runId: str
+        component: str
+            Обычно 'stdout' или 'stderr'
     """
 
-    def __init__(self, logger: logging.Logger, level: int):
+    def __init__(self, logger: logging.Logger, level: int, runId: str, component: str):
         self.logger = logger
         self.level = level
+        self.runId = runId
+        self.component = component
         self.buffer = ""
 
     def write(self, s: str) -> int:
@@ -33,14 +55,38 @@ class StdStreamToLogger(TextIO):
         while "\n" in self.buffer:
             line, self.buffer = self.buffer.split("\n", 1)
             if line.strip():
-                self.logger.log(self.level, line.rstrip())
+                self.logger.log(self.level, line.rstrip(), extra={"runId": self.runId, "component": self.component})
         return len(s)
 
     def flush(self) -> None:
         if self.buffer.strip():
-            self.logger.log(self.level, self.buffer.rstrip())
+            self.logger.log(self.level, self.buffer.rstrip(), extra={"runId": self.runId, "component": self.component})
         self.buffer = ""
 
+class TeeStream:
+    """
+    Назначение:
+        Дублирует вывод: пишет в оригинальный stream и в stream-логгер.
+
+    Входные данные:
+        primary:
+            Оригинальный sys.stdout/sys.stderr
+        secondary:
+            Объект, совместимый с stream (StdStreamToLogger)
+    """
+
+    def __init__(self, primary, secondary):
+        self.primary = primary
+        self.secondary = secondary
+
+    def write(self, s: str) -> int:
+        a = self.primary.write(s)
+        self.secondary.write(s)
+        return a
+
+    def flush(self) -> None:
+        self.primary.flush()
+        self.secondary.flush()
 
 def mapLogLevel(levelName: str) -> int:
     """
@@ -53,9 +99,8 @@ def mapLogLevel(levelName: str) -> int:
 
     Выходные данные:
         int
-            logging.ERROR / logging.WARNING / logging.INFO / logging.DEBUG
     """
-    value = levelName.strip().upper()
+    value = (levelName or "").strip().upper()
     if value == "ERROR":
         return logging.ERROR
     if value == "WARN":
@@ -66,7 +111,6 @@ def mapLogLevel(levelName: str) -> int:
         return logging.DEBUG
     raise ValueError(f"Unsupported log level: {levelName}")
 
-
 def createCommandLogger(commandName: str, logDir: str, runId: str, logLevel: str) -> tuple[logging.Logger, str]:
     """
     Назначение:
@@ -74,21 +118,12 @@ def createCommandLogger(commandName: str, logDir: str, runId: str, logLevel: str
 
     Входные данные:
         commandName: str
-            Например: "import", "validate", "check-api", "cache-refresh"
         logDir: str
-            Каталог логов.
         runId: str
-            Идентификатор запуска.
         logLevel: str
-            ERROR/WARN/INFO/DEBUG
 
     Выходные данные:
         (logger, logFilePath)
-
-    Алгоритм:
-        - Создать файл: <logDir>/<commandName>_<runId>.log
-        - Добавить FileHandler с форматером, включающим runId.
-        - Установить уровень логирования.
     """
     Path(logDir).mkdir(parents=True, exist_ok=True)
 
@@ -110,15 +145,15 @@ def createCommandLogger(commandName: str, logDir: str, runId: str, logLevel: str
     fileHandler = logging.FileHandler(logFilePath, encoding="utf-8")
     fileHandler.setLevel(level)
     fileHandler.setFormatter(formatter)
+    fileHandler.addFilter(EnsureFieldsFilter(runId=runId))
     logger.addHandler(fileHandler)
 
     return logger, logFilePath
 
-
 def logEvent(logger: logging.Logger, level: int, runId: str, component: str, message: str) -> None:
     """
     Назначение:
-        Унифицированная запись событий с обязательными полями runId/component.
+        Унифицированная запись событий с runId/component.
 
     Входные данные:
         logger: logging.Logger
@@ -126,8 +161,5 @@ def logEvent(logger: logging.Logger, level: int, runId: str, component: str, mes
         runId: str
         component: str
         message: str
-
-    Выходные данные:
-        None
     """
     logger.log(level, message, extra={"runId": runId, "component": component})
