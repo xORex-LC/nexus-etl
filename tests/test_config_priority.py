@@ -1,5 +1,8 @@
+import httpx
 from typer.testing import CliRunner
 from connector.cli import app
+import connector.cli as cli_module
+from connector.ankeyApiClient import AnkeyApiClient
 
 runner = CliRunner()
 
@@ -22,6 +25,13 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
     monkeypatch.setenv("ANKEY_API_PASSWORD", "env_pass")
 
     # CLI overrides env
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"items": []}))
+
+    def factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return AnkeyApiClient(*args, **kwargs)
+
+    monkeypatch.setattr(cli_module, "AnkeyApiClient", factory)
     result = runner.invoke(
         app,
         ["--config", str(cfg), "--host", "3.3.3.3", "--port", "3333", "--api-username", "cli_user", "--api-password", "cli_pass", "check-api"],

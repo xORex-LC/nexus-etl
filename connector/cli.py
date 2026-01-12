@@ -9,8 +9,9 @@ from pathlib import Path
 
 import typer
 
+from .ankeyApiClient import AnkeyApiClient, ApiError
 from .cacheDb import ensureSchema, getCacheDbPath, openCacheDb
-from .cacheService import clearCache, getCacheStatus, refreshCacheFromJson
+from .cacheService import clearCache, getCacheStatus, refreshCacheFromApi, refreshCacheFromJson
 from .config import loadSettings, Settings
 from .csvReader import CsvFormatError, readEmployeeRows
 from .loggingSetup import createCommandLogger, logEvent, StdStreamToLogger, TeeStream
@@ -236,15 +237,30 @@ def runCommand(
         runner=execute,
     )
 
-def runCacheRefreshCommand(ctx: typer.Context, usersJson: str | None, orgJson: str | None) -> None:
+def runCacheRefreshCommand(
+    ctx: typer.Context,
+    usersJson: str | None,
+    orgJson: str | None,
+    pageSize: int | None,
+    maxPages: int | None,
+    timeoutSeconds: float | None,
+    retries: int | None,
+    retryBackoffSeconds: float | None,
+    apiTransport=None,
+) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report) -> int:
-        if not usersJson and not orgJson:
-            typer.echo("ERROR: --users-json or --org-json is required", err=True)
-            return 2
+        mode = "json" if (usersJson or orgJson) else "api"
+        if mode == "api":
+            try:
+                requireApi(settings)
+            except typer.Exit:
+                logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
+                typer.echo("ERROR: missing API settings (see logs/report)", err=True)
+                return 2
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -253,7 +269,28 @@ def runCacheRefreshCommand(ctx: typer.Context, usersJson: str | None, orgJson: s
             return 2
 
         try:
-            summary = refreshCacheFromJson(conn, usersJson, orgJson, logger, report)
+            if mode == "json":
+                if not usersJson and not orgJson:
+                    typer.echo("ERROR: --users-json or --org-json is required", err=True)
+                    return 2
+                summary = refreshCacheFromJson(conn, usersJson, orgJson, logger, report)
+            else:
+                summary = refreshCacheFromApi(
+                    conn=conn,
+                    settings=settings,
+                    pageSize=pageSize or settings.page_size,
+                    maxPages=maxPages or settings.max_pages,
+                    timeoutSeconds=timeoutSeconds or settings.timeout_seconds,
+                    retries=retries or settings.retries,
+                    retryBackoffSeconds=retryBackoffSeconds or settings.retry_backoff_seconds,
+                    logger=logger,
+                    report=report,
+                    transport=apiTransport,
+                )
+        except ApiError as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
+            typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
+            return 2
         except Exception as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
             typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
@@ -351,6 +388,41 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
         csvPath=None,
         requiresCsv=False,
         requiresApiAccess=False,
+        runner=execute,
+    )
+
+def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
+    settings: Settings = ctx.obj["settings"]
+    runId = ctx.obj["runId"]
+
+    def execute(logger, report) -> int:
+        baseUrl = f"https://{settings.host}:{settings.port}"
+        client = AnkeyApiClient(
+            baseUrl=baseUrl,
+            username=settings.api_username or "",
+            password=settings.api_password or "",
+            timeoutSeconds=settings.timeout_seconds,
+            tlsSkipVerify=settings.tls_skip_verify,
+            caFile=settings.ca_file,
+            retries=settings.retries,
+            retryBackoffSeconds=settings.retry_backoff_seconds,
+            transport=apiTransport,
+        )
+        try:
+            client.getJson("/ankey/endpoint/user", {"page": 1, "rows": 1})
+            report.meta.api_base_url = baseUrl
+            return 0
+        except ApiError as exc:
+            logEvent(logger, logging.ERROR, runId, "api", f"API check failed: {exc}")
+            typer.echo("ERROR: API check failed (see logs/report)", err=True)
+            return 2
+
+    runWithReport(
+        ctx=ctx,
+        commandName="check-api",
+        csvPath=None,
+        requiresCsv=False,
+        requiresApiAccess=True,
         runner=execute,
     )
 
@@ -458,6 +530,11 @@ def main(
     apiPasswordFile: str | None = typer.Option(None, "--api-password-file", help="Read API password from file"),
     tlsSkipVerify: bool | None = typer.Option(None, "--tls-skip-verify", help="Disable TLS verification"),
     caFile: str | None = typer.Option(None, "--ca-file", help="CA file path"),
+    pageSize: int | None = typer.Option(None, "--page-size", help="Page size for API pagination"),
+    maxPages: int | None = typer.Option(None, "--max-pages", help="Max pages to fetch from API"),
+    timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
+    retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API calls"),
+    retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff for retries"),
 ):
     """
     Назначение:
@@ -495,6 +572,11 @@ def main(
         "cache_dir": cacheDir,
         "tls_skip_verify": tlsSkipVerify,
         "ca_file": caFile,
+        "page_size": pageSize,
+        "max_pages": maxPages,
+        "timeout_seconds": timeoutSeconds,
+        "retries": retries,
+        "retry_backoff_seconds": retryBackoffSeconds,
     }
     loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
 
@@ -523,15 +605,29 @@ def importEmployees(ctx: typer.Context, csv: str | None = typer.Option(None, "--
 
 @app.command("check-api")
 def checkApi(ctx: typer.Context):
-    runCommand(ctx, "check-api", None, requiresCsv=False, requiresApiAccess=True)
+    runCheckApiCommand(ctx)
 
 @cacheApp.command("refresh")
 def cacheRefresh(
     ctx: typer.Context,
     usersJson: str | None = typer.Option(None, "--users-json", help="Path to users JSON file"),
     orgJson: str | None = typer.Option(None, "--org-json", help="Path to organizations JSON file"),
+    pageSize: int | None = typer.Option(None, "--page-size", help="Page size for API pagination"),
+    maxPages: int | None = typer.Option(None, "--max-pages", help="Maximum pages to fetch from API"),
+    timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
+    retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API requests"),
+    retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff seconds for retries"),
 ):
-    runCacheRefreshCommand(ctx, usersJson, orgJson)
+    runCacheRefreshCommand(
+        ctx=ctx,
+        usersJson=usersJson,
+        orgJson=orgJson,
+        pageSize=pageSize if pageSize is not None else ctx.obj["settings"].page_size,
+        maxPages=maxPages if maxPages is not None else ctx.obj["settings"].max_pages,
+        timeoutSeconds=timeoutSeconds if timeoutSeconds is not None else ctx.obj["settings"].timeout_seconds,
+        retries=retries if retries is not None else ctx.obj["settings"].retries,
+        retryBackoffSeconds=retryBackoffSeconds if retryBackoffSeconds is not None else ctx.obj["settings"].retry_backoff_seconds,
+    )
 
 @cacheApp.command("status")
 def cacheStatus(ctx: typer.Context):

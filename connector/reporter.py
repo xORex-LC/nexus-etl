@@ -26,6 +26,9 @@ class ReportMeta:
     log_file: str | None = None
     cache_dir: str | None = None
     report_dir: str | None = None
+    api_base_url: str | None = None
+    pages_users: int | None = None
+    pages_orgs: int | None = None
 
     config_sources: list[str] = field(default_factory=list)
 
