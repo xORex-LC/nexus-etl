@@ -1,7 +1,7 @@
-host: "10.27.38.172"
-port: 8473
-api_username: "Ankey"
-api_password: "P@ssw0rd"
+host: "10.10.10.10"
+port: 473
+api_username: "Username"
+api_password: "Password"
 
 cache_dir: "./cache"
 log_dir: "./logs"
@@ -10,6 +10,12 @@ report_dir: "./reports"
 tls_skip_verify: true
 ca_file: null
 
-log_level: "INFO"
+log_level: "DEBUG"
 log_json: false
 report_format: "json"
+
+page_size: 200
+max_pages: 1000
+timeout_seconds: 20.0
+retries: 3
+retry_backoff_seconds: 0.5
