@@ -1,0 +1,15 @@
+[
+  {
+    "_id": "user-1",
+    "_ouid": 101,
+    "mail": "ivanov@irk.com",
+    "firstName": "Ivanov",
+    "lastName": "Ivan",
+    "middleName": "Ivanovich",
+    "personnelNumber": "5001",
+    "userName": "ivanets",
+    "phone": "+1234567",
+    "password": "TOP_SECRET",
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
+]
