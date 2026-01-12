@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 import sys
 import time
 import uuid
@@ -8,6 +9,8 @@ from pathlib import Path
 
 import typer
 
+from .cacheDb import ensureSchema, getCacheDbPath, openCacheDb
+from .cacheService import clearCache, getCacheStatus, refreshCacheFromJson
 from .config import loadSettings, Settings
 from .csvReader import CsvFormatError, readEmployeeRows
 from .loggingSetup import createCommandLogger, logEvent, StdStreamToLogger, TeeStream
@@ -233,6 +236,123 @@ def runCommand(
         runner=execute,
     )
 
+def runCacheRefreshCommand(ctx: typer.Context, usersJson: str | None, orgJson: str | None) -> None:
+    settings: Settings = ctx.obj["settings"]
+    runId = ctx.obj["runId"]
+    cacheDbPath = getCacheDbPath(settings.cache_dir)
+
+    def execute(logger, report) -> int:
+        if not usersJson and not orgJson:
+            typer.echo("ERROR: --users-json or --org-json is required", err=True)
+            return 2
+        try:
+            conn = openCacheDb(cacheDbPath)
+        except sqlite3.Error as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+            return 2
+
+        try:
+            summary = refreshCacheFromJson(conn, usersJson, orgJson, logger, report)
+        except Exception as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
+            typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
+            return 2
+        finally:
+            conn.close()
+
+        failed = summary["users_failed"] + summary["orgs_failed"]
+        report.summary.created = summary["users_inserted"] + summary["orgs_inserted"]
+        report.summary.updated = summary["users_updated"] + summary["orgs_updated"]
+        report.summary.failed = failed
+        return 0 if failed == 0 else 1
+
+    runWithReport(
+        ctx=ctx,
+        commandName="cache-refresh",
+        csvPath=None,
+        requiresCsv=False,
+        requiresApiAccess=False,
+        runner=execute,
+    )
+
+
+def runCacheStatusCommand(ctx: typer.Context) -> None:
+    settings: Settings = ctx.obj["settings"]
+    runId = ctx.obj["runId"]
+    cacheDbPath = getCacheDbPath(settings.cache_dir)
+
+    def execute(logger, report) -> int:
+        try:
+            conn = openCacheDb(cacheDbPath)
+        except sqlite3.Error as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+            return 2
+
+        try:
+            ensureSchema(conn)
+            status = getCacheStatus(conn)
+            typer.echo(
+                "schema_version={schema_version} users={users_count} orgs={org_count} "
+                "users_last_refresh_at={users_last_refresh_at} org_last_refresh_at={org_last_refresh_at}".format(
+                    **status
+                )
+            )
+            report.items.append({"status": status})
+            return 0
+        except Exception as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Cache status failed: {exc}")
+            typer.echo("ERROR: cache status failed (see logs/report)", err=True)
+            return 2
+        finally:
+            conn.close()
+
+    runWithReport(
+        ctx=ctx,
+        commandName="cache-status",
+        csvPath=None,
+        requiresCsv=False,
+        requiresApiAccess=False,
+        runner=execute,
+    )
+
+def runCacheClearCommand(ctx: typer.Context) -> None:
+    settings: Settings = ctx.obj["settings"]
+    runId = ctx.obj["runId"]
+    cacheDbPath = getCacheDbPath(settings.cache_dir)
+
+    def execute(logger, report) -> int:
+        try:
+            conn = openCacheDb(cacheDbPath)
+        except sqlite3.Error as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+            return 2
+
+        try:
+            ensureSchema(conn)
+            cleared = clearCache(conn)
+            report.items.append({"cleared": cleared})
+            report.summary.failed = 0
+            report.summary.created = 0
+            report.summary.updated = 0
+            return 0
+        except Exception as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Cache clear failed: {exc}")
+            typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
+            return 2
+        finally:
+            conn.close()
+
+    runWithReport(
+        ctx=ctx,
+        commandName="cache-clear",
+        csvPath=None,
+        requiresCsv=False,
+        requiresApiAccess=False,
+        runner=execute,
+    )
 
 def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bool) -> None:
     runId = ctx.obj["runId"]
@@ -320,6 +440,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         requiresApiAccess=False,
         runner=execute,
     )
+
 @app.callback()
 def main(
     ctx: typer.Context,
@@ -405,8 +526,20 @@ def checkApi(ctx: typer.Context):
     runCommand(ctx, "check-api", None, requiresCsv=False, requiresApiAccess=True)
 
 @cacheApp.command("refresh")
-def cacheRefresh(ctx: typer.Context):
-    runCommand(ctx, "cache-refresh", None, requiresCsv=False, requiresApiAccess=True)
+def cacheRefresh(
+    ctx: typer.Context,
+    usersJson: str | None = typer.Option(None, "--users-json", help="Path to users JSON file"),
+    orgJson: str | None = typer.Option(None, "--org-json", help="Path to organizations JSON file"),
+):
+    runCacheRefreshCommand(ctx, usersJson, orgJson)
+
+@cacheApp.command("status")
+def cacheStatus(ctx: typer.Context):
+    runCacheStatusCommand(ctx)
+
+@cacheApp.command("clear")
+def cacheClear(ctx: typer.Context):
+    runCacheClearCommand(ctx)
 
 app.add_typer(cacheApp, name="cache")
 app.add_typer(userApp, name="user")

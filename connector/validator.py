@@ -6,12 +6,10 @@ from .models import CsvRow, EmployeeInput, ValidationErrorItem, ValidationRowRes
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-
 def normalizeWhitespace(value: str | None) -> str | None:
     if value is None:
         return None
     return " ".join(value.split())
-
 
 def buildMatchKey(employee: EmployeeInput) -> str:
     parts = [
@@ -22,7 +20,6 @@ def buildMatchKey(employee: EmployeeInput) -> str:
     ]
     return "|".join(parts)
 
-
 def parseBooleanStrict(value: str) -> bool:
     normalized = value.strip().lower()
     if normalized == "true":
@@ -31,21 +28,17 @@ def parseBooleanStrict(value: str) -> bool:
         return False
     raise ValueError("Invalid boolean value")
 
-
 def parseIntStrict(value: str) -> int:
     if value.strip() == "":
         raise ValueError("Empty int value")
     return int(value)
 
-
 def validateEmail(value: str) -> bool:
     return EMAIL_RE.match(value) is not None
-
 
 def _required(value: str | None, field: str, errors: list[ValidationErrorItem]) -> None:
     if value is None:
         errors.append(ValidationErrorItem(code="REQUIRED_FIELD_MISSING", field=field, message=f"{field} is required"))
-
 
 def validateEmployeeRow(csvRow: CsvRow) -> tuple[EmployeeInput, ValidationRowResult]:
     values = csvRow.values

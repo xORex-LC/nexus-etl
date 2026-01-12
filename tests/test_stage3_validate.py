@@ -12,7 +12,6 @@ HEADER = (
     "personnelNumber;managerId;organization_id;position;avatarId;usrOrgTabNum"
 )
 
-
 def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) -> None:
     lines = []
     if include_header:
@@ -20,7 +19,6 @@ def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) ->
     for row in rows:
         lines.append(";".join(row))
     path.write_text("\n".join(lines), encoding="utf-8")
-
 
 def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1"):
     log_dir = tmp_path / "logs"
@@ -45,7 +43,6 @@ def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1"):
     )
     report_path = report_dir / f"report_validate_{run_id}.json"
     return result, report_path
-
 
 def test_validate_ok_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
@@ -78,7 +75,6 @@ def test_validate_ok_returns_0(tmp_path: Path):
     assert report["meta"]["csv_rows_total"] == 1
     assert report["meta"]["csv_rows_processed"] == 1
 
-
 def test_validate_missing_required_returns_1(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
@@ -107,7 +103,6 @@ def test_validate_missing_required_returns_1(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["failed"] == 1
 
-
 def test_validate_invalid_boolean_returns_1(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
@@ -133,7 +128,6 @@ def test_validate_invalid_boolean_returns_1(tmp_path: Path):
     result, _ = run_validate(tmp_path, csv_path, run_id="bad-bool")
     assert result.exit_code == 1
 
-
 def test_validate_invalid_email_returns_1(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
@@ -158,7 +152,6 @@ def test_validate_invalid_email_returns_1(tmp_path: Path):
 
     result, _ = run_validate(tmp_path, csv_path, run_id="bad-email")
     assert result.exit_code == 1
-
 
 def test_validate_duplicate_matchkey_returns_1(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
@@ -207,7 +200,6 @@ def test_validate_duplicate_matchkey_returns_1(tmp_path: Path):
         for err in report["items"][1]["errors"]
     )
 
-
 def test_validate_duplicate_usr_org_tab_num_returns_1(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
@@ -253,7 +245,6 @@ def test_validate_duplicate_usr_org_tab_num_returns_1(tmp_path: Path):
         err["code"] == "DUPLICATE_USR_ORG_TAB_NUM"
         for err in report["items"][1]["errors"]
     )
-
 
 def test_validate_masks_password_in_report(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"

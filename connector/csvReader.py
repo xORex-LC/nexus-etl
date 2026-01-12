@@ -7,13 +7,11 @@ from .models import CsvRow
 
 EXPECTED_COLUMNS = 14
 
-
 class CsvFormatError(Exception):
     """
     Назначение:
         Ошибка критического формата CSV (количество колонок и т.п.).
     """
-
 
 def parseNull(value: str | None) -> str | None:
     """
@@ -26,7 +24,6 @@ def parseNull(value: str | None) -> str | None:
     if trimmed == "" or trimmed.lower() == "null":
         return None
     return trimmed
-
 
 def readEmployeeRows(csvPath: str, hasHeader: bool) -> Iterator[CsvRow]:
     """

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 @dataclass
 class CsvRow:
     """
@@ -12,7 +11,6 @@ class CsvRow:
     file_line_no: int
     data_line_no: int
     values: list[str | None]
-
 
 @dataclass
 class EmployeeInput:
@@ -35,7 +33,6 @@ class EmployeeInput:
     avatar_id: str | None
     usr_org_tab_num: str | None
 
-
 @dataclass
 class ValidationErrorItem:
     """
@@ -45,7 +42,6 @@ class ValidationErrorItem:
     code: str
     field: str | None
     message: str
-
 
 @dataclass
 class ValidationRowResult:

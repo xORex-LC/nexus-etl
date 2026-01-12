@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-
 def getNowIso() -> str:
     """
     Назначение:
@@ -14,7 +13,6 @@ def getNowIso() -> str:
     """
     return datetime.now().astimezone().isoformat()
 
-
 def getUtcNowIso() -> str:
     """
     Назначение:
@@ -25,7 +23,6 @@ def getUtcNowIso() -> str:
             Например: 2026-01-11T17:22:10+00:00
     """
     return datetime.now(timezone.utc).isoformat()
-
 
 def getDurationMs(startMonotonic: float, endMonotonic: float) -> int:
     """
