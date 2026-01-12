@@ -57,6 +57,13 @@ class Settings:
     log_json: bool = False
     report_format: str = "json"
 
+    # API/cache refresh tuning (Stage 5)
+    page_size: int = 200
+    max_pages: int = 1000
+    timeout_seconds: float = 20.0
+    retries: int = 3
+    retry_backoff_seconds: float = 0.5
+
 @dataclass(frozen=True)
 class LoadedSettings:
     """
@@ -137,6 +144,15 @@ def parseInt(value: str | None) -> int | None:
         return None
     return int(value)
 
+def parseFloat(value: str | None) -> float | None:
+    """
+    Назначение:
+        Преобразует строку в float, если значение задано.
+    """
+    if value is None:
+        return None
+    return float(value)
+
 def parseBool(value: str | None) -> bool | None:
     """
     Назначение:
@@ -203,6 +219,20 @@ def parseBoolAny(value: bool | str | None) -> bool | None:
         return parseBool(value.strip())
     raise ValueError(f"Invalid bool value type: {type(value)}")
 
+
+def parseFloatAny(value: float | str | None) -> float | None:
+    """
+    Назначение:
+        Нормализует значение (float/str/None) в float|None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (float, int)):
+        return float(value)
+    if isinstance(value, str):
+        return float(value.strip())
+    raise ValueError(f"Invalid float value type: {type(value)}")
+
 def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings:
     """
     Назначение:
@@ -247,6 +277,11 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "log_level": envGet("ANKEY_LOG_LEVEL"),
         "log_json": envGet("ANKEY_LOG_JSON"),
         "report_format": envGet("ANKEY_REPORT_FORMAT"),
+        "page_size": envGet("ANKEY_PAGE_SIZE"),
+        "max_pages": envGet("ANKEY_MAX_PAGES"),
+        "timeout_seconds": envGet("ANKEY_TIMEOUT_SECONDS"),
+        "retries": envGet("ANKEY_RETRIES"),
+        "retry_backoff_seconds": envGet("ANKEY_RETRY_BACKOFF_SECONDS"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -266,7 +301,12 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
 
         "log_level": cfg.get("log_level", defaults.log_level),
         "log_json": cfg.get("log_json", defaults.log_json),
-        "report_format": cfg.get("report_format", defaults.report_format)
+        "report_format": cfg.get("report_format", defaults.report_format),
+        "page_size": cfg.get("page_size", defaults.page_size),
+        "max_pages": cfg.get("max_pages", defaults.max_pages),
+        "timeout_seconds": cfg.get("timeout_seconds", defaults.timeout_seconds),
+        "retries": cfg.get("retries", defaults.retries),
+        "retry_backoff_seconds": cfg.get("retry_backoff_seconds", defaults.retry_backoff_seconds),
     }
 
     if env["host"] is not None:
@@ -296,6 +336,16 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["log_json"] = parseBool(env["log_json"])
     if env["report_format"] is not None:
         merged["report_format"] = env["report_format"]
+    if env["page_size"] is not None:
+        merged["page_size"] = parseInt(env["page_size"])
+    if env["max_pages"] is not None:
+        merged["max_pages"] = parseInt(env["max_pages"])
+    if env["timeout_seconds"] is not None:
+        merged["timeout_seconds"] = parseFloat(env["timeout_seconds"])
+    if env["retries"] is not None:
+        merged["retries"] = parseInt(env["retries"])
+    if env["retry_backoff_seconds"] is not None:
+        merged["retry_backoff_seconds"] = parseFloat(env["retry_backoff_seconds"])
 
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
@@ -317,6 +367,11 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         log_level=merged["log_level"],
         log_json=parseBoolAny(merged["log_json"]) or False,
         report_format=merged["report_format"],
+        page_size=parseIntAny(merged["page_size"]) or defaults.page_size,
+        max_pages=parseIntAny(merged["max_pages"]) or defaults.max_pages,
+        timeout_seconds=parseFloatAny(merged["timeout_seconds"]) or defaults.timeout_seconds,
+        retries=parseIntAny(merged["retries"]) or defaults.retries,
+        retry_backoff_seconds=parseFloatAny(merged["retry_backoff_seconds"]) or defaults.retry_backoff_seconds,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)
