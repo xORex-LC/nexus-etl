@@ -15,7 +15,7 @@ from .cacheRepo import (
 )
 from .cacheSourceJson import loadOrganizationsFromJson, loadUsersFromJson
 from .loggingSetup import logEvent
-from .timeUtils import getUtcNowIso
+from .timeUtils import getNowIso
 
 def _append_item(report, entity_type: str, key: str, status: str, error: str | None = None) -> None:
     report.items.append(
@@ -23,7 +23,8 @@ def _append_item(report, entity_type: str, key: str, status: str, error: str | N
             "entity_type": entity_type,
             "key": key,
             "status": status,
-            "error": error,
+            "errors": [] if error is None else [{"code": "CACHE_ERROR", "field": None, "message": error}],
+            "warnings": [],
         }
     )
 
@@ -82,7 +83,7 @@ def refreshCacheFromJson(
                     _append_item(report, "user", key, "failed", str(exc))
 
         usersCount, orgCount = getCounts(conn)
-        nowIso = getUtcNowIso()
+        nowIso = getNowIso()
 
         setMetaValue(conn, "users_count", str(usersCount))
         setMetaValue(conn, "org_count", str(orgCount))
