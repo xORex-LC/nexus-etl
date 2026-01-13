@@ -63,6 +63,13 @@ def refreshCacheFromJson(
     inserted_orgs = updated_orgs = failed_orgs = 0
     runId = getattr(report.meta, "run_id", "unknown")
     start_monotonic = time.monotonic()
+    report.meta.mode = "json"
+    report.meta.page_size = None
+    report.meta.max_pages = None
+    report.meta.timeout_seconds = None
+    report.meta.retries = None
+    report.meta.include_deleted_users = False
+    report.meta.skipped_deleted_users = 0
     logEvent(logger, logging.INFO, runId, "cache", "cache-refresh start mode=json")
 
     try:
@@ -122,6 +129,8 @@ def refreshCacheFromJson(
     report.summary.created = inserted_users + inserted_orgs
     report.summary.updated = updated_users + updated_orgs
     report.summary.failed = failed_users + failed_orgs
+    report.summary.skipped = skipped_deleted_users
+    report.meta.skipped_deleted_users = skipped_deleted_users
 
     summary = {
         "users_inserted": inserted_users,
