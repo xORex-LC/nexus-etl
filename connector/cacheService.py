@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
+import time
 from typing import Any
 
 from .ankeyApiClient import AnkeyApiClient, ApiError
@@ -49,6 +51,8 @@ def refreshCacheFromJson(
     skipped_deleted_users = 0
     inserted_orgs = updated_orgs = failed_orgs = 0
     runId = getattr(report.meta, "run_id", "unknown")
+    start_monotonic = time.monotonic()
+    logEvent(logger, logging.INFO, runId, "cache", "cache-refresh start mode=json")
 
     try:
         conn.execute("BEGIN")
@@ -119,6 +123,14 @@ def refreshCacheFromJson(
         "users_count": usersCount,
         "org_count": orgCount,
     }
+    duration_ms = int((time.monotonic() - start_monotonic) * 1000)
+    logEvent(
+        logger,
+        logging.INFO,
+        runId,
+        "cache",
+        f"cache-refresh done mode=json users_inserted={inserted_users} orgs_inserted={inserted_orgs} duration_ms={duration_ms}",
+    )
     return summary
 
 
@@ -158,7 +170,14 @@ def refreshCacheFromApi(
     inserted_orgs = updated_orgs = failed_orgs = 0
     pages_users = pages_orgs = 0
     include_deleted = True if includeDeletedUsers is True else False
-    logEvent(logger, logging.INFO, runId, "cache", f"include_deleted_users={include_deleted}")
+    logEvent(
+        logger,
+        logging.INFO,
+        runId,
+        "cache",
+        f"cache-refresh start mode=api page_size={pageSize} max_pages={maxPages} include_deleted_users={include_deleted}",
+    )
+    start_monotonic = time.monotonic()
 
     try:
         conn.execute("BEGIN")
@@ -167,6 +186,8 @@ def refreshCacheFromApi(
         try:
             for page, items in client.getPagedItems("/ankey/managed/organization", pageSize, maxPages):
                 pages_orgs = max(pages_orgs, page)
+                logEvent(logger, logging.DEBUG, runId, "api", f"GET org page={page} rows={pageSize}")
+                logEvent(logger, logging.DEBUG, runId, "api", f"org page={page} items={len(items)}")
                 for org in items:
                     key = str(org.get("_ouid"))
                     try:
@@ -177,6 +198,10 @@ def refreshCacheFromApi(
                         else:
                             updated_orgs += 1
                         _append_item(report, "org", key, status)
+                    except sqlite3.IntegrityError as exc:
+                        failed_orgs += 1
+                        logEvent(logger, logging.DEBUG, runId, "cache", f"Org upsert integrity error key={key}: {exc}")
+                        _append_item(report, "org", key, "failed", str(exc))
                     except Exception as exc:
                         failed_orgs += 1
                         logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert org {key}: {exc}")
@@ -196,6 +221,8 @@ def refreshCacheFromApi(
         try:
             for page, items in client.getPagedItems("/ankey/managed/user", pageSize, maxPages):
                 pages_users = max(pages_users, page)
+                logEvent(logger, logging.DEBUG, runId, "api", f"GET user page={page} rows={pageSize}")
+                logEvent(logger, logging.DEBUG, runId, "api", f"user page={page} items={len(items)}")
                 for user in items:
                     key = str(user.get("_id"))
                     try:
@@ -215,6 +242,17 @@ def refreshCacheFromApi(
                         else:
                             updated_users += 1
                         _append_item(report, "user", key, status)
+                        logEvent(
+                            logger,
+                            logging.DEBUG,
+                            runId,
+                            "cache",
+                            f"upsert user key={key} status={status} inserted={inserted_users} updated={updated_users} skipped_deleted={skipped_deleted_users}",
+                        )
+                    except sqlite3.IntegrityError as exc:
+                        failed_users += 1
+                        logEvent(logger, logging.DEBUG, runId, "cache", f"User upsert integrity error key={key}: {exc}")
+                        _append_item(report, "user", key, "failed", str(exc))
                     except Exception as exc:
                         failed_users += 1
                         logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert user {key}: {exc}")
@@ -253,6 +291,21 @@ def refreshCacheFromApi(
     report.summary.updated = updated_users + updated_orgs
     report.summary.failed = failed_users + failed_orgs
     report.summary.skipped = skipped_deleted_users
+    duration_ms = int((time.monotonic() - start_monotonic) * 1000)
+    logEvent(
+        logger,
+        logging.INFO,
+        runId,
+        "cache",
+        f"org phase: pages={pages_orgs} inserted={inserted_orgs} updated={updated_orgs} failed={failed_orgs}",
+    )
+    logEvent(
+        logger,
+        logging.INFO,
+        runId,
+        "cache",
+        f"user phase: pages={pages_users} inserted={inserted_users} updated={updated_users} failed={failed_users} skipped_deleted={skipped_deleted_users}",
+    )
 
     summary = {
         "users_inserted": inserted_users,
@@ -266,6 +319,13 @@ def refreshCacheFromApi(
         "pages_users": pages_users,
         "pages_orgs": pages_orgs,
     }
+    logEvent(
+        logger,
+        logging.INFO,
+        runId,
+        "cache",
+        f"cache-refresh done users_count={usersCount} org_count={orgCount} duration_ms={duration_ms}",
+    )
     return summary
 
 def clearCache(conn) -> dict[str, int]:

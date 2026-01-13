@@ -374,6 +374,7 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
         try:
             ensureSchema(conn)
             cleared = clearCache(conn)
+            logEvent(logger, logging.INFO, runId, "cache", f"cache clear: users={cleared.get('users_deleted')} orgs={cleared.get('orgs_deleted')}")
             report.items.append({"cleared": cleared})
             report.summary.failed = 0
             report.summary.created = 0
@@ -413,7 +414,10 @@ def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
             transport=apiTransport,
         )
         try:
+            start = time.monotonic()
             client.getJson("/ankey/managed/user", {"page": 1, "rows": 1, "_queryFilter": "true"})
+            latency_ms = int((time.monotonic() - start) * 1000)
+            logEvent(logger, logging.INFO, runId, "api", f"api ok base_url={baseUrl} latency_ms={latency_ms}")
             report.meta.api_base_url = baseUrl
             return 0
         except ApiError as exc:
@@ -505,6 +509,13 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         report.summary.failed = failed_rows
         report.summary.warnings = warning_rows
         report.summary.skipped = 0
+        logEvent(
+            logger,
+            logging.INFO,
+            runId,
+            "validate",
+            f"validate done rows_total={rows_processed} invalid={failed_rows} warnings={warning_rows}",
+        )
 
         return 1 if failed_rows > 0 else 0
 
