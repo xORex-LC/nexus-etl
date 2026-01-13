@@ -21,16 +21,25 @@ from .cacheSourceJson import loadOrganizationsFromJson, loadUsersFromJson
 from .loggingSetup import logEvent
 from .timeUtils import getNowIso
 
-def _append_item(report, entity_type: str, key: str, status: str, error: str | None = None) -> None:
-    report.items.append(
-        {
-            "entity_type": entity_type,
-            "key": key,
-            "status": status,
-            "errors": [] if error is None else [{"code": "CACHE_ERROR", "field": None, "message": error}],
-            "warnings": [],
-        }
-    )
+def _append_item(report, entity_type: str, key: str, status: str, error: str | None = None) -> dict:
+    item = {
+        "entity_type": entity_type,
+        "key": key,
+        "status": status,
+        "errors": [] if error is None else [{"code": "CACHE_ERROR", "field": None, "message": error}],
+        "warnings": [],
+    }
+    report.items.append(item)
+    return item
+
+
+def _append_item_limited(report, entity_type: str, key: str, status: str, error: str | None, reportItemsLimit: int, includeSuccess: bool) -> None:
+    # Always keep failed/skipped until limit; success only if includeSuccess
+    if status not in ("failed", "skipped") and not includeSuccess:
+        return
+    if len(report.items) >= reportItemsLimit:
+        return
+    _append_item(report, entity_type, key, status, error)
 
 def refreshCacheFromJson(
     conn,
@@ -38,6 +47,8 @@ def refreshCacheFromJson(
     orgJsonPath: str | None,
     logger,
     report,
+    reportItemsLimit: int,
+    reportItemsSuccess: bool,
 ) -> dict[str, Any]:
     """
     Обновляет кэш из JSON файлов в одной транзакции.
@@ -67,11 +78,11 @@ def refreshCacheFromJson(
                         inserted_orgs += 1
                     else:
                         updated_orgs += 1
-                    _append_item(report, "org", key, status)
+                    _append_item_limited(report, "org", key, status, None, reportItemsLimit, reportItemsSuccess)
                 except Exception as exc:
                     failed_orgs += 1
                     logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert org {key}: {exc}")
-                    _append_item(report, "org", key, "failed", str(exc))
+                    _append_item_limited(report, "org", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
 
         if usersJsonPath:
             users = loadUsersFromJson(usersJsonPath)
@@ -83,11 +94,11 @@ def refreshCacheFromJson(
                         inserted_users += 1
                     else:
                         updated_users += 1
-                    _append_item(report, "user", key, status)
+                    _append_item_limited(report, "user", key, status, None, reportItemsLimit, reportItemsSuccess)
                 except Exception as exc:
                     failed_users += 1
                     logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert user {key}: {exc}")
-                    _append_item(report, "user", key, "failed", str(exc))
+                    _append_item_limited(report, "user", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
 
         usersCount, orgCount = getCounts(conn)
         nowIso = getNowIso()
@@ -146,6 +157,8 @@ def refreshCacheFromApi(
     report,
     transport=None,
     includeDeletedUsers: bool = False,
+    reportItemsLimit: int = 200,
+    reportItemsSuccess: bool = False,
 ) -> dict[str, Any]:
     """
     Обновляет кэш из REST API с пагинацией.
@@ -167,6 +180,7 @@ def refreshCacheFromApi(
     )
 
     inserted_users = updated_users = failed_users = skipped_deleted_users = 0
+    deleted_included_users = 0
     inserted_orgs = updated_orgs = failed_orgs = 0
     pages_users = pages_orgs = 0
     include_deleted = True if includeDeletedUsers is True else False
@@ -197,11 +211,11 @@ def refreshCacheFromApi(
                             inserted_orgs += 1
                         else:
                             updated_orgs += 1
-                        _append_item(report, "org", key, status)
+                        _append_item_limited(report, "org", key, status, None, reportItemsLimit, reportItemsSuccess)
                     except sqlite3.IntegrityError as exc:
                         failed_orgs += 1
                         logEvent(logger, logging.DEBUG, runId, "cache", f"Org upsert integrity error key={key}: {exc}")
-                        _append_item(report, "org", key, "failed", str(exc))
+                        _append_item_limited(report, "org", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
                     except Exception as exc:
                         failed_orgs += 1
                         logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert org {key}: {exc}")
@@ -233,15 +247,22 @@ def refreshCacheFromApi(
                             deletion_norm = str(deletion_date).strip().lower() if deletion_date is not None else None
                             if status_norm == "deleted" or deletion_norm not in (None, "", "null"):
                                 skipped_deleted_users += 1
-                                _append_item(report, "user", key, "skipped")
+                                _append_item_limited(report, "user", key, "skipped", None, reportItemsLimit, reportItemsSuccess)
                                 continue
+                        else:
+                            status_raw = user.get("accountStatus")
+                            deletion_date = user.get("deletionDate")
+                            status_norm = str(status_raw).strip().lower() if status_raw is not None else ""
+                            deletion_norm = str(deletion_date).strip().lower() if deletion_date is not None else None
+                            if status_norm == "deleted" or deletion_norm not in (None, "", "null"):
+                                deleted_included_users += 1
                         mapped = mapUserFromApi(user)
                         status = upsertUser(conn, mapped)
                         if status == "inserted":
                             inserted_users += 1
                         else:
                             updated_users += 1
-                        _append_item(report, "user", key, status)
+                        _append_item_limited(report, "user", key, status, None, reportItemsLimit, reportItemsSuccess)
                         logEvent(
                             logger,
                             logging.DEBUG,
@@ -252,7 +273,7 @@ def refreshCacheFromApi(
                     except sqlite3.IntegrityError as exc:
                         failed_users += 1
                         logEvent(logger, logging.DEBUG, runId, "cache", f"User upsert integrity error key={key}: {exc}")
-                        _append_item(report, "user", key, "failed", str(exc))
+                        _append_item_limited(report, "user", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
                     except Exception as exc:
                         failed_users += 1
                         logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert user {key}: {exc}")
@@ -286,6 +307,13 @@ def refreshCacheFromApi(
     report.meta.pages_users = pages_users or None
     report.meta.pages_orgs = pages_orgs or None
     report.meta.api_base_url = baseUrl
+    report.meta.mode = "api"
+    report.meta.page_size = pageSize
+    report.meta.max_pages = maxPages
+    report.meta.timeout_seconds = timeoutSeconds
+    report.meta.retries = retries
+    report.meta.include_deleted_users = include_deleted
+    report.meta.skipped_deleted_users = deleted_included_users if include_deleted else skipped_deleted_users
 
     report.summary.created = inserted_users + inserted_orgs
     report.summary.updated = updated_users + updated_orgs
@@ -311,6 +339,7 @@ def refreshCacheFromApi(
         "users_inserted": inserted_users,
         "users_updated": updated_users,
         "users_failed": failed_users,
+        "users_skipped_deleted": skipped_deleted_users,
         "orgs_inserted": inserted_orgs,
         "orgs_updated": updated_orgs,
         "orgs_failed": failed_orgs,

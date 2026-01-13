@@ -64,6 +64,8 @@ class Settings:
     retries: int = 3
     retry_backoff_seconds: float = 0.5
     include_deleted_users: bool = False
+    report_items_limit: int = 200
+    report_items_success: bool = False
 
 @dataclass(frozen=True)
 class LoadedSettings:
@@ -284,6 +286,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "retries": envGet("ANKEY_RETRIES"),
         "retry_backoff_seconds": envGet("ANKEY_RETRY_BACKOFF_SECONDS"),
         "include_deleted_users": envGet("ANKEY_INCLUDE_DELETED_USERS"),
+        "report_items_limit": envGet("ANKEY_REPORT_ITEMS_LIMIT"),
+        "report_items_success": envGet("ANKEY_REPORT_ITEMS_SUCCESS"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -310,6 +314,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "retries": cfg.get("retries", defaults.retries),
         "retry_backoff_seconds": cfg.get("retry_backoff_seconds", defaults.retry_backoff_seconds),
         "include_deleted_users": cfg.get("include_deleted_users", defaults.include_deleted_users),
+        "report_items_limit": cfg.get("report_items_limit", defaults.report_items_limit),
+        "report_items_success": cfg.get("report_items_success", defaults.report_items_success),
     }
 
     if env["host"] is not None:
@@ -351,6 +357,10 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["retry_backoff_seconds"] = parseFloat(env["retry_backoff_seconds"])
     if env["include_deleted_users"] is not None:
         merged["include_deleted_users"] = parseBool(env["include_deleted_users"])
+    if env["report_items_limit"] is not None:
+        merged["report_items_limit"] = parseInt(env["report_items_limit"])
+    if env["report_items_success"] is not None:
+        merged["report_items_success"] = parseBool(env["report_items_success"])
 
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
@@ -378,6 +388,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         retries=parseIntAny(merged["retries"]) or defaults.retries,
         retry_backoff_seconds=parseFloatAny(merged["retry_backoff_seconds"]) or defaults.retry_backoff_seconds,
         include_deleted_users=parseBoolAny(merged["include_deleted_users"]) or False,
+        report_items_limit=parseIntAny(merged["report_items_limit"]) or defaults.report_items_limit,
+        report_items_success=parseBoolAny(merged["report_items_success"]) or False,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)

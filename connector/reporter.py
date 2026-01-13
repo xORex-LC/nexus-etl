@@ -29,6 +29,13 @@ class ReportMeta:
     api_base_url: str | None = None
     pages_users: int | None = None
     pages_orgs: int | None = None
+    mode: str | None = None
+    page_size: int | None = None
+    max_pages: int | None = None
+    timeout_seconds: float | None = None
+    retries: int | None = None
+    include_deleted_users: bool | None = None
+    skipped_deleted_users: int | None = None
 
     config_sources: list[str] = field(default_factory=list)
 

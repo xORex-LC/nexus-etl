@@ -248,6 +248,8 @@ def runCacheRefreshCommand(
     retryBackoffSeconds: float | None,
     apiTransport=None,
     includeDeletedUsers: bool | None = None,
+    reportItemsLimit: int | None = None,
+    reportItemsSuccess: bool | None = None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -274,7 +276,15 @@ def runCacheRefreshCommand(
                 if not usersJson and not orgJson:
                     typer.echo("ERROR: --users-json or --org-json is required", err=True)
                     return 2
-                summary = refreshCacheFromJson(conn, usersJson, orgJson, logger, report)
+                summary = refreshCacheFromJson(
+                    conn=conn,
+                    usersJsonPath=usersJson,
+                    orgJsonPath=orgJson,
+                    logger=logger,
+                    report=report,
+                    reportItemsLimit=reportItemsLimit or settings.report_items_limit,
+                    reportItemsSuccess=reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success,
+                )
             else:
                 summary = refreshCacheFromApi(
                     conn=conn,
@@ -288,6 +298,8 @@ def runCacheRefreshCommand(
                     report=report,
                     transport=apiTransport,
                     includeDeletedUsers=includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users,
+                    reportItemsLimit=reportItemsLimit or settings.report_items_limit,
+                    reportItemsSuccess=reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success,
                 )
         except ApiError as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
@@ -638,6 +650,13 @@ def cacheRefresh(
         help="Include users with accountStatus=deleted or deletionDate set",
         show_default=True,
     ),
+    reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
+    reportItemsSuccess: bool | None = typer.Option(
+        None,
+        "--report-items-success/--no-report-items-success",
+        help="Include successful items in report",
+        show_default=True,
+    ),
 ):
     runCacheRefreshCommand(
         ctx=ctx,
@@ -649,6 +668,8 @@ def cacheRefresh(
         retries=retries if retries is not None else ctx.obj["settings"].retries,
         retryBackoffSeconds=retryBackoffSeconds if retryBackoffSeconds is not None else ctx.obj["settings"].retry_backoff_seconds,
         includeDeletedUsers=includeDeletedUsers if includeDeletedUsers is not None else ctx.obj["settings"].include_deleted_users,
+        reportItemsLimit=reportItemsLimit if reportItemsLimit is not None else ctx.obj["settings"].report_items_limit,
+        reportItemsSuccess=reportItemsSuccess if reportItemsSuccess is not None else ctx.obj["settings"].report_items_success,
     )
 
 @cacheApp.command("status")
