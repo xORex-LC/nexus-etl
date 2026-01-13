@@ -160,7 +160,7 @@ def refreshCacheFromApi(
 
         # Organizations
         try:
-            for page, items in client.getPagedItems("/ankey/endpoint/organization", pageSize, maxPages):
+            for page, items in client.getPagedItems("/ankey/managed/organization", pageSize, maxPages):
                 pages_orgs = max(pages_orgs, page)
                 for org in items:
                     key = str(org.get("_ouid"))
@@ -178,12 +178,18 @@ def refreshCacheFromApi(
                         _append_item(report, "org", key, "failed", str(exc))
         except ApiError as exc:
             conn.rollback()
-            logEvent(logger, logging.ERROR, runId, "cache", f"Org fetch failed: {exc}")
+            logEvent(
+                logger,
+                logging.ERROR,
+                runId,
+                "cache",
+                f"Org fetch failed: {exc} body={exc.body_snippet}",
+            )
             raise
 
         # Users
         try:
-            for page, items in client.getPagedItems("/ankey/endpoint/user", pageSize, maxPages):
+            for page, items in client.getPagedItems("/ankey/managed/user", pageSize, maxPages):
                 pages_users = max(pages_users, page)
                 for user in items:
                     key = str(user.get("_id"))
@@ -201,7 +207,13 @@ def refreshCacheFromApi(
                         _append_item(report, "user", key, "failed", str(exc))
         except ApiError as exc:
             conn.rollback()
-            logEvent(logger, logging.ERROR, runId, "cache", f"User fetch failed: {exc}")
+            logEvent(
+                logger,
+                logging.ERROR,
+                runId,
+                "cache",
+                f"User fetch failed: {exc} body={exc.body_snippet}",
+            )
             raise
 
         usersCount, orgCount = getCounts(conn)

@@ -99,7 +99,7 @@ class AnkeyApiClient:
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
-            for key in ("items", "data", "users", "organizations", "orgs"):
+            for key in ("items", "data", "users", "organizations", "orgs", "result"):
                 if key in data and isinstance(data[key], list):
                     return data[key]
         raise ApiError("Unexpected response format: no items array")
@@ -112,7 +112,8 @@ class AnkeyApiClient:
         while True:
             if page > maxPages:
                 raise ApiError("max pages exceeded")
-            data = self.getJson(path, params={"page": page, "rows": pageSize})
+            params = {"page": page, "rows": pageSize, "_queryFilter": "true"}
+            data = self.getJson(path, params=params)
             items = self._extract_items(data)
             if not items:
                 break

@@ -409,7 +409,7 @@ def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
             transport=apiTransport,
         )
         try:
-            client.getJson("/ankey/endpoint/user", {"page": 1, "rows": 1})
+            client.getJson("/ankey/managed/user", {"page": 1, "rows": 1, "_queryFilter": "true"})
             report.meta.api_base_url = baseUrl
             return 0
         except ApiError as exc:
