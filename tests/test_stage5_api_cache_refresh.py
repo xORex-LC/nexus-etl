@@ -180,6 +180,56 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
     assert report["meta"]["pages_orgs"] == 1
 
 
+def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):
+    def responder(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/organization"):
+            return httpx.Response(200, json={"result": []})
+        if path.endswith("/user"):
+            return httpx.Response(
+                200,
+                json={
+                    "result": [
+                        {"_id": "u1", "_ouid": 11, "firstName": "A", "lastName": "B", "middleName": "C", "personnelNumber": "1", "accountStatus": "deleted"},
+                        {"_id": "u2", "_ouid": 22, "firstName": "D", "lastName": "E", "middleName": "F", "personnelNumber": "2", "deletionDate": "2025-01-01"},
+                        {"_id": "u3", "_ouid": 33, "firstName": "G", "lastName": "H", "middleName": "I", "personnelNumber": "3"},
+                    ]
+                },
+            )
+        return httpx.Response(404)
+
+    transport = make_transport(responder)
+    patch_client_with_transport(monkeypatch, transport)
+
+    result = runner.invoke(
+        app,
+        [
+            "--log-dir",
+            str(tmp_path / "logs"),
+            "--report-dir",
+            str(tmp_path / "reports"),
+            "--cache-dir",
+            str(tmp_path / "cache"),
+            "--host",
+            "api.local",
+            "--port",
+            "443",
+            "--api-username",
+            "user",
+            "--api-password",
+            "secret",
+            "--run-id",
+            "skip-del",
+            "cache",
+            "refresh",
+        ],
+    )
+    assert result.exit_code == 0
+    report_path = tmp_path / "reports" / "report_cache-refresh_skip-del.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["summary"]["skipped"] == 2
+
+
 def test_retry_on_500_then_ok(monkeypatch, tmp_path: Path):
     calls = {"user": 0}
 

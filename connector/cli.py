@@ -247,6 +247,7 @@ def runCacheRefreshCommand(
     retries: int | None,
     retryBackoffSeconds: float | None,
     apiTransport=None,
+    includeDeletedUsers: bool | None = None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -286,6 +287,7 @@ def runCacheRefreshCommand(
                     logger=logger,
                     report=report,
                     transport=apiTransport,
+                    includeDeletedUsers=includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users,
                 )
         except ApiError as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
@@ -302,6 +304,8 @@ def runCacheRefreshCommand(
         report.summary.created = summary["users_inserted"] + summary["orgs_inserted"]
         report.summary.updated = summary["users_updated"] + summary["orgs_updated"]
         report.summary.failed = failed
+        if "users_skipped_deleted" in summary:
+            report.summary.skipped = summary["users_skipped_deleted"]
         return 0 if failed == 0 else 1
 
     runWithReport(
@@ -617,6 +621,12 @@ def cacheRefresh(
     timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
     retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API requests"),
     retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff seconds for retries"),
+    includeDeletedUsers: bool | None = typer.Option(
+        None,
+        "--include-deleted-users/--no-include-deleted-users",
+        help="Include users with accountStatus=deleted or deletionDate set",
+        show_default=True,
+    ),
 ):
     runCacheRefreshCommand(
         ctx=ctx,
@@ -627,6 +637,7 @@ def cacheRefresh(
         timeoutSeconds=timeoutSeconds if timeoutSeconds is not None else ctx.obj["settings"].timeout_seconds,
         retries=retries if retries is not None else ctx.obj["settings"].retries,
         retryBackoffSeconds=retryBackoffSeconds if retryBackoffSeconds is not None else ctx.obj["settings"].retry_backoff_seconds,
+        includeDeletedUsers=includeDeletedUsers if includeDeletedUsers is not None else ctx.obj["settings"].include_deleted_users,
     )
 
 @cacheApp.command("status")

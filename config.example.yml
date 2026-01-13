@@ -19,3 +19,4 @@ max_pages: 1000
 timeout_seconds: 20.0
 retries: 3
 retry_backoff_seconds: 0.5
+include_deleted_users: true

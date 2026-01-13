@@ -46,6 +46,7 @@ def refreshCacheFromJson(
     ensureSchema(conn)
 
     inserted_users = updated_users = failed_users = 0
+    skipped_deleted_users = 0
     inserted_orgs = updated_orgs = failed_orgs = 0
     runId = getattr(report.meta, "run_id", "unknown")
 
@@ -111,6 +112,7 @@ def refreshCacheFromJson(
         "users_inserted": inserted_users,
         "users_updated": updated_users,
         "users_failed": failed_users,
+        "users_skipped_deleted": skipped_deleted_users,
         "orgs_inserted": inserted_orgs,
         "orgs_updated": updated_orgs,
         "orgs_failed": failed_orgs,
@@ -131,6 +133,7 @@ def refreshCacheFromApi(
     logger,
     report,
     transport=None,
+    includeDeletedUsers: bool = False,
 ) -> dict[str, Any]:
     """
     Обновляет кэш из REST API с пагинацией.
@@ -151,9 +154,11 @@ def refreshCacheFromApi(
         transport=transport,
     )
 
-    inserted_users = updated_users = failed_users = 0
+    inserted_users = updated_users = failed_users = skipped_deleted_users = 0
     inserted_orgs = updated_orgs = failed_orgs = 0
     pages_users = pages_orgs = 0
+    include_deleted = True if includeDeletedUsers is True else False
+    logEvent(logger, logging.INFO, runId, "cache", f"include_deleted_users={include_deleted}")
 
     try:
         conn.execute("BEGIN")
@@ -194,6 +199,15 @@ def refreshCacheFromApi(
                 for user in items:
                     key = str(user.get("_id"))
                     try:
+                        if not include_deleted:
+                            status_raw = user.get("accountStatus")
+                            deletion_date = user.get("deletionDate")
+                            status_norm = str(status_raw).strip().lower() if status_raw is not None else ""
+                            deletion_norm = str(deletion_date).strip().lower() if deletion_date is not None else None
+                            if status_norm == "deleted" or deletion_norm not in (None, "", "null"):
+                                skipped_deleted_users += 1
+                                _append_item(report, "user", key, "skipped")
+                                continue
                         mapped = mapUserFromApi(user)
                         status = upsertUser(conn, mapped)
                         if status == "inserted":
@@ -238,6 +252,7 @@ def refreshCacheFromApi(
     report.summary.created = inserted_users + inserted_orgs
     report.summary.updated = updated_users + updated_orgs
     report.summary.failed = failed_users + failed_orgs
+    report.summary.skipped = skipped_deleted_users
 
     summary = {
         "users_inserted": inserted_users,

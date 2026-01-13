@@ -63,6 +63,7 @@ class Settings:
     timeout_seconds: float = 20.0
     retries: int = 3
     retry_backoff_seconds: float = 0.5
+    include_deleted_users: bool = False
 
 @dataclass(frozen=True)
 class LoadedSettings:
@@ -282,6 +283,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "timeout_seconds": envGet("ANKEY_TIMEOUT_SECONDS"),
         "retries": envGet("ANKEY_RETRIES"),
         "retry_backoff_seconds": envGet("ANKEY_RETRY_BACKOFF_SECONDS"),
+        "include_deleted_users": envGet("ANKEY_INCLUDE_DELETED_USERS"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -307,6 +309,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "timeout_seconds": cfg.get("timeout_seconds", defaults.timeout_seconds),
         "retries": cfg.get("retries", defaults.retries),
         "retry_backoff_seconds": cfg.get("retry_backoff_seconds", defaults.retry_backoff_seconds),
+        "include_deleted_users": cfg.get("include_deleted_users", defaults.include_deleted_users),
     }
 
     if env["host"] is not None:
@@ -346,6 +349,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["retries"] = parseInt(env["retries"])
     if env["retry_backoff_seconds"] is not None:
         merged["retry_backoff_seconds"] = parseFloat(env["retry_backoff_seconds"])
+    if env["include_deleted_users"] is not None:
+        merged["include_deleted_users"] = parseBool(env["include_deleted_users"])
 
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
@@ -372,6 +377,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         timeout_seconds=parseFloatAny(merged["timeout_seconds"]) or defaults.timeout_seconds,
         retries=parseIntAny(merged["retries"]) or defaults.retries,
         retry_backoff_seconds=parseFloatAny(merged["retry_backoff_seconds"]) or defaults.retry_backoff_seconds,
+        include_deleted_users=parseBoolAny(merged["include_deleted_users"]) or False,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)
