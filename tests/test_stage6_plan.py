@@ -223,7 +223,7 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
                 "false",
                 "jdoe",
                 "+111",
-                "",
+                "secret",
                 "100",
                 "",
                 "40",
@@ -238,7 +238,8 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["summary"]["skipped"] == 1
+    assert report["summary"]["planned_update"] == 1
+    assert report["summary"]["skipped"] == 0
 
 
 def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path):
