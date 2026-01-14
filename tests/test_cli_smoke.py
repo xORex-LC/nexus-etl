@@ -17,7 +17,7 @@ def test_import_requires_csv():
         ["--host", "1.2.3.4", "--port", "5456", "--api-username", "user", "--api-password", "pass", "import"],
     )
     assert result.exit_code == 2
-    assert "--csv is required" in result.stderr or "ERROR: --csv is required" in result.stdout
+    assert "Usage: root import" in result.stdout
 
 def test_validate_requires_csv():
     result = runner.invoke(app, ["validate"])

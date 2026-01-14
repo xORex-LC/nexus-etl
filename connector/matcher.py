@@ -17,7 +17,6 @@ def _is_deleted(user_row: dict[str, Any]) -> bool:
         return True
     return False
 
-
 @dataclass
 class MatchResult:
     status: str  # "not_found" | "matched" | "conflict"

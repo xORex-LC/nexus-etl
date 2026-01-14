@@ -22,7 +22,7 @@ def test_cache_schema_created(tmp_path: Path):
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"meta", "users", "organizations"}.issubset(tables)
         schema_version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
-        assert schema_version == "1"
+        assert schema_version == "2"
     finally:
         conn.close()
 
@@ -45,6 +45,14 @@ def test_cache_upsert_user(tmp_path: Path):
             "mail": "john.doe@example.com",
             "user_name": "jdoe",
             "phone": "+111",
+            "usr_org_tab_num": "TAB-7777",
+            "organization_id": 201,
+            "account_status": "active",
+            "deletion_date": None,
+            "_rev": None,
+            "manager_ouid": None,
+            "is_logon_disabled": False,
+            "position": "Engineer",
             "updated_at": "2024-01-01T00:00:00Z",
         }
         status1 = upsertUser(conn, user)

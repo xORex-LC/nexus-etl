@@ -1,7 +1,21 @@
 email;lastName;firstName;middleName;isLogonDisable;userName;phone;password;personnelNumber;managerId;organization_id;position;avatarId;usrOrgTabNum
-ivanov.i@domain.ru;Иванов;Иван;Иванович;false;ivanov-i;1001;TestPass#1;000001;;10;Инженер;;4001000001
-petrova.p@domain.ru;Петрова;Полина;Сергеевна;false;petrova-p;1002;TestPass#2;000002;101;10;Специалист;;4001000002
-sidorov.s@domain.ru;Сидоров;Сергей;Андреевич;true;sidorov-s;1003;TestPass#3;000003;101;20;Руководитель;;4001000003
-badbool@domain.ru;Ошибка;Булево;Значение;TRUE;badbool-u;1004;TestPass#4;000004;;20;Тестировщик;;4001000004
-dupkey@domain.ru;Иванов;Иван;Иванович;false;dupkey-u;1005;TestPass#5;000001;;10;Инженер;;4001000005
-dupusr@domain.ru;Дубликат;ТабНомер;Орг;false;dupusr-u;1006;TestPass#6;000006;;10;Аналитик;;4001000003
+ivan.petrov@domain.ru;Петров;Иван;Сергеевич;false;PETROV-I;1001;T3stP@ssw0rd-0001;900001;;1;Инженер;null;5001000001
+anna.smirnova@domain.ru;Смирнова;Анна;Викторовна;false;SMIRNOVA-A;1002;T3stP@ssw0rd-0002;900002;1;1;Инженер;null;5001000002
+sergey.ivanov@domain.ru;Иванов;Сергей;Петрович;false;IVANOV-S;1003;T3stP@ssw0rd-0003;900003;1;1;Ведущий инженер;null;5001000003
+olga.kuznetsova@domain.ru;Кузнецова;Ольга;Алексеевна;false;KUZNETSOVA-O;1004;T3stP@ssw0rd-0004;900004;2;2;HR-специалист;null;5001000004
+dmitry.sokolov@domain.ru;Соколов;Дмитрий;Ильич;false;SOKOLOV-D;1005;T3stP@ssw0rd-0005;900005;2;2;Аналитик;null;5001000005
+natalia.fedorova@domain.ru;Федорова;Наталья;Павловна;false;FEDOROVA-N;1006;T3stP@ssw0rd-0006;900006;3;1;Бухгалтер;null;5001000006
+alexey.popov@domain.ru;Попов;Алексей;Николаевич;false;POPOV-A;1007;T3stP@ssw0rd-0007;900007;3;1;Системный администратор;null;5001000007
+marina.volkova@domain.ru;Волкова;Марина;Игоревна;true;VOLKOVA-M;1008;T3stP@ssw0rd-0008;900008;4;2;Специалист поддержки;null;5001000008
+pavel.egorov@domain.ru;Егоров;Павел;Андреевич;false;EGOROV-P;1009;T3stP@ssw0rd-0009;900009;4;2;Разработчик;null;5001000009
+irina.novikova@domain.ru;Новикова;Ирина;Дмитриевна;false;NOVIKOVA-I;1010;T3stP@ssw0rd-0010;900010;1;1;Руководитель проекта;null;5001000010
+bad1@domain.ru;Плохов;Пётр;Иванович;false;BAD-1;1101;T3stP@ss-1001;;1;1;Инженер;null;6001000001
+bad2@domain.ru;Плохова;Мария;Ивановна;false;BAD-2;1102;T3stP@ss-1002;910002;1;;Инженер;null;6001000002
+bad3@domain.ru;Плохов;Сергей;Иванович;false;BAD-3;1103;;910003;1;1;Инженер;null;6001000003
+bad4@domain.ru;Плохов;;Иванович;false;BAD-4;1104;T3stP@ss-1004;910004;1;1;Инженер;null;6001000004
+bad5@domain.ru;Плохов;Иван;;false;BAD-5;1105;T3stP@ss-1005;910005;1;1;Инженер;null;6001000005
+bad6@domain.ru;Плохов;Иван;Иванович;FALSE;BAD-6;1106;T3stP@ss-1006;910006;1;1;Инженер;null;6001000006
+bad7@domain.ru;Плохов;Иван;Иванович;false;BAD-7;1107;T3stP@ss-1007;910007;9999;1;Инженер;null;6001000007
+bad8@domain.ru;Плохов;Иван;Иванович;false;BAD-8;1108;T3stP@ss-1008;910008;1;999;Инженер;null;6001000008
+bad9@domain.ru;Плохов;Иван;Иванович;false;BAD-9;1109;T3stP@ss-1009;910009;1;1;Инженер;NULL;6001000009
+bad10@domain.ru;Плохов;Иван;Иванович;false;BAD-10;1110;T3stP@ss-1010;910010;1;1;Инженер;null;5001000001

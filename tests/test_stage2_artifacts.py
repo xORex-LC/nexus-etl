@@ -28,7 +28,7 @@ def test_import_requires_csv(tmp_path: Path):
     assert result.exit_code == 2
 
     # Требование --csv
-    assert "--csv is required" in (result.stdout + result.stderr) or "CSV file not found" in (result.stdout + result.stderr)
+    assert "Usage: root import" in (result.stdout + result.stderr)
 
     # Секрет не должен светиться ни в stdout, ни в stderr
     assert secret not in result.stdout

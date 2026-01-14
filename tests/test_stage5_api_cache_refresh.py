@@ -115,7 +115,18 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
                     200,
                     json={
                         "items": [
-                            {"_id": "u1", "_ouid": 11, "firstName": "A", "lastName": "B", "middleName": "C", "personnelNumber": "1"}
+                            {
+                                "_id": "u1",
+                                "_ouid": 11,
+                                "firstName": "A",
+                                "lastName": "B",
+                                "middleName": "C",
+                                "personnelNumber": "1",
+                                "mail": "u1@example.com",
+                                "userName": "user1",
+                                "usrOrgTabNum": "TAB-1",
+                                "organization_id": 1,
+                            }
                         ]
                     },
                 )
@@ -124,7 +135,18 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
                     200,
                     json={
                         "items": [
-                            {"_id": "u2", "_ouid": 22, "firstName": "D", "lastName": "E", "middleName": "F", "personnelNumber": "2"}
+                            {
+                                "_id": "u2",
+                                "_ouid": 22,
+                                "firstName": "D",
+                                "lastName": "E",
+                                "middleName": "F",
+                                "personnelNumber": "2",
+                                "mail": "u2@example.com",
+                                "userName": "user2",
+                                "usrOrgTabNum": "TAB-2",
+                                "organization_id": 1,
+                            }
                         ]
                     },
                 )
@@ -190,9 +212,44 @@ def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):
                 200,
                 json={
                     "result": [
-                        {"_id": "u1", "_ouid": 11, "firstName": "A", "lastName": "B", "middleName": "C", "personnelNumber": "1", "accountStatus": "deleted"},
-                        {"_id": "u2", "_ouid": 22, "firstName": "D", "lastName": "E", "middleName": "F", "personnelNumber": "2", "deletionDate": "2025-01-01"},
-                        {"_id": "u3", "_ouid": 33, "firstName": "G", "lastName": "H", "middleName": "I", "personnelNumber": "3"},
+                        {
+                            "_id": "u1",
+                            "_ouid": 11,
+                            "firstName": "A",
+                            "lastName": "B",
+                            "middleName": "C",
+                            "personnelNumber": "1",
+                            "accountStatus": "deleted",
+                            "mail": "u1@example.com",
+                            "userName": "user1",
+                            "usrOrgTabNum": "TAB-1",
+                            "organization_id": 1,
+                        },
+                        {
+                            "_id": "u2",
+                            "_ouid": 22,
+                            "firstName": "D",
+                            "lastName": "E",
+                            "middleName": "F",
+                            "personnelNumber": "2",
+                            "deletionDate": "2025-01-01",
+                            "mail": "u2@example.com",
+                            "userName": "user2",
+                            "usrOrgTabNum": "TAB-2",
+                            "organization_id": 1,
+                        },
+                        {
+                            "_id": "u3",
+                            "_ouid": 33,
+                            "firstName": "G",
+                            "lastName": "H",
+                            "middleName": "I",
+                            "personnelNumber": "3",
+                            "mail": "u3@example.com",
+                            "userName": "user3",
+                            "usrOrgTabNum": "TAB-3",
+                            "organization_id": 1,
+                        },
                     ]
                 },
             )
@@ -244,11 +301,22 @@ def test_retry_on_500_then_ok(monkeypatch, tmp_path: Path):
             return httpx.Response(
                 200,
                 json={
-                    "items": [
-                        {"_id": "u1", "_ouid": 11, "firstName": "A", "lastName": "B", "middleName": "C", "personnelNumber": "1"}
-                    ]
-                },
-            )
+                        "items": [
+                            {
+                                "_id": "u1",
+                                "_ouid": 11,
+                                "firstName": "A",
+                                "lastName": "B",
+                                "middleName": "C",
+                                "personnelNumber": "1",
+                                "mail": "u1@example.com",
+                                "userName": "user1",
+                                "usrOrgTabNum": "TAB-1",
+                                "organization_id": 1,
+                            }
+                        ]
+                    },
+                )
         return httpx.Response(404)
 
     transport = make_transport(responder)
@@ -293,7 +361,18 @@ def test_password_not_in_logs_or_report(monkeypatch, tmp_path: Path):
             200,
             json={
                 "items": [
-                    {"_id": "u1", "_ouid": 11, "firstName": "A", "lastName": "B", "middleName": "C", "personnelNumber": "1"}
+                    {
+                        "_id": "u1",
+                        "_ouid": 11,
+                        "firstName": "A",
+                        "lastName": "B",
+                        "middleName": "C",
+                        "personnelNumber": "1",
+                        "mail": "u1@example.com",
+                        "userName": "user1",
+                        "usrOrgTabNum": "TAB-1",
+                        "organization_id": 1,
+                    }
                 ]
             },
         )
