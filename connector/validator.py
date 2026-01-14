@@ -67,7 +67,6 @@ def validateEmployeeRow(csvRow: CsvRow) -> tuple[EmployeeInput, ValidationRowRes
     _required(is_logon_disable_raw, "isLogonDisable", errors)
     _required(user_name, "userName", errors)
     _required(phone, "phone", errors)
-    _required(password, "password", errors)
     _required(personnel_number, "personnelNumber", errors)
     _required(organization_id_raw, "organization_id", errors)
     _required(position, "position", errors)

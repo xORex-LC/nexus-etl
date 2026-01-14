@@ -36,6 +36,8 @@ class ReportMeta:
     retries: int | None = None
     include_deleted_users: bool | None = None
     skipped_deleted_users: int | None = None
+    on_missing_org: str | None = None
+    plan_file: str | None = None
 
     config_sources: list[str] = field(default_factory=list)
 

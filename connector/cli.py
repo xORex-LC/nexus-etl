@@ -12,10 +12,11 @@ import typer
 from .ankeyApiClient import AnkeyApiClient, ApiError
 from .cacheDb import ensureSchema, getCacheDbPath, openCacheDb
 from .cacheService import clearCache, getCacheStatus, refreshCacheFromApi, refreshCacheFromJson
-from .config import loadSettings, Settings
+from .config import Settings, loadSettings
 from .csvReader import CsvFormatError, readEmployeeRows
-from .loggingSetup import createCommandLogger, logEvent, StdStreamToLogger, TeeStream
+from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from .models import ValidationErrorItem
+from .planner import build_import_plan, write_plan_file
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs
@@ -23,6 +24,7 @@ from .validator import validateEmployeeRow
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
+importApp = typer.Typer(no_args_is_help=True)
 userApp = typer.Typer(no_args_is_help=True)  # резерв под будущие команды
 
 def ensureDir(path: str) -> None:
@@ -408,6 +410,91 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
         runner=execute,
     )
 
+
+def runImportPlanCommand(
+    ctx: typer.Context,
+    csvPath: str | None,
+    csvHasHeader: bool,
+    includeDeletedUsers: bool | None,
+    onMissingOrg: str | None,
+    reportItemsLimit: int | None,
+    reportItemsSuccess: bool | None,
+) -> None:
+    settings: Settings = ctx.obj["settings"]
+    runId = ctx.obj["runId"]
+    cacheDbPath = getCacheDbPath(settings.cache_dir)
+
+    def execute(logger, report) -> int:
+        try:
+            conn = openCacheDb(cacheDbPath)
+        except sqlite3.Error as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+            return 2
+
+        include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
+        on_missing = (onMissingOrg or settings.on_missing_org or "error").lower()
+        report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
+        report_items_success = (
+            reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
+        )
+
+        if on_missing not in ("error", "warn-and-skip"):
+            typer.echo("ERROR: --on-missing-org must be 'error' or 'warn-and-skip'", err=True)
+            return 2
+
+        try:
+            ensureSchema(conn)
+            plan_items, summary = build_import_plan(
+                conn=conn,
+                csv_path=csvPath or "",
+                csv_has_header=csvHasHeader,
+                include_deleted_users=include_deleted,
+                on_missing_org=on_missing,
+                logger=logger,
+                run_id=runId,
+                report=report,
+                report_items_limit=report_items_limit,
+                report_items_success=report_items_success,
+            )
+            plan_meta = {
+                "csv_path": csvPath,
+                "include_deleted_users": include_deleted,
+                "on_missing_org": on_missing,
+            }
+            plan_path = write_plan_file(plan_items, summary, plan_meta, settings.report_dir, runId)
+            logEvent(logger, logging.INFO, runId, "plan", f"Plan written: {plan_path}")
+            report.meta.plan_file = plan_path
+            report.meta.include_deleted_users = include_deleted
+            report.meta.on_missing_org = on_missing
+            report.meta.mode = "plan"
+            report.meta.csv_rows_total = summary["rows_total"]
+            report.meta.csv_rows_processed = summary["rows_total"]
+            report.summary.planned_create = summary["planned_create"]
+            report.summary.planned_update = summary["planned_update"]
+            report.summary.skipped = summary["skipped"]
+            report.summary.failed = summary["failed"]
+            return 1 if summary["failed"] > 0 else 0
+        except (CsvFormatError, OSError) as exc:
+            logEvent(logger, logging.ERROR, runId, "plan", f"Import plan failed: {exc}")
+            typer.echo(f"ERROR: import plan failed: {exc}", err=True)
+            return 2
+        except Exception as exc:
+            logEvent(logger, logging.ERROR, runId, "plan", f"Import plan failed: {exc}")
+            typer.echo("ERROR: import plan failed (see logs/report)", err=True)
+            return 2
+        finally:
+            conn.close()
+
+    runWithReport(
+        ctx=ctx,
+        commandName="import-plan",
+        csvPath=csvPath,
+        requiresCsv=True,
+        requiresApiAccess=False,
+        runner=execute,
+    )
+
 def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -626,9 +713,40 @@ def validate(
 ):
     runValidateCommand(ctx, csv, csvHasHeader)
 
-@app.command("import")
-def importEmployees(ctx: typer.Context, csv: str | None = typer.Option(None, "--csv", help="Path to input CSV")):
-    runCommand(ctx, "import", csv, requiresCsv=True, requiresApiAccess=True)
+@importApp.command("plan")
+def importPlan(
+    ctx: typer.Context,
+    csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
+    csvHasHeader: bool = typer.Option(False, "--csv-has-header", help="CSV includes header row"),
+    includeDeletedUsers: bool | None = typer.Option(
+        None,
+        "--include-deleted-users/--no-include-deleted-users",
+        help="Include deleted users in matching",
+        show_default=True,
+    ),
+    onMissingOrg: str | None = typer.Option(
+        None,
+        "--on-missing-org",
+        help="Policy when organization_id missing in cache: error|warn-and-skip",
+        case_sensitive=False,
+    ),
+    reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
+    reportItemsSuccess: bool | None = typer.Option(
+        None,
+        "--report-items-success/--no-report-items-success",
+        help="Include successful items in report",
+        show_default=True,
+    ),
+):
+    runImportPlanCommand(
+        ctx=ctx,
+        csvPath=csv,
+        csvHasHeader=csvHasHeader,
+        includeDeletedUsers=includeDeletedUsers,
+        onMissingOrg=onMissingOrg.lower() if onMissingOrg else None,
+        reportItemsLimit=reportItemsLimit,
+        reportItemsSuccess=reportItemsSuccess,
+    )
 
 @app.command("check-api")
 def checkApi(ctx: typer.Context):
@@ -681,4 +799,5 @@ def cacheClear(ctx: typer.Context):
     runCacheClearCommand(ctx)
 
 app.add_typer(cacheApp, name="cache")
+app.add_typer(importApp, name="import")
 app.add_typer(userApp, name="user")
