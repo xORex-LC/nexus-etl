@@ -20,7 +20,7 @@ from .planner import build_import_plan, write_plan_file
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs
-from .validator import validateEmployeeRow
+from .validator import logValidationFailure, validateEmployeeRow
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
@@ -580,6 +580,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
                 if result.warnings:
                     warning_rows += 1
 
+                item_index = len(report.items)
                 report.items.append(
                     {
                         "row_id": f"line:{result.line_no}",
@@ -594,6 +595,16 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
                         ],
                     }
                 )
+                if not result.valid:
+                    logValidationFailure(
+                        logger,
+                        runId,
+                        "validate",
+                        result,
+                        item_index,
+                        errors=result.errors,
+                        warnings=result.warnings,
+                    )
         except CsvFormatError as exc:
             logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
             typer.echo(f"ERROR: CSV format error: {exc}", err=True)

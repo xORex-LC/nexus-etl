@@ -13,7 +13,7 @@ from .loggingSetup import logEvent
 from .matcher import MatchResult, matchEmployeeByMatchKey
 from .models import ValidationErrorItem
 from .timeUtils import getNowIso
-from .validator import buildMatchKey, validateEmployeeRow
+from .validator import buildMatchKey, logValidationFailure, validateEmployeeRow
 
 
 def _validation_error(code: str, field: str | None, message: str) -> ValidationErrorItem:
@@ -115,6 +115,15 @@ def build_import_plan(
                 }
                 plan_items.append(item)
                 append_report_item(item, "failed")
+                logValidationFailure(
+                    logger,
+                    run_id,
+                    "import-plan",
+                    validation,
+                    len(report.items) - 1 if report.items else 0,
+                    errors=errors,
+                    warnings=warnings,
+                )
                 continue
 
             if on_missing_org == "warn-and-skip" and org_exists is None:

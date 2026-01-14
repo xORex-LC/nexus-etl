@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 import re
 
 from .models import CsvRow, EmployeeInput, ValidationErrorItem, ValidationRowResult
+from .loggingSetup import logEvent
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -157,3 +159,31 @@ def validateEmployeeRow(csvRow: CsvRow) -> tuple[EmployeeInput, ValidationRowRes
         warnings=warnings,
     )
     return employee, result
+
+
+def logValidationFailure(
+    logger,
+    run_id: str,
+    context: str,
+    result: ValidationRowResult,
+    report_item_index: int | None,
+    errors: list[ValidationErrorItem] | None = None,
+    warnings: list[ValidationErrorItem] | None = None,
+) -> None:
+    """
+    Логирует информацию о невалидной строке CSV.
+    """
+    eff_errors = errors if errors is not None else result.errors
+    eff_warnings = warnings if warnings is not None else result.warnings
+
+    codes: list[str] = []
+    codes.extend(e.code for e in eff_errors)
+    codes.extend(w.code for w in eff_warnings)
+    code_str = ",".join(sorted(set(codes))) if codes else "none"
+    logEvent(
+        logger,
+        logging.WARNING,
+        run_id,
+        context,
+        f"invalid row line={result.line_no} report_item_index={report_item_index if report_item_index is not None else 'n/a'} errors={code_str}",
+    )
