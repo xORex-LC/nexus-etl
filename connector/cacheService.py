@@ -75,8 +75,16 @@ def refreshCacheFromJson(
     try:
         conn.execute("BEGIN")
 
+        org_errors: list[tuple[str, Exception]] = []
+        user_errors: list[tuple[str, Exception]] = []
+
         if orgJsonPath:
-            organizations = loadOrganizationsFromJson(orgJsonPath)
+            organizations = loadOrganizationsFromJson(orgJsonPath, errors=org_errors)
+            if org_errors:
+                for key, exc in org_errors:
+                    failed_orgs += 1
+                    logEvent(logger, logging.ERROR, runId, "cache", f"Failed to parse org {key}: {exc}")
+                    _append_item_limited(report, "org", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
             for org in organizations:
                 key = str(org.get("_ouid"))
                 try:
@@ -92,7 +100,12 @@ def refreshCacheFromJson(
                     _append_item_limited(report, "org", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
 
         if usersJsonPath:
-            users = loadUsersFromJson(usersJsonPath)
+            users = loadUsersFromJson(usersJsonPath, errors=user_errors)
+            if user_errors:
+                for key, exc in user_errors:
+                    failed_users += 1
+                    logEvent(logger, logging.ERROR, runId, "cache", f"Failed to parse user {key}: {exc}")
+                    _append_item_limited(report, "user", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
             for user in users:
                 key = str(user.get("_id"))
                 try:

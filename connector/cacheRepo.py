@@ -3,12 +3,10 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-
 def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
     return {k: row[k] for k in row.keys()}
-
 
 def _bool_to_int(value: Any) -> int | None:
     if value is None:
@@ -18,7 +16,6 @@ def _bool_to_int(value: Any) -> int | None:
     if isinstance(value, int):
         return 1 if value != 0 else 0
     raise ValueError("Invalid bool value for is_logon_disabled")
-
 
 def upsertUser(conn: sqlite3.Connection, userRow: dict[str, Any]) -> str:
     """
@@ -108,7 +105,6 @@ def upsertUser(conn: sqlite3.Connection, userRow: dict[str, Any]) -> str:
     )
     return "inserted"
 
-
 def upsertOrganization(conn: sqlite3.Connection, orgRow: dict[str, Any]) -> str:
     """
     Вставляет или обновляет организацию.
@@ -148,54 +144,44 @@ def upsertOrganization(conn: sqlite3.Connection, orgRow: dict[str, Any]) -> str:
     )
     return "inserted"
 
-
 def getUserByMatchKey(conn: sqlite3.Connection, matchKey: str) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM users WHERE match_key = ?", (matchKey,)).fetchone()
     return _row_to_dict(row)
-
 
 def findUsersByMatchKey(conn: sqlite3.Connection, matchKey: str) -> list[dict[str, Any]]:
     rows = conn.execute("SELECT * FROM users WHERE match_key = ?", (matchKey,)).fetchall()
     return [_row_to_dict(r) for r in rows if r is not None]
 
-
 def getUserByPersonnelNumber(conn: sqlite3.Connection, personnelNumber: str) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM users WHERE personnel_number = ?", (personnelNumber,)).fetchone()
     return _row_to_dict(row)
-
 
 def getUserByOuid(conn: sqlite3.Connection, ouid: int) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM users WHERE _ouid = ?", (ouid,)).fetchone()
     return _row_to_dict(row)
 
-
 def getOrgByOuid(conn: sqlite3.Connection, ouid: int) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM organizations WHERE _ouid = ?", (ouid,)).fetchone()
     return _row_to_dict(row)
-
 
 def getCounts(conn: sqlite3.Connection) -> tuple[int, int]:
     usersCount = int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0])
     orgCount = int(conn.execute("SELECT COUNT(*) FROM organizations").fetchone()[0])
     return usersCount, orgCount
 
-
 def clearUsers(conn: sqlite3.Connection) -> int:
     cur = conn.execute("DELETE FROM users")
     return cur.rowcount if cur.rowcount is not None else 0
 
-
 def clearOrgs(conn: sqlite3.Connection) -> int:
     cur = conn.execute("DELETE FROM organizations")
     return cur.rowcount if cur.rowcount is not None else 0
-
 
 def getMetaValue(conn: sqlite3.Connection, key: str) -> str | None:
     row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
     if row:
         return row[0]
     return None
-
 
 def setMetaValue(conn: sqlite3.Connection, key: str, value: str | None) -> None:
     if value is None:

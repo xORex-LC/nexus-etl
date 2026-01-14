@@ -56,7 +56,6 @@ def runMigrations(conn: sqlite3.Connection, current_version: int) -> None:
     if current_version < 2:
         _migrate_to_v2(conn)
 
-
 # Internal helpers
 def _create_meta(conn: sqlite3.Connection) -> None:
     conn.execute(
@@ -68,7 +67,6 @@ def _create_meta(conn: sqlite3.Connection) -> None:
         """
     )
 
-
 def _get_schema_version(conn: sqlite3.Connection) -> int | None:
     row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
     if row is None:
@@ -77,7 +75,6 @@ def _get_schema_version(conn: sqlite3.Connection) -> int | None:
         return int(row[0])
     except (TypeError, ValueError):
         return None
-
 
 def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
     conn.execute(
@@ -88,7 +85,6 @@ def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
         """,
         ("schema_version", str(version)),
     )
-
 
 def _create_base_schema(conn: sqlite3.Connection) -> None:
     """
@@ -107,7 +103,6 @@ def _create_base_schema(conn: sqlite3.Connection) -> None:
     )
     _create_users_table_v2(conn)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_org_parent ON organizations(parent_id)")
-
 
 def _create_users_table_v2(conn: sqlite3.Connection) -> None:
     conn.execute(
@@ -141,13 +136,11 @@ def _create_users_table_v2(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_users_usr_org_tab_num ON users(usr_org_tab_num)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_users_org_id ON users(organization_id)")
 
-
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
     ).fetchone()
     return row is not None
-
 
 def _migrate_to_v2(conn: sqlite3.Connection) -> None:
     """
