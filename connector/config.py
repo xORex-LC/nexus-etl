@@ -68,6 +68,10 @@ class Settings:
     report_items_success: bool = False
     on_missing_org: str = "error"
     resource_exists_retries: int = 3
+    csv_has_header: bool = False
+    stop_on_first_error: bool = False
+    max_actions: int | None = None
+    dry_run: bool = False
 
 @dataclass(frozen=True)
 class LoadedSettings:
@@ -305,6 +309,10 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "report_items_success": envGet("ANKEY_REPORT_ITEMS_SUCCESS"),
         "on_missing_org": envGet("ANKEY_ON_MISSING_ORG"),
         "resource_exists_retries": envGet("ANKEY_RESOURCE_EXISTS_RETRIES"),
+        "csv_has_header": envGet("ANKEY_CSV_HAS_HEADER"),
+        "stop_on_first_error": envGet("ANKEY_STOP_ON_FIRST_ERROR"),
+        "max_actions": envGet("ANKEY_MAX_ACTIONS"),
+        "dry_run": envGet("ANKEY_DRY_RUN"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -335,6 +343,10 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "report_items_success": cfg.get("report_items_success", defaults.report_items_success),
         "on_missing_org": cfg.get("on_missing_org", defaults.on_missing_org),
         "resource_exists_retries": cfg.get("resource_exists_retries", defaults.resource_exists_retries),
+        "csv_has_header": cfg.get("csv_has_header", defaults.csv_has_header),
+        "stop_on_first_error": cfg.get("stop_on_first_error", defaults.stop_on_first_error),
+        "max_actions": cfg.get("max_actions", defaults.max_actions),
+        "dry_run": cfg.get("dry_run", defaults.dry_run),
     }
 
     if env["host"] is not None:
@@ -384,6 +396,14 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["on_missing_org"] = parseOnMissingOrg(env["on_missing_org"])
     if env["resource_exists_retries"] is not None:
         merged["resource_exists_retries"] = parseInt(env["resource_exists_retries"])
+    if env["csv_has_header"] is not None:
+        merged["csv_has_header"] = parseBool(env["csv_has_header"])
+    if env["stop_on_first_error"] is not None:
+        merged["stop_on_first_error"] = parseBool(env["stop_on_first_error"])
+    if env["max_actions"] is not None:
+        merged["max_actions"] = parseInt(env["max_actions"])
+    if env["dry_run"] is not None:
+        merged["dry_run"] = parseBool(env["dry_run"])
 
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
@@ -415,6 +435,10 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         report_items_success=parseBoolAny(merged["report_items_success"]) or False,
         on_missing_org=parseOnMissingOrg(merged["on_missing_org"]) or defaults.on_missing_org,
         resource_exists_retries=parseIntAny(merged["resource_exists_retries"]) or defaults.resource_exists_retries,
+        csv_has_header=parseBoolAny(merged["csv_has_header"]) or False,
+        stop_on_first_error=parseBoolAny(merged["stop_on_first_error"]) or False,
+        max_actions=parseIntAny(merged["max_actions"]),
+        dry_run=parseBoolAny(merged["dry_run"]) or False,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)

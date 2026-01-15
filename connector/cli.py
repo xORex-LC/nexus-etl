@@ -394,7 +394,7 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
 def runImportPlanCommand(
     ctx: typer.Context,
     csvPath: str | None,
-    csvHasHeader: bool,
+    csvHasHeader: bool | None,
     includeDeletedUsers: bool | None,
     onMissingOrg: str | None,
     reportItemsLimit: int | None,
@@ -418,13 +418,14 @@ def runImportPlanCommand(
         report_items_success = (
             reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
         )
+        csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
 
         try:
             service: ImportPlanServiceProtocol = ImportPlanService()
             return service.run(
                 conn=conn,
                 csv_path=csvPath or "",
-                csv_has_header=csvHasHeader,
+                csv_has_header=csv_has_header,
                 include_deleted_users=include_deleted,
                 on_missing_org=on_missing,
                 logger=logger,
@@ -462,10 +463,10 @@ def runImportApplyCommand(
     ctx: typer.Context,
     csvPath: str | None,
     planPath: str | None,
-    csvHasHeader: bool,
-    stopOnFirstError: bool,
+    csvHasHeader: bool | None,
+    stopOnFirstError: bool | None,
     maxActions: int | None,
-    dryRun: bool,
+    dryRun: bool | None,
     includeDeletedUsers: bool | None,
     onMissingOrg: str | None,
     reportItemsLimit: int | None,
@@ -490,6 +491,12 @@ def runImportApplyCommand(
         resource_exists_retries = (
             resourceExistsRetries if resourceExistsRetries is not None else settings.resource_exists_retries
         )
+        csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
+        stop_on_first_error = (
+            stopOnFirstError if stopOnFirstError is not None else settings.stop_on_first_error
+        )
+        max_actions = maxActions if maxActions is not None else settings.max_actions
+        dry_run = dryRun if dryRun is not None else settings.dry_run
 
         plan = None
         conn = None
@@ -504,7 +511,7 @@ def runImportApplyCommand(
                 plan = readPlanFromCsv(
                     conn=conn,
                     csv_path=csvPath,
-                    csv_has_header=csvHasHeader,
+                    csv_has_header=csv_has_header,
                     include_deleted_users=include_deleted,
                     on_missing_org=on_missing,
                     logger=logger,
@@ -535,9 +542,9 @@ def runImportApplyCommand(
         report.meta.csv_path = csvPath
         report.meta.plan_path = planPath or plan.meta.plan_path
         report.meta.include_deleted_users = include_deleted
-        report.meta.stop_on_first_error = stopOnFirstError
-        report.meta.max_actions = maxActions
-        report.meta.dry_run = dryRun
+        report.meta.stop_on_first_error = stop_on_first_error
+        report.meta.max_actions = max_actions
+        report.meta.dry_run = dry_run
         report.meta.resource_exists_retries = resource_exists_retries
 
         report.summary.planned_create = plan.summary.planned_create
@@ -552,9 +559,9 @@ def runImportApplyCommand(
             logger=logger,
             report=report,
             run_id=runId,
-            stop_on_first_error=stopOnFirstError,
-            max_actions=maxActions,
-            dry_run=dryRun,
+            stop_on_first_error=stop_on_first_error,
+            max_actions=max_actions,
+            dry_run=dry_run,
             report_items_limit=report_items_limit,
             report_items_success=report_items_success,
             resource_exists_retries=resource_exists_retries,
@@ -606,8 +613,10 @@ def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
         runner=execute,
     )
 
-def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bool) -> None:
+def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bool | None) -> None:
     runId = ctx.obj["runId"]
+    settings: Settings = ctx.obj["settings"]
+    csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
 
     def execute(logger, report) -> int:
         rows_processed = 0
@@ -617,7 +626,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         usr_org_tab_seen: dict[str, int] = {}
 
         try:
-            for csvRow in readEmployeeRows(csvPath, hasHeader=csvHasHeader):
+            for csvRow in readEmployeeRows(csvPath, hasHeader=csv_has_header):
                 _employee, result = validateEmployeeRow(csvRow)
                 rows_processed += 1
 
@@ -795,7 +804,7 @@ def main(
 def validate(
     ctx: typer.Context,
     csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
-    csvHasHeader: bool = typer.Option(False, "--csv-has-header", help="CSV includes header row"),
+    csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
 ):
     runValidateCommand(ctx, csv, csvHasHeader)
 
@@ -803,7 +812,7 @@ def validate(
 def importPlan(
     ctx: typer.Context,
     csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
-    csvHasHeader: bool = typer.Option(False, "--csv-has-header", help="CSV includes header row"),
+    csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
     includeDeletedUsers: bool | None = typer.Option(
         None,
         "--include-deleted-users/--no-include-deleted-users",
@@ -840,15 +849,15 @@ def importApply(
     ctx: typer.Context,
     csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
     plan: str | None = typer.Option(None, "--plan", help="Path to plan_import.json"),
-    csvHasHeader: bool = typer.Option(False, "--csv-has-header", help="CSV includes header row"),
-    stopOnFirstError: bool = typer.Option(
-        False,
+    csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
+    stopOnFirstError: bool | None = typer.Option(
+        None,
         "--stop-on-first-error/--no-stop-on-first-error",
         help="Stop on first failed apply",
         show_default=True,
     ),
     maxActions: int | None = typer.Option(None, "--max-actions", help="Limit number of actions to apply"),
-    dryRun: bool = typer.Option(False, "--dry-run", help="Do not send API requests"),
+    dryRun: bool | None = typer.Option(None, "--dry-run/--no-dry-run", help="Do not send API requests"),
     includeDeletedUsers: bool | None = typer.Option(
         None,
         "--include-deleted-users/--no-include-deleted-users",
