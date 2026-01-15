@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
 
 from .ankeyApiClient import ApiError, AnkeyApiClient
@@ -29,6 +30,7 @@ class ImportApplyService:
                 "match_key": item.get("match_key"),
                 "existing_id": item.get("existing_id"),
                 "new_id": item.get("new_id"),
+                "resource_id": item.get("resource_id"),
                 "status": status,
                 "errors": item.get("errors", []),
                 "warnings": item.get("warnings", []),
@@ -50,6 +52,7 @@ class ImportApplyService:
         dry_run: bool,
         report_items_limit: int,
         report_items_success: bool,
+        resource_exists_retries: int,
     ) -> int:
         created = updated = skipped = failed = 0
         actions_count = 0
@@ -93,10 +96,27 @@ class ImportApplyService:
                     if not desired:
                         raise ValueError("Plan item missing desired data")
                     payload = buildUserUpsertPayload(desired)
-                    status_code, resp = self.user_api.upsertUser(resource_id, payload)
+                    retries_left = resource_exists_retries
+                    while True:
+                        try:
+                            status_code, resp = self.user_api.upsertUser(resource_id, payload)
+                            break
+                        except ApiError as exc:
+                            if (
+                                action == "create"
+                                and exc.status_code == 403
+                                and exc.body_snippet
+                                and "resourceexists" in exc.body_snippet.lower()
+                                and retries_left > 0
+                            ):
+                                retries_left -= 1
+                                resource_id = str(uuid.uuid4())
+                                continue
+                            raise
                 else:
                     status_code, resp = 200, {"dry_run": True}
                 result_item = item.__dict__.copy()
+                result_item["resource_id"] = resource_id
                 result_item["api_status"] = status_code
                 result_item["api_response"] = resp
                 status = "created" if action == "create" else "updated"
@@ -110,6 +130,7 @@ class ImportApplyService:
                 failed += 1
                 err = {"code": "API_ERROR", "field": None, "message": str(exc)}
                 result_item = item.__dict__.copy()
+                result_item["resource_id"] = resource_id
                 result_item["errors"] = list(result_item.get("errors", [])) + [err]
                 result_item["api_status"] = exc.status_code
                 result_item["api_body_snippet"] = exc.body_snippet
@@ -122,6 +143,7 @@ class ImportApplyService:
                 failed += 1
                 err = {"code": "UNEXPECTED_ERROR", "field": None, "message": str(exc)}
                 result_item = item.__dict__.copy()
+                result_item["resource_id"] = resource_id
                 result_item["errors"] = list(result_item.get("errors", [])) + [err]
                 if should_append("failed"):
                     self._append_item(report, result_item, "failed")

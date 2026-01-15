@@ -470,6 +470,7 @@ def runImportApplyCommand(
     onMissingOrg: str | None,
     reportItemsLimit: int | None,
     reportItemsSuccess: bool | None,
+    resourceExistsRetries: int | None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -485,6 +486,9 @@ def runImportApplyCommand(
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
         report_items_success = (
             reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
+        )
+        resource_exists_retries = (
+            resourceExistsRetries if resourceExistsRetries is not None else settings.resource_exists_retries
         )
 
         plan = None
@@ -534,6 +538,7 @@ def runImportApplyCommand(
         report.meta.stop_on_first_error = stopOnFirstError
         report.meta.max_actions = maxActions
         report.meta.dry_run = dryRun
+        report.meta.resource_exists_retries = resource_exists_retries
 
         report.summary.planned_create = plan.summary.planned_create
         report.summary.planned_update = plan.summary.planned_update
@@ -552,6 +557,7 @@ def runImportApplyCommand(
             dry_run=dryRun,
             report_items_limit=report_items_limit,
             report_items_success=report_items_success,
+            resource_exists_retries=resource_exists_retries,
         )
 
     runWithReport(
@@ -727,6 +733,7 @@ def main(
     timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
     retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API calls"),
     retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff for retries"),
+    resourceExistsRetries: int | None = typer.Option(None, "--resource-exists-retries", help="Retries for resourceExists"),
 ):
     """
     Назначение:
@@ -769,6 +776,7 @@ def main(
         "timeout_seconds": timeoutSeconds,
         "retries": retries,
         "retry_backoff_seconds": retryBackoffSeconds,
+        "resource_exists_retries": resourceExistsRetries,
     }
     loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
 
@@ -853,6 +861,11 @@ def importApply(
         help="Policy when organization_id missing in cache: error|warn-and-skip",
         case_sensitive=False,
     ),
+    resourceExistsRetries: int | None = typer.Option(
+        None,
+        "--resource-exists-retries",
+        help="Retries for resourceExists on create",
+    ),
     reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
     reportItemsSuccess: bool | None = typer.Option(
         None,
@@ -873,6 +886,7 @@ def importApply(
         onMissingOrg=onMissingOrg.lower() if onMissingOrg else None,
         reportItemsLimit=reportItemsLimit,
         reportItemsSuccess=reportItemsSuccess,
+        resourceExistsRetries=resourceExistsRetries,
     )
 
 @app.command("check-api")

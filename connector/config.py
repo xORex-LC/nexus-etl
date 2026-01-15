@@ -67,6 +67,7 @@ class Settings:
     report_items_limit: int = 200
     report_items_success: bool = False
     on_missing_org: str = "error"
+    resource_exists_retries: int = 3
 
 @dataclass(frozen=True)
 class LoadedSettings:
@@ -303,6 +304,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "report_items_limit": envGet("ANKEY_REPORT_ITEMS_LIMIT"),
         "report_items_success": envGet("ANKEY_REPORT_ITEMS_SUCCESS"),
         "on_missing_org": envGet("ANKEY_ON_MISSING_ORG"),
+        "resource_exists_retries": envGet("ANKEY_RESOURCE_EXISTS_RETRIES"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -332,6 +334,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "report_items_limit": cfg.get("report_items_limit", defaults.report_items_limit),
         "report_items_success": cfg.get("report_items_success", defaults.report_items_success),
         "on_missing_org": cfg.get("on_missing_org", defaults.on_missing_org),
+        "resource_exists_retries": cfg.get("resource_exists_retries", defaults.resource_exists_retries),
     }
 
     if env["host"] is not None:
@@ -379,6 +382,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["report_items_success"] = parseBool(env["report_items_success"])
     if env["on_missing_org"] is not None:
         merged["on_missing_org"] = parseOnMissingOrg(env["on_missing_org"])
+    if env["resource_exists_retries"] is not None:
+        merged["resource_exists_retries"] = parseInt(env["resource_exists_retries"])
 
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
@@ -409,6 +414,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         report_items_limit=parseIntAny(merged["report_items_limit"]) or defaults.report_items_limit,
         report_items_success=parseBoolAny(merged["report_items_success"]) or False,
         on_missing_org=parseOnMissingOrg(merged["on_missing_org"]) or defaults.on_missing_org,
+        resource_exists_retries=parseIntAny(merged["resource_exists_retries"]) or defaults.resource_exists_retries,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)

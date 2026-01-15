@@ -42,6 +42,7 @@ class ReportMeta:
     stop_on_first_error: bool | None = None
     max_actions: int | None = None
     dry_run: bool | None = None
+    resource_exists_retries: int | None = None
 
     config_sources: list[str] = field(default_factory=list)
 
