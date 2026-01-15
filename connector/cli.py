@@ -221,27 +221,6 @@ def runWithReport(
             raise typer.Exit(code=exitCode)
 
 
-def runCommand(
-    ctx: typer.Context,
-    commandName: str,
-    csvPath: str | None,
-    requiresCsv: bool,
-    requiresApiAccess: bool,
-) -> None:
-    def execute(_logger, _report) -> int:
-        # На этапе 2 команды ещё заглушки
-        typer.echo(f"{commandName}: not implemented yet (stage 2)")
-        return 0
-
-    runWithReport(
-        ctx=ctx,
-        commandName=commandName,
-        csvPath=csvPath,
-        requiresCsv=requiresCsv,
-        requiresApiAccess=requiresApiAccess,
-        runner=execute,
-    )
-
 def runCacheRefreshCommand(
     ctx: typer.Context,
     usersJson: str | None,
