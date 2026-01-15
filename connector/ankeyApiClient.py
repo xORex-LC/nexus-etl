@@ -95,6 +95,41 @@ class AnkeyApiClient:
         except ValueError as exc:
             raise ApiError("Invalid JSON response") from exc
 
+    def requestJson(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+        jsonBody: Any | None = None,
+    ) -> tuple[int, Any]:
+        params = params or {}
+        attempt = 0
+        while True:
+            try:
+                resp = self.client.request(method, path, params=params, headers=self._headers(), json=jsonBody)
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                if attempt >= self.retries:
+                    raise ApiError(f"Network error: {exc}") from exc
+                self._sleep_backoff(attempt)
+                attempt += 1
+                continue
+
+            if resp.status_code in (200, 201, 204):
+                if resp.text:
+                    try:
+                        return resp.status_code, resp.json()
+                    except ValueError:
+                        return resp.status_code, resp.text
+                return resp.status_code, None
+
+            if self._should_retry(resp) and attempt < self.retries:
+                self._sleep_backoff(attempt)
+                attempt += 1
+                continue
+
+            body_snippet = resp.text[:200] if resp.text else None
+            raise ApiError(f"HTTP {resp.status_code}", status_code=resp.status_code, body_snippet=body_snippet)
+
     def _extract_items(self, data: Any) -> list[Any]:
         if isinstance(data, list):
             return data
