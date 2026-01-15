@@ -53,4 +53,14 @@ class CacheCommandServiceProtocol(Protocol):
     def clear(self, conn, logger, report, run_id: str) -> tuple[int, dict]: ...
 
 
-__all__ = ["ApiClientProtocol", "ImportPlanServiceProtocol", "CacheCommandServiceProtocol"]
+@runtime_checkable
+class UserApiProtocol(Protocol):
+    def upsertUser(self, resourceId: str, payload: dict[str, Any]) -> tuple[int, Any]: ...
+
+
+__all__ = [
+    "ApiClientProtocol",
+    "ImportPlanServiceProtocol",
+    "CacheCommandServiceProtocol",
+    "UserApiProtocol",
+]
