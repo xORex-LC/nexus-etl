@@ -16,7 +16,7 @@ from .config import Settings, loadSettings
 from .csvReader import CsvFormatError, readEmployeeRows
 from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from .models import ValidationErrorItem
-from .planner import build_import_plan, write_plan_file
+from .importPlanService import ImportPlanService
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs
@@ -439,13 +439,9 @@ def runImportPlanCommand(
             reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
         )
 
-        if on_missing not in ("error", "warn-and-skip"):
-            typer.echo("ERROR: --on-missing-org must be 'error' or 'warn-and-skip'", err=True)
-            return 2
-
         try:
-            ensureSchema(conn)
-            plan_items, summary = build_import_plan(
+            service = ImportPlanService()
+            return service.run(
                 conn=conn,
                 csv_path=csvPath or "",
                 csv_has_header=csvHasHeader,
@@ -456,25 +452,11 @@ def runImportPlanCommand(
                 report=report,
                 report_items_limit=report_items_limit,
                 report_items_success=report_items_success,
+                report_dir=settings.report_dir,
             )
-            plan_meta = {
-                "csv_path": csvPath,
-                "include_deleted_users": include_deleted,
-                "on_missing_org": on_missing,
-            }
-            plan_path = write_plan_file(plan_items, summary, plan_meta, settings.report_dir, runId)
-            logEvent(logger, logging.INFO, runId, "plan", f"Plan written: {plan_path}")
-            report.meta.plan_file = plan_path
-            report.meta.include_deleted_users = include_deleted
-            report.meta.on_missing_org = on_missing
-            report.meta.mode = "plan"
-            report.meta.csv_rows_total = summary["rows_total"]
-            report.meta.csv_rows_processed = summary["rows_total"]
-            report.summary.planned_create = summary["planned_create"]
-            report.summary.planned_update = summary["planned_update"]
-            report.summary.skipped = summary["skipped"]
-            report.summary.failed = summary["failed"]
-            return 1 if summary["failed"] > 0 else 0
+        except ValueError as exc:
+            typer.echo(f"ERROR: {exc}", err=True)
+            return 2
         except (CsvFormatError, OSError) as exc:
             logEvent(logger, logging.ERROR, runId, "plan", f"Import plan failed: {exc}")
             typer.echo(f"ERROR: import plan failed: {exc}", err=True)
