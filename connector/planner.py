@@ -43,11 +43,11 @@ def build_import_plan(
     matchkey_seen: dict[str, int] = {}
     usr_org_tab_seen: dict[str, int] = {}
 
-    def append_report_item(item: dict[str, Any], status: str) -> None:
+    def append_report_item(item: dict[str, Any], status: str) -> int | None:
         if status not in ("failed", "skipped") and not report_items_success:
-            return
+            return None
         if len(report.items) >= report_items_limit:
-            return
+            return None
         report.items.append(
             {
                 "row_id": item.get("row_id"),
@@ -61,6 +61,7 @@ def build_import_plan(
                 "status": status,
             }
         )
+        return len(report.items) - 1
 
     try:
         for csvRow in readEmployeeRows(csv_path, hasHeader=csv_has_header):
@@ -116,13 +117,13 @@ def build_import_plan(
                     "warnings": [w.__dict__ for w in warnings],
                 }
                 plan_items.append(item)
-                append_report_item(item, "failed")
+                idx = append_report_item(item, "failed")
                 logValidationFailure(
                     logger,
                     run_id,
                     "import-plan",
                     validation,
-                    len(report.items) - 1 if report.items else 0,
+                    idx,
                     errors=errors,
                     warnings=warnings,
                 )

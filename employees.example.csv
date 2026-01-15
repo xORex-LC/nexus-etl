@@ -1,7 +1,7 @@
 email;lastName;firstName;middleName;isLogonDisable;userName;phone;password;personnelNumber;managerId;organization_id;position;avatarId;usrOrgTabNum
 user001@example.ru;Иванов001;Иван001;Иванович001;false;USER001;1001;T3stP@ssw0rd-0001;900001;;1;Старший Инженер;null;5001000001
 user002@example.ru;Иванов002;Иван002;Иванович002;false;USER002;1002;T3stP@ssw0rd-0002;900002;;2;QA-инженер;null;5001000002
-user003@example.ru;Иванов003;Иван003;Иванович003;false;USER003;1003;T3stP@ssw0rd-0003;900003;;1;DevSecOps;null;5001000003
+user003@example.ru;Иванов003;Иван003;Иванович003;false;USER003;1003;T3stP@ssw0rd-0003;900003;;1;DevSecOp;null;5001000003
 user004@example.ru;Иванов004;Иван004;Иванович004;false;USER004;1004;T3stP@ssw0rd-0004;900004;;2;Инженер;null;5001000004
 user005@example.ru;Иванов005;Иван005;Иванович005;false;USER005;1005;T3stP@ssw0rd-0005;900005;;1;Ведущий инженер;null;5001000005
 user006@example.ru;Иванов006;Иван006;Иванович006;false;USER006;1006;T3stP@ssw0rd-0006;900006;;2;Инженер;null;5001000006

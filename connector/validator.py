@@ -180,10 +180,15 @@ def logValidationFailure(
     codes.extend(e.code for e in eff_errors)
     codes.extend(w.code for w in eff_warnings)
     code_str = ",".join(sorted(set(codes))) if codes else "none"
+    index_str = (
+        str(report_item_index)
+        if report_item_index is not None
+        else f"line:{result.line_no} (not stored: limit reached)"
+    )
     logEvent(
         logger,
         logging.WARNING,
         run_id,
         context,
-        f"invalid row line={result.line_no} report_item_index={report_item_index if report_item_index is not None else 'n/a'} errors={code_str}",
+        f"invalid row line={result.line_no} report_item_index={index_str} errors={code_str}",
     )
