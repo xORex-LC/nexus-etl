@@ -11,7 +11,7 @@ import typer
 
 from .ankeyApiClient import AnkeyApiClient, ApiError
 from .cacheDb import ensureSchema, getCacheDbPath, openCacheDb
-from .cacheService import clearCache, getCacheStatus, refreshCacheFromApi, refreshCacheFromJson
+from .cacheCommandService import CacheCommandService
 from .config import Settings, loadSettings
 from .csvReader import CsvFormatError, readEmployeeRows
 from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
@@ -274,35 +274,28 @@ def runCacheRefreshCommand(
             return 2
 
         try:
-            if mode == "json":
-                if not usersJson and not orgJson:
-                    typer.echo("ERROR: --users-json or --org-json is required", err=True)
-                    return 2
-                summary = refreshCacheFromJson(
-                    conn=conn,
-                    usersJsonPath=usersJson,
-                    orgJsonPath=orgJson,
-                    logger=logger,
-                    report=report,
-                    reportItemsLimit=reportItemsLimit or settings.report_items_limit,
-                    reportItemsSuccess=reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success,
-                )
-            else:
-                summary = refreshCacheFromApi(
-                    conn=conn,
-                    settings=settings,
-                    pageSize=pageSize or settings.page_size,
-                    maxPages=maxPages or settings.max_pages,
-                    timeoutSeconds=timeoutSeconds or settings.timeout_seconds,
-                    retries=retries or settings.retries,
-                    retryBackoffSeconds=retryBackoffSeconds or settings.retry_backoff_seconds,
-                    logger=logger,
-                    report=report,
-                    transport=apiTransport,
-                    includeDeletedUsers=includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users,
-                    reportItemsLimit=reportItemsLimit or settings.report_items_limit,
-                    reportItemsSuccess=reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success,
-                )
+            service = CacheCommandService()
+            return service.refresh(
+                conn=conn,
+                settings=settings,
+                users_json=usersJson,
+                org_json=orgJson,
+                page_size=pageSize or settings.page_size,
+                max_pages=maxPages or settings.max_pages,
+                timeout_seconds=timeoutSeconds or settings.timeout_seconds,
+                retries=retries or settings.retries,
+                retry_backoff_seconds=retryBackoffSeconds or settings.retry_backoff_seconds,
+                logger=logger,
+                report=report,
+                run_id=runId,
+                api_transport=apiTransport,
+                include_deleted_users=includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users,
+                report_items_limit=reportItemsLimit or settings.report_items_limit,
+                report_items_success=reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success,
+            )
+        except ValueError as exc:
+            typer.echo(f"ERROR: {exc}", err=True)
+            return 2
         except ApiError as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
             typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
@@ -313,14 +306,6 @@ def runCacheRefreshCommand(
             return 2
         finally:
             conn.close()
-
-        failed = summary["users_failed"] + summary["orgs_failed"]
-        report.summary.created = summary["users_inserted"] + summary["orgs_inserted"]
-        report.summary.updated = summary["users_updated"] + summary["orgs_updated"]
-        report.summary.failed = failed
-        if "users_skipped_deleted" in summary:
-            report.summary.skipped = summary["users_skipped_deleted"]
-        return 0 if failed == 0 else 1
 
     runWithReport(
         ctx=ctx,
@@ -346,20 +331,18 @@ def runCacheStatusCommand(ctx: typer.Context) -> None:
             return 2
 
         try:
-            ensureSchema(conn)
-            status = getCacheStatus(conn)
+            service = CacheCommandService()
+            code, status = service.status(conn, logger, report, runId)
+            if code != 0:
+                typer.echo("ERROR: cache status failed (see logs/report)", err=True)
+                return code
             typer.echo(
                 "schema_version={schema_version} users={users_count} orgs={org_count} "
                 "users_last_refresh_at={users_last_refresh_at} org_last_refresh_at={org_last_refresh_at}".format(
                     **status
                 )
             )
-            report.items.append({"status": status})
             return 0
-        except Exception as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Cache status failed: {exc}")
-            typer.echo("ERROR: cache status failed (see logs/report)", err=True)
-            return 2
         finally:
             conn.close()
 
@@ -386,18 +369,12 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
             return 2
 
         try:
-            ensureSchema(conn)
-            cleared = clearCache(conn)
-            logEvent(logger, logging.INFO, runId, "cache", f"cache clear: users={cleared.get('users_deleted')} orgs={cleared.get('orgs_deleted')}")
-            report.items.append({"cleared": cleared})
-            report.summary.failed = 0
-            report.summary.created = 0
-            report.summary.updated = 0
+            service = CacheCommandService()
+            code, _cleared = service.clear(conn, logger, report, runId)
+            if code != 0:
+                typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
+                return code
             return 0
-        except Exception as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Cache clear failed: {exc}")
-            typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
-            return 2
         finally:
             conn.close()
 
