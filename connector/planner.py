@@ -68,6 +68,7 @@ def build_import_plan(
             employee, validation = validateEmployeeRow(csvRow)
             errors = list(validation.errors)
             warnings = list(validation.warnings)
+            desired = employee.__dict__.copy()
 
             if validation.match_key_complete:
                 prev_line = matchkey_seen.get(validation.match_key)
@@ -110,6 +111,7 @@ def build_import_plan(
                     "line_no": validation.line_no,
                     "action": "error",
                     "match_key": match_key,
+                    "desired": desired,
                     "errors": [e.__dict__ for e in errors],
                     "warnings": [w.__dict__ for w in warnings],
                 }
@@ -133,6 +135,7 @@ def build_import_plan(
                     "line_no": validation.line_no,
                     "action": "skip",
                     "match_key": match_key,
+                    "desired": desired,
                     "errors": [],
                     "warnings": [w.__dict__ for w in warnings]
                     + [
@@ -154,6 +157,7 @@ def build_import_plan(
                     "action": "create",
                     "match_key": match_key,
                     "new_id": new_id,
+                    "desired": desired,
                     "diff": diff,
                     "errors": [],
                     "warnings": [w.__dict__ for w in warnings],
@@ -169,6 +173,7 @@ def build_import_plan(
                     "line_no": validation.line_no,
                     "action": "error",
                     "match_key": match_key,
+                    "desired": desired,
                     "errors": [
                         {"code": "MATCH_CONFLICT", "field": "matchKey", "message": "multiple users with same match_key"}
                     ],
@@ -188,6 +193,7 @@ def build_import_plan(
                     "action": "skip",
                     "match_key": match_key,
                     "existing_id": existing.get("_id") if existing else None,
+                    "desired": desired,
                     "errors": [],
                     "warnings": [w.__dict__ for w in warnings],
                 }
@@ -202,6 +208,7 @@ def build_import_plan(
                 "action": "update",
                 "match_key": match_key,
                 "existing_id": existing.get("_id") if existing else None,
+                "desired": desired,
                 "diff": diff,
                 "errors": [],
                 "warnings": [w.__dict__ for w in warnings],

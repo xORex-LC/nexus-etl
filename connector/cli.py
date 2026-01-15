@@ -16,7 +16,9 @@ from .config import Settings, loadSettings
 from .csvReader import CsvFormatError, readEmployeeRows
 from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from .models import ValidationErrorItem
+from .importApplyService import ImportApplyService, createUserApiClient, readPlanFromCsv
 from .importPlanService import ImportPlanService
+from .planReader import readPlanFile
 from .interfaces import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
@@ -455,6 +457,111 @@ def runImportPlanCommand(
         runner=execute,
     )
 
+
+def runImportApplyCommand(
+    ctx: typer.Context,
+    csvPath: str | None,
+    planPath: str | None,
+    csvHasHeader: bool,
+    stopOnFirstError: bool,
+    maxActions: int | None,
+    dryRun: bool,
+    includeDeletedUsers: bool | None,
+    onMissingOrg: str | None,
+    reportItemsLimit: int | None,
+    reportItemsSuccess: bool | None,
+) -> None:
+    settings: Settings = ctx.obj["settings"]
+    runId = ctx.obj["runId"]
+    cacheDbPath = getCacheDbPath(settings.cache_dir)
+
+    def execute(logger, report) -> int:
+        if (csvPath and planPath) or (not csvPath and not planPath):
+            typer.echo("ERROR: specify exactly one of --csv or --plan", err=True)
+            return 2
+
+        include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
+        on_missing = (onMissingOrg or settings.on_missing_org or "error").lower()
+        report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
+        report_items_success = (
+            reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
+        )
+
+        plan = None
+        conn = None
+        try:
+            if csvPath:
+                try:
+                    conn = openCacheDb(cacheDbPath)
+                except sqlite3.Error as exc:
+                    logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+                    typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+                    return 2
+                plan = readPlanFromCsv(
+                    conn=conn,
+                    csv_path=csvPath,
+                    csv_has_header=csvHasHeader,
+                    include_deleted_users=include_deleted,
+                    on_missing_org=on_missing,
+                    logger=logger,
+                    run_id=runId,
+                    report=report,
+                    report_items_limit=report_items_limit,
+                    report_items_success=report_items_success,
+                    report_dir=settings.report_dir,
+                )
+                # Очистим report.items, чтобы в отчёте apply остались только результаты выполнения
+                report.items = []
+            else:
+                plan = readPlanFile(planPath or "")
+        except (CsvFormatError, OSError, ValueError) as exc:
+            logEvent(logger, logging.ERROR, runId, "plan", f"Import apply failed: {exc}")
+            typer.echo(f"ERROR: import apply failed: {exc}", err=True)
+            return 2
+        finally:
+            if conn is not None:
+                conn.close()
+
+        if plan is None:
+            typer.echo("ERROR: failed to load plan", err=True)
+            return 2
+
+        baseUrl = f"https://{settings.host}:{settings.port}"
+        report.meta.api_base_url = baseUrl
+        report.meta.csv_path = csvPath
+        report.meta.plan_path = planPath or plan.meta.plan_path
+        report.meta.include_deleted_users = include_deleted
+        report.meta.stop_on_first_error = stopOnFirstError
+        report.meta.max_actions = maxActions
+        report.meta.dry_run = dryRun
+
+        report.summary.planned_create = plan.summary.planned_create
+        report.summary.planned_update = plan.summary.planned_update
+        report.summary.skipped = plan.summary.skipped
+        report.summary.failed = plan.summary.failed
+
+        user_api = createUserApiClient(settings)
+        service = ImportApplyService(user_api)
+        return service.applyPlan(
+            plan=plan,
+            logger=logger,
+            report=report,
+            run_id=runId,
+            stop_on_first_error=stopOnFirstError,
+            max_actions=maxActions,
+            dry_run=dryRun,
+            report_items_limit=report_items_limit,
+            report_items_success=report_items_success,
+        )
+
+    runWithReport(
+        ctx=ctx,
+        commandName="import-apply",
+        csvPath=csvPath,
+        requiresCsv=False,
+        requiresApiAccess=True,
+        runner=execute,
+    )
 def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -713,6 +820,55 @@ def importPlan(
         ctx=ctx,
         csvPath=csv,
         csvHasHeader=csvHasHeader,
+        includeDeletedUsers=includeDeletedUsers,
+        onMissingOrg=onMissingOrg.lower() if onMissingOrg else None,
+        reportItemsLimit=reportItemsLimit,
+        reportItemsSuccess=reportItemsSuccess,
+    )
+
+
+@importApp.command("apply")
+def importApply(
+    ctx: typer.Context,
+    csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
+    plan: str | None = typer.Option(None, "--plan", help="Path to plan_import.json"),
+    csvHasHeader: bool = typer.Option(False, "--csv-has-header", help="CSV includes header row"),
+    stopOnFirstError: bool = typer.Option(
+        False,
+        "--stop-on-first-error/--no-stop-on-first-error",
+        help="Stop on first failed apply",
+        show_default=True,
+    ),
+    maxActions: int | None = typer.Option(None, "--max-actions", help="Limit number of actions to apply"),
+    dryRun: bool = typer.Option(False, "--dry-run", help="Do not send API requests"),
+    includeDeletedUsers: bool | None = typer.Option(
+        None,
+        "--include-deleted-users/--no-include-deleted-users",
+        help="Include deleted users in matching when building plan from CSV",
+        show_default=True,
+    ),
+    onMissingOrg: str | None = typer.Option(
+        None,
+        "--on-missing-org",
+        help="Policy when organization_id missing in cache: error|warn-and-skip",
+        case_sensitive=False,
+    ),
+    reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
+    reportItemsSuccess: bool | None = typer.Option(
+        None,
+        "--report-items-success/--no-report-items-success",
+        help="Include successful items in report",
+        show_default=True,
+    ),
+):
+    runImportApplyCommand(
+        ctx=ctx,
+        csvPath=csv,
+        planPath=plan,
+        csvHasHeader=csvHasHeader,
+        stopOnFirstError=stopOnFirstError,
+        maxActions=maxActions,
+        dryRun=dryRun,
         includeDeletedUsers=includeDeletedUsers,
         onMissingOrg=onMissingOrg.lower() if onMissingOrg else None,
         reportItemsLimit=reportItemsLimit,

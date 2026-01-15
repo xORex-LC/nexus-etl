@@ -38,6 +38,10 @@ class ReportMeta:
     skipped_deleted_users: int | None = None
     on_missing_org: str | None = None
     plan_file: str | None = None
+    plan_path: str | None = None
+    stop_on_first_error: bool | None = None
+    max_actions: int | None = None
+    dry_run: bool | None = None
 
     config_sources: list[str] = field(default_factory=list)
 
