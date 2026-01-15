@@ -17,6 +17,7 @@ from .csvReader import CsvFormatError, readEmployeeRows
 from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from .models import ValidationErrorItem
 from .importPlanService import ImportPlanService
+from .interfaces import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs
@@ -274,7 +275,7 @@ def runCacheRefreshCommand(
             return 2
 
         try:
-            service = CacheCommandService()
+            service: CacheCommandServiceProtocol = CacheCommandService()
             return service.refresh(
                 conn=conn,
                 settings=settings,
@@ -331,7 +332,7 @@ def runCacheStatusCommand(ctx: typer.Context) -> None:
             return 2
 
         try:
-            service = CacheCommandService()
+            service: CacheCommandServiceProtocol = CacheCommandService()
             code, status = service.status(conn, logger, report, runId)
             if code != 0:
                 typer.echo("ERROR: cache status failed (see logs/report)", err=True)
@@ -369,7 +370,7 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
             return 2
 
         try:
-            service = CacheCommandService()
+            service: CacheCommandServiceProtocol = CacheCommandService()
             code, _cleared = service.clear(conn, logger, report, runId)
             if code != 0:
                 typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
@@ -417,7 +418,7 @@ def runImportPlanCommand(
         )
 
         try:
-            service = ImportPlanService()
+            service: ImportPlanServiceProtocol = ImportPlanService()
             return service.run(
                 conn=conn,
                 csv_path=csvPath or "",

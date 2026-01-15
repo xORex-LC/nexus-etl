@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 
 from .cacheService import clearCache, getCacheStatus, refreshCacheFromApi, refreshCacheFromJson
+from .interfaces import CacheCommandServiceProtocol
 from .loggingSetup import logEvent
 
 
-class CacheCommandService:
+class CacheCommandService(CacheCommandServiceProtocol):
     """
     Оркестратор cache-команд (refresh/status/clear).
     """

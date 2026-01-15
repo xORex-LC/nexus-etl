@@ -3,11 +3,12 @@ from __future__ import annotations
 import logging
 
 from .cacheDb import ensureSchema
+from .interfaces import ImportPlanServiceProtocol
 from .loggingSetup import logEvent
 from .planner import build_import_plan, write_plan_file
 
 
-class ImportPlanService:
+class ImportPlanService(ImportPlanServiceProtocol):
     """
     Оркестратор построения плана импорта.
     """
