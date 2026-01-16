@@ -38,6 +38,10 @@ def _append_item_limited(report, entity_type: str, key: str, status: str, error:
     if status not in ("failed", "skipped") and not includeSuccess:
         return
     if len(report.items) >= reportItemsLimit:
+        try:
+            report.meta.items_truncated = True
+        except Exception:
+            pass
         return
     _append_item(report, entity_type, key, status, error)
 
@@ -206,6 +210,7 @@ def refreshCacheFromApi(
     deleted_included_users = 0
     inserted_orgs = updated_orgs = failed_orgs = 0
     pages_users = pages_orgs = 0
+    error_stats: dict[str, int] = {}
     include_deleted = True if includeDeletedUsers is True else False
     logEvent(
         logger,
@@ -310,6 +315,8 @@ def refreshCacheFromApi(
                 "cache",
                 f"User fetch failed: {exc} body={exc.body_snippet}",
             )
+            code = exc.code if hasattr(exc, "code") else "API_ERROR"
+            error_stats[code] = error_stats.get(code, 0) + 1
             raise
 
         usersCount, orgCount = getCounts(conn)
@@ -342,7 +349,9 @@ def refreshCacheFromApi(
     report.summary.created = inserted_users + inserted_orgs
     report.summary.updated = updated_users + updated_orgs
     report.summary.failed = failed_users + failed_orgs
+    report.summary.error_stats = error_stats
     report.summary.skipped = skipped_deleted_users
+    report.summary.retries_total = client.getRetryAttempts()
     duration_ms = int((time.monotonic() - start_monotonic) * 1000)
     logEvent(
         logger,

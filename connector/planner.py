@@ -69,6 +69,10 @@ def build_import_plan(
         if status not in ("failed", "skipped") and not report_items_success:
             return None
         if len(report.items) >= report_items_limit:
+            try:
+                report.meta.items_truncated = True
+            except Exception:
+                pass
             return None
         sanitized = _mask_sensitive_item(item)
         report.items.append(

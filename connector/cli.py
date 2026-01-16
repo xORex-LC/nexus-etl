@@ -243,6 +243,8 @@ def runCacheRefreshCommand(
             logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
             typer.echo("ERROR: missing API settings (see logs/report)", err=True)
             return 2
+        report.meta.report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
+        report.meta.report_items_success = reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -391,6 +393,8 @@ def runImportPlanCommand(
             reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
         )
         csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
+        report.meta.report_items_limit = report_items_limit
+        report.meta.report_items_success = report_items_success
 
         try:
             service: ImportPlanServiceProtocol = ImportPlanService()
@@ -520,6 +524,8 @@ def runImportApplyCommand(
         report.meta.resource_exists_retries = resource_exists_retries
         report.meta.retries = settings.retries
         report.meta.retry_backoff_seconds = settings.retry_backoff_seconds
+        report.meta.report_items_limit = report_items_limit
+        report.meta.report_items_success = report_items_success
 
         report.summary.planned_create = plan.summary.planned_create
         report.summary.planned_update = plan.summary.planned_update

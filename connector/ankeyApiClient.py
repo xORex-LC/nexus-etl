@@ -94,7 +94,7 @@ class AnkeyApiClient:
                 resp = self.client.get(path, params=params, headers=self._headers())
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 if attempt >= self.retries:
-                    raise ApiError("Network error", status_code=None, retryable=False) from exc
+                    raise ApiError("Network error", status_code=None, retryable=False, code="NETWORK_ERROR") from exc
                 self.retry_attempts += 1
                 self._sleep_backoff(attempt)
                 attempt += 1
@@ -124,7 +124,12 @@ class AnkeyApiClient:
         try:
             return resp.json()
         except ValueError as exc:
-            raise ApiError("Invalid JSON response", status_code=resp.status_code, retryable=False) from exc
+            raise ApiError(
+                "Invalid JSON response",
+                status_code=resp.status_code,
+                retryable=False,
+                code="INVALID_JSON",
+            ) from exc
 
     def requestJson(
         self,
@@ -140,7 +145,7 @@ class AnkeyApiClient:
                 resp = self.client.request(method, path, params=params, headers=self._headers(), json=jsonBody)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 if attempt >= self.retries:
-                    raise ApiError("Network error", status_code=None, retryable=False) from exc
+                    raise ApiError("Network error", status_code=None, retryable=False, code="NETWORK_ERROR") from exc
                 self.retry_attempts += 1
                 self._sleep_backoff(attempt)
                 attempt += 1
@@ -176,7 +181,7 @@ class AnkeyApiClient:
             for key in ("items", "data", "users", "organizations", "orgs", "result"):
                 if key in data and isinstance(data[key], list):
                     return data[key]
-        raise ApiError("Unexpected response format: no items array")
+        raise ApiError("Unexpected response format: no items array", code="INVALID_ITEMS_FORMAT", retryable=False)
 
     def getPagedItems(self, path: str, pageSize: int, maxPages: int | None) -> Iterator[tuple[int, list[Any]]]:
         """

@@ -44,6 +44,9 @@ class ReportMeta:
     max_actions: int | None = None
     dry_run: bool | None = None
     resource_exists_retries: int | None = None
+    report_items_limit: int | None = None
+    report_items_success: bool | None = None
+    items_truncated: bool = False
 
     config_sources: list[str] = field(default_factory=list)
 

@@ -57,11 +57,18 @@ class ImportApplyService:
         created = updated = skipped = failed = 0
         actions_count = 0
         error_stats: dict[str, int] = {}
+        fatal_error = False
 
         def should_append(status: str) -> bool:
             if status not in ("failed", "skipped") and not report_items_success:
                 return False
-            return len(report.items) < report_items_limit
+            if len(report.items) >= report_items_limit:
+                try:
+                    report.meta.items_truncated = True
+                except Exception:
+                    pass
+                return False
+            return True
 
         for item in plan.items:
             action = item.action
@@ -128,11 +135,13 @@ class ImportApplyService:
                 else:
                     updated += 1
             except ApiError as exc:
+                # Фатальные ошибки авторизации — прекращаем выполнение сразу
+                if exc.status_code in (401, 403):
+                    fatal_error = True
                 failed += 1
-                err = {"code": "API_ERROR", "field": None, "message": str(exc)}
-                if exc.code:
-                    err["code"] = exc.code
-                    error_stats[exc.code] = error_stats.get(exc.code, 0) + 1
+                err_code = exc.code or "API_ERROR"
+                err = {"code": err_code, "field": None, "message": str(exc)}
+                error_stats[err_code] = error_stats.get(err_code, 0) + 1
                 result_item = item.__dict__.copy()
                 result_item["resource_id"] = resource_id
                 result_item["errors"] = list(result_item.get("errors", [])) + [err]
@@ -141,7 +150,7 @@ class ImportApplyService:
                 if should_append("failed"):
                     self._append_item(report, result_item, "failed")
                 logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
-                if stop_on_first_error:
+                if stop_on_first_error or fatal_error:
                     break
             except Exception as exc:
                 failed += 1
@@ -165,6 +174,8 @@ class ImportApplyService:
         if hasattr(self.user_api, "client") and hasattr(self.user_api.client, "getRetryAttempts"):
             retries_total = self.user_api.client.getRetryAttempts() or 0
         report.summary.retries_total = retries_total
+        if fatal_error:
+            return 2
         return 1 if failed > 0 else 0
 
 
