@@ -33,8 +33,6 @@ class CacheCommandServiceProtocol(Protocol):
         self,
         conn,
         settings,
-        users_json: str | None,
-        org_json: str | None,
         page_size: int,
         max_pages: int,
         timeout_seconds: float,

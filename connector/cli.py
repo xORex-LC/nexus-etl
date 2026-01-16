@@ -222,8 +222,6 @@ def runWithReport(
 
 def runCacheRefreshCommand(
     ctx: typer.Context,
-    usersJson: str | None,
-    orgJson: str | None,
     pageSize: int | None,
     maxPages: int | None,
     timeoutSeconds: float | None,
@@ -239,14 +237,12 @@ def runCacheRefreshCommand(
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report) -> int:
-        mode = "json" if (usersJson or orgJson) else "api"
-        if mode == "api":
-            try:
-                requireApi(settings)
-            except typer.Exit:
-                logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
-                typer.echo("ERROR: missing API settings (see logs/report)", err=True)
-                return 2
+        try:
+            requireApi(settings)
+        except typer.Exit:
+            logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
+            typer.echo("ERROR: missing API settings (see logs/report)", err=True)
+            return 2
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -259,8 +255,6 @@ def runCacheRefreshCommand(
             return service.refresh(
                 conn=conn,
                 settings=settings,
-                users_json=usersJson,
-                org_json=orgJson,
                 page_size=pageSize or settings.page_size,
                 max_pages=maxPages or settings.max_pages,
                 timeout_seconds=timeoutSeconds or settings.timeout_seconds,
@@ -293,7 +287,7 @@ def runCacheRefreshCommand(
         commandName="cache-refresh",
         csvPath=None,
         requiresCsv=False,
-        requiresApiAccess=False,
+        requiresApiAccess=True,
         runner=execute,
     )
 
@@ -864,8 +858,6 @@ def checkApi(ctx: typer.Context):
 @cacheApp.command("refresh")
 def cacheRefresh(
     ctx: typer.Context,
-    usersJson: str | None = typer.Option(None, "--users-json", help="Path to users JSON file"),
-    orgJson: str | None = typer.Option(None, "--org-json", help="Path to organizations JSON file"),
     pageSize: int | None = typer.Option(None, "--page-size", help="Page size for API pagination"),
     maxPages: int | None = typer.Option(None, "--max-pages", help="Maximum pages to fetch from API"),
     timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
@@ -887,8 +879,6 @@ def cacheRefresh(
 ):
     runCacheRefreshCommand(
         ctx=ctx,
-        usersJson=usersJson,
-        orgJson=orgJson,
         pageSize=pageSize if pageSize is not None else ctx.obj["settings"].page_size,
         maxPages=maxPages if maxPages is not None else ctx.obj["settings"].max_pages,
         timeoutSeconds=timeoutSeconds if timeoutSeconds is not None else ctx.obj["settings"].timeout_seconds,

@@ -3,15 +3,33 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+import httpx
 from connector.cacheDb import ensureSchema, getCacheDbPath, openCacheDb
 from connector.cacheRepo import getCounts, getUserByMatchKey, upsertUser
 from connector.cli import app
+from connector.ankeyApiClient import AnkeyApiClient
 
 runner = CliRunner()
 
 DATA_DIR = Path(__file__).parent / "data"
 USERS_JSON = DATA_DIR / "users_min.json"
 ORG_JSON = DATA_DIR / "org_min.json"
+
+
+def make_transport(responder):
+    return httpx.MockTransport(responder)
+
+
+def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
+    import connector.cli as cli_module
+    import connector.cacheService as cache_service_module
+
+    def factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return AnkeyApiClient(*args, **kwargs)
+
+    monkeypatch.setattr(cli_module, "AnkeyApiClient", factory)
+    monkeypatch.setattr(cache_service_module, "AnkeyApiClient", factory)
 
 def test_cache_schema_created(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -67,7 +85,7 @@ def test_cache_upsert_user(tmp_path: Path):
     assert fetched is not None
     assert fetched["phone"] == "+222"
 
-def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", users_json: Path | None = USERS_JSON, org_json: Path | None = ORG_JSON):
+def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", monkeypatch=None):
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
@@ -80,20 +98,43 @@ def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", users_json: Pat
         str(cache_dir),
         "--run-id",
         run_id,
+        "--host",
+        "api.local",
+        "--port",
+        "443",
+        "--api-username",
+        "user",
+        "--api-password",
+        "secret",
         "cache",
         "refresh",
     ]
-    if users_json:
-        args.extend(["--users-json", str(users_json)])
-    if org_json:
-        args.extend(["--org-json", str(org_json)])
+
+    if monkeypatch is not None:
+        users = json.loads(USERS_JSON.read_text(encoding="utf-8"))
+        orgs = json.loads(ORG_JSON.read_text(encoding="utf-8"))
+
+        def responder(request: httpx.Request) -> httpx.Response:
+            params = dict(request.url.params)
+            if "organization" in request.url.path:
+                if params.get("page") in ("1", 1, None):
+                    return httpx.Response(200, json={"result": orgs})
+                return httpx.Response(200, json={"result": []})
+            if "user" in request.url.path:
+                if params.get("page") in ("1", 1, None):
+                    return httpx.Response(200, json={"result": users})
+                return httpx.Response(200, json={"result": []})
+            return httpx.Response(404, text="not found")
+
+        transport = make_transport(responder)
+        patch_client_with_transport(monkeypatch, transport)
 
     result = runner.invoke(app, args)
     report_path = report_dir / f"report_cache-refresh_{run_id}.json"
     return result, cache_dir, report_path, log_dir
 
-def test_cache_refresh_from_json_creates_db_and_counts(tmp_path: Path):
-    result, cache_dir, report_path, _ = run_cache_refresh(tmp_path, run_id="refresh-ok")
+def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Path):
+    result, cache_dir, report_path, _ = run_cache_refresh(tmp_path, run_id="refresh-ok", monkeypatch=monkeypatch)
 
     assert result.exit_code == 0
     assert report_path.exists()
@@ -114,8 +155,8 @@ def test_cache_refresh_from_json_creates_db_and_counts(tmp_path: Path):
     assert report["summary"]["created"] == 2  # 1 user + 1 org
     assert report["summary"]["failed"] == 0
 
-def test_cache_status_ok(tmp_path: Path):
-    refresh_result, cache_dir, _, _ = run_cache_refresh(tmp_path, run_id="refresh-for-status")
+def test_cache_status_ok(monkeypatch, tmp_path: Path):
+    refresh_result, cache_dir, _, _ = run_cache_refresh(tmp_path, run_id="refresh-for-status", monkeypatch=monkeypatch)
     assert refresh_result.exit_code == 0
 
     log_dir = tmp_path / "logs"
@@ -142,8 +183,8 @@ def test_cache_status_ok(tmp_path: Path):
     assert "orgs=1" in result.stdout
     assert report_path.exists()
 
-def test_cache_clear_empties_tables(tmp_path: Path):
-    refresh_result, cache_dir, _, _ = run_cache_refresh(tmp_path, run_id="refresh-before-clear")
+def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
+    refresh_result, cache_dir, _, _ = run_cache_refresh(tmp_path, run_id="refresh-before-clear", monkeypatch=monkeypatch)
     assert refresh_result.exit_code == 0
 
     log_dir = tmp_path / "logs"
@@ -175,10 +216,10 @@ def test_cache_clear_empties_tables(tmp_path: Path):
     assert users_count == 0
     assert org_count == 0
 
-def test_cache_does_not_store_passwords(tmp_path: Path):
+def test_cache_does_not_store_passwords(monkeypatch, tmp_path: Path):
     secret = "TOP_SECRET"
     run_id = "no-secret"
-    result, cache_dir, report_path, log_dir = run_cache_refresh(tmp_path, run_id=run_id)
+    result, cache_dir, report_path, log_dir = run_cache_refresh(tmp_path, run_id=run_id, monkeypatch=monkeypatch)
     assert result.exit_code == 0
 
     db_path = Path(getCacheDbPath(cache_dir))

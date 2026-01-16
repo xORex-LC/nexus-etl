@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from .cacheService import clearCache, getCacheStatus, refreshCacheFromApi, refreshCacheFromJson
+from .cacheService import clearCache, getCacheStatus, refreshCacheFromApi
 from .interfaces import CacheCommandServiceProtocol
 from .loggingSetup import logEvent
 
@@ -16,8 +16,6 @@ class CacheCommandService(CacheCommandServiceProtocol):
         self,
         conn,
         settings,
-        users_json: str | None,
-        org_json: str | None,
         page_size: int,
         max_pages: int,
         timeout_seconds: float,
@@ -31,36 +29,21 @@ class CacheCommandService(CacheCommandServiceProtocol):
         report_items_limit: int = 200,
         report_items_success: bool = False,
     ) -> int:
-        mode = "json" if (users_json or org_json) else "api"
-        if mode == "json" and not users_json and not org_json:
-            raise ValueError("At least one of users_json/org_json is required")
-
-        if mode == "json":
-            summary = refreshCacheFromJson(
-                conn=conn,
-                usersJsonPath=users_json,
-                orgJsonPath=org_json,
-                logger=logger,
-                report=report,
-                reportItemsLimit=report_items_limit,
-                reportItemsSuccess=report_items_success,
-            )
-        else:
-            summary = refreshCacheFromApi(
-                conn=conn,
-                settings=settings,
-                pageSize=page_size,
-                maxPages=max_pages,
-                timeoutSeconds=timeout_seconds,
-                retries=retries,
-                retryBackoffSeconds=retry_backoff_seconds,
-                logger=logger,
-                report=report,
-                transport=api_transport,
-                includeDeletedUsers=include_deleted_users,
-                reportItemsLimit=report_items_limit,
-                reportItemsSuccess=report_items_success,
-            )
+        summary = refreshCacheFromApi(
+            conn=conn,
+            settings=settings,
+            pageSize=page_size,
+            maxPages=max_pages,
+            timeoutSeconds=timeout_seconds,
+            retries=retries,
+            retryBackoffSeconds=retry_backoff_seconds,
+            logger=logger,
+            report=report,
+            transport=api_transport,
+            includeDeletedUsers=include_deleted_users,
+            reportItemsLimit=report_items_limit,
+            reportItemsSuccess=report_items_success,
+        )
 
         failed = summary["users_failed"] + summary["orgs_failed"]
         report.summary.created = summary["users_inserted"] + summary["orgs_inserted"]
