@@ -519,6 +519,7 @@ def runImportApplyCommand(
         report.meta.dry_run = dry_run
         report.meta.resource_exists_retries = resource_exists_retries
         report.meta.retries = settings.retries
+        report.meta.retry_backoff_seconds = settings.retry_backoff_seconds
 
         report.summary.planned_create = plan.summary.planned_create
         report.summary.planned_update = plan.summary.planned_update

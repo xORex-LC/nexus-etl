@@ -63,14 +63,13 @@ def refreshCacheFromJson(
     inserted_orgs = updated_orgs = failed_orgs = 0
     runId = getattr(report.meta, "run_id", "unknown")
     start_monotonic = time.monotonic()
-    report.meta.mode = "json"
     report.meta.page_size = None
     report.meta.max_pages = None
     report.meta.timeout_seconds = None
     report.meta.retries = None
     report.meta.include_deleted_users = False
     report.meta.skipped_deleted_users = 0
-    logEvent(logger, logging.INFO, runId, "cache", "cache-refresh start mode=json")
+    logEvent(logger, logging.INFO, runId, "cache", "cache-refresh start")
 
     try:
         conn.execute("BEGIN")
@@ -143,6 +142,7 @@ def refreshCacheFromJson(
     report.summary.updated = updated_users + updated_orgs
     report.summary.failed = failed_users + failed_orgs
     report.summary.skipped = skipped_deleted_users
+    report.summary.retries_total = client.getRetryAttempts()
     report.meta.skipped_deleted_users = skipped_deleted_users
 
     summary = {
@@ -171,7 +171,7 @@ def refreshCacheFromApi(
     conn,
     settings,
     pageSize: int,
-    maxPages: int,
+    maxPages: int | None,
     timeoutSeconds: float,
     retries: int,
     retryBackoffSeconds: float,
@@ -330,12 +330,12 @@ def refreshCacheFromApi(
     report.meta.pages_users = pages_users or None
     report.meta.pages_orgs = pages_orgs or None
     report.meta.api_base_url = baseUrl
-    report.meta.mode = "api"
     report.meta.page_size = pageSize
     report.meta.max_pages = maxPages
     report.meta.timeout_seconds = timeoutSeconds
     report.meta.retries = retries
     report.meta.retries_used = client.getRetryAttempts()
+    report.meta.retry_backoff_seconds = retryBackoffSeconds
     report.meta.include_deleted_users = include_deleted
     report.meta.skipped_deleted_users = deleted_included_users if include_deleted else skipped_deleted_users
 

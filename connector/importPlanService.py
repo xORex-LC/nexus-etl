@@ -97,7 +97,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
         report.meta.plan_file = plan_path
         report.meta.include_deleted_users = include_deleted_users
         report.meta.on_missing_org = on_missing_org
-        report.meta.mode = "plan"
         report.meta.csv_rows_total = summary["rows_total"]
         report.meta.csv_rows_processed = summary["rows_total"]
         report.summary.planned_create = summary["planned_create"]

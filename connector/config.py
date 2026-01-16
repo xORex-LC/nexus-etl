@@ -59,7 +59,7 @@ class Settings:
 
     # API/cache refresh tuning (Stage 5)
     page_size: int = 200
-    max_pages: int = 1000
+    max_pages: int | None = None
     timeout_seconds: float = 20.0
     retries: int = 3
     retry_backoff_seconds: float = 0.5

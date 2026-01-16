@@ -56,6 +56,7 @@ class ImportApplyService:
     ) -> int:
         created = updated = skipped = failed = 0
         actions_count = 0
+        error_stats: dict[str, int] = {}
 
         def should_append(status: str) -> bool:
             if status not in ("failed", "skipped") and not report_items_success:
@@ -129,6 +130,9 @@ class ImportApplyService:
             except ApiError as exc:
                 failed += 1
                 err = {"code": "API_ERROR", "field": None, "message": str(exc)}
+                if exc.code:
+                    err["code"] = exc.code
+                    error_stats[exc.code] = error_stats.get(exc.code, 0) + 1
                 result_item = item.__dict__.copy()
                 result_item["resource_id"] = resource_id
                 result_item["errors"] = list(result_item.get("errors", [])) + [err]
@@ -142,6 +146,7 @@ class ImportApplyService:
             except Exception as exc:
                 failed += 1
                 err = {"code": "UNEXPECTED_ERROR", "field": None, "message": str(exc)}
+                error_stats[err["code"]] = error_stats.get(err["code"], 0) + 1
                 result_item = item.__dict__.copy()
                 result_item["resource_id"] = resource_id
                 result_item["errors"] = list(result_item.get("errors", [])) + [err]
@@ -155,6 +160,11 @@ class ImportApplyService:
         report.summary.updated = updated
         report.summary.skipped = skipped
         report.summary.failed = failed
+        report.summary.error_stats = error_stats
+        retries_total = 0
+        if hasattr(self.user_api, "client") and hasattr(self.user_api.client, "getRetryAttempts"):
+            retries_total = self.user_api.client.getRetryAttempts() or 0
+        report.summary.retries_total = retries_total
         return 1 if failed > 0 else 0
 
 

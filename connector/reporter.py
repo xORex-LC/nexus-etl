@@ -29,11 +29,12 @@ class ReportMeta:
     api_base_url: str | None = None
     pages_users: int | None = None
     pages_orgs: int | None = None
-    mode: str | None = None
     page_size: int | None = None
     max_pages: int | None = None
     timeout_seconds: float | None = None
     retries: int | None = None
+    retries_used: int | None = None
+    retry_backoff_seconds: float | None = None
     include_deleted_users: bool | None = None
     skipped_deleted_users: int | None = None
     on_missing_org: str | None = None
@@ -59,6 +60,8 @@ class ReportSummary:
     skipped: int = 0
     failed: int = 0
     warnings: int = 0
+    error_stats: dict[str, int] = field(default_factory=dict)
+    retries_total: int = 0
 
 @dataclass
 class Report:

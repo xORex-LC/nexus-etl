@@ -5,10 +5,26 @@ from typing import Any, Iterator
 
 import httpx
 
+from .errors import AppError
 
-class ApiError(Exception):
-    def __init__(self, message: str, status_code: int | None = None, body_snippet: str | None = None):
-        super().__init__(message)
+
+class ApiError(AppError):
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        body_snippet: str | None = None,
+        retryable: bool = False,
+        details: dict | None = None,
+        code: str | None = None,
+    ):
+        super().__init__(
+            category="api",
+            code=code or (f"HTTP_{status_code}" if status_code else "API_ERROR"),
+            message=message,
+            retryable=retryable,
+            details=details or {},
+        )
         self.status_code = status_code
         self.body_snippet = body_snippet
 
@@ -78,7 +94,7 @@ class AnkeyApiClient:
                 resp = self.client.get(path, params=params, headers=self._headers())
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 if attempt >= self.retries:
-                    raise ApiError(f"Network error: {exc}") from exc
+                    raise ApiError("Network error", status_code=None, retryable=False) from exc
                 self.retry_attempts += 1
                 self._sleep_backoff(attempt)
                 attempt += 1
@@ -94,7 +110,13 @@ class AnkeyApiClient:
                 continue
 
             body_snippet = resp.text[:200] if resp.text else None
-            raise ApiError(f"HTTP {resp.status_code}", status_code=resp.status_code, body_snippet=body_snippet)
+            raise ApiError(
+                f"HTTP {resp.status_code}",
+                status_code=resp.status_code,
+                body_snippet=body_snippet,
+                retryable=self._should_retry(resp),
+                details={"body_snippet": body_snippet},
+            )
 
     def getJson(self, path: str, params: dict[str, Any] | None = None) -> Any:
         params = params or {}
@@ -102,7 +124,7 @@ class AnkeyApiClient:
         try:
             return resp.json()
         except ValueError as exc:
-            raise ApiError("Invalid JSON response") from exc
+            raise ApiError("Invalid JSON response", status_code=resp.status_code, retryable=False) from exc
 
     def requestJson(
         self,
@@ -118,7 +140,7 @@ class AnkeyApiClient:
                 resp = self.client.request(method, path, params=params, headers=self._headers(), json=jsonBody)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 if attempt >= self.retries:
-                    raise ApiError(f"Network error: {exc}") from exc
+                    raise ApiError("Network error", status_code=None, retryable=False) from exc
                 self.retry_attempts += 1
                 self._sleep_backoff(attempt)
                 attempt += 1
@@ -139,7 +161,13 @@ class AnkeyApiClient:
                 continue
 
             body_snippet = resp.text[:200] if resp.text else None
-            raise ApiError(f"HTTP {resp.status_code}", status_code=resp.status_code, body_snippet=body_snippet)
+            raise ApiError(
+                f"HTTP {resp.status_code}",
+                status_code=resp.status_code,
+                body_snippet=body_snippet,
+                retryable=self._should_retry(resp),
+                details={"body_snippet": body_snippet},
+            )
 
     def _extract_items(self, data: Any) -> list[Any]:
         if isinstance(data, list):
@@ -150,14 +178,14 @@ class AnkeyApiClient:
                     return data[key]
         raise ApiError("Unexpected response format: no items array")
 
-    def getPagedItems(self, path: str, pageSize: int, maxPages: int) -> Iterator[tuple[int, list[Any]]]:
+    def getPagedItems(self, path: str, pageSize: int, maxPages: int | None) -> Iterator[tuple[int, list[Any]]]:
         """
         Возвращает пары (page_number, items) постранично.
         """
         page = 1
         while True:
-            if page > maxPages:
-                raise ApiError("max pages exceeded")
+            if maxPages is not None and page > maxPages:
+                raise ApiError("max pages exceeded", code="MAX_PAGES_EXCEEDED", status_code=None, retryable=False)
             params = {"page": page, "rows": pageSize, "_queryFilter": "true"}
             data = self.getJson(path, params=params)
             items = self._extract_items(data)
