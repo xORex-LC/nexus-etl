@@ -12,8 +12,21 @@ from .diff import build_user_diff
 from .loggingSetup import logEvent
 from .matcher import MatchResult, matchEmployeeByMatchKey
 from .models import ValidationErrorItem
+from .sanitize import maskSecret
 from .timeUtils import getNowIso
 from .validator import buildMatchKey, logValidationFailure, validateEmployeeRow
+
+
+def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Возвращает копию item с маскированием чувствительных данных."""
+
+    masked = item.copy()
+    desired = masked.get("desired")
+    if isinstance(desired, dict) and "password" in desired:
+        desired_copy = desired.copy()
+        desired_copy["password"] = maskSecret(desired_copy.get("password"))
+        masked["desired"] = desired_copy
+    return masked
 
 
 def _validation_error(code: str, field: str | None, message: str) -> ValidationErrorItem:
@@ -48,16 +61,18 @@ def build_import_plan(
             return None
         if len(report.items) >= report_items_limit:
             return None
+        sanitized = _mask_sensitive_item(item)
         report.items.append(
             {
-                "row_id": item.get("row_id"),
-                "action": item.get("action"),
-                "match_key": item.get("match_key"),
-                "existing_id": item.get("existing_id"),
-                "new_id": item.get("new_id"),
-                "errors": item.get("errors", []),
-                "warnings": item.get("warnings", []),
-                "diff": item.get("diff", {}),
+                "row_id": sanitized.get("row_id"),
+                "action": sanitized.get("action"),
+                "match_key": sanitized.get("match_key"),
+                "existing_id": sanitized.get("existing_id"),
+                "new_id": sanitized.get("new_id"),
+                "desired": sanitized.get("desired"),
+                "errors": sanitized.get("errors", []),
+                "warnings": sanitized.get("warnings", []),
+                "diff": sanitized.get("diff", {}),
                 "status": status,
             }
         )
@@ -243,6 +258,7 @@ def write_plan_file(
     plan_dir = Path(report_dir)
     plan_dir.mkdir(parents=True, exist_ok=True)
     plan_path = plan_dir / f"plan_import_{run_id}.json"
+    masked_items = [_mask_sensitive_item(item) for item in plan_items]
     data = {
         "meta": {
             "run_id": run_id,
@@ -250,7 +266,7 @@ def write_plan_file(
             **meta,
         },
         "summary": summary,
-        "items": plan_items,
+        "items": masked_items,
     }
     plan_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return str(plan_path)

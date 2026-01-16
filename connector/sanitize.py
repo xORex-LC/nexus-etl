@@ -18,3 +18,12 @@ def maskSecret(value: str | None) -> str | None:
     if value is None:
         return None
     return "***"
+
+
+def isMaskedSecret(value: str | None) -> bool:
+    """
+    Проверяет, является ли значение замаскированным секретом.
+
+    Возвращает True, если значение равно маске '***'.
+    """
+    return value == "***"

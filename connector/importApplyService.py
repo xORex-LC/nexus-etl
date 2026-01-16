@@ -185,6 +185,8 @@ def readPlanFromCsv(
         report_items_success=report_items_success,
         report_dir=report_dir,
     )
+    if service.last_plan:
+        return service.last_plan
     plan_path = report.meta.plan_file
     if not plan_path:
         raise ValueError("plan file not created")

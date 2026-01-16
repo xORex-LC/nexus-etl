@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
+from .sanitize import isMaskedSecret
 
 
 def _get_str(value: Any) -> str | None:
@@ -46,6 +47,9 @@ def readPlanFile(path: str) -> Plan:
     for raw in items_raw:
         if not isinstance(raw, dict):
             continue
+        desired_raw = raw.get("desired") if isinstance(raw.get("desired"), dict) else {}
+        if isMaskedSecret(desired_raw.get("password")):
+            desired_raw = {k: v for k, v in desired_raw.items() if k != "password"}
         items.append(
             PlanItem(
                 row_id=_get_str(raw.get("row_id")) or "",
@@ -54,7 +58,7 @@ def readPlanFile(path: str) -> Plan:
                 match_key=_get_str(raw.get("match_key")),
                 existing_id=_get_str(raw.get("existing_id")),
                 new_id=_get_str(raw.get("new_id")),
-                desired=raw.get("desired") if isinstance(raw.get("desired"), dict) else {},
+                desired=desired_raw if isinstance(desired_raw, dict) else {},
                 diff=raw.get("diff") if isinstance(raw.get("diff"), dict) else {},
                 errors=raw.get("errors") if isinstance(raw.get("errors"), list) else [],
                 warnings=raw.get("warnings") if isinstance(raw.get("warnings"), list) else [],

@@ -5,13 +5,20 @@ import logging
 from .cacheDb import ensureSchema
 from .interfaces import ImportPlanServiceProtocol
 from .loggingSetup import logEvent
+from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
 from .planner import build_import_plan, write_plan_file
+from .timeUtils import getNowIso
 
 
 class ImportPlanService(ImportPlanServiceProtocol):
     """
     Оркестратор построения плана импорта.
     """
+
+    def __init__(self) -> None:
+        # Храним последний построенный план в памяти (без маскирования пароля),
+        # чтобы apply мог использовать его напрямую без чтения файла.
+        self.last_plan: Plan | None = None
 
     def run(
         self,
@@ -44,6 +51,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
             report_items_limit=report_items_limit,
             report_items_success=report_items_success,
         )
+        generated_at = getNowIso()
         plan_meta = {
             "csv_path": csv_path,
             "include_deleted_users": include_deleted_users,
@@ -51,6 +59,40 @@ class ImportPlanService(ImportPlanServiceProtocol):
         }
         plan_path = write_plan_file(plan_items, summary, plan_meta, report_dir, run_id)
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
+
+        # Сохраняем немаскированный план для дальнейшего использования.
+        self.last_plan = Plan(
+            meta=PlanMeta(
+                run_id=run_id,
+                generated_at=generated_at,
+                csv_path=csv_path,
+                plan_path=plan_path,
+                include_deleted_users=include_deleted_users,
+                on_missing_org=on_missing_org,
+            ),
+            summary=PlanSummary(
+                rows_total=summary["rows_total"],
+                planned_create=summary["planned_create"],
+                planned_update=summary["planned_update"],
+                skipped=summary["skipped"],
+                failed=summary["failed"],
+            ),
+            items=[
+                PlanItem(
+                    row_id=item.get("row_id") or "",
+                    line_no=item.get("line_no"),
+                    action=item.get("action") or "",
+                    match_key=item.get("match_key"),
+                    existing_id=item.get("existing_id"),
+                    new_id=item.get("new_id"),
+                    desired=item.get("desired") or {},
+                    diff=item.get("diff") or {},
+                    errors=item.get("errors") or [],
+                    warnings=item.get("warnings") or [],
+                )
+                for item in plan_items
+            ],
+        )
 
         report.meta.plan_file = plan_path
         report.meta.include_deleted_users = include_deleted_users
