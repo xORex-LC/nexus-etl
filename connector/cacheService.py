@@ -200,6 +200,7 @@ def refreshCacheFromApi(
         retryBackoffSeconds=retryBackoffSeconds,
         transport=transport,
     )
+    client.resetRetryAttempts()
 
     inserted_users = updated_users = failed_users = skipped_deleted_users = 0
     deleted_included_users = 0
@@ -334,6 +335,7 @@ def refreshCacheFromApi(
     report.meta.max_pages = maxPages
     report.meta.timeout_seconds = timeoutSeconds
     report.meta.retries = retries
+    report.meta.retries_used = client.getRetryAttempts()
     report.meta.include_deleted_users = include_deleted
     report.meta.skipped_deleted_users = deleted_included_users if include_deleted else skipped_deleted_users
 

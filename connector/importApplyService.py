@@ -206,4 +206,5 @@ def createUserApiClient(settings, transport=None) -> UserApi:
         retryBackoffSeconds=settings.retry_backoff_seconds,
         transport=transport,
     )
+    client.resetRetryAttempts()
     return UserApi(client)

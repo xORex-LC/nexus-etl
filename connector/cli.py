@@ -524,6 +524,7 @@ def runImportApplyCommand(
         report.meta.max_actions = max_actions
         report.meta.dry_run = dry_run
         report.meta.resource_exists_retries = resource_exists_retries
+        report.meta.retries = settings.retries
 
         report.summary.planned_create = plan.summary.planned_create
         report.summary.planned_update = plan.summary.planned_update
@@ -532,7 +533,7 @@ def runImportApplyCommand(
 
         user_api = createUserApiClient(settings)
         service = ImportApplyService(user_api)
-        return service.applyPlan(
+        exit_code = service.applyPlan(
             plan=plan,
             logger=logger,
             report=report,
@@ -544,6 +545,9 @@ def runImportApplyCommand(
             report_items_success=report_items_success,
             resource_exists_retries=resource_exists_retries,
         )
+        if hasattr(user_api, "client"):
+            report.meta.retries_used = getattr(user_api.client, "getRetryAttempts", lambda: None)()
+        return exit_code
 
     runWithReport(
         ctx=ctx,

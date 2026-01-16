@@ -37,6 +37,7 @@ class AnkeyApiClient:
         self.password = password
         self.retries = retries
         self.retryBackoffSeconds = retryBackoffSeconds
+        self.retry_attempts = 0
 
         self.client = httpx.Client(
             base_url=self.baseUrl,
@@ -44,6 +45,12 @@ class AnkeyApiClient:
             verify=verify,
             transport=transport,
         )
+
+    def resetRetryAttempts(self) -> None:
+        self.retry_attempts = 0
+
+    def getRetryAttempts(self) -> int:
+        return self.retry_attempts
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -72,6 +79,7 @@ class AnkeyApiClient:
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 if attempt >= self.retries:
                     raise ApiError(f"Network error: {exc}") from exc
+                self.retry_attempts += 1
                 self._sleep_backoff(attempt)
                 attempt += 1
                 continue
@@ -80,6 +88,7 @@ class AnkeyApiClient:
                 return resp
 
             if self._should_retry(resp) and attempt < self.retries:
+                self.retry_attempts += 1
                 self._sleep_backoff(attempt)
                 attempt += 1
                 continue
@@ -110,6 +119,7 @@ class AnkeyApiClient:
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 if attempt >= self.retries:
                     raise ApiError(f"Network error: {exc}") from exc
+                self.retry_attempts += 1
                 self._sleep_backoff(attempt)
                 attempt += 1
                 continue
@@ -123,6 +133,7 @@ class AnkeyApiClient:
                 return resp.status_code, None
 
             if self._should_retry(resp) and attempt < self.retries:
+                self.retry_attempts += 1
                 self._sleep_backoff(attempt)
                 attempt += 1
                 continue
