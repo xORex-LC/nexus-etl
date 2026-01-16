@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
+from typing import Any, Callable, Optional
 
 from .models import CsvRow, EmployeeInput, ValidationErrorItem, ValidationRowResult
 from .loggingSetup import logEvent
@@ -38,90 +40,78 @@ def parseIntStrict(value: str) -> int:
 def validateEmail(value: str) -> bool:
     return EMAIL_RE.match(value) is not None
 
-def _required(value: str | None, field: str, errors: list[ValidationErrorItem]) -> None:
-    if value is None:
-        errors.append(ValidationErrorItem(code="REQUIRED_FIELD_MISSING", field=field, message=f"{field} is required"))
 
-def validateEmployeeRow(csvRow: CsvRow) -> tuple[EmployeeInput, ValidationRowResult]:
-    values = csvRow.values
-    email = values[0]
-    last_name = values[1]
-    first_name = values[2]
-    middle_name = values[3]
-    is_logon_disable_raw = values[4]
-    user_name = values[5]
-    phone = values[6]
-    password = values[7]
-    personnel_number = values[8]
-    manager_id_raw = values[9]
-    organization_id_raw = values[10]
-    position = values[11]
-    avatar_id_raw = values[12]
-    usr_org_tab_num = values[13]
+@dataclass
+class FieldRule:
+    name: str
+    index: int
+    required: bool = False
+    parser: Optional[
+        Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], Any]
+    ] = None
+    validators: tuple[Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], None], ...] = ()
 
-    errors: list[ValidationErrorItem] = []
-    warnings: list[ValidationErrorItem] = []
-
-    _required(email, "email", errors)
-    _required(last_name, "lastName", errors)
-    _required(first_name, "firstName", errors)
-    _required(middle_name, "middleName", errors)
-    _required(is_logon_disable_raw, "isLogonDisable", errors)
-    _required(user_name, "userName", errors)
-    _required(phone, "phone", errors)
-    _required(password, "password", errors)
-    _required(personnel_number, "personnelNumber", errors)
-    _required(organization_id_raw, "organization_id", errors)
-    _required(position, "position", errors)
-    _required(usr_org_tab_num, "usrOrgTabNum", errors)
-
-    is_logon_disable: bool | None = None
-    if is_logon_disable_raw is not None:
-        try:
-            is_logon_disable = parseBooleanStrict(is_logon_disable_raw)
-        except ValueError:
+    def apply(self, row_values: list[Any], errors: list[ValidationErrorItem], warnings: list[ValidationErrorItem]) -> Any:
+        raw = row_values[self.index] if self.index < len(row_values) else None
+        if self.required and raw is None:
             errors.append(
-                ValidationErrorItem(
-                    code="INVALID_BOOLEAN",
-                    field="isLogonDisable",
-                    message="isLogonDisable must be 'true' or 'false'",
-                )
+                ValidationErrorItem(code="REQUIRED_FIELD_MISSING", field=self.name, message=f"{self.name} is required")
             )
+        if raw is None:
+            return None
+        parsed = raw
+        if self.parser:
+            parsed = self.parser(raw, errors, warnings)
+        for validator in self.validators:
+            validator(parsed, errors, warnings)
+        return parsed
 
-    if email is not None and not validateEmail(email):
+
+def _email_validator(value: Any, errors: list[ValidationErrorItem], _: list[ValidationErrorItem]) -> None:
+    if value is None:
+        return
+    if not validateEmail(str(value)):
         errors.append(ValidationErrorItem(code="INVALID_EMAIL", field="email", message="email has invalid format"))
 
-    organization_id: int | None = None
-    if organization_id_raw is not None:
+
+def _boolean_parser(
+    value: Any, errors: list[ValidationErrorItem], _: list[ValidationErrorItem]
+) -> bool | None:
+    try:
+        return parseBooleanStrict(str(value))
+    except ValueError:
+        errors.append(
+            ValidationErrorItem(
+                code="INVALID_BOOLEAN",
+                field="isLogonDisable",
+                message="isLogonDisable must be 'true' or 'false'",
+            )
+        )
+        return None
+
+
+def _int_gt_zero_parser(field: str) -> Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], int | None]:
+    def _inner(value: Any, errors: list[ValidationErrorItem], _: list[ValidationErrorItem]) -> int | None:
         try:
-            organization_id = parseIntStrict(organization_id_raw)
-            if organization_id <= 0:
-                raise ValueError("organization_id must be > 0")
+            parsed = parseIntStrict(str(value))
+            if parsed <= 0:
+                raise ValueError()
+            return parsed
         except ValueError:
             errors.append(
                 ValidationErrorItem(
                     code="INVALID_INT",
-                    field="organization_id",
-                    message="organization_id must be an integer > 0",
+                    field=field,
+                    message=f"{field} must be an integer > 0",
                 )
             )
+            return None
 
-    manager_id: int | None = None
-    if manager_id_raw is not None:
-        try:
-            manager_id = parseIntStrict(manager_id_raw)
-            if manager_id <= 0:
-                raise ValueError("managerId must be > 0")
-        except ValueError:
-            errors.append(
-                ValidationErrorItem(
-                    code="INVALID_INT",
-                    field="managerId",
-                    message="managerId must be an integer > 0",
-                )
-            )
+    return _inner
 
-    if avatar_id_raw is not None:
+
+def _avatar_validator(value: Any, errors: list[ValidationErrorItem], _: list[ValidationErrorItem]) -> None:
+    if value is not None:
         errors.append(
             ValidationErrorItem(
                 code="INVALID_AVATAR_ID",
@@ -130,34 +120,133 @@ def validateEmployeeRow(csvRow: CsvRow) -> tuple[EmployeeInput, ValidationRowRes
             )
         )
 
+
+FIELD_RULES: tuple[FieldRule, ...] = (
+    FieldRule("email", 0, required=True, validators=(_email_validator,)),
+    FieldRule("lastName", 1, required=True),
+    FieldRule("firstName", 2, required=True),
+    FieldRule("middleName", 3, required=True),
+    FieldRule("isLogonDisable", 4, required=True, parser=_boolean_parser),
+    FieldRule("userName", 5, required=True),
+    FieldRule("phone", 6, required=True),
+    FieldRule("password", 7, required=True),
+    FieldRule("personnelNumber", 8, required=True),
+    FieldRule("managerId", 9, parser=_int_gt_zero_parser("managerId")),
+    FieldRule("organization_id", 10, required=True, parser=_int_gt_zero_parser("organization_id")),
+    FieldRule("position", 11, required=True),
+    FieldRule("avatarId", 12, validators=(_avatar_validator,)),
+    FieldRule("usrOrgTabNum", 13, required=True),
+)
+
+
+@dataclass
+class ValidationContext:
+    matchkey_seen: dict[str, int]
+    usr_org_tab_seen: dict[str, int]
+    org_lookup: Callable[[int], Any] | None = None
+    on_missing_org: str = "error"
+
+
+def _collect_fields(csvRow: CsvRow) -> tuple[dict[str, Any], list[ValidationErrorItem], list[ValidationErrorItem]]:
+    errors: list[ValidationErrorItem] = []
+    warnings: list[ValidationErrorItem] = []
+    values: dict[str, Any] = {}
+    for rule in FIELD_RULES:
+        values[rule.name] = rule.apply(csvRow.values, errors, warnings)
+    return values, errors, warnings
+
+
+def validateEmployeeRow(csvRow: CsvRow) -> tuple[EmployeeInput, ValidationRowResult]:
+    values, errors, warnings = _collect_fields(csvRow)
+
     employee = EmployeeInput(
-        email=email,
-        last_name=last_name,
-        first_name=first_name,
-        middle_name=middle_name,
-        is_logon_disable=is_logon_disable,
-        user_name=user_name,
-        phone=phone,
-        password=password,
-        personnel_number=personnel_number,
-        manager_id=manager_id,
-        organization_id=organization_id,
-        position=position,
-        avatar_id=avatar_id_raw,
-        usr_org_tab_num=usr_org_tab_num,
+        email=values.get("email"),
+        last_name=values.get("lastName"),
+        first_name=values.get("firstName"),
+        middle_name=values.get("middleName"),
+        is_logon_disable=values.get("isLogonDisable"),
+        user_name=values.get("userName"),
+        phone=values.get("phone"),
+        password=values.get("password"),
+        personnel_number=values.get("personnelNumber"),
+        manager_id=values.get("managerId"),
+        organization_id=values.get("organization_id"),
+        position=values.get("position"),
+        avatar_id=values.get("avatarId"),
+        usr_org_tab_num=values.get("usrOrgTabNum"),
     )
 
     match_key = buildMatchKey(employee)
-    match_key_complete = all([last_name, first_name, middle_name, personnel_number])
+    match_key_complete = all(
+        [employee.last_name, employee.first_name, employee.middle_name, employee.personnel_number]
+    )
 
     result = ValidationRowResult(
         line_no=csvRow.file_line_no,
         match_key=match_key,
         match_key_complete=match_key_complete,
-        usr_org_tab_num=usr_org_tab_num,
+        usr_org_tab_num=employee.usr_org_tab_num,
         errors=errors,
         warnings=warnings,
     )
+    return employee, result
+
+
+def _apply_cross_checks(
+    employee: EmployeeInput,
+    result: ValidationRowResult,
+    ctx: ValidationContext,
+) -> None:
+    # Уникальность match_key
+    if result.match_key_complete:
+        prev_line = ctx.matchkey_seen.get(result.match_key)
+        if prev_line is not None:
+            result.errors.append(
+                ValidationErrorItem(code="DUPLICATE_MATCHKEY", field="matchKey", message=f"duplicate of line {prev_line}")
+            )
+        else:
+            ctx.matchkey_seen[result.match_key] = result.line_no
+    else:
+        result.errors.append(
+            ValidationErrorItem(code="MATCH_KEY_MISSING", field="matchKey", message="match_key cannot be built")
+        )
+
+    # Уникальность usr_org_tab_num
+    if result.usr_org_tab_num:
+        prev_line = ctx.usr_org_tab_seen.get(result.usr_org_tab_num)
+        if prev_line is not None:
+            result.errors.append(
+                ValidationErrorItem(
+                    code="DUPLICATE_USR_ORG_TAB_NUM", field="usrOrgTabNum", message=f"duplicate of line {prev_line}"
+                )
+            )
+        else:
+            ctx.usr_org_tab_seen[result.usr_org_tab_num] = result.line_no
+
+    # Проверка наличия организации (если есть lookup)
+    if ctx.org_lookup and employee.organization_id is not None:
+        org_exists = ctx.org_lookup(employee.organization_id)
+        if org_exists is None:
+            if ctx.on_missing_org == "error":
+                result.errors.append(
+                    ValidationErrorItem(
+                        code="ORG_NOT_FOUND", field="organization_id", message="organization_id not found in cache"
+                    )
+                )
+            elif ctx.on_missing_org == "warn-and-skip":
+                result.warnings.append(
+                    ValidationErrorItem(
+                        code="ORG_NOT_FOUND", field="organization_id", message="organization_id not found in cache"
+                    )
+                )
+
+
+def validateEmployeeRowWithContext(
+    csvRow: CsvRow,
+    ctx: ValidationContext,
+) -> tuple[EmployeeInput, ValidationRowResult]:
+    employee, result = validateEmployeeRow(csvRow)
+    _apply_cross_checks(employee, result, ctx)
     return employee, result
 
 

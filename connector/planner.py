@@ -14,7 +14,12 @@ from .matcher import MatchResult, matchEmployeeByMatchKey
 from .models import ValidationErrorItem
 from .sanitize import maskSecret
 from .timeUtils import getNowIso
-from .validator import buildMatchKey, logValidationFailure, validateEmployeeRow
+from .validator import (
+    ValidationContext,
+    buildMatchKey,
+    logValidationFailure,
+    validateEmployeeRowWithContext,
+)
 
 
 def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -53,8 +58,12 @@ def build_import_plan(
     rows_processed = 0
     failed_rows = 0
     planned_create = planned_update = skipped_rows = 0
-    matchkey_seen: dict[str, int] = {}
-    usr_org_tab_seen: dict[str, int] = {}
+    ctx = ValidationContext(
+        matchkey_seen={},
+        usr_org_tab_seen={},
+        org_lookup=(lambda ouid: getOrgByOuid(conn, ouid)),
+        on_missing_org=on_missing_org,
+    )
 
     def append_report_item(item: dict[str, Any], status: str) -> int | None:
         if status not in ("failed", "skipped") and not report_items_success:
@@ -81,44 +90,11 @@ def build_import_plan(
     try:
         for csvRow in readEmployeeRows(csv_path, hasHeader=csv_has_header):
             rows_processed += 1
-            employee, validation = validateEmployeeRow(csvRow)
+            employee, validation = validateEmployeeRowWithContext(csvRow, ctx)
             errors = list(validation.errors)
             warnings = list(validation.warnings)
             desired = employee.__dict__.copy()
-
-            if validation.match_key_complete:
-                prev_line = matchkey_seen.get(validation.match_key)
-                if prev_line is not None:
-                    errors.append(
-                        _validation_error("DUPLICATE_MATCHKEY", "matchKey", f"duplicate of line {prev_line}")
-                    )
-                else:
-                    matchkey_seen[validation.match_key] = validation.line_no
-            else:
-                errors.append(_validation_error("MATCH_KEY_MISSING", "matchKey", "match_key cannot be built"))
-
-            if validation.usr_org_tab_num:
-                prev_line = usr_org_tab_seen.get(validation.usr_org_tab_num)
-                if prev_line is not None:
-                    errors.append(
-                        _validation_error("DUPLICATE_USR_ORG_TAB_NUM", "usrOrgTabNum", f"duplicate of line {prev_line}")
-                    )
-                else:
-                    usr_org_tab_seen[validation.usr_org_tab_num] = validation.line_no
-
             match_key = buildMatchKey(employee)
-            org_exists = None
-            if employee.organization_id is not None:
-                org_exists = getOrgByOuid(conn, employee.organization_id)
-            if org_exists is None:
-                if on_missing_org == "error":
-                    errors.append(
-                        _validation_error("ORG_NOT_FOUND", "organization_id", "organization_id not found in cache")
-                    )
-                elif on_missing_org == "warn-and-skip":
-                    warnings.append(
-                        _validation_error("ORG_NOT_FOUND", "organization_id", "organization_id not found in cache")
-                    )
 
             if errors:
                 failed_rows += 1
@@ -144,7 +120,7 @@ def build_import_plan(
                 )
                 continue
 
-            if on_missing_org == "warn-and-skip" and org_exists is None:
+            if on_missing_org == "warn-and-skip" and any(e.code == "ORG_NOT_FOUND" for e in errors):
                 skipped_rows += 1
                 item = {
                     "row_id": f"line:{validation.line_no}",
@@ -153,10 +129,7 @@ def build_import_plan(
                     "match_key": match_key,
                     "desired": desired,
                     "errors": [],
-                    "warnings": [w.__dict__ for w in warnings]
-                    + [
-                        {"code": "ORG_NOT_FOUND", "field": "organization_id", "message": "organization_id not found in cache"}
-                    ],
+                    "warnings": [w.__dict__ for w in warnings],
                 }
                 plan_items.append(item)
                 append_report_item(item, "skipped")

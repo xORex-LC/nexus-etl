@@ -15,7 +15,6 @@ from .cacheCommandService import CacheCommandService
 from .config import Settings, loadSettings
 from .csvReader import CsvFormatError, readEmployeeRows
 from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
-from .models import ValidationErrorItem
 from .importApplyService import ImportApplyService, createUserApiClient, readPlanFromCsv
 from .importPlanService import ImportPlanService
 from .planReader import readPlanFile
@@ -23,7 +22,7 @@ from .interfaces import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs
-from .validator import logValidationFailure, validateEmployeeRow
+from .validator import ValidationContext, logValidationFailure, validateEmployeeRowWithContext
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
@@ -603,37 +602,14 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         warning_rows = 0
         matchkey_seen: dict[str, int] = {}
         usr_org_tab_seen: dict[str, int] = {}
+        ctx_validation = ValidationContext(
+            matchkey_seen=matchkey_seen, usr_org_tab_seen=usr_org_tab_seen, org_lookup=None, on_missing_org="error"
+        )
 
         try:
             for csvRow in readEmployeeRows(csvPath, hasHeader=csv_has_header):
-                _employee, result = validateEmployeeRow(csvRow)
+                _employee, result = validateEmployeeRowWithContext(csvRow, ctx_validation)
                 rows_processed += 1
-
-                if result.match_key_complete:
-                    prev_line = matchkey_seen.get(result.match_key)
-                    if prev_line is not None:
-                        result.errors.append(
-                            ValidationErrorItem(
-                                code="DUPLICATE_MATCHKEY",
-                                field="matchKey",
-                                message=f"duplicate of line {prev_line}",
-                            )
-                        )
-                    else:
-                        matchkey_seen[result.match_key] = result.line_no
-
-                if result.usr_org_tab_num:
-                    prev_line = usr_org_tab_seen.get(result.usr_org_tab_num)
-                    if prev_line is not None:
-                        result.errors.append(
-                            ValidationErrorItem(
-                                code="DUPLICATE_USR_ORG_TAB_NUM",
-                                field="usrOrgTabNum",
-                                message=f"duplicate of line {prev_line}",
-                            )
-                        )
-                    else:
-                        usr_org_tab_seen[result.usr_org_tab_num] = result.line_no
 
                 status = "valid" if result.valid else "invalid"
                 if not result.valid:
