@@ -18,7 +18,7 @@ from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger, log
 from .importApplyService import ImportApplyService, createUserApiClient, readPlanFromCsv
 from .importPlanService import ImportPlanService
 from .planReader import readPlanFile
-from .interfaces import CacheCommandServiceProtocol, ImportPlanServiceProtocol
+from .protocols_services import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs

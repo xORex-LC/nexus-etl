@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from .cacheDb import ensureSchema
-from .interfaces import ImportPlanServiceProtocol
+from .protocols_services import ImportPlanServiceProtocol
 from .loggingSetup import logEvent
 from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
 from .planner import build_import_plan, write_plan_file

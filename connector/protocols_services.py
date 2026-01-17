@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
-
-
-@runtime_checkable
-class ApiClientProtocol(Protocol):
-    def getJson(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
-    def getPagedItems(self, path: str, pageSize: int, maxPages: int) -> Any: ...
+from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
 class ImportPlanServiceProtocol(Protocol):
+    """
+    Назначение:
+        Контракт для сервиса построения плана импорта.
+    """
+
     def run(
         self,
         conn,
@@ -29,6 +28,11 @@ class ImportPlanServiceProtocol(Protocol):
 
 @runtime_checkable
 class CacheCommandServiceProtocol(Protocol):
+    """
+    Назначение:
+        Контракт для сервисов работы с кэшем (refresh/status/clear).
+    """
+
     def refresh(
         self,
         conn,
@@ -51,14 +55,4 @@ class CacheCommandServiceProtocol(Protocol):
     def clear(self, conn, logger, report, run_id: str) -> tuple[int, dict]: ...
 
 
-@runtime_checkable
-class UserApiProtocol(Protocol):
-    def upsertUser(self, resourceId: str, payload: dict[str, Any]) -> tuple[int, Any]: ...
-
-
-__all__ = [
-    "ApiClientProtocol",
-    "ImportPlanServiceProtocol",
-    "CacheCommandServiceProtocol",
-    "UserApiProtocol",
-]
+__all__ = ["ImportPlanServiceProtocol", "CacheCommandServiceProtocol"]

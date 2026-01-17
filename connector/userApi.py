@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .ankeyApiClient import AnkeyApiClient
-from .interfaces import UserApiProtocol
+from .protocols_api import UserApiProtocol
 
 
 class UserApi(UserApiProtocol):

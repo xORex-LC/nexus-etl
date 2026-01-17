@@ -7,8 +7,80 @@ from typing import Any, Callable, Optional
 
 from .models import CsvRow, EmployeeInput, ValidationErrorItem, ValidationRowResult
 from .loggingSetup import logEvent
+from .protocols_lookup import MatchKeyLookupProtocol, OrgLookupProtocol, UserLookupProtocol
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@dataclass
+class ValidationDependencies:
+    """
+    Назначение:
+        Описывает внешние зависимости валидатора (кэши/репозитории), чтобы
+        отделить валидацию от конкретной реализации хранилища.
+
+    Инварианты:
+        - Все поля могут быть None, если конкретная проверка не нужна.
+        - Объекты реализуют соответствующие Protocol из modules protocols_lookup.py.
+
+    Взаимодействия:
+        - Передаётся фабрике валидаторов, которая решает, какие проверки включать.
+    """
+
+    org_lookup: OrgLookupProtocol | None = None
+    user_lookup: UserLookupProtocol | None = None
+    matchkey_lookup: MatchKeyLookupProtocol | None = None
+
+
+class ValidatorFactory:
+    """
+    Назначение/ответственность:
+        Собирает и конфигурирует валидаторы для строк и датасета, подставляя
+        внешние зависимости (кэш) через интерфейсы.
+
+    Взаимодействия:
+        - Создаёт ValidationContext с нужными lookup-ами.
+        - Возвращает callable для валидации строки в текущей реализации.
+
+    Ограничения:
+        - Потокобезопасность на совести вызывающего; фабрика не хранит состояния.
+    """
+
+    def __init__(self, deps: ValidationDependencies, on_missing_org: str = "error") -> None:
+        """
+        Контракт:
+            deps: внешние источники данных (может быть пустым).
+            on_missing_org: политика отсутствующей организации (пока совместимо
+            с текущей реализацией).
+        """
+        self.deps = deps
+        self.on_missing_org = on_missing_org
+
+    def create_validation_context(self) -> ValidationContext:
+        """
+        Назначение:
+            Формирует ValidationContext с переданными lookup-ами.
+
+        Выходные данные:
+            ValidationContext — содержит накопители уникальностей и lookup-функции.
+        """
+        return ValidationContext(
+            matchkey_seen={},
+            usr_org_tab_seen={},
+            org_lookup=(lambda ouid: self.deps.org_lookup.get_org_by_id(ouid)) if self.deps.org_lookup else None,
+            on_missing_org=self.on_missing_org,
+        )
+
+    def create_row_validator(self) -> Callable[[CsvRow], tuple[EmployeeInput, ValidationRowResult]]:
+        """
+        Назначение:
+            Возвращает функцию для валидации одной строки CSV.
+
+        Контракт:
+            Принимает CsvRow, возвращает (EmployeeInput, ValidationRowResult).
+            Исключения не перехватываются — вызывающий отвечает за обработку.
+        """
+        return validateEmployeeRow
 
 def normalizeWhitespace(value: str | None) -> str | None:
     if value is None:

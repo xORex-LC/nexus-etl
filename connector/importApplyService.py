@@ -9,7 +9,7 @@ from .importPlanService import ImportPlanService
 from .loggingSetup import logEvent
 from .planModels import Plan
 from .planReader import readPlanFile
-from .interfaces import UserApiProtocol
+from .protocols_api import UserApiProtocol
 from .userApi import UserApi
 from .userPayloadBuilder import buildUserUpsertPayload
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from .cacheService import clearCache, getCacheStatus, refreshCacheFromApi
-from .interfaces import CacheCommandServiceProtocol
+from .protocols_services import CacheCommandServiceProtocol
 from .loggingSetup import logEvent
 
 
