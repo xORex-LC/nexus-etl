@@ -9,7 +9,6 @@ from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
 from .planner import build_import_plan, write_plan_file
 from .timeUtils import getNowIso
 
-
 class ImportPlanService(ImportPlanServiceProtocol):
     """
     Оркестратор построения плана импорта.
@@ -34,9 +33,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
         report_items_success: bool,
         report_dir: str,
     ) -> int:
-        if on_missing_org not in ("error", "warn-and-skip"):
-            raise ValueError("on_missing_org must be 'error' or 'warn-and-skip'")
-
         ensureSchema(conn)
 
         plan_items, summary = build_import_plan(

@@ -208,7 +208,6 @@ def parseIntAny(value: int | str | None) -> int | None:
         return int(value.strip())
     raise ValueError(f"Invalid int value type: {type(value)}")
 
-
 def parseBoolAny(value: bool | str | None) -> bool | None:
     """
     Назначение:
@@ -228,7 +227,6 @@ def parseBoolAny(value: bool | str | None) -> bool | None:
         return parseBool(value.strip())
     raise ValueError(f"Invalid bool value type: {type(value)}")
 
-
 def parseFloatAny(value: float | str | None) -> float | None:
     """
     Назначение:
@@ -241,19 +239,6 @@ def parseFloatAny(value: float | str | None) -> float | None:
     if isinstance(value, str):
         return float(value.strip())
     raise ValueError(f"Invalid float value type: {type(value)}")
-
-
-def parseOnMissingOrg(value: str | None) -> str | None:
-    """
-    Назначение:
-        Валидирует значение политики отсутствующей организации.
-    """
-    if value is None:
-        return None
-    v = value.strip().lower()
-    if v in ("error", "warn-and-skip"):
-        return v
-    raise ValueError(f"Invalid on_missing_org value: {value}")
 
 def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings:
     """
@@ -341,7 +326,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "include_deleted_users": cfg.get("include_deleted_users", defaults.include_deleted_users),
         "report_items_limit": cfg.get("report_items_limit", defaults.report_items_limit),
         "report_items_success": cfg.get("report_items_success", defaults.report_items_success),
-        "on_missing_org": cfg.get("on_missing_org", defaults.on_missing_org),
+        "on_missing_org": defaults.on_missing_org,  # warn-and-skip удалён; всегда error
         "resource_exists_retries": cfg.get("resource_exists_retries", defaults.resource_exists_retries),
         "csv_has_header": cfg.get("csv_has_header", defaults.csv_has_header),
         "stop_on_first_error": cfg.get("stop_on_first_error", defaults.stop_on_first_error),
@@ -393,7 +378,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
     if env["report_items_success"] is not None:
         merged["report_items_success"] = parseBool(env["report_items_success"])
     if env["on_missing_org"] is not None:
-        merged["on_missing_org"] = parseOnMissingOrg(env["on_missing_org"])
+        merged["on_missing_org"] = env["on_missing_org"]
     if env["resource_exists_retries"] is not None:
         merged["resource_exists_retries"] = parseInt(env["resource_exists_retries"])
     if env["csv_has_header"] is not None:
@@ -433,7 +418,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         include_deleted_users=parseBoolAny(merged["include_deleted_users"]) or False,
         report_items_limit=parseIntAny(merged["report_items_limit"]) or defaults.report_items_limit,
         report_items_success=parseBoolAny(merged["report_items_success"]) or False,
-        on_missing_org=parseOnMissingOrg(merged["on_missing_org"]) or defaults.on_missing_org,
+        on_missing_org=merged.get("on_missing_org") or defaults.on_missing_org,
         resource_exists_retries=parseIntAny(merged["resource_exists_retries"]) or defaults.resource_exists_retries,
         csv_has_header=parseBoolAny(merged["csv_has_header"]) or False,
         stop_on_first_error=parseBoolAny(merged["stop_on_first_error"]) or False,

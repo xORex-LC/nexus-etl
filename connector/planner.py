@@ -63,7 +63,7 @@ def build_import_plan(
 
     factory = ValidatorFactory(
         ValidationDependencies(org_lookup=_OrgLookupAdapter(conn)),
-        on_missing_org=on_missing_org,
+        on_missing_org="error",
     )
     row_validator = factory.create_row_validator()
     state = factory.create_validation_context()
@@ -127,21 +127,6 @@ def build_import_plan(
                     errors=errors,
                     warnings=warnings,
                 )
-                continue
-
-            if on_missing_org == "warn-and-skip" and any(e.code == "ORG_NOT_FOUND" for e in errors):
-                skipped_rows += 1
-                item = {
-                    "row_id": f"line:{validation.line_no}",
-                    "line_no": validation.line_no,
-                    "action": "skip",
-                    "match_key": match_key,
-                    "desired": desired,
-                    "errors": [],
-                    "warnings": [w.__dict__ for w in warnings],
-                }
-                plan_items.append(item)
-                append_report_item(item, "skipped")
                 continue
 
             match_result: MatchResult = matchEmployeeByMatchKey(conn, match_key, include_deleted_users)

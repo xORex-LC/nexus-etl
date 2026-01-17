@@ -78,15 +78,8 @@ class OrgExistsRule:
             return
         org_exists = deps.org_lookup.get_org_by_id(employee.organization_id)
         if org_exists is None:
-            if on_missing_org == "error":
-                result.errors.append(
-                    ValidationErrorItem(
-                        code="ORG_NOT_FOUND", field="organization_id", message="organization_id not found in cache"
-                    )
+            result.errors.append(
+                ValidationErrorItem(
+                    code="ORG_NOT_FOUND", field="organization_id", message="organization_id not found in cache"
                 )
-            elif on_missing_org == "warn-and-skip":
-                result.warnings.append(
-                    ValidationErrorItem(
-                        code="ORG_NOT_FOUND", field="organization_id", message="organization_id not found in cache"
-                    )
-                )
+            )

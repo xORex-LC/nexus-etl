@@ -221,7 +221,6 @@ def runWithReport(
         if exitCode is not None:
             raise typer.Exit(code=exitCode)
 
-
 def runCacheRefreshCommand(
     ctx: typer.Context,
     pageSize: int | None,
@@ -295,7 +294,6 @@ def runCacheRefreshCommand(
         runner=execute,
     )
 
-
 def runCacheStatusCommand(ctx: typer.Context) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -366,13 +364,11 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
         runner=execute,
     )
 
-
 def runImportPlanCommand(
     ctx: typer.Context,
     csvPath: str | None,
     csvHasHeader: bool | None,
     includeDeletedUsers: bool | None,
-    onMissingOrg: str | None,
     reportItemsLimit: int | None,
     reportItemsSuccess: bool | None,
 ) -> None:
@@ -389,7 +385,7 @@ def runImportPlanCommand(
             return 2
 
         include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
-        on_missing = (onMissingOrg or settings.on_missing_org or "error").lower()
+        on_missing = "error"
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
         report_items_success = (
             reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
@@ -436,7 +432,6 @@ def runImportPlanCommand(
         runner=execute,
     )
 
-
 def runImportApplyCommand(
     ctx: typer.Context,
     csvPath: str | None,
@@ -446,7 +441,6 @@ def runImportApplyCommand(
     maxActions: int | None,
     dryRun: bool | None,
     includeDeletedUsers: bool | None,
-    onMissingOrg: str | None,
     reportItemsLimit: int | None,
     reportItemsSuccess: bool | None,
     resourceExistsRetries: int | None,
@@ -461,7 +455,7 @@ def runImportApplyCommand(
             return 2
 
         include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
-        on_missing = (onMissingOrg or settings.on_missing_org or "error").lower()
+        on_missing = "error"
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
         report_items_success = (
             reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
@@ -781,12 +775,6 @@ def importPlan(
         help="Include deleted users in matching",
         show_default=True,
     ),
-    onMissingOrg: str | None = typer.Option(
-        None,
-        "--on-missing-org",
-        help="Policy when organization_id missing in cache: error|warn-and-skip",
-        case_sensitive=False,
-    ),
     reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
     reportItemsSuccess: bool | None = typer.Option(
         None,
@@ -800,11 +788,9 @@ def importPlan(
         csvPath=csv,
         csvHasHeader=csvHasHeader,
         includeDeletedUsers=includeDeletedUsers,
-        onMissingOrg=onMissingOrg.lower() if onMissingOrg else None,
         reportItemsLimit=reportItemsLimit,
         reportItemsSuccess=reportItemsSuccess,
     )
-
 
 @importApp.command("apply")
 def importApply(
@@ -825,12 +811,6 @@ def importApply(
         "--include-deleted-users/--no-include-deleted-users",
         help="Include deleted users in matching when building plan from CSV",
         show_default=True,
-    ),
-    onMissingOrg: str | None = typer.Option(
-        None,
-        "--on-missing-org",
-        help="Policy when organization_id missing in cache: error|warn-and-skip",
-        case_sensitive=False,
     ),
     resourceExistsRetries: int | None = typer.Option(
         None,
@@ -854,7 +834,6 @@ def importApply(
         maxActions=maxActions,
         dryRun=dryRun,
         includeDeletedUsers=includeDeletedUsers,
-        onMissingOrg=onMissingOrg.lower() if onMissingOrg else None,
         reportItemsLimit=reportItemsLimit,
         reportItemsSuccess=reportItemsSuccess,
         resourceExistsRetries=resourceExistsRetries,
