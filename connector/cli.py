@@ -22,7 +22,9 @@ from .protocols_services import CacheCommandServiceProtocol, ImportPlanServicePr
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs
-from .validator import ValidationContext, logValidationFailure, validateEmployeeRowWithContext
+from .validator import logValidationFailure
+from .validation.deps import ValidationDependencies
+from .validation.pipeline import ValidatorFactory
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
@@ -605,15 +607,15 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         rows_processed = 0
         failed_rows = 0
         warning_rows = 0
-        matchkey_seen: dict[str, int] = {}
-        usr_org_tab_seen: dict[str, int] = {}
-        ctx_validation = ValidationContext(
-            matchkey_seen=matchkey_seen, usr_org_tab_seen=usr_org_tab_seen, org_lookup=None, on_missing_org="error"
-        )
+        factory = ValidatorFactory(ValidationDependencies(), on_missing_org="error")
+        row_validator = factory.create_row_validator()
+        state = factory.create_validation_context()
+        dataset_validator = factory.create_dataset_validator(state)
 
         try:
             for csvRow in readEmployeeRows(csvPath, hasHeader=csv_has_header):
-                _employee, result = validateEmployeeRowWithContext(csvRow, ctx_validation)
+                _employee, result = row_validator.validate(csvRow)
+                dataset_validator.validate(_employee, result)
                 rows_processed += 1
 
                 status = "valid" if result.valid else "invalid"

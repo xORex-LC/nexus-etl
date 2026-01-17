@@ -14,7 +14,9 @@ from .matcher import MatchResult, matchEmployeeByMatchKey
 from .models import ValidationErrorItem
 from .sanitize import maskSecret
 from .timeUtils import getNowIso
-from .validator import ValidationContext, logValidationFailure, validateEmployeeRowWithContext, buildMatchKey
+from .validator import logValidationFailure
+from .validation.pipeline import ValidatorFactory
+from .validation.deps import ValidationDependencies
 
 def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
     """Возвращает копию item с маскированием чувствительных данных."""
@@ -50,12 +52,22 @@ def build_import_plan(
     rows_processed = 0
     failed_rows = 0
     planned_create = planned_update = skipped_rows = 0
-    ctx = ValidationContext(
-        matchkey_seen={},
-        usr_org_tab_seen={},
-        org_lookup=(lambda ouid: getOrgByOuid(conn, ouid)),
+    class _OrgLookupAdapter:
+        """Адаптер для получения организаций из кэша по протоколу валидатора."""
+
+        def __init__(self, conn):
+            self.conn = conn
+
+        def get_org_by_id(self, ouid: int):
+            return getOrgByOuid(self.conn, ouid)
+
+    factory = ValidatorFactory(
+        ValidationDependencies(org_lookup=_OrgLookupAdapter(conn)),
         on_missing_org=on_missing_org,
     )
+    row_validator = factory.create_row_validator()
+    state = factory.create_validation_context()
+    dataset_validator = factory.create_dataset_validator(state)
 
     def append_report_item(item: dict[str, Any], status: str) -> int | None:
         if status not in ("failed", "skipped") and not report_items_success:
@@ -86,11 +98,12 @@ def build_import_plan(
     try:
         for csvRow in readEmployeeRows(csv_path, hasHeader=csv_has_header):
             rows_processed += 1
-            employee, validation = validateEmployeeRowWithContext(csvRow, ctx)
+            employee, validation = row_validator.validate(csvRow)
+            dataset_validator.validate(employee, validation)
             errors = list(validation.errors)
             warnings = list(validation.warnings)
             desired = employee.__dict__.copy()
-            match_key = buildMatchKey(employee)
+            match_key = validation.match_key
 
             if errors:
                 failed_rows += 1
