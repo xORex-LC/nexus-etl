@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .validator import normalizeWhitespace
-
+from .validation.row_rules import normalize_whitespace as normalizeWhitespace
 
 def _to_str_or_none(value: Any) -> str | None:
     if value is None:
@@ -17,7 +16,6 @@ def _to_str_or_none(value: Any) -> str | None:
         return trimmed or None
     return str(value)
 
-
 def _to_int_or_none(value: Any) -> int | None:
     if value is None or value == "":
         return None
@@ -29,7 +27,6 @@ def _to_int_or_none(value: Any) -> int | None:
         return int(value.strip())
     return int(value)
 
-
 def _build_match_key(last_name: str | None, first_name: str | None, middle_name: str | None, personnel_number: str | None) -> str:
     parts = [
         normalizeWhitespace(_to_str_or_none(last_name)) or "",
@@ -39,13 +36,11 @@ def _build_match_key(last_name: str | None, first_name: str | None, middle_name:
     ]
     return "|".join(parts)
 
-
 def _get_first(item: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         if key in item:
             return item[key]
     return None
-
 
 def _require(value: Any, field: str) -> Any:
     """
@@ -56,7 +51,6 @@ def _require(value: Any, field: str) -> Any:
     if isinstance(value, str) and value.strip() == "":
         raise ValueError(f"Missing required field: {field}")
     return value
-
 
 def _to_bool_int(value: Any) -> int | None:
     if value is None:
@@ -72,7 +66,6 @@ def _to_bool_int(value: Any) -> int | None:
         if v in ("0", "false", "no", "n"):
             return 0
     raise ValueError("Invalid boolean value for is_logon_disabled")
-
 
 def mapUserFromApi(item: dict[str, Any]) -> dict[str, Any]:
     _id = _to_str_or_none(_get_first(item, "_id", "id"))
@@ -119,7 +112,6 @@ def mapUserFromApi(item: dict[str, Any]) -> dict[str, Any]:
         "position": _to_str_or_none(item.get("position")),
         "updated_at": _to_str_or_none(_get_first(item, "updated_at", "updatedAt")),
     }
-
 
 def mapOrgFromApi(item: dict[str, Any]) -> dict[str, Any]:
     _ouid = _to_int_or_none(_get_first(item, "_ouid", "ouid", "id"))

@@ -14,13 +14,7 @@ from .matcher import MatchResult, matchEmployeeByMatchKey
 from .models import ValidationErrorItem
 from .sanitize import maskSecret
 from .timeUtils import getNowIso
-from .validator import (
-    ValidationContext,
-    buildMatchKey,
-    logValidationFailure,
-    validateEmployeeRowWithContext,
-)
-
+from .validator import ValidationContext, logValidationFailure, validateEmployeeRowWithContext, buildMatchKey
 
 def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
     """Возвращает копию item с маскированием чувствительных данных."""
@@ -33,10 +27,8 @@ def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
         masked["desired"] = desired_copy
     return masked
 
-
 def _validation_error(code: str, field: str | None, message: str) -> ValidationErrorItem:
     return ValidationErrorItem(code=code, field=field, message=message)
-
 
 def build_import_plan(
     conn,
@@ -223,7 +215,6 @@ def build_import_plan(
         "failed": failed_rows,
     }
     return plan_items, summary
-
 
 def write_plan_file(
     plan_items: list[dict[str, Any]],
