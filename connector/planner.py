@@ -14,7 +14,7 @@ from .matcher import MatchResult, matchEmployeeByMatchKey
 from .models import ValidationErrorItem
 from .sanitize import maskSecret
 from .timeUtils import getNowIso
-from .validator import logValidationFailure
+from .validation.pipeline import logValidationFailure
 from .validation.pipeline import ValidatorFactory
 from .validation.deps import ValidationDependencies
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Protocol
 
 from ..models import CsvRow, EmployeeInput, ValidationErrorItem, ValidationRowResult
@@ -206,3 +207,35 @@ def validateEmployeeRowWithContext(csvRow: CsvRow, ctx) -> tuple[EmployeeInput, 
     )
     dataset_validator.validate(employee, result)
     return employee, result
+
+# Совместимость: логирование валидации
+def logValidationFailure(
+    logger,
+    run_id: str,
+    context: str,
+    result: ValidationRowResult,
+    report_item_index: int | None,
+    errors: list[ValidationErrorItem] | None = None,
+    warnings: list[ValidationErrorItem] | None = None,
+) -> None:
+    """
+    Назначение:
+        Логирует информацию о невалидной строке CSV.
+    """
+    eff_errors = errors if errors is not None else result.errors
+    eff_warnings = warnings if warnings is not None else result.warnings
+
+    codes: list[str] = []
+    codes.extend(e.code for e in eff_errors)
+    codes.extend(w.code for w in eff_warnings)
+    code_str = ",".join(sorted(set(codes))) if codes else "none"
+    index_str = (
+        str(report_item_index)
+        if report_item_index is not None
+        else f"line:{result.line_no} (not stored: limit reached)"
+    )
+    logger.log(
+        logging.WARNING,
+        f"invalid row line={result.line_no} report_item_index={index_str} errors={code_str}",
+        extra={"runId": run_id, "component": context},
+    )

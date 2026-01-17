@@ -22,7 +22,7 @@ from .protocols_services import CacheCommandServiceProtocol, ImportPlanServicePr
 from .reporter import createEmptyReport, finalizeReport, writeReportJson
 from .sanitize import maskSecret
 from .timeUtils import getDurationMs
-from .validator import logValidationFailure
+from .validation.pipeline import logValidationFailure
 from .validation.deps import ValidationDependencies
 from .validation.pipeline import ValidatorFactory
 
