@@ -12,3 +12,4 @@ reports/
 cache/
 config.yml
 .vscode
+.VSCode*
