@@ -17,7 +17,6 @@ from .cacheRepo import (
     upsertUser,
 )
 from .cacheSourceApi import mapOrgFromApi, mapUserFromApi
-from .cacheSourceJson import loadOrganizationsFromJson, loadUsersFromJson
 from .loggingSetup import logEvent
 from .timeUtils import getNowIso
 
@@ -44,131 +43,6 @@ def _append_item_limited(report, entity_type: str, key: str, status: str, error:
             pass
         return
     _append_item(report, entity_type, key, status, error)
-
-def refreshCacheFromJson(
-    conn,
-    usersJsonPath: str | None,
-    orgJsonPath: str | None,
-    logger,
-    report,
-    reportItemsLimit: int,
-    reportItemsSuccess: bool,
-) -> dict[str, Any]:
-    """
-    Обновляет кэш из JSON файлов в одной транзакции.
-    """
-    if not usersJsonPath and not orgJsonPath:
-        raise ValueError("At least one of usersJsonPath/orgJsonPath must be provided")
-
-    ensureSchema(conn)
-
-    inserted_users = updated_users = failed_users = 0
-    skipped_deleted_users = 0
-    inserted_orgs = updated_orgs = failed_orgs = 0
-    runId = getattr(report.meta, "run_id", "unknown")
-    start_monotonic = time.monotonic()
-    report.meta.page_size = None
-    report.meta.max_pages = None
-    report.meta.timeout_seconds = None
-    report.meta.retries = None
-    report.meta.include_deleted_users = False
-    report.meta.skipped_deleted_users = 0
-    logEvent(logger, logging.INFO, runId, "cache", "cache-refresh start")
-
-    try:
-        conn.execute("BEGIN")
-
-        org_errors: list[tuple[str, Exception]] = []
-        user_errors: list[tuple[str, Exception]] = []
-
-        if orgJsonPath:
-            organizations = loadOrganizationsFromJson(orgJsonPath, errors=org_errors)
-            if org_errors:
-                for key, exc in org_errors:
-                    failed_orgs += 1
-                    logEvent(logger, logging.ERROR, runId, "cache", f"Failed to parse org {key}: {exc}")
-                    _append_item_limited(report, "org", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
-            for org in organizations:
-                key = str(org.get("_ouid"))
-                try:
-                    status = upsertOrganization(conn, org)
-                    if status == "inserted":
-                        inserted_orgs += 1
-                    else:
-                        updated_orgs += 1
-                    _append_item_limited(report, "org", key, status, None, reportItemsLimit, reportItemsSuccess)
-                except Exception as exc:
-                    failed_orgs += 1
-                    logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert org {key}: {exc}")
-                    _append_item_limited(report, "org", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
-
-        if usersJsonPath:
-            users = loadUsersFromJson(usersJsonPath, errors=user_errors)
-            if user_errors:
-                for key, exc in user_errors:
-                    failed_users += 1
-                    logEvent(logger, logging.ERROR, runId, "cache", f"Failed to parse user {key}: {exc}")
-                    _append_item_limited(report, "user", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
-            for user in users:
-                key = str(user.get("_id"))
-                try:
-                    status = upsertUser(conn, user)
-                    if status == "inserted":
-                        inserted_users += 1
-                    else:
-                        updated_users += 1
-                    _append_item_limited(report, "user", key, status, None, reportItemsLimit, reportItemsSuccess)
-                except Exception as exc:
-                    failed_users += 1
-                    logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert user {key}: {exc}")
-                    _append_item_limited(report, "user", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
-
-        usersCount, orgCount = getCounts(conn)
-        nowIso = getNowIso()
-
-        setMetaValue(conn, "users_count", str(usersCount))
-        setMetaValue(conn, "org_count", str(orgCount))
-
-        if usersJsonPath:
-            setMetaValue(conn, "users_last_refresh_at", nowIso)
-            setMetaValue(conn, "source_users_json", str(usersJsonPath))
-        if orgJsonPath:
-            setMetaValue(conn, "org_last_refresh_at", nowIso)
-            setMetaValue(conn, "source_org_json", str(orgJsonPath))
-
-        conn.commit()
-    except Exception as exc:
-        conn.rollback()
-        logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
-        raise
-
-    report.summary.created = inserted_users + inserted_orgs
-    report.summary.updated = updated_users + updated_orgs
-    report.summary.failed = failed_users + failed_orgs
-    report.summary.skipped = skipped_deleted_users
-    report.summary.retries_total = client.getRetryAttempts()
-    report.meta.skipped_deleted_users = skipped_deleted_users
-
-    summary = {
-        "users_inserted": inserted_users,
-        "users_updated": updated_users,
-        "users_failed": failed_users,
-        "users_skipped_deleted": skipped_deleted_users,
-        "orgs_inserted": inserted_orgs,
-        "orgs_updated": updated_orgs,
-        "orgs_failed": failed_orgs,
-        "users_count": usersCount,
-        "org_count": orgCount,
-    }
-    duration_ms = int((time.monotonic() - start_monotonic) * 1000)
-    logEvent(
-        logger,
-        logging.INFO,
-        runId,
-        "cache",
-        f"cache-refresh done mode=json users_inserted={inserted_users} orgs_inserted={inserted_orgs} duration_ms={duration_ms}",
-    )
-    return summary
 
 
 def refreshCacheFromApi(
@@ -404,8 +278,6 @@ def clearCache(conn) -> dict[str, int]:
         setMetaValue(conn, "org_count", "0")
         setMetaValue(conn, "users_last_refresh_at", None)
         setMetaValue(conn, "org_last_refresh_at", None)
-        setMetaValue(conn, "source_users_json", None)
-        setMetaValue(conn, "source_org_json", None)
         setMetaValue(conn, "source_api_base", None)
 
         conn.commit()

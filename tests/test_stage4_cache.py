@@ -11,9 +11,39 @@ from connector.ankeyApiClient import AnkeyApiClient
 
 runner = CliRunner()
 
-DATA_DIR = Path(__file__).parent / "data"
-USERS_JSON = DATA_DIR / "users_min.json"
-ORG_JSON = DATA_DIR / "org_min.json"
+# Минимальные наборы данных, имитирующие ответы API
+USERS_PAYLOAD = [
+    {
+        "_id": "user-123",
+        "_ouid": 999,
+        "personnel_number": "7777",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "mail": "john.doe@example.com",
+        "user_name": "jdoe",
+        "phone": "+111",
+        "usr_org_tab_num": "TAB-7777",
+        "organization_id": 201,
+        "account_status": "active",
+        "deletion_date": None,
+        "_rev": None,
+        "manager_ouid": None,
+        "is_logon_disabled": False,
+        "position": "Engineer",
+        "updated_at": "2024-01-01T00:00:00Z",
+    }
+]
+
+ORG_PAYLOAD = [
+    {
+        "_ouid": 201,
+        "code": "ORG-201",
+        "name": "Engineering",
+        "parent_id": None,
+        "updated_at": "2024-01-01T00:00:00Z",
+    }
+]
 
 
 def make_transport(responder):
@@ -111,18 +141,15 @@ def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", monkeypatch=Non
     ]
 
     if monkeypatch is not None:
-        users = json.loads(USERS_JSON.read_text(encoding="utf-8"))
-        orgs = json.loads(ORG_JSON.read_text(encoding="utf-8"))
-
         def responder(request: httpx.Request) -> httpx.Response:
             params = dict(request.url.params)
             if "organization" in request.url.path:
                 if params.get("page") in ("1", 1, None):
-                    return httpx.Response(200, json={"result": orgs})
+                    return httpx.Response(200, json={"result": ORG_PAYLOAD})
                 return httpx.Response(200, json={"result": []})
             if "user" in request.url.path:
                 if params.get("page") in ("1", 1, None):
-                    return httpx.Response(200, json={"result": users})
+                    return httpx.Response(200, json={"result": USERS_PAYLOAD})
                 return httpx.Response(200, json={"result": []})
             return httpx.Response(404, text="not found")
 
