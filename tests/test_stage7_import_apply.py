@@ -30,7 +30,7 @@ class DummyUserApi:
 
 def _make_plan(items: list[PlanItem]) -> Plan:
     return Plan(
-        meta=PlanMeta(run_id="r1", generated_at=None, csv_path=None, plan_path=None, include_deleted_users=False, on_missing_org="error"),
+        meta=PlanMeta(run_id="r1", generated_at=None, csv_path=None, plan_path=None, include_deleted_users=False),
         summary=PlanSummary(rows_total=len(items), planned_create=0, planned_update=0, skipped=0, failed=0),
         items=items,
     )

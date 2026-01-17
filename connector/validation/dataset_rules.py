@@ -17,7 +17,6 @@ class MatchKeyUniqueRule:
         result: ValidationRowResult,
         state: DatasetValidationState,
         deps: ValidationDependencies,
-        on_missing_org: str,
     ) -> None:
         if not result.match_key_complete:
             result.errors.append(
@@ -44,7 +43,6 @@ class UsrOrgTabUniqueRule:
         result: ValidationRowResult,
         state: DatasetValidationState,
         deps: ValidationDependencies,
-        on_missing_org: str,
     ) -> None:
         if not result.usr_org_tab_num:
             return
@@ -70,7 +68,6 @@ class OrgExistsRule:
         result: ValidationRowResult,
         state: DatasetValidationState,
         deps: ValidationDependencies,
-        on_missing_org: str,
     ) -> None:
         if deps.org_lookup is None:
             return

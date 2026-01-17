@@ -92,7 +92,7 @@ def test_import_apply_error_stats():
             raise ApiError("HTTP 400", status_code=400)
 
     plan = Plan(
-        meta=PlanMeta(run_id="r", generated_at=None, csv_path=None, plan_path=None, include_deleted_users=False, on_missing_org=None),
+        meta=PlanMeta(run_id="r", generated_at=None, csv_path=None, plan_path=None, include_deleted_users=False),
         summary=PlanSummary(rows_total=1, planned_create=1, planned_update=0, skipped=0, failed=0),
         items=[
             PlanItem(

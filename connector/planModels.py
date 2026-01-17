@@ -11,7 +11,6 @@ class PlanMeta:
     csv_path: str | None
     plan_path: str | None
     include_deleted_users: bool | None
-    on_missing_org: str | None
 
 
 @dataclass

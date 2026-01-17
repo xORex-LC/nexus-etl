@@ -37,7 +37,6 @@ class ReportMeta:
     retry_backoff_seconds: float | None = None
     include_deleted_users: bool | None = None
     skipped_deleted_users: int | None = None
-    on_missing_org: str | None = None
     plan_file: str | None = None
     plan_path: str | None = None
     stop_on_first_error: bool | None = None

@@ -385,7 +385,6 @@ def runImportPlanCommand(
             return 2
 
         include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
-        on_missing = "error"
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
         report_items_success = (
             reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
@@ -401,7 +400,6 @@ def runImportPlanCommand(
                 csv_path=csvPath or "",
                 csv_has_header=csv_has_header,
                 include_deleted_users=include_deleted,
-                on_missing_org=on_missing,
                 logger=logger,
                 run_id=runId,
                 report=report,
@@ -455,7 +453,6 @@ def runImportApplyCommand(
             return 2
 
         include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
-        on_missing = "error"
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
         report_items_success = (
             reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
@@ -485,7 +482,6 @@ def runImportApplyCommand(
                     csv_path=csvPath,
                     csv_has_header=csv_has_header,
                     include_deleted_users=include_deleted,
-                    on_missing_org=on_missing,
                     logger=logger,
                     run_id=runId,
                     report=report,
@@ -601,7 +597,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         rows_processed = 0
         failed_rows = 0
         warning_rows = 0
-        factory = ValidatorFactory(ValidationDependencies(), on_missing_org="error")
+        factory = ValidatorFactory(ValidationDependencies())
         row_validator = factory.create_row_validator()
         state = factory.create_validation_context()
         dataset_validator = factory.create_dataset_validator(state)

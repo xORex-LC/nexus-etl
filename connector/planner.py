@@ -37,7 +37,6 @@ def build_import_plan(
     csv_path: str,
     csv_has_header: bool,
     include_deleted_users: bool,
-    on_missing_org: str,
     logger,
     run_id: str,
     report,
@@ -63,7 +62,6 @@ def build_import_plan(
 
     factory = ValidatorFactory(
         ValidationDependencies(org_lookup=_OrgLookupAdapter(conn)),
-        on_missing_org="error",
     )
     row_validator = factory.create_row_validator()
     state = factory.create_validation_context()

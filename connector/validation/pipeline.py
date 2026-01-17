@@ -20,7 +20,6 @@ class DatasetRule(Protocol):
         result: ValidationRowResult,
         state: DatasetValidationState,
         deps: ValidationDependencies,
-        on_missing_org: str,
     ) -> None: ...
 
 class RowValidator:
@@ -98,12 +97,10 @@ class DatasetValidator:
         rules: tuple[DatasetRule, ...],
         state: DatasetValidationState,
         deps: ValidationDependencies,
-        on_missing_org: str,
     ) -> None:
         self.rules = rules
         self.state = state
         self.deps = deps
-        self.on_missing_org = on_missing_org
 
     def validate(self, employee: EmployeeInput, result: ValidationRowResult) -> None:
         """
@@ -111,7 +108,7 @@ class DatasetValidator:
             - Модифицирует result.errors/result.warnings, обновляет state.
         """
         for rule in self.rules:
-            rule.apply(employee, result, self.state, self.deps, self.on_missing_org)
+            rule.apply(employee, result, self.state, self.deps)
 
 def build_match_key(employee: EmployeeInput) -> str:
     parts = [
@@ -128,9 +125,8 @@ class ValidatorFactory:
         Собирает валидаторы и контекст валидации, подставляя зависимости.
     """
 
-    def __init__(self, deps: ValidationDependencies, on_missing_org: str = "error") -> None:
+    def __init__(self, deps: ValidationDependencies) -> None:
         self.deps = deps
-        self.on_missing_org = on_missing_org
 
     def create_validation_context(self) -> DatasetValidationState:
         """
@@ -160,7 +156,6 @@ class ValidatorFactory:
             rules=dataset_rules,
             state=state,
             deps=self.deps,
-            on_missing_org=self.on_missing_org,
         )
 
 # Совместимость: публичные API, которые использовал остальной код
@@ -203,7 +198,6 @@ def validateEmployeeRowWithContext(csvRow: CsvRow, ctx) -> tuple[EmployeeInput, 
         rules=dataset_rules,
         state=state,
         deps=deps,
-        on_missing_org=getattr(ctx, "on_missing_org", "error"),
     )
     dataset_validator.validate(employee, result)
     return employee, result

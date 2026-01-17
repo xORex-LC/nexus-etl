@@ -16,7 +16,6 @@ class ImportPlanServiceProtocol(Protocol):
         csv_path: str,
         csv_has_header: bool,
         include_deleted_users: bool,
-        on_missing_org: str,
         logger,
         run_id: str,
         report,

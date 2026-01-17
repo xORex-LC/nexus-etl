@@ -33,7 +33,6 @@ def readPlanFile(path: str) -> Plan:
         csv_path=_get_str(meta_raw.get("csv_path")),
         plan_path=path,
         include_deleted_users=meta_raw.get("include_deleted_users"),
-        on_missing_org=_get_str(meta_raw.get("on_missing_org")),
     )
     summary = PlanSummary(
         rows_total=int(summary_raw.get("rows_total") or 0),

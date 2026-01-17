@@ -39,7 +39,7 @@ def test_match_key_unique_rule_detects_duplicate():
             "TAB-100",
         ]
     )
-    rule.apply(employee, result, state, deps, "error")
+    rule.apply(employee, result, state, deps)
     # avatarId правило делает строку невалидной, но это не мешает проверять rule
     assert any(e.code == "INVALID_AVATAR_ID" for e in result.errors)
 
@@ -62,7 +62,7 @@ def test_match_key_unique_rule_detects_duplicate():
             "TAB-200",
         ]
     )
-    rule.apply(employee2, result2, state, deps, "error")
+    rule.apply(employee2, result2, state, deps)
     assert not result2.valid
     assert any(e.code == "DUPLICATE_MATCHKEY" for e in result2.errors)
 
@@ -89,7 +89,7 @@ def test_usr_org_tab_unique_rule_detects_duplicate():
             "TAB-100",
         ]
     )
-    rule.apply(employee, result, state, deps, "error")
+    rule.apply(employee, result, state, deps)
     assert any(e.code == "INVALID_AVATAR_ID" for e in result.errors)
 
     employee2, result2 = make_employee(
@@ -110,7 +110,7 @@ def test_usr_org_tab_unique_rule_detects_duplicate():
             "TAB-100",  # duplicate
         ]
     )
-    rule.apply(employee2, result2, state, deps, "error")
+    rule.apply(employee2, result2, state, deps)
     assert not result2.valid
     assert any(e.code == "DUPLICATE_USR_ORG_TAB_NUM" for e in result2.errors)
 
@@ -137,7 +137,7 @@ def test_org_exists_rule_checks_lookup():
             "TAB-100",
         ]
     )
-    rule.apply(employee, result, state, deps, "error")
+    rule.apply(employee, result, state, deps)
     assert any(e.code == "INVALID_AVATAR_ID" for e in result.errors)
 
     employee2, result2 = make_employee(
@@ -158,6 +158,6 @@ def test_org_exists_rule_checks_lookup():
             "TAB-200",
         ]
     )
-    rule.apply(employee2, result2, state, deps, "error")
+    rule.apply(employee2, result2, state, deps)
     assert not result2.valid
     assert any(e.code == "ORG_NOT_FOUND" for e in result2.errors)

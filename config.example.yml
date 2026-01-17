@@ -22,7 +22,6 @@ retry_backoff_seconds: 0.5
 include_deleted_users: false
 report_items_limit: 20
 report_items_success: false
-on_missing_org: "error"
 resource_exists_retries: 3
 csv_has_header: false
 stop_on_first_error: false
