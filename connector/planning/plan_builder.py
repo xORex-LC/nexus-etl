@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from connector.planModels import EntityType, Operation, PlanItem, PlanSummary
-from connector.validation.pipeline import logValidationFailure
+from connector.planModels import Operation, PlanItem, PlanSummary
 from connector.validation.dataset_rules import ValidationRowResult
-
 
 @dataclass
 class PlanBuildResult:
@@ -19,7 +17,6 @@ class PlanBuildResult:
     summary: PlanSummary
     report_items: list[dict[str, Any]]
     items_truncated: bool
-
 
 class PlanBuilder:
     """

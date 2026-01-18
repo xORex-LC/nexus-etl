@@ -17,6 +17,17 @@ from .validation.deps import ValidationDependencies
 from .validation.pipeline import logValidationFailure
 from .validation.registry import ValidatorRegistry
 
+def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
+    """
+    Назначение:
+        Маскирует чувствительные поля плана перед записью в файл/отчёт.
+    """
+    clone = json.loads(json.dumps(item))
+    desired = clone.get("desired_state")
+    if isinstance(desired, dict) and "password" in desired:
+        desired["password"] = maskSecret(desired["password"])
+    return clone
+
 def build_import_plan(
     conn,
     row_source,
@@ -54,8 +65,6 @@ def build_import_plan(
     row_validator = validator_registry.create_row_validator(dataset)
     state = validator_registry.create_state()
     dataset_validator = validator_registry.create_dataset_validator(dataset, state)
-    from .planning.registry import PlannerRegistry
-
     registry = PlannerRegistry(planner_factory)
     employee_planner = registry.get(dataset=dataset, include_deleted_users=include_deleted_users)
 
