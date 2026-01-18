@@ -25,6 +25,7 @@ def write_plan_file(
     meta: dict[str, Any],
     report_dir: str,
     run_id: str,
+    generated_at: str,
 ) -> str:
     """
     Назначение:
@@ -46,7 +47,7 @@ def write_plan_file(
     data = {
         "meta": {
             "run_id": run_id,
-            "generated_at": getNowIso(),
+            "generated_at": generated_at,
             **meta,
         },
         "summary": summary,

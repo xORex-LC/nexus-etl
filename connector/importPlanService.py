@@ -42,6 +42,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         report_dir: str,
     ) -> int:
         ensureSchema(conn)
+        generated_at = getNowIso()
 
         planner_factory = PlannerFactory(employee_lookup=CacheEmployeeLookup(conn))
         planner_registry = PlannerRegistry(planner_factory)
@@ -68,7 +69,14 @@ class ImportPlanService(ImportPlanServiceProtocol):
             "include_deleted_users": include_deleted_users,
             "dataset": dataset,
         }
-        plan_path = write_plan_file(plan_result.items, plan_result.summary_as_dict(), plan_meta, report_dir, run_id)
+        plan_path = write_plan_file(
+            plan_items=plan_result.items,
+            summary=plan_result.summary_as_dict(),
+            meta=plan_meta,
+            report_dir=report_dir,
+            run_id=run_id,
+            generated_at=generated_at,
+        )
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
 
         # Сохраняем немаскированный план для дальнейшего использования.
