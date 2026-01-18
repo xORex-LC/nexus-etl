@@ -164,6 +164,7 @@ def validateEmployeeRow(csvRow: CsvRow) -> tuple[EmployeeInput, ValidationRowRes
     Назначение:
         Совместимость: валидация одной строки через RowValidator по умолчанию.
     """
+    # TODO: remove legacy compatibility wrapper once all callers use ValidatorFactory
     row_validator = RowValidator(FIELD_RULES)
     return row_validator.validate(csvRow)
 
@@ -172,6 +173,7 @@ def validateEmployeeRowWithContext(csvRow: CsvRow, ctx) -> tuple[EmployeeInput, 
     Назначение:
         Совместимость: валидация строки с глобальными проверками через DatasetValidator.
     """
+    # TODO: drop this compatibility path when legacy validator usage is removed
     row_validator = RowValidator(FIELD_RULES)
     employee, result = row_validator.validate(csvRow)
 

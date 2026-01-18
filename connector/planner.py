@@ -14,6 +14,7 @@ from .sanitize import maskSecret
 from .timeUtils import getNowIso
 from .validation.deps import ValidationDependencies
 from .validation.pipeline import ValidatorFactory, logValidationFailure
+from .validation.registry import ValidatorRegistry
 
 def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
     """
@@ -44,6 +45,7 @@ def build_import_plan(
     Строит план импорта на основе CSV и кэша.
     Возвращает (items, summary).
     """
+    # TODO: when legacy planner path is fully removed, keep only dataset-driven registry usage
     plan_items: list[dict[str, Any]] = []
     rows_processed = 0
     valid_rows = 0
@@ -58,12 +60,11 @@ def build_import_plan(
         def get_org_by_id(self, ouid: int):
             return getOrgByOuid(self.conn, ouid)
 
-    factory = ValidatorFactory(
-        ValidationDependencies(org_lookup=_OrgLookupAdapter(conn)),
-    )
-    row_validator = factory.create_row_validator()
-    state = factory.create_validation_context()
-    dataset_validator = factory.create_dataset_validator(state)
+    deps = ValidationDependencies(org_lookup=_OrgLookupAdapter(conn))
+    validator_registry = ValidatorRegistry(deps)
+    row_validator = validator_registry.create_row_validator(dataset)
+    state = validator_registry.create_state()
+    dataset_validator = validator_registry.create_dataset_validator(dataset, state)
     from .planning.registry import PlannerRegistry
 
     registry = PlannerRegistry(planner_factory)

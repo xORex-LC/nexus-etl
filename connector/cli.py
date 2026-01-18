@@ -607,19 +607,22 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
     runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
     csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
+    dataset_name = settings.dataset_name
 
     def execute(logger, report) -> int:
         rows_processed = 0
         failed_rows = 0
         warning_rows = 0
-        factory = ValidatorFactory(ValidationDependencies())
-        row_validator = factory.create_row_validator()
-        state = factory.create_validation_context()
-        dataset_validator = factory.create_dataset_validator(state)
+        deps = ValidationDependencies()
+        validator_registry = ValidatorRegistry(deps)
+        row_validator = validator_registry.create_row_validator(dataset_name)
+        state = validator_registry.create_state()
+        dataset_validator = validator_registry.create_dataset_validator(dataset_name, state)
         report_items_limit = settings.report_items_limit
         report_items_success = settings.report_items_success
         report.meta.report_items_limit = report_items_limit
         report.meta.report_items_success = report_items_success
+        report.meta.dataset = dataset_name
 
         try:
             for csvRow in readEmployeeRows(csvPath, hasHeader=csv_has_header):
