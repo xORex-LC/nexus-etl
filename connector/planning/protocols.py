@@ -3,6 +3,26 @@ from __future__ import annotations
 from typing import Protocol
 
 from connector.matcher import MatchResult
+from connector.planModels import PlanItem
+
+
+class EntityPlanner(Protocol):
+    """
+    Назначение/ответственность:
+        Общий контракт планировщика сущности (строка -> операция плана).
+    Взаимодействия:
+        Используется реестром планировщиков и оркестратором планирования.
+    """
+
+    def plan_row(self, desired_state, line_no: int, match_key: str) -> tuple[str, PlanItem | None, MatchResult | None]:
+        """
+        Назначение:
+            Решить операцию плана по строке входного набора.
+        Контракт:
+            Вход: desired_state (dict-like), line_no, match_key.
+            Выход: (status, plan_item|None, match_result|None), где status: create/update/skip/conflict.
+        """
+        ...
 
 class EmployeeLookup(Protocol):
     """

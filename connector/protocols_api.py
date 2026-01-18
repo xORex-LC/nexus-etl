@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-
 @runtime_checkable
 class ApiClientProtocol(Protocol):
     """
@@ -17,7 +16,6 @@ class ApiClientProtocol(Protocol):
     def getJson(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
     def getPagedItems(self, path: str, pageSize: int, maxPages: int) -> Any: ...
 
-
 @runtime_checkable
 class UserApiProtocol(Protocol):
     """
@@ -26,6 +24,5 @@ class UserApiProtocol(Protocol):
     """
 
     def upsertUser(self, resourceId: str, payload: dict[str, Any]) -> tuple[int, Any]: ...
-
 
 __all__ = ["ApiClientProtocol", "UserApiProtocol"]

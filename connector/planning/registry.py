@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from connector.planning.employee_planner import EmployeePlanner
 from connector.planning.factory import PlannerFactory
+from connector.planning.protocols import EntityPlanner
 
 class PlannerRegistry:
     """
@@ -16,7 +17,7 @@ class PlannerRegistry:
     def __init__(self, factory: PlannerFactory):
         self.factory = factory
 
-    def get(self, dataset: str, include_deleted_users: bool) -> EmployeePlanner:
+    def get(self, dataset: str, include_deleted_users: bool) -> EntityPlanner:
         """
         Назначение:
             Вернуть планировщик нужного датасета.

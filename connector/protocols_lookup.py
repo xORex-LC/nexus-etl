@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-
 @runtime_checkable
 class OrgLookupProtocol(Protocol):
     """
@@ -15,7 +14,6 @@ class OrgLookupProtocol(Protocol):
     """
 
     def get_org_by_id(self, ouid: int) -> dict[str, Any] | None: ...
-
 
 @runtime_checkable
 class UserLookupProtocol(Protocol):
@@ -30,7 +28,6 @@ class UserLookupProtocol(Protocol):
 
     def get_user_by_id(self, user_id: int) -> dict[str, Any] | None: ...
 
-
 @runtime_checkable
 class MatchKeyLookupProtocol(Protocol):
     """
@@ -43,6 +40,5 @@ class MatchKeyLookupProtocol(Protocol):
     """
 
     def find_users_by_match_key(self, match_key: str) -> list[dict[str, Any]]: ...
-
 
 __all__ = ["OrgLookupProtocol", "UserLookupProtocol", "MatchKeyLookupProtocol"]

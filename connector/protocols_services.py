@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-
 @runtime_checkable
 class ImportPlanServiceProtocol(Protocol):
     """
@@ -23,7 +22,6 @@ class ImportPlanServiceProtocol(Protocol):
         report_items_success: bool,
         report_dir: str,
     ) -> int: ...
-
 
 @runtime_checkable
 class CacheCommandServiceProtocol(Protocol):
@@ -52,6 +50,5 @@ class CacheCommandServiceProtocol(Protocol):
 
     def status(self, conn, logger, report, run_id: str) -> tuple[int, dict]: ...
     def clear(self, conn, logger, report, run_id: str) -> tuple[int, dict]: ...
-
 
 __all__ = ["ImportPlanServiceProtocol", "CacheCommandServiceProtocol"]
