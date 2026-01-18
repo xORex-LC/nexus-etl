@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
 from typing import Protocol
 
 from connector.matcher import MatchResult
@@ -14,15 +16,45 @@ class EntityPlanner(Protocol):
         Используется реестром планировщиков и оркестратором планирования.
     """
 
-    def plan_row(self, desired_state, line_no: int, match_key: str) -> tuple[str, PlanItem | None, MatchResult | None]:
+    def plan_row(self, desired_state, line_no: int, match_key: str) -> "PlanningResult":
         """
         Назначение:
             Решить операцию плана по строке входного набора.
         Контракт:
             Вход: desired_state (dict-like), line_no, match_key.
-            Выход: (status, plan_item|None, match_result|None), где status: create/update/skip/conflict.
+            Выход: PlanningResult с типом результата и данными.
         """
         ...
+
+
+class PlanningKind(str, Enum):
+    """
+    Назначение:
+        Тип результата планирования по строке.
+    """
+
+    CREATE = "create"
+    UPDATE = "update"
+    SKIP = "skip"
+    CONFLICT = "conflict"
+
+
+@dataclass
+class PlanningResult:
+    """
+    Назначение:
+        Результат планирования одной строки.
+    Контракт:
+        - kind: тип результата (create/update/skip/conflict)
+        - item: PlanItem для create/update, иначе None
+        - match_result: подробности сопоставления (для аудита/конфликтов)
+        - skip_reason: причина skip (опционально)
+    """
+
+    kind: PlanningKind
+    item: PlanItem | None
+    match_result: MatchResult | None = None
+    skip_reason: str | None = None
 
 class EmployeeLookup(Protocol):
     """

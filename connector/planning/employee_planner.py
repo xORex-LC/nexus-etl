@@ -7,6 +7,7 @@ from connector.matcher import MatchResult
 from .decision import EmployeeDecisionPolicy
 from .differ import EmployeeDiffer
 from .matcher import EmployeeMatcher
+from .protocols import PlanningKind, PlanningResult
 
 class EmployeePlanner:
     """
@@ -33,13 +34,13 @@ class EmployeePlanner:
         desired_state: dict[str, Any],
         line_no: int,
         match_key: str,
-    ) -> tuple[str, PlanItem | None, MatchResult | None]:
+    ) -> PlanningResult:
         """
         Назначение:
             Решить, какую операцию сформировать по строке CSV.
         Контракт (вход/выход):
             - Вход: desired_state, line_no, match_key.
-            - Выход: (status, plan_item|None, match_result|None), где status = create/update/skip/conflict.
+            - Выход: PlanningResult с типом результата (create/update/skip/conflict).
         Ошибки/исключения:
             Пробрасывает исключения matcher/differ/decision.
         Алгоритм:
@@ -47,13 +48,13 @@ class EmployeePlanner:
         """
         match_result = self.matcher.match(match_key)
         if match_result.status == "conflict":
-            return "conflict", None, match_result
+            return PlanningResult(kind=PlanningKind.CONFLICT, item=None, match_result=match_result)
 
         changes = self.differ.calculate_changes(match_result.candidate, desired_state)
         op, resource_id = self.decision.decide(match_result, changes, desired_state)
 
         if op == "skip":
-            return "skip", None, match_result
+            return PlanningResult(kind=PlanningKind.SKIP, item=None, match_result=match_result)
 
         plan_item = PlanItem(
             row_id=f"line:{line_no}",
@@ -65,4 +66,5 @@ class EmployeePlanner:
             changes=changes,
             source_ref={"match_key": match_key},
         )
-        return op, plan_item, match_result
+        result_kind = PlanningKind.CREATE if op == Operation.CREATE else PlanningKind.UPDATE
+        return PlanningResult(kind=result_kind, item=plan_item, match_result=match_result)

@@ -11,6 +11,7 @@ from connector.planning.registry import PlannerRegistry
 from connector.validation.pipeline import logValidationFailure
 from connector.validation.registry import ValidatorRegistry
 from connector.validation.dataset_rules import ValidationRowResult
+from connector.planning.protocols import PlanningKind, PlanningResult
 
 @dataclass
 class ValidatedRow:
@@ -127,19 +128,19 @@ class PlanUseCase:
                 continue
 
             builder.inc_valid_rows()
-            op_status, plan_item, _match_result = entity_planner.plan_row(
+            plan_result: PlanningResult = entity_planner.plan_row(
                 desired_state=validated_row.desired_state,
                 line_no=validated_row.line_no,
                 match_key=str(validated_row.identity.get("match_key", "")),
             )
-            if op_status == "conflict":
+            if plan_result.kind == PlanningKind.CONFLICT:
                 builder.add_conflict(validation.line_no, str(validated_row.identity.get("match_key", "")), warnings)
                 continue
-            if op_status == "skip":
+            if plan_result.kind == PlanningKind.SKIP:
                 builder.add_skip(validation.line_no, str(validated_row.identity.get("match_key", "")), warnings)
                 continue
-            if plan_item:
-                builder.add_plan_item(plan_item)
+            if plan_result.item:
+                builder.add_plan_item(plan_result.item)
 
         return builder.build()
 
