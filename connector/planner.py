@@ -36,6 +36,7 @@ def build_import_plan(
     report,
     report_items_limit: int,
     report_items_success: bool,
+    include_skipped_in_report: bool,
     planner_factory: PlannerFactory,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """
@@ -68,6 +69,8 @@ def build_import_plan(
         """
         Добавляет элемент в отчёт с учётом лимита.
         """
+        if status == "skipped" and not include_skipped_in_report:
+            return None
         if status not in ("failed", "skipped") and not report_items_success:
             return None
         if len(report.items) >= report_items_limit:

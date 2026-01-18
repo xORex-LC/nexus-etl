@@ -32,6 +32,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         report,
         report_items_limit: int,
         report_items_success: bool,
+        include_skipped_in_report: bool,
         report_dir: str,
     ) -> int:
         ensureSchema(conn)
@@ -47,6 +48,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
             report=report,
             report_items_limit=report_items_limit,
             report_items_success=report_items_success,
+            include_skipped_in_report=include_skipped_in_report,
             planner_factory=planner_factory,
         )
         generated_at = getNowIso()

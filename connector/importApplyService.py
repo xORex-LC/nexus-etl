@@ -181,6 +181,7 @@ def readPlanFromCsv(
     report,
     report_items_limit: int,
     report_items_success: bool,
+    include_skipped_in_report: bool,
     report_dir: str,
 ) -> Plan:
     service = ImportPlanService()
@@ -194,6 +195,7 @@ def readPlanFromCsv(
         report=report,
         report_items_limit=report_items_limit,
         report_items_success=report_items_success,
+        include_skipped_in_report=include_skipped_in_report,
         report_dir=report_dir,
     )
     if service.last_plan:

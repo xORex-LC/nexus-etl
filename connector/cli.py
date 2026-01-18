@@ -371,6 +371,7 @@ def runImportPlanCommand(
     includeDeletedUsers: bool | None,
     reportItemsLimit: int | None,
     reportItemsSuccess: bool | None,
+    reportIncludeSkipped: bool | None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -389,9 +390,13 @@ def runImportPlanCommand(
         report_items_success = (
             reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
         )
+        report_include_skipped = (
+            reportIncludeSkipped if reportIncludeSkipped is not None else settings.report_include_skipped
+        )
         csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
         report.meta.report_items_limit = report_items_limit
         report.meta.report_items_success = report_items_success
+        report.meta.report_include_skipped = report_include_skipped
 
         try:
             service: ImportPlanServiceProtocol = ImportPlanService()
@@ -405,6 +410,7 @@ def runImportPlanCommand(
                 report=report,
                 report_items_limit=report_items_limit,
                 report_items_success=report_items_success,
+                include_skipped_in_report=report_include_skipped,
                 report_dir=settings.report_dir,
             )
         except ValueError as exc:
@@ -487,6 +493,7 @@ def runImportApplyCommand(
                     report=report,
                     report_items_limit=report_items_limit,
                     report_items_success=report_items_success,
+                    include_skipped_in_report=settings.report_include_skipped,
                     report_dir=settings.report_dir,
                 )
                 # Очистим report.items, чтобы в отчёте apply остались только результаты выполнения
@@ -748,6 +755,7 @@ def main(
         "retries": retries,
         "retry_backoff_seconds": retryBackoffSeconds,
         "resource_exists_retries": resourceExistsRetries,
+        "report_include_skipped": None,  # set per-command in runImportPlanCommand
     }
     loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
 
@@ -788,6 +796,12 @@ def importPlan(
         help="Include successful items in report",
         show_default=True,
     ),
+    reportIncludeSkipped: bool | None = typer.Option(
+        None,
+        "--report-include-skipped/--no-report-include-skipped",
+        help="Include skipped rows in plan report",
+        show_default=True,
+    ),
 ):
     runImportPlanCommand(
         ctx=ctx,
@@ -796,6 +810,7 @@ def importPlan(
         includeDeletedUsers=includeDeletedUsers,
         reportItemsLimit=reportItemsLimit,
         reportItemsSuccess=reportItemsSuccess,
+        reportIncludeSkipped=reportIncludeSkipped,
     )
 
 @importApp.command("apply")

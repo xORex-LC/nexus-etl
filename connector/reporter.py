@@ -45,6 +45,7 @@ class ReportMeta:
     resource_exists_retries: int | None = None
     report_items_limit: int | None = None
     report_items_success: bool | None = None
+    report_include_skipped: bool | None = None
     items_truncated: bool = False
 
     config_sources: list[str] = field(default_factory=list)
