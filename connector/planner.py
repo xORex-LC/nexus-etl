@@ -8,10 +8,8 @@ from typing import Any
 from .cacheRepo import getOrgByOuid
 from .csvReader import CsvFormatError, readEmployeeRows
 from .loggingSetup import logEvent
-from .matcher import MatchResult, matchEmployeeByMatchKey
 from .planModels import EntityType, Operation
 from .planning.factory import PlannerFactory
-from .planning.protocols import EmployeeLookup
 from .sanitize import maskSecret
 from .timeUtils import getNowIso
 from .validation.deps import ValidationDependencies
@@ -38,6 +36,7 @@ def build_import_plan(
     report,
     report_items_limit: int,
     report_items_success: bool,
+    planner_factory: PlannerFactory,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """
     Строит план импорта на основе CSV и кэша.
@@ -57,22 +56,12 @@ def build_import_plan(
         def get_org_by_id(self, ouid: int):
             return getOrgByOuid(self.conn, ouid)
 
-    class _EmployeeLookupAdapter(EmployeeLookup):
-        """Адаптер для поиска пользователя по match_key через кэш."""
-
-        def __init__(self, conn):
-            self.conn = conn
-
-        def match_by_key(self, match_key: str, include_deleted: bool) -> MatchResult:
-            return matchEmployeeByMatchKey(self.conn, match_key, include_deleted)
-
     factory = ValidatorFactory(
         ValidationDependencies(org_lookup=_OrgLookupAdapter(conn)),
     )
     row_validator = factory.create_row_validator()
     state = factory.create_validation_context()
     dataset_validator = factory.create_dataset_validator(state)
-    planner_factory = PlannerFactory(employee_lookup=_EmployeeLookupAdapter(conn))
     employee_planner = planner_factory.create_employee_planner(include_deleted_users=include_deleted_users)
 
     def append_report_item(item: dict[str, Any], status: str) -> int | None:
