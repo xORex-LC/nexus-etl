@@ -39,10 +39,10 @@ class ImportPlanService(ImportPlanServiceProtocol):
         ensureSchema(conn)
 
         planner_factory = PlannerFactory(employee_lookup=CacheEmployeeLookup(conn))
+        row_source = CsvRowSource(csv_path, csv_has_header)
         plan_items, summary = build_import_plan(
             conn=conn,
-            csv_path=csv_path,
-            csv_has_header=csv_has_header,
+            row_source=row_source,
             include_deleted_users=include_deleted_users,
             dataset=dataset,
             logger=logger,

@@ -18,3 +18,19 @@ class RowSource(Protocol):
             Возвращает итерируемые CsvRow (с заполненными file_line_no/values).
         """
         ...
+
+class RowMapper(Protocol):
+    """
+    Назначение/ответственность:
+        Нормализует сырые данные (dict/CSV row) в унифицированный CsvRow.
+    Взаимодействия:
+        Может использоваться нормализатором/планировщиком для разных схем.
+    """
+
+    def map(self, raw: dict) -> CsvRow:
+        """
+        Контракт:
+            Вход: сырой dict/строка.
+            Выход: CsvRow с values и file_line_no.
+        """
+        ...

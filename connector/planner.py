@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .cacheRepo import getOrgByOuid
-from .csvReader import CsvFormatError, readEmployeeRows
+from .csvReader import CsvFormatError, CsvRowSource
 from .loggingSetup import logEvent
 from .planModels import EntityType, Operation
 from .planning.factory import PlannerFactory
@@ -29,8 +29,7 @@ def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
 
 def build_import_plan(
     conn,
-    csv_path: str,
-    csv_has_header: bool,
+    row_source,
     include_deleted_users: bool,
     dataset: str,
     logger,
@@ -89,7 +88,7 @@ def build_import_plan(
         return len(report.items) - 1
 
     try:
-        for csvRow in readEmployeeRows(csv_path, hasHeader=csv_has_header):
+        for csvRow in row_source:
             rows_processed += 1
             employee, validation = row_validator.validate(csvRow)
             dataset_validator.validate(employee, validation)

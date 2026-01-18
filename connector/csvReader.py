@@ -4,6 +4,7 @@ import csv
 from typing import Iterator
 
 from .models import CsvRow
+from .protocols_sources import RowSource
 
 EXPECTED_COLUMNS = 14
 
@@ -45,3 +46,17 @@ def readEmployeeRows(csvPath: str, hasHeader: bool) -> Iterator[CsvRow]:
                 )
             values = [parseNull(v) for v in row]
             yield CsvRow(file_line_no=csv_line_no, data_line_no=data_line_no, values=values)
+
+
+class CsvRowSource(RowSource):
+    """
+    Назначение/ответственность:
+        Источник CsvRow на основе локального CSV-файла.
+    """
+
+    def __init__(self, path: str, has_header: bool):
+        self.path = path
+        self.has_header = has_header
+
+    def __iter__(self):
+        return readEmployeeRows(self.path, self.has_header)

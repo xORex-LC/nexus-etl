@@ -13,7 +13,7 @@ from .ankeyApiClient import AnkeyApiClient, ApiError
 from .cacheDb import ensureSchema, getCacheDbPath, openCacheDb
 from .cacheCommandService import CacheCommandService
 from .config import Settings, loadSettings
-from .csvReader import CsvFormatError, readEmployeeRows
+from .csvReader import CsvFormatError, CsvRowSource
 from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from .importApplyService import ImportApplyService, createUserApiClient, readPlanFromCsv
 from .importPlanService import ImportPlanService
@@ -625,7 +625,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         report.meta.dataset = dataset_name
 
         try:
-            for csvRow in readEmployeeRows(csvPath, hasHeader=csv_has_header):
+            for csvRow in CsvRowSource(csvPath, csv_has_header):
                 _employee, result = row_validator.validate(csvRow)
                 dataset_validator.validate(_employee, result)
                 rows_processed += 1
