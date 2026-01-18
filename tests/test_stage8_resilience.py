@@ -7,13 +7,10 @@ from connector.cli import app
 from connector.importApplyService import ImportApplyService
 from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
 
-
 runner = CliRunner()
-
 
 def make_transport(responder):
     return httpx.MockTransport(responder)
-
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.cli as cli_module
@@ -25,7 +22,6 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
 
     monkeypatch.setattr(cli_module, "AnkeyApiClient", factory)
     monkeypatch.setattr(cache_service_module, "AnkeyApiClient", factory)
-
 
 def test_cache_refresh_max_pages_exceeded(monkeypatch, tmp_path):
     def responder(request: httpx.Request) -> httpx.Response:
@@ -63,7 +59,6 @@ def test_cache_refresh_max_pages_exceeded(monkeypatch, tmp_path):
     # max_pages exceeded should lead to exit code 2
     assert result.exit_code == 2
 
-
 def test_api_client_invalid_json(monkeypatch):
     def responder(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="not-json")
@@ -82,7 +77,6 @@ def test_api_client_invalid_json(monkeypatch):
     assert excinfo.value.code == "INVALID_JSON"
     assert not excinfo.value.retryable
 
-
 def test_import_apply_error_stats():
     class DummyUserApi:
         def __init__(self):
@@ -93,16 +87,22 @@ def test_import_apply_error_stats():
 
     plan = Plan(
         meta=PlanMeta(run_id="r", generated_at=None, csv_path=None, plan_path=None, include_deleted_users=False),
-        summary=PlanSummary(rows_total=1, planned_create=1, planned_update=0, skipped=0, failed=0),
+        summary=PlanSummary(
+            rows_total=1,
+            valid_rows=1,
+            failed_rows=0,
+            planned_create=1,
+            planned_update=0,
+            skipped=0,
+        ),
         items=[
             PlanItem(
                 row_id="line:1",
                 line_no=1,
-                action="create",
-                match_key="mk",
-                existing_id=None,
-                new_id="id-1",
-                desired={
+                entity_type="employee",
+                op="create",
+                resource_id="id-1",
+                desired_state={
                     "email": "u@example.com",
                     "last_name": "L",
                     "first_name": "F",
@@ -117,9 +117,8 @@ def test_import_apply_error_stats():
                     "position": "P",
                     "usr_org_tab_num": "TAB",
                 },
-                diff={},
-                errors=[],
-                warnings=[],
+                changes={},
+                source_ref={"match_key": "mk"},
             )
         ],
     )
