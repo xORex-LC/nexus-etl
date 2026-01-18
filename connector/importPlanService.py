@@ -3,14 +3,18 @@ from __future__ import annotations
 import logging
 
 from .cacheDb import ensureSchema
-from .protocols_services import ImportPlanServiceProtocol
+from .cacheRepo import getOrgByOuid
+from .csvReader import CsvRowSource
 from .loggingSetup import logEvent
 from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
-from .csvReader import CsvRowSource
 from .planner import build_import_plan, write_plan_file
 from .planning.adapters import CacheEmployeeLookup
 from .planning.factory import PlannerFactory
+from .planning.registry import PlannerRegistry
+from .protocols_services import ImportPlanServiceProtocol
 from .timeUtils import getNowIso
+from .validation.deps import ValidationDependencies
+from .validation.registry import ValidatorRegistry
 
 class ImportPlanService(ImportPlanServiceProtocol):
     """
@@ -39,10 +43,21 @@ class ImportPlanService(ImportPlanServiceProtocol):
     ) -> int:
         ensureSchema(conn)
 
+        class _OrgLookupAdapter:
+            """Адаптер org_lookup для валидатора поверх кэша."""
+
+            def __init__(self, conn):
+                self.conn = conn
+
+            def get_org_by_id(self, ouid: int):
+                return getOrgByOuid(self.conn, ouid)
+
         planner_factory = PlannerFactory(employee_lookup=CacheEmployeeLookup(conn))
+        planner_registry = PlannerRegistry(planner_factory)
+        deps = ValidationDependencies(org_lookup=_OrgLookupAdapter(conn))
+        validator_registry = ValidatorRegistry(deps)
         row_source = CsvRowSource(csv_path, csv_has_header)
-        plan_items, summary, report_items, items_truncated = build_import_plan(
-            conn=conn,
+        plan_result = build_import_plan(
             row_source=row_source,
             include_deleted_users=include_deleted_users,
             dataset=dataset,
@@ -52,7 +67,8 @@ class ImportPlanService(ImportPlanServiceProtocol):
             report_items_limit=report_items_limit,
             report_items_success=report_items_success,
             include_skipped_in_report=include_skipped_in_report,
-            planner_factory=planner_factory,
+            validator_registry=validator_registry,
+            planner_registry=planner_registry,
         )
         generated_at = getNowIso()
         plan_meta = {
@@ -60,7 +76,15 @@ class ImportPlanService(ImportPlanServiceProtocol):
             "include_deleted_users": include_deleted_users,
             "dataset": dataset,
         }
-        plan_path = write_plan_file(plan_items, summary, plan_meta, report_dir, run_id)
+        summary_dict = {
+            "rows_total": plan_result.summary.rows_total,
+            "valid_rows": plan_result.summary.valid_rows,
+            "failed_rows": plan_result.summary.failed_rows,
+            "planned_create": plan_result.summary.planned_create,
+            "planned_update": plan_result.summary.planned_update,
+            "skipped": plan_result.summary.skipped,
+        }
+        plan_path = write_plan_file(plan_result.items, summary_dict, plan_meta, report_dir, run_id)
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
 
         # Сохраняем немаскированный план для дальнейшего использования.
@@ -74,12 +98,12 @@ class ImportPlanService(ImportPlanServiceProtocol):
                 include_deleted_users=include_deleted_users,
             ),
             summary=PlanSummary(
-                rows_total=summary["rows_total"],
-                valid_rows=summary.get("valid_rows", 0),
-                failed_rows=summary.get("failed_rows", 0),
-                planned_create=summary["planned_create"],
-                planned_update=summary["planned_update"],
-                skipped=summary["skipped"],
+                rows_total=plan_result.summary.rows_total,
+                valid_rows=plan_result.summary.valid_rows,
+                failed_rows=plan_result.summary.failed_rows,
+                planned_create=plan_result.summary.planned_create,
+                planned_update=plan_result.summary.planned_update,
+                skipped=plan_result.summary.skipped,
             ),
             items=[
                 PlanItem(
@@ -92,21 +116,20 @@ class ImportPlanService(ImportPlanServiceProtocol):
                     changes=item.get("changes") or {},
                     source_ref=item.get("source_ref") or {},
                 )
-                for item in plan_items
+                for item in plan_result.items
             ],
         )
 
         report.meta.plan_file = plan_path
         report.meta.include_deleted_users = include_deleted_users
-        report.meta.csv_rows_total = summary["rows_total"]
-        report.meta.csv_rows_processed = summary["rows_total"]
-        report.summary.planned_create = summary["planned_create"]
-        report.summary.planned_update = summary["planned_update"]
-        report.summary.skipped = summary["skipped"]
-        report.summary.failed = summary.get("failed_rows", 0)
-        if items_truncated:
+        report.meta.csv_rows_total = plan_result.summary.rows_total
+        report.meta.csv_rows_processed = plan_result.summary.rows_total
+        report.summary.planned_create = plan_result.summary.planned_create
+        report.summary.planned_update = plan_result.summary.planned_update
+        report.summary.skipped = plan_result.summary.skipped
+        report.summary.failed = plan_result.summary.failed_rows
+        if plan_result.items_truncated:
             report.meta.items_truncated = True
-        # заменяем report.items на собранные PlanBuilder элементы
-        report.items = report_items
+        report.items = plan_result.report_items
 
-        return 1 if summary.get("failed_rows", 0) > 0 else 0
+        return 1 if plan_result.summary.failed_rows > 0 else 0
