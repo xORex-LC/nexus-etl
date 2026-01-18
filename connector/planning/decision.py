@@ -9,8 +9,9 @@ from connector.matcher import MatchResult
 class EmployeeDecisionPolicy:
     """
     Назначение/ответственность:
-        Принимает решение по операции (create/update/skip) на основе
-        результатов сопоставления и diff.
+        Решает, нужна ли операция create/update/skip на основе сопоставления и diff.
+    Ограничения:
+        Конфликты обрабатываются выше по стеку.
     """
 
     def decide(
@@ -20,15 +21,17 @@ class EmployeeDecisionPolicy:
         desired_state: dict[str, Any],
     ) -> tuple[str, str | None]:
         """
-        Контракт:
-            Вход: match_result, changes (diff), desired_state.
-            Выход: (op, resource_id) где op одно из Operation.* или "skip".
-        Ошибки:
-            Не обрабатывает конфликт — его должен отловить вызывающий код.
+        Назначение:
+            Определить действие плана по текущему состоянию и diff.
+        Контракт (вход/выход):
+            - Вход: match_result, changes, desired_state.
+            - Выход: (op, resource_id) где op = Operation.* или "skip".
+        Ошибки/исключения:
+            Конфликт не обрабатывается (решается вызывающим кодом).
         Алгоритм:
-            - not_found -> create c новым UUID
-            - found + пустой diff -> skip
-            - found + diff -> update с existing _id
+            not_found -> create (новый UUID)
+            found + diff пуст -> skip
+            found + diff -> update (id из кандидата)
         """
         if match_result.status == "not_found":
             return Operation.CREATE, str(uuid.uuid4())

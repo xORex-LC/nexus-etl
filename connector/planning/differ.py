@@ -8,21 +8,21 @@ class EmployeeDiffer:
     """
     Назначение/ответственность:
         Вычисляет изменения между желаемым и текущим состоянием пользователя.
-
     Ограничения:
-        Игнорирует чувствительные поля (пароль) в diff для update.
+        Игнорирует чувствительные поля (password) в diff для update.
     """
 
     def calculate_changes(self, existing: dict[str, Any] | None, desired: dict[str, Any]) -> dict[str, Any]:
         """
-        Контракт:
-            Вход: existing — текущая запись, desired — желаемое состояние.
-            Выход: словарь изменений field -> new_value.
-        Ошибки:
-            Исключения работы с diff пробрасываются.
+        Назначение:
+            Построить частичный набор изменений для update-операции.
+        Контракт (вход/выход):
+            - Вход: existing: dict | None, desired: dict.
+            - Выход: dict[field, to_value] только изменившиеся поля.
+        Ошибки/исключения:
+            Пробрасывает исключения из build_user_diff.
         Алгоритм:
-            Использует build_user_diff, оставляя только целевые значения и
-            отбрасывая password.
+            build_user_diff -> забираем значения "to", пропуская password.
         """
         if not existing:
             return {}

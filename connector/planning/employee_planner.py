@@ -12,10 +12,10 @@ class EmployeePlanner:
     """
     Назначение/ответственность:
         Собирает решение по одному сотруднику: create/update/skip.
-
     Взаимодействия:
-        Делегирует сопоставление matcher, вычисление diff differ,
-        принятие решения decision policy.
+        Делегирует сопоставление matcher, diff — differ, решение — decision policy.
+    Ограничения:
+        Работает с уже валидированными данными.
     """
 
     def __init__(
@@ -35,16 +35,15 @@ class EmployeePlanner:
         match_key: str,
     ) -> tuple[str, PlanItem | None, MatchResult | None]:
         """
-        Контракт:
-            Вход: желаемое состояние, номер строки, match_key.
-            Выход: (status, plan_item|None, match_result|None)
-                status: create/update/skip/conflict
-        Ошибки:
-            Исключения от matcher/differ пробрасываются.
+        Назначение:
+            Решить, какую операцию сформировать по строке CSV.
+        Контракт (вход/выход):
+            - Вход: desired_state, line_no, match_key.
+            - Выход: (status, plan_item|None, match_result|None), где status = create/update/skip/conflict.
+        Ошибки/исключения:
+            Пробрасывает исключения matcher/differ/decision.
         Алгоритм:
-            - matcher.match -> MatchResult
-            - при conflict возвращает статус conflict
-            - diff -> decision -> формирование PlanItem (кроме skip)
+            matcher.match -> diff -> decision -> PlanItem (кроме skip/conflict).
         """
         match_result = self.matcher.match(match_key)
         if match_result.status == "conflict":

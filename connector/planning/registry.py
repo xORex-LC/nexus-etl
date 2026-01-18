@@ -7,6 +7,10 @@ class PlannerRegistry:
     """
     Назначение/ответственность:
         Регистр сущностных планировщиков по имени датасета.
+    Взаимодействия:
+        Делегирует создание PlannerFactory.
+    Ограничения:
+        Пока поддерживает только dataset 'employees'.
     """
 
     def __init__(self, factory: PlannerFactory):
@@ -14,11 +18,15 @@ class PlannerRegistry:
 
     def get(self, dataset: str, include_deleted_users: bool) -> EmployeePlanner:
         """
-        Контракт:
-            Вход: dataset (пока поддерживается только 'employees'), include_deleted_users.
-            Выход: конкретный планировщик сущности.
-        Ошибки:
-            ValueError при неизвестном датасете.
+        Назначение:
+            Вернуть планировщик нужного датасета.
+        Контракт (вход/выход):
+            - Вход: dataset: str, include_deleted_users: bool.
+            - Выход: экземпляр планировщика сущности.
+        Ошибки/исключения:
+            ValueError — если датасет не поддерживается.
+        Алгоритм:
+            Сейчас только employees -> factory.create_employee_planner.
         """
         if dataset != "employees":
             raise ValueError(f"Unsupported dataset: {dataset}")
