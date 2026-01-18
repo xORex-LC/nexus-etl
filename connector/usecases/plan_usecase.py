@@ -9,7 +9,6 @@ from connector.validation.pipeline import logValidationFailure
 from connector.validation.registry import ValidatorRegistry
 from connector.validation.dataset_rules import ValidationRowResult
 
-
 class PlanUseCase:
     """
     Назначение/ответственность:

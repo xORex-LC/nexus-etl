@@ -3,16 +3,17 @@ from __future__ import annotations
 import logging
 
 from .cacheDb import ensureSchema
-from .cacheRepo import getOrgByOuid
 from .csvReader import CsvRowSource
 from .loggingSetup import logEvent
 from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
-from .planner import build_import_plan, write_plan_file
+from .planner import write_plan_file
 from .planning.adapters import CacheEmployeeLookup
 from .planning.factory import PlannerFactory
 from .planning.registry import PlannerRegistry
 from .protocols_services import ImportPlanServiceProtocol
 from .timeUtils import getNowIso
+from .usecases.plan_usecase import PlanUseCase
+from .validation.adapters import CacheOrgLookup
 from .validation.deps import ValidationDependencies
 from .validation.registry import ValidatorRegistry
 
@@ -43,32 +44,25 @@ class ImportPlanService(ImportPlanServiceProtocol):
     ) -> int:
         ensureSchema(conn)
 
-        class _OrgLookupAdapter:
-            """Адаптер org_lookup для валидатора поверх кэша."""
-
-            def __init__(self, conn):
-                self.conn = conn
-
-            def get_org_by_id(self, ouid: int):
-                return getOrgByOuid(self.conn, ouid)
-
         planner_factory = PlannerFactory(employee_lookup=CacheEmployeeLookup(conn))
         planner_registry = PlannerRegistry(planner_factory)
-        deps = ValidationDependencies(org_lookup=_OrgLookupAdapter(conn))
+        org_lookup = CacheOrgLookup(conn)
+        deps = ValidationDependencies(org_lookup=org_lookup)
         validator_registry = ValidatorRegistry(deps)
         row_source = CsvRowSource(csv_path, csv_has_header)
-        plan_result = build_import_plan(
-            row_source=row_source,
-            include_deleted_users=include_deleted_users,
-            dataset=dataset,
-            logger=logger,
-            run_id=run_id,
-            report=report,
+        use_case = PlanUseCase(
+            validator_registry=validator_registry,
+            planner_registry=planner_registry,
             report_items_limit=report_items_limit,
             report_items_success=report_items_success,
             include_skipped_in_report=include_skipped_in_report,
-            validator_registry=validator_registry,
-            planner_registry=planner_registry,
+        )
+        plan_result = use_case.run(
+            row_source=row_source,
+            dataset=dataset,
+            include_deleted_users=include_deleted_users,
+            logger=logger,
+            run_id=run_id,
         )
         generated_at = getNowIso()
         plan_meta = {
