@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from pathlib import Path
 from typing import Any
 
 from .cacheRepo import getOrgByOuid
 from .csvReader import CsvFormatError, readEmployeeRows
-from .diff import build_user_diff
 from .loggingSetup import logEvent
 from .matcher import MatchResult, matchEmployeeByMatchKey
 from .planModels import EntityType, Operation
+from .planning.factory import PlannerFactory
+from .planning.protocols import EmployeeLookup
 from .sanitize import maskSecret
 from .timeUtils import getNowIso
 from .validation.deps import ValidationDependencies
@@ -57,12 +57,23 @@ def build_import_plan(
         def get_org_by_id(self, ouid: int):
             return getOrgByOuid(self.conn, ouid)
 
+    class _EmployeeLookupAdapter(EmployeeLookup):
+        """Адаптер для поиска пользователя по match_key через кэш."""
+
+        def __init__(self, conn):
+            self.conn = conn
+
+        def match_by_key(self, match_key: str, include_deleted: bool) -> MatchResult:
+            return matchEmployeeByMatchKey(self.conn, match_key, include_deleted)
+
     factory = ValidatorFactory(
         ValidationDependencies(org_lookup=_OrgLookupAdapter(conn)),
     )
     row_validator = factory.create_row_validator()
     state = factory.create_validation_context()
     dataset_validator = factory.create_dataset_validator(state)
+    planner_factory = PlannerFactory(employee_lookup=_EmployeeLookupAdapter(conn))
+    employee_planner = planner_factory.create_employee_planner(include_deleted_users=include_deleted_users)
 
     def append_report_item(item: dict[str, Any], status: str) -> int | None:
         """
@@ -115,25 +126,12 @@ def build_import_plan(
                 continue
 
             valid_rows += 1
-            match_result: MatchResult = matchEmployeeByMatchKey(conn, match_key, include_deleted_users)
-            if match_result.status == "not_found":
-                new_id = str(uuid.uuid4())
-                planned_create += 1
-                plan_items.append(
-                    {
-                        "row_id": f"line:{validation.line_no}",
-                        "line_no": validation.line_no,
-                        "entity_type": EntityType.EMPLOYEE,
-                        "op": Operation.CREATE,
-                        "resource_id": new_id,
-                        "desired_state": desired,
-                        "changes": {},
-                        "source_ref": {"match_key": match_key},
-                    }
-                )
-                continue
-
-            if match_result.status == "conflict":
+            op_status, plan_item, match_result = employee_planner.plan_row(
+                desired_state=desired,
+                line_no=validation.line_no,
+                match_key=match_key,
+            )
+            if op_status == "conflict":
                 failed_rows += 1
                 append_report_item(
                     {
@@ -149,16 +147,7 @@ def build_import_plan(
                     "failed",
                 )
                 continue
-
-            existing = match_result.candidate
-            diff = build_user_diff(existing, employee.__dict__)
-            changes: dict[str, Any] = {}
-            for field, change in diff.items():
-                if field == "password":
-                    continue
-                if isinstance(change, dict) and "to" in change:
-                    changes[field] = change.get("to")
-            if not changes:
+            if op_status == "skip":
                 skipped_rows += 1
                 append_report_item(
                     {
@@ -171,20 +160,12 @@ def build_import_plan(
                     "skipped",
                 )
                 continue
-
-            planned_update += 1
-            plan_items.append(
-                {
-                    "row_id": f"line:{validation.line_no}",
-                    "line_no": validation.line_no,
-                    "entity_type": EntityType.EMPLOYEE,
-                    "op": Operation.UPDATE,
-                    "resource_id": existing.get("_id") if existing else "",
-                    "desired_state": desired,
-                    "changes": changes,
-                    "source_ref": {"match_key": match_key},
-                }
-            )
+            if plan_item:
+                if plan_item.op == Operation.CREATE:
+                    planned_create += 1
+                elif plan_item.op == Operation.UPDATE:
+                    planned_update += 1
+                plan_items.append(plan_item.__dict__)
     except CsvFormatError as exc:
         logEvent(logger, logging.ERROR, run_id, "csv", f"CSV format error: {exc}")
         raise
