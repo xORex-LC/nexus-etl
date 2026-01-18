@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ..protocols_lookup import MatchKeyLookupProtocol, OrgLookupProtocol, UserLookupProtocol
+from connector.domain.ports.lookups import MatchKeyLookupProtocol, OrgLookupProtocol, UserLookupProtocol
 
 @dataclass
 class ValidationDependencies:

@@ -5,9 +5,9 @@ import sqlite3
 import time
 from typing import Any
 
-from .ankeyApiClient import AnkeyApiClient, ApiError
-from .cacheDb import ensureSchema
-from .cacheRepo import (
+from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
+from connector.infra.cache.db import ensureSchema
+from connector.infra.cache.repo import (
     clearOrgs,
     clearUsers,
     getCounts,
@@ -16,9 +16,9 @@ from .cacheRepo import (
     upsertOrganization,
     upsertUser,
 )
-from .cacheSourceApi import mapOrgFromApi, mapUserFromApi
-from .loggingSetup import logEvent
-from .timeUtils import getNowIso
+from connector.infra.cache.source_api import mapOrgFromApi, mapUserFromApi
+from connector.infra.logging.setup import logEvent
+from connector.common.time import getNowIso
 
 def _append_item(report, entity_type: str, key: str, status: str, error: str | None = None) -> dict:
     item = {

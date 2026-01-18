@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.planModels import Operation, PlanItem, PlanSummary
-from connector.validation.dataset_rules import ValidationRowResult
+from connector.domain.validation.dataset_rules import ValidationRowResult
 
 @dataclass
 class PlanBuildResult:

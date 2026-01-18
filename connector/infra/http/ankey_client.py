@@ -5,7 +5,7 @@ from typing import Any, Iterator
 
 import httpx
 
-from .errors import AppError
+from connector.errors import AppError
 
 
 class ApiError(AppError):

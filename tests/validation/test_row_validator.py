@@ -1,8 +1,8 @@
 import pytest
 
-from connector.models import CsvRow
-from connector.validation.pipeline import RowValidator
-from connector.validation.row_rules import FIELD_RULES
+from connector.domain.models import CsvRow
+from connector.domain.validation.pipeline import RowValidator
+from connector.domain.validation.row_rules import FIELD_RULES
 
 def test_row_validator_parses_valid_row():
     row = CsvRow(

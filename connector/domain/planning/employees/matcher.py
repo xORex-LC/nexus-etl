@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.matcher import MatchResult
-from .protocols import EmployeeLookup
+from connector.domain.planning.protocols import EmployeeLookup
 
 class EmployeeMatcher:
     """

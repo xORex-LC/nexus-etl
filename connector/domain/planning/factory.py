@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from connector.planning.decision import EmployeeDecisionPolicy
-from connector.planning.differ import EmployeeDiffer
-from connector.planning.employee_planner import EmployeePlanner
-from connector.planning.matcher import EmployeeMatcher
-from connector.planning.protocols import EmployeeLookup
+from connector.domain.planning.employees.decision import EmployeeDecisionPolicy
+from connector.domain.planning.employees.differ import EmployeeDiffer
+from connector.domain.planning.employees.planner import EmployeePlanner
+from connector.domain.planning.employees.matcher import EmployeeMatcher
+from connector.domain.planning.protocols import EmployeeLookup
 
 class PlannerFactory:
     """

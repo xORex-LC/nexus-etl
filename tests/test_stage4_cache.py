@@ -4,10 +4,10 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import httpx
-from connector.cacheDb import ensureSchema, getCacheDbPath, openCacheDb
-from connector.cacheRepo import getCounts, getUserByMatchKey, upsertUser
-from connector.cli import app
-from connector.ankeyApiClient import AnkeyApiClient
+from connector.infra.cache.db import ensureSchema, getCacheDbPath, openCacheDb
+from connector.infra.cache.repo import getCounts, getUserByMatchKey, upsertUser
+from connector.main import app
+from connector.infra.http.ankey_client import AnkeyApiClient
 
 runner = CliRunner()
 
@@ -51,8 +51,8 @@ def make_transport(responder):
 
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
-    import connector.cli as cli_module
-    import connector.cacheService as cache_service_module
+    import connector.main as cli_module
+    import connector.usecases.cache_refresh_service as cache_service_module
 
     def factory(*args, **kwargs):
         kwargs["transport"] = transport

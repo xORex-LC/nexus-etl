@@ -3,9 +3,9 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from connector.cacheDb import ensureSchema, getCacheDbPath, openCacheDb
-from connector.cacheRepo import upsertOrganization, upsertUser
-from connector.cli import app
+from connector.infra.cache.db import ensureSchema, getCacheDbPath, openCacheDb
+from connector.infra.cache.repo import upsertOrganization, upsertUser
+from connector.main import app
 
 runner = CliRunner()
 
@@ -245,7 +245,7 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
 
     # Force duplicate candidates despite UNIQUE constraint by monkeypatching matcher
     import connector.matcher as matcher_module
-    import connector.planning.adapters as planning_adapters
+    import connector.domain.planning.adapters as planning_adapters
 
     monkeypatch.setattr(
         planning_adapters.CacheEmployeeLookup,

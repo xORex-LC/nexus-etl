@@ -5,7 +5,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any
 
-from .timeUtils import getNowIso
+from connector.common.time import getNowIso
 
 @dataclass
 class ReportMeta:

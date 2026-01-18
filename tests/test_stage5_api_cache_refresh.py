@@ -5,9 +5,9 @@ from typing import Callable
 import httpx
 from typer.testing import CliRunner
 
-from connector.cacheDb import getCacheDbPath, openCacheDb
-from connector.cacheRepo import getCounts
-from connector.cli import app
+from connector.infra.cache.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.repo import getCounts
+from connector.main import app
 
 runner = CliRunner()
 
@@ -17,9 +17,9 @@ def make_transport(responder: Callable[[httpx.Request], httpx.Response]) -> http
 
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
-    import connector.cli as cli_module
-    import connector.cacheService as cache_service_module
-    from connector.ankeyApiClient import AnkeyApiClient
+    import connector.main as cli_module
+    import connector.usecases.cache_refresh_service as cache_service_module
+    from connector.infra.http.ankey_client import AnkeyApiClient
 
     def factory(*args, **kwargs):
         kwargs["transport"] = transport

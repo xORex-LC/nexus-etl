@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
-from .sanitize import isMaskedSecret
+from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
+from connector.common.sanitize import isMaskedSecret
 
 def _get_str(value: Any) -> str | None:
     if value is None:

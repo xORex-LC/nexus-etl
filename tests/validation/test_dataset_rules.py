@@ -1,8 +1,8 @@
-from connector.models import CsvRow
-from connector.validation.deps import DatasetValidationState, ValidationDependencies
-from connector.validation.dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
-from connector.validation.pipeline import RowValidator
-from connector.validation.row_rules import FIELD_RULES
+from connector.domain.models import CsvRow
+from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
+from connector.domain.validation.dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
+from connector.domain.validation.pipeline import RowValidator
+from connector.domain.validation.row_rules import FIELD_RULES
 
 class DummyOrgLookup:
     def __init__(self, existing_ids: set[int]):

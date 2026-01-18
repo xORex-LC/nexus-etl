@@ -7,7 +7,7 @@ from connector.matcher import MatchResult
 from .decision import EmployeeDecisionPolicy
 from .differ import EmployeeDiffer
 from .matcher import EmployeeMatcher
-from .protocols import PlanningKind, PlanningResult
+from connector.domain.planning.protocols import PlanningKind, PlanningResult
 
 class EmployeePlanner:
     """

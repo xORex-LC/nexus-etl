@@ -4,14 +4,14 @@ import logging
 import uuid
 from typing import Any
 
-from .ankeyApiClient import ApiError, AnkeyApiClient
-from .importPlanService import ImportPlanService
-from .loggingSetup import logEvent
-from .planModels import Plan
-from .planReader import readPlanFile
-from .protocols_api import UserApiProtocol
-from .userApi import UserApi
-from .userPayloadBuilder import buildUserUpsertPayload
+from connector.infra.http.ankey_client import ApiError, AnkeyApiClient
+from connector.usecases.import_plan_service import ImportPlanService
+from connector.infra.logging.setup import logEvent
+from connector.planModels import Plan
+from connector.infra.artifacts.plan_reader import readPlanFile
+from connector.domain.ports.api import UserApiProtocol
+from connector.infra.http.user_api import UserApi
+from connector.domain.mappers.user_payload import buildUserUpsertPayload
 
 class ImportApplyService:
     """

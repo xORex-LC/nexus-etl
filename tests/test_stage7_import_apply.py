@@ -4,13 +4,13 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from connector.importApplyService import ImportApplyService
+from connector.usecases.import_apply_service import ImportApplyService
 from connector.planModels import EntityType, Plan, PlanItem, PlanMeta, PlanSummary
-from connector.planReader import readPlanFile
-from connector.userApi import UserApi
-from connector.userPayloadBuilder import buildUserUpsertPayload
-from connector.cli import app
-from connector.ankeyApiClient import ApiError
+from connector.infra.artifacts.plan_reader import readPlanFile
+from connector.infra.http.user_api import UserApi
+from connector.domain.mappers.user_payload import buildUserUpsertPayload
+from connector.main import app
+from connector.infra.http.ankey_client import ApiError
 
 runner = CliRunner()
 

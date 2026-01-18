@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from connector.validation.deps import ValidationDependencies
-from connector.validation.pipeline import DatasetValidator, RowValidator, ValidatorFactory
-from connector.validation.deps import DatasetValidationState
+from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
+from connector.domain.validation.pipeline import DatasetValidator, RowValidator, ValidatorFactory
 
 class ValidatorRegistry:
     """

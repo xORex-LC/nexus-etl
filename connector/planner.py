@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .sanitize import maskSecret
-from .timeUtils import getNowIso
+from connector.common.sanitize import maskSecret
+from connector.common.time import getNowIso
 
 def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
     """

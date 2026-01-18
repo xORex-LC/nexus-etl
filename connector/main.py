@@ -9,22 +9,22 @@ from pathlib import Path
 
 import typer
 
-from .ankeyApiClient import AnkeyApiClient, ApiError
-from .cacheDb import ensureSchema, getCacheDbPath, openCacheDb
-from .cacheCommandService import CacheCommandService
-from .config import Settings, loadSettings
-from .csvReader import CsvFormatError, CsvRowSource
-from .loggingSetup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
-from .importApplyService import ImportApplyService, createUserApiClient, readPlanFromCsv
-from .importPlanService import ImportPlanService
-from .planReader import readPlanFile
-from .protocols_services import CacheCommandServiceProtocol, ImportPlanServiceProtocol
-from .reporter import createEmptyReport, finalizeReport, writeReportJson
-from .sanitize import maskSecret
-from .timeUtils import getDurationMs
-from .validation.pipeline import logValidationFailure
-from .validation.deps import ValidationDependencies
-from .validation.registry import ValidatorRegistry
+from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
+from connector.infra.cache.db import ensureSchema, getCacheDbPath, openCacheDb
+from connector.usecases.cache_command_service import CacheCommandService
+from connector.config.config import Settings, loadSettings
+from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
+from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
+from connector.usecases.import_apply_service import ImportApplyService, createUserApiClient, readPlanFromCsv
+from connector.usecases.import_plan_service import ImportPlanService
+from connector.infra.artifacts.plan_reader import readPlanFile
+from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServiceProtocol
+from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
+from connector.common.sanitize import maskSecret
+from connector.common.time import getDurationMs
+from connector.domain.validation.pipeline import logValidationFailure
+from connector.domain.validation.deps import ValidationDependencies
+from connector.datasets.validation.registry import ValidatorRegistry
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)

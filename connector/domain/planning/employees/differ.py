@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.diff import build_user_diff
+from connector.domain.planning.employees.diff_detail import build_user_diff
 
 class EmployeeDiffer:
     """

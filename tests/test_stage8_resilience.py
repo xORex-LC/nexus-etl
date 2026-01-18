@@ -2,9 +2,9 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from connector.ankeyApiClient import AnkeyApiClient, ApiError
-from connector.cli import app
-from connector.importApplyService import ImportApplyService
+from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
+from connector.main import app
+from connector.usecases.import_apply_service import ImportApplyService
 from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
 
 runner = CliRunner()
@@ -13,8 +13,8 @@ def make_transport(responder):
     return httpx.MockTransport(responder)
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
-    import connector.cli as cli_module
-    import connector.cacheService as cache_service_module
+    import connector.main as cli_module
+    import connector.usecases.cache_refresh_service as cache_service_module
 
     def factory(*args, **kwargs):
         kwargs["transport"] = transport

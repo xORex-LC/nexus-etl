@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable, Protocol
 
-from connector.models import CsvRow
+from connector.domain.models import CsvRow
 
 class RowSource(Protocol):
     """

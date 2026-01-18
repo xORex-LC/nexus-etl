@@ -1,8 +1,8 @@
 import httpx
 from typer.testing import CliRunner
-from connector.cli import app
-import connector.cli as cli_module
-from connector.ankeyApiClient import AnkeyApiClient
+from connector.main import app
+import connector.main as cli_module
+from connector.infra.http.ankey_client import AnkeyApiClient
 
 runner = CliRunner()
 

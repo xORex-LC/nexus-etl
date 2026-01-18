@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from connector.planning.employee_planner import EmployeePlanner
-from connector.planning.factory import PlannerFactory
-from connector.planning.protocols import EntityPlanner
+from connector.domain.planning.employees.planner import EmployeePlanner
+from connector.domain.planning.factory import PlannerFactory
+from connector.domain.planning.protocols import EntityPlanner
 
 class PlannerRegistry:
     """

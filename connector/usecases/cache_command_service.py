@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 
-from .cacheService import clearCache, getCacheStatus, refreshCacheFromApi
-from .protocols_services import CacheCommandServiceProtocol
-from .loggingSetup import logEvent
+from connector.usecases.cache_refresh_service import clearCache, getCacheStatus, refreshCacheFromApi
+from connector.usecases.ports import CacheCommandServiceProtocol
+from connector.infra.logging.setup import logEvent
 
 
 class CacheCommandService(CacheCommandServiceProtocol):

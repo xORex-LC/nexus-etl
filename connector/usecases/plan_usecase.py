@@ -5,13 +5,13 @@ from dataclasses import asdict
 from typing import Any
 from dataclasses import dataclass
 
-from connector.models import EmployeeInput
-from connector.planning.plan_builder import PlanBuilder, PlanBuildResult
-from connector.planning.registry import PlannerRegistry
-from connector.validation.pipeline import logValidationFailure
-from connector.validation.registry import ValidatorRegistry
-from connector.validation.dataset_rules import ValidationRowResult
-from connector.planning.protocols import PlanningKind, PlanningResult
+from connector.domain.models import EmployeeInput
+from connector.domain.planning.plan_builder import PlanBuilder, PlanBuildResult
+from connector.datasets.planning.registry import PlannerRegistry
+from connector.domain.validation.pipeline import logValidationFailure
+from connector.datasets.validation.registry import ValidatorRegistry
+from connector.domain.validation.dataset_rules import ValidationRowResult
+from connector.domain.planning.protocols import PlanningKind, PlanningResult
 
 @dataclass
 class ValidatedRow:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .cacheRepo import findUsersByMatchKey
+from connector.infra.cache.repo import findUsersByMatchKey
 
 
 def _is_deleted(user_row: dict[str, Any]) -> bool:

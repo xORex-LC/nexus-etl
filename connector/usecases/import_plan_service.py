@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import logging
 
-from .cacheDb import ensureSchema
-from .csvReader import CsvRowSource
-from .loggingSetup import logEvent
-from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
-from .planner import write_plan_file
-from .planning.adapters import CacheEmployeeLookup
-from .planning.factory import PlannerFactory
-from .planning.registry import PlannerRegistry
-from .protocols_services import ImportPlanServiceProtocol
-from .timeUtils import getNowIso
-from .usecases.plan_usecase import PlanUseCase
-from .validation.adapters import CacheOrgLookup
-from .validation.deps import ValidationDependencies
-from .validation.registry import ValidatorRegistry
+from connector.infra.cache.db import ensureSchema
+from connector.infra.sources.csv_reader import CsvRowSource
+from connector.infra.logging.setup import logEvent
+from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
+from connector.planner import write_plan_file
+from connector.domain.planning.adapters import CacheEmployeeLookup
+from connector.domain.planning.factory import PlannerFactory
+from connector.datasets.planning.registry import PlannerRegistry
+from connector.usecases.ports import ImportPlanServiceProtocol
+from connector.common.time import getNowIso
+from connector.usecases.plan_usecase import PlanUseCase
+from connector.infra.cache.validation_lookups import CacheOrgLookup
+from connector.domain.validation.deps import ValidationDependencies
+from connector.datasets.validation.registry import ValidatorRegistry
 
 class ImportPlanService(ImportPlanServiceProtocol):
     """

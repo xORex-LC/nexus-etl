@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .validation.row_rules import normalize_whitespace as normalizeWhitespace
+from connector.domain.validation.row_rules import normalize_whitespace as normalizeWhitespace
 
 def _normalize_str(value: str | None) -> str | None:
     return normalizeWhitespace(value)

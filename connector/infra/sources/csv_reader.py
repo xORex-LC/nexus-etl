@@ -3,8 +3,8 @@ from __future__ import annotations
 import csv
 from typing import Iterator
 
-from .models import CsvRow
-from .protocols_sources import RowSource
+from connector.domain.models import CsvRow
+from connector.domain.ports.sources import RowSource
 
 EXPECTED_COLUMNS = 14
 

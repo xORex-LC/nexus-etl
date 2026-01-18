@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .ankeyApiClient import AnkeyApiClient
-from .protocols_api import UserApiProtocol
+from connector.infra.http.ankey_client import AnkeyApiClient
+from connector.domain.ports.api import UserApiProtocol
 
 
 class UserApi(UserApiProtocol):
