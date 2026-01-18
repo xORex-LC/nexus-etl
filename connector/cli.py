@@ -522,7 +522,7 @@ def runImportApplyCommand(
         report.summary.planned_create = plan.summary.planned_create
         report.summary.planned_update = plan.summary.planned_update
         report.summary.skipped = plan.summary.skipped
-        report.summary.failed = plan.summary.failed
+        report.summary.failed = plan.summary.failed_rows
 
         user_api = createUserApiClient(settings)
         service = ImportApplyService(user_api)

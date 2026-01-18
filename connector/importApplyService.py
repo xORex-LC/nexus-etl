@@ -13,7 +13,6 @@ from .protocols_api import UserApiProtocol
 from .userApi import UserApi
 from .userPayloadBuilder import buildUserUpsertPayload
 
-
 class ImportApplyService:
     """
     Оркестратор выполнения плана импорта.
@@ -26,15 +25,13 @@ class ImportApplyService:
         report.items.append(
             {
                 "row_id": item.get("row_id"),
-                "action": item.get("action"),
-                "match_key": item.get("match_key"),
-                "existing_id": item.get("existing_id"),
-                "new_id": item.get("new_id"),
+                "op": item.get("op"),
+                "entity_type": item.get("entity_type"),
                 "resource_id": item.get("resource_id"),
                 "status": status,
                 "errors": item.get("errors", []),
-                "warnings": item.get("warnings", []),
-                "diff": item.get("diff", {}),
+                "changes": item.get("changes", {}),
+                "desired_state": item.get("desired_state", {}),
                 "api_status": item.get("api_status"),
                 "api_response": item.get("api_response"),
                 "api_body_snippet": item.get("api_body_snippet"),
@@ -54,7 +51,8 @@ class ImportApplyService:
         report_items_success: bool,
         resource_exists_retries: int,
     ) -> int:
-        created = updated = skipped = failed = 0
+        created = updated = failed = 0
+        skipped = getattr(plan.summary, "skipped", 0) if plan and plan.summary else 0
         actions_count = 0
         error_stats: dict[str, int] = {}
         fatal_error = False
@@ -71,17 +69,12 @@ class ImportApplyService:
             return True
 
         for item in plan.items:
-            action = item.action
-            if action in ("skip", "error"):
-                if action == "skip":
-                    skipped += 1
-                    status = "skipped"
-                else:
-                    failed += 1
-                    status = "failed"
-                if should_append(status):
-                    self._append_item(report, item.__dict__, status)
-                if action == "error" and stop_on_first_error:
+            action = item.op
+            if action not in ("create", "update"):
+                failed += 1
+                if should_append("failed"):
+                    self._append_item(report, item.__dict__, "failed")
+                if stop_on_first_error:
                     break
                 continue
 
@@ -89,7 +82,7 @@ class ImportApplyService:
                 break
 
             actions_count += 1
-            resource_id = item.new_id if action == "create" else item.existing_id
+            resource_id = item.resource_id
             if not resource_id:
                 failed += 1
                 if should_append("failed"):
@@ -100,7 +93,7 @@ class ImportApplyService:
 
             try:
                 if not dry_run:
-                    desired = item.desired if isinstance(item.desired, dict) else {}
+                    desired = item.desired_state if isinstance(item.desired_state, dict) else {}
                     if not desired:
                         raise ValueError("Plan item missing desired data")
                     payload = buildUserUpsertPayload(desired)
@@ -178,7 +171,6 @@ class ImportApplyService:
             return 2
         return 1 if failed > 0 else 0
 
-
 def readPlanFromCsv(
     conn,
     csv_path: str,
@@ -210,7 +202,6 @@ def readPlanFromCsv(
     if not plan_path:
         raise ValueError("plan file not created")
     return readPlanFile(plan_path)
-
 
 def createUserApiClient(settings, transport=None) -> UserApi:
     baseUrl = f"https://{settings.host}:{settings.port}"

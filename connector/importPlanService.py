@@ -64,23 +64,22 @@ class ImportPlanService(ImportPlanServiceProtocol):
             ),
             summary=PlanSummary(
                 rows_total=summary["rows_total"],
+                valid_rows=summary.get("valid_rows", 0),
+                failed_rows=summary.get("failed_rows", 0),
                 planned_create=summary["planned_create"],
                 planned_update=summary["planned_update"],
                 skipped=summary["skipped"],
-                failed=summary["failed"],
             ),
             items=[
                 PlanItem(
                     row_id=item.get("row_id") or "",
                     line_no=item.get("line_no"),
-                    action=item.get("action") or "",
-                    match_key=item.get("match_key"),
-                    existing_id=item.get("existing_id"),
-                    new_id=item.get("new_id"),
-                    desired=item.get("desired") or {},
-                    diff=item.get("diff") or {},
-                    errors=item.get("errors") or [],
-                    warnings=item.get("warnings") or [],
+                    entity_type=item.get("entity_type") or "",
+                    op=item.get("op") or "",
+                    resource_id=item.get("resource_id") or "",
+                    desired_state=item.get("desired_state") or {},
+                    changes=item.get("changes") or {},
+                    source_ref=item.get("source_ref") or {},
                 )
                 for item in plan_items
             ],
@@ -93,6 +92,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
         report.summary.planned_create = summary["planned_create"]
         report.summary.planned_update = summary["planned_update"]
         report.summary.skipped = summary["skipped"]
-        report.summary.failed = summary["failed"]
+        report.summary.failed = summary.get("failed_rows", 0)
 
-        return 1 if summary["failed"] > 0 else 0
+        return 1 if summary.get("failed_rows", 0) > 0 else 0

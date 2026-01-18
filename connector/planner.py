@@ -11,26 +11,22 @@ from .csvReader import CsvFormatError, readEmployeeRows
 from .diff import build_user_diff
 from .loggingSetup import logEvent
 from .matcher import MatchResult, matchEmployeeByMatchKey
-from .models import ValidationErrorItem
+from .planModels import EntityType, Operation
 from .sanitize import maskSecret
 from .timeUtils import getNowIso
-from .validation.pipeline import logValidationFailure
-from .validation.pipeline import ValidatorFactory
 from .validation.deps import ValidationDependencies
+from .validation.pipeline import ValidatorFactory, logValidationFailure
 
 def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
-    """Возвращает копию item с маскированием чувствительных данных."""
-
-    masked = item.copy()
-    desired = masked.get("desired")
+    """
+    Назначение:
+        Маскирует чувствительные поля плана перед записью в отчёт/файл.
+    """
+    clone = json.loads(json.dumps(item))
+    desired = clone.get("desired_state")
     if isinstance(desired, dict) and "password" in desired:
-        desired_copy = desired.copy()
-        desired_copy["password"] = maskSecret(desired_copy.get("password"))
-        masked["desired"] = desired_copy
-    return masked
-
-def _validation_error(code: str, field: str | None, message: str) -> ValidationErrorItem:
-    return ValidationErrorItem(code=code, field=field, message=message)
+        desired["password"] = maskSecret(desired["password"])
+    return clone
 
 def build_import_plan(
     conn,
@@ -49,6 +45,7 @@ def build_import_plan(
     """
     plan_items: list[dict[str, Any]] = []
     rows_processed = 0
+    valid_rows = 0
     failed_rows = 0
     planned_create = planned_update = skipped_rows = 0
     class _OrgLookupAdapter:
@@ -68,6 +65,9 @@ def build_import_plan(
     dataset_validator = factory.create_dataset_validator(state)
 
     def append_report_item(item: dict[str, Any], status: str) -> int | None:
+        """
+        Добавляет элемент в отчёт с учётом лимита.
+        """
         if status not in ("failed", "skipped") and not report_items_success:
             return None
         if len(report.items) >= report_items_limit:
@@ -77,20 +77,7 @@ def build_import_plan(
                 pass
             return None
         sanitized = _mask_sensitive_item(item)
-        report.items.append(
-            {
-                "row_id": sanitized.get("row_id"),
-                "action": sanitized.get("action"),
-                "match_key": sanitized.get("match_key"),
-                "existing_id": sanitized.get("existing_id"),
-                "new_id": sanitized.get("new_id"),
-                "desired": sanitized.get("desired"),
-                "errors": sanitized.get("errors", []),
-                "warnings": sanitized.get("warnings", []),
-                "diff": sanitized.get("diff", {}),
-                "status": status,
-            }
-        )
+        report.items.append(sanitized)
         return len(report.items) - 1
 
     try:
@@ -105,97 +92,99 @@ def build_import_plan(
 
             if errors:
                 failed_rows += 1
-                item = {
-                    "row_id": f"line:{validation.line_no}",
-                    "line_no": validation.line_no,
-                    "action": "error",
-                    "match_key": match_key,
-                    "desired": desired,
-                    "errors": [e.__dict__ for e in errors],
-                    "warnings": [w.__dict__ for w in warnings],
-                }
-                plan_items.append(item)
-                idx = append_report_item(item, "failed")
+                append_report_item(
+                    {
+                        "row_id": f"line:{validation.line_no}",
+                        "line_no": validation.line_no,
+                        "status": "invalid",
+                        "match_key": match_key,
+                        "errors": [e.__dict__ for e in errors],
+                        "warnings": [w.__dict__ for w in warnings],
+                    },
+                    "failed",
+                )
                 logValidationFailure(
                     logger,
                     run_id,
                     "import-plan",
                     validation,
-                    idx,
+                    None,
                     errors=errors,
                     warnings=warnings,
                 )
                 continue
 
+            valid_rows += 1
             match_result: MatchResult = matchEmployeeByMatchKey(conn, match_key, include_deleted_users)
             if match_result.status == "not_found":
                 new_id = str(uuid.uuid4())
-                diff = build_user_diff(None, employee.__dict__)
                 planned_create += 1
-                item = {
-                    "row_id": f"line:{validation.line_no}",
-                    "line_no": validation.line_no,
-                    "action": "create",
-                    "match_key": match_key,
-                    "new_id": new_id,
-                    "desired": desired,
-                    "diff": diff,
-                    "errors": [],
-                    "warnings": [w.__dict__ for w in warnings],
-                }
-                plan_items.append(item)
-                append_report_item(item, "planned_create")
+                plan_items.append(
+                    {
+                        "row_id": f"line:{validation.line_no}",
+                        "line_no": validation.line_no,
+                        "entity_type": EntityType.EMPLOYEE,
+                        "op": Operation.CREATE,
+                        "resource_id": new_id,
+                        "desired_state": desired,
+                        "changes": {},
+                        "source_ref": {"match_key": match_key},
+                    }
+                )
                 continue
 
             if match_result.status == "conflict":
                 failed_rows += 1
-                item = {
-                    "row_id": f"line:{validation.line_no}",
-                    "line_no": validation.line_no,
-                    "action": "error",
-                    "match_key": match_key,
-                    "desired": desired,
-                    "errors": [
-                        {"code": "MATCH_CONFLICT", "field": "matchKey", "message": "multiple users with same match_key"}
-                    ],
-                    "warnings": [w.__dict__ for w in warnings],
-                }
-                plan_items.append(item)
-                append_report_item(item, "failed")
+                append_report_item(
+                    {
+                        "row_id": f"line:{validation.line_no}",
+                        "line_no": validation.line_no,
+                        "status": "invalid",
+                        "match_key": match_key,
+                        "errors": [
+                            {"code": "MATCH_CONFLICT", "field": "matchKey", "message": "multiple users with same match_key"}
+                        ],
+                        "warnings": [w.__dict__ for w in warnings],
+                    },
+                    "failed",
+                )
                 continue
 
             existing = match_result.candidate
             diff = build_user_diff(existing, employee.__dict__)
-            if not diff:
+            changes: dict[str, Any] = {}
+            for field, change in diff.items():
+                if field == "password":
+                    continue
+                if isinstance(change, dict) and "to" in change:
+                    changes[field] = change.get("to")
+            if not changes:
                 skipped_rows += 1
-                item = {
-                    "row_id": f"line:{validation.line_no}",
-                    "line_no": validation.line_no,
-                    "action": "skip",
-                    "match_key": match_key,
-                    "existing_id": existing.get("_id") if existing else None,
-                    "desired": desired,
-                    "errors": [],
-                    "warnings": [w.__dict__ for w in warnings],
-                }
-                plan_items.append(item)
-                append_report_item(item, "skipped")
+                append_report_item(
+                    {
+                        "row_id": f"line:{validation.line_no}",
+                        "line_no": validation.line_no,
+                        "status": "skipped",
+                        "match_key": match_key,
+                        "warnings": [w.__dict__ for w in warnings],
+                    },
+                    "skipped",
+                )
                 continue
 
             planned_update += 1
-            item = {
-                "row_id": f"line:{validation.line_no}",
-                "line_no": validation.line_no,
-                "action": "update",
-                "match_key": match_key,
-                "existing_id": existing.get("_id") if existing else None,
-                "desired": desired,
-                "diff": diff,
-                "errors": [],
-                "warnings": [w.__dict__ for w in warnings],
-            }
-            plan_items.append(item)
-            append_report_item(item, "planned_update")
+            plan_items.append(
+                {
+                    "row_id": f"line:{validation.line_no}",
+                    "line_no": validation.line_no,
+                    "entity_type": EntityType.EMPLOYEE,
+                    "op": Operation.UPDATE,
+                    "resource_id": existing.get("_id") if existing else "",
+                    "desired_state": desired,
+                    "changes": changes,
+                    "source_ref": {"match_key": match_key},
+                }
+            )
     except CsvFormatError as exc:
         logEvent(logger, logging.ERROR, run_id, "csv", f"CSV format error: {exc}")
         raise
@@ -205,10 +194,11 @@ def build_import_plan(
 
     summary = {
         "rows_total": rows_processed,
+        "valid_rows": valid_rows,
+        "failed_rows": failed_rows,
         "planned_create": planned_create,
         "planned_update": planned_update,
         "skipped": skipped_rows,
-        "failed": failed_rows,
     }
     return plan_items, summary
 
