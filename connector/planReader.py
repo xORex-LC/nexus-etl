@@ -19,8 +19,6 @@ def readPlanFile(path: str) -> Plan:
     if not isinstance(data, dict):
         raise ValueError("Invalid plan format: root must be object")
 
-    # TODO: drop backward-compat support for legacy plan format (action/desired/diff/failed)
-    # once older plan files are deprecated and regenerate is enforced.
     meta_raw = data.get("meta", {}) if isinstance(data.get("meta"), dict) else {}
     summary_raw = data.get("summary", {}) if isinstance(data.get("summary"), dict) else {}
     items_raw = data.get("items", [])
@@ -37,8 +35,8 @@ def readPlanFile(path: str) -> Plan:
     )
     summary = PlanSummary(
         rows_total=int(summary_raw.get("rows_total") or 0),
-        valid_rows=int(summary_raw.get("valid_rows") or summary_raw.get("rows_total") or 0),
-        failed_rows=int(summary_raw.get("failed_rows") or summary_raw.get("failed") or 0),
+        valid_rows=int(summary_raw.get("valid_rows") or 0),
+        failed_rows=int(summary_raw.get("failed_rows") or 0),
         planned_create=int(summary_raw.get("planned_create") or 0),
         planned_update=int(summary_raw.get("planned_update") or 0),
         skipped=int(summary_raw.get("skipped") or 0),

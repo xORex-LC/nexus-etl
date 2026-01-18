@@ -158,52 +158,6 @@ class ValidatorFactory:
             deps=self.deps,
         )
 
-# Совместимость: публичные API, которые использовал остальной код
-def validateEmployeeRow(csvRow: CsvRow) -> tuple[EmployeeInput, ValidationRowResult]:
-    """
-    Назначение:
-        Совместимость: валидация одной строки через RowValidator по умолчанию.
-    """
-    # TODO: remove legacy compatibility wrapper once all callers use ValidatorFactory
-    row_validator = RowValidator(FIELD_RULES)
-    return row_validator.validate(csvRow)
-
-def validateEmployeeRowWithContext(csvRow: CsvRow, ctx) -> tuple[EmployeeInput, ValidationRowResult]:
-    """
-    Назначение:
-        Совместимость: валидация строки с глобальными проверками через DatasetValidator.
-    """
-    # TODO: drop this compatibility path when legacy validator usage is removed
-    row_validator = RowValidator(FIELD_RULES)
-    employee, result = row_validator.validate(csvRow)
-
-    # Адаптация контекста
-    class _CallableOrgLookup:
-        def __init__(self, fn: Callable[[int], Any]):
-            self.fn = fn
-
-        def get_org_by_id(self, ouid: int) -> Any:
-            return self.fn(ouid)
-
-    deps = ValidationDependencies(
-        org_lookup=_CallableOrgLookup(ctx.org_lookup) if getattr(ctx, "org_lookup", None) else None,
-        user_lookup=None,
-        matchkey_lookup=None,
-    )
-    state = DatasetValidationState(matchkey_seen=getattr(ctx, "matchkey_seen", {}), usr_org_tab_seen=getattr(ctx, "usr_org_tab_seen", {}))
-    dataset_rules: tuple[DatasetRule, ...] = (
-        MatchKeyUniqueRule(),
-        UsrOrgTabUniqueRule(),
-        OrgExistsRule(),
-    )
-    dataset_validator = DatasetValidator(
-        rules=dataset_rules,
-        state=state,
-        deps=deps,
-    )
-    dataset_validator.validate(employee, result)
-    return employee, result
-
 # Совместимость: логирование валидации
 def logValidationFailure(
     logger,
