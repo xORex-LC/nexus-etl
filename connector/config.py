@@ -66,7 +66,6 @@ class Settings:
     include_deleted_users: bool = False
     dataset_name: str = "employees"
     report_items_limit: int = 200
-    report_items_success: bool = False
     report_include_skipped: bool = True
     resource_exists_retries: int = 3
     csv_has_header: bool = False
@@ -293,7 +292,6 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "include_deleted_users": envGet("ANKEY_INCLUDE_DELETED_USERS"),
         "dataset_name": envGet("ANKEY_DATASET_NAME"),
         "report_items_limit": envGet("ANKEY_REPORT_ITEMS_LIMIT"),
-        "report_items_success": envGet("ANKEY_REPORT_ITEMS_SUCCESS"),
         "report_include_skipped": envGet("ANKEY_REPORT_INCLUDE_SKIPPED"),
         "resource_exists_retries": envGet("ANKEY_RESOURCE_EXISTS_RETRIES"),
         "csv_has_header": envGet("ANKEY_CSV_HAS_HEADER"),
@@ -328,8 +326,6 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "include_deleted_users": cfg.get("include_deleted_users", defaults.include_deleted_users),
         "dataset_name": cfg.get("dataset_name", defaults.dataset_name),
         "report_items_limit": cfg.get("report_items_limit", defaults.report_items_limit),
-        "report_items_success": cfg.get("report_items_success", defaults.report_items_success),
-        "report_include_skipped": cfg.get("report_include_skipped", defaults.report_include_skipped),
         "report_include_skipped": cfg.get("report_include_skipped", defaults.report_include_skipped),
         "resource_exists_retries": cfg.get("resource_exists_retries", defaults.resource_exists_retries),
         "csv_has_header": cfg.get("csv_has_header", defaults.csv_has_header),
@@ -381,8 +377,6 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["dataset_name"] = env["dataset_name"]
     if env["report_items_limit"] is not None:
         merged["report_items_limit"] = parseInt(env["report_items_limit"])
-    if env["report_items_success"] is not None:
-        merged["report_items_success"] = parseBool(env["report_items_success"])
     if env.get("report_include_skipped") is not None:
         merged["report_include_skipped"] = parseBool(env["report_include_skipped"])
     if env["resource_exists_retries"] is not None:
@@ -423,7 +417,6 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         retry_backoff_seconds=parseFloatAny(merged["retry_backoff_seconds"]) or defaults.retry_backoff_seconds,
         include_deleted_users=parseBoolAny(merged["include_deleted_users"]) or False,
         report_items_limit=parseIntAny(merged["report_items_limit"]) or defaults.report_items_limit,
-        report_items_success=parseBoolAny(merged["report_items_success"]) or False,
         report_include_skipped=parseBoolAny(merged.get("report_include_skipped")) if merged.get("report_include_skipped") is not None else defaults.report_include_skipped,
         resource_exists_retries=parseIntAny(merged["resource_exists_retries"]) or defaults.resource_exists_retries,
         csv_has_header=parseBoolAny(merged["csv_has_header"]) or False,

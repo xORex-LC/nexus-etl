@@ -44,7 +44,6 @@ class ReportMeta:
     dry_run: bool | None = None
     resource_exists_retries: int | None = None
     report_items_limit: int | None = None
-    report_items_success: bool | None = None
     report_include_skipped: bool | None = None
     items_truncated: bool = False
     dataset: str | None = None

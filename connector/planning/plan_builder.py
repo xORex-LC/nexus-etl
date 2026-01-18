@@ -38,18 +38,16 @@ class PlanBuilder:
     Взаимодействия:
         Используется оркестратором планирования; не знает о файловой системе.
     Ограничения:
-        Лимиты отчёта (report_items_limit/report_items_success/include_skipped) применяются здесь.
+        Лимиты отчёта (report_items_limit/include_skipped) применяются здесь.
     """
 
     def __init__(
         self,
         include_skipped_in_report: bool,
         report_items_limit: int,
-        report_items_success: bool,
     ) -> None:
         self.include_skipped_in_report = include_skipped_in_report
         self.report_items_limit = report_items_limit
-        self.report_items_success = report_items_success
 
         self.plan_items: list[dict[str, Any]] = []
         self.report_items: list[dict[str, Any]] = []
@@ -64,8 +62,6 @@ class PlanBuilder:
 
     def _can_store_report(self, status: str) -> bool:
         if status == "skipped" and not self.include_skipped_in_report:
-            return False
-        if status not in ("failed", "skipped") and not self.report_items_success:
             return False
         if len(self.report_items) >= self.report_items_limit:
             self.items_truncated = True

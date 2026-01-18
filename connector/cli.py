@@ -231,7 +231,6 @@ def runCacheRefreshCommand(
     apiTransport=None,
     includeDeletedUsers: bool | None = None,
     reportItemsLimit: int | None = None,
-    reportItemsSuccess: bool | None = None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -245,7 +244,6 @@ def runCacheRefreshCommand(
             typer.echo("ERROR: missing API settings (see logs/report)", err=True)
             return 2
         report.meta.report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-        report.meta.report_items_success = reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -269,7 +267,6 @@ def runCacheRefreshCommand(
                 api_transport=apiTransport,
                 include_deleted_users=includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users,
                 report_items_limit=reportItemsLimit or settings.report_items_limit,
-                report_items_success=reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success,
             )
         except ValueError as exc:
             typer.echo(f"ERROR: {exc}", err=True)
@@ -370,7 +367,6 @@ def runImportPlanCommand(
     csvHasHeader: bool | None,
     includeDeletedUsers: bool | None,
     reportItemsLimit: int | None,
-    reportItemsSuccess: bool | None,
     reportIncludeSkipped: bool | None,
     dataset: str | None,
 ) -> None:
@@ -388,16 +384,12 @@ def runImportPlanCommand(
 
         include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-        report_items_success = (
-            reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
-        )
         report_include_skipped = (
             reportIncludeSkipped if reportIncludeSkipped is not None else settings.report_include_skipped
         )
         dataset_name = dataset if dataset is not None else settings.dataset_name
         csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
         report.meta.report_items_limit = report_items_limit
-        report.meta.report_items_success = report_items_success
         report.meta.report_include_skipped = report_include_skipped
         report.meta.dataset = dataset_name
 
@@ -413,7 +405,6 @@ def runImportPlanCommand(
                 run_id=runId,
                 report=report,
                 report_items_limit=report_items_limit,
-                report_items_success=report_items_success,
                 include_skipped_in_report=report_include_skipped,
                 report_dir=settings.report_dir,
             )
@@ -450,7 +441,6 @@ def runImportApplyCommand(
     dryRun: bool | None,
     includeDeletedUsers: bool | None,
     reportItemsLimit: int | None,
-    reportItemsSuccess: bool | None,
     resourceExistsRetries: int | None,
     dataset: str | None,
 ) -> None:
@@ -465,9 +455,6 @@ def runImportApplyCommand(
 
         include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-        report_items_success = (
-            reportItemsSuccess if reportItemsSuccess is not None else settings.report_items_success
-        )
         resource_exists_retries = (
             resourceExistsRetries if resourceExistsRetries is not None else settings.resource_exists_retries
         )
@@ -499,7 +486,6 @@ def runImportApplyCommand(
                     run_id=runId,
                     report=report,
                     report_items_limit=report_items_limit,
-                    report_items_success=report_items_success,
                     include_skipped_in_report=settings.report_include_skipped,
                     report_dir=settings.report_dir,
                 )
@@ -532,7 +518,6 @@ def runImportApplyCommand(
         report.meta.retries = settings.retries
         report.meta.retry_backoff_seconds = settings.retry_backoff_seconds
         report.meta.report_items_limit = report_items_limit
-        report.meta.report_items_success = report_items_success
 
         report.summary.planned_create = plan.summary.planned_create
         report.summary.planned_update = plan.summary.planned_update
@@ -550,7 +535,6 @@ def runImportApplyCommand(
             max_actions=max_actions,
             dry_run=dry_run,
             report_items_limit=report_items_limit,
-            report_items_success=report_items_success,
             resource_exists_retries=resource_exists_retries,
         )
         if hasattr(user_api, "client"):
@@ -619,9 +603,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         state = validator_registry.create_state()
         dataset_validator = validator_registry.create_dataset_validator(dataset_name, state)
         report_items_limit = settings.report_items_limit
-        report_items_success = settings.report_items_success
         report.meta.report_items_limit = report_items_limit
-        report.meta.report_items_success = report_items_success
         report.meta.dataset = dataset_name
 
         try:
@@ -637,8 +619,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
                     warning_rows += 1
 
                 item_index = None
-                should_store = status == "invalid" or report_items_success
-                if should_store:
+                if status == "invalid":
                     if len(report.items) >= report_items_limit:
                         report.meta.items_truncated = True
                     else:
@@ -801,12 +782,6 @@ def importPlan(
         show_default=True,
     ),
     reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
-    reportItemsSuccess: bool | None = typer.Option(
-        None,
-        "--report-items-success/--no-report-items-success",
-        help="Include successful items in report",
-        show_default=True,
-    ),
     reportIncludeSkipped: bool | None = typer.Option(
         None,
         "--report-include-skipped/--no-report-include-skipped",
@@ -826,7 +801,6 @@ def importPlan(
         csvHasHeader=csvHasHeader,
         includeDeletedUsers=includeDeletedUsers,
         reportItemsLimit=reportItemsLimit,
-        reportItemsSuccess=reportItemsSuccess,
         reportIncludeSkipped=reportIncludeSkipped,
         dataset=dataset,
     )
@@ -857,12 +831,6 @@ def importApply(
         help="Retries for resourceExists on create",
     ),
     reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
-    reportItemsSuccess: bool | None = typer.Option(
-        None,
-        "--report-items-success/--no-report-items-success",
-        help="Include successful items in report",
-        show_default=True,
-    ),
     dataset: str | None = typer.Option(
         None,
         "--dataset",
@@ -880,7 +848,6 @@ def importApply(
         dryRun=dryRun,
         includeDeletedUsers=includeDeletedUsers,
         reportItemsLimit=reportItemsLimit,
-        reportItemsSuccess=reportItemsSuccess,
         resourceExistsRetries=resourceExistsRetries,
         dataset=dataset,
     )
@@ -904,12 +871,6 @@ def cacheRefresh(
         show_default=True,
     ),
     reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
-    reportItemsSuccess: bool | None = typer.Option(
-        None,
-        "--report-items-success/--no-report-items-success",
-        help="Include successful items in report",
-        show_default=True,
-    ),
 ):
     runCacheRefreshCommand(
         ctx=ctx,
@@ -920,7 +881,6 @@ def cacheRefresh(
         retryBackoffSeconds=retryBackoffSeconds if retryBackoffSeconds is not None else ctx.obj["settings"].retry_backoff_seconds,
         includeDeletedUsers=includeDeletedUsers if includeDeletedUsers is not None else ctx.obj["settings"].include_deleted_users,
         reportItemsLimit=reportItemsLimit if reportItemsLimit is not None else ctx.obj["settings"].report_items_limit,
-        reportItemsSuccess=reportItemsSuccess if reportItemsSuccess is not None else ctx.obj["settings"].report_items_success,
     )
 
 @cacheApp.command("status")

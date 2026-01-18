@@ -38,7 +38,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
         run_id: str,
         report,
         report_items_limit: int,
-        report_items_success: bool,
         include_skipped_in_report: bool,
         report_dir: str,
     ) -> int:
@@ -54,7 +53,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
             validator_registry=validator_registry,
             planner_registry=planner_registry,
             report_items_limit=report_items_limit,
-            report_items_success=report_items_success,
             include_skipped_in_report=include_skipped_in_report,
         )
         plan_result = use_case.run(

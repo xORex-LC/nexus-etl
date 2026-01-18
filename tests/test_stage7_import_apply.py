@@ -202,7 +202,6 @@ def test_import_apply_stop_on_first_error():
         max_actions=None,
         dry_run=False,
         report_items_limit=10,
-        report_items_success=True,
         resource_exists_retries=0,
     )
     assert code == 1
@@ -276,7 +275,6 @@ def test_import_apply_max_actions_limits_requests():
         max_actions=1,
         dry_run=False,
         report_items_limit=10,
-        report_items_success=True,
         resource_exists_retries=0,
     )
     assert len(user_api.calls) == 1
@@ -330,7 +328,6 @@ def test_import_apply_resource_exists_retries():
         max_actions=None,
         dry_run=False,
         report_items_limit=10,
-        report_items_success=True,
         resource_exists_retries=1,
     )
     assert code == 0

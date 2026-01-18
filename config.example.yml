@@ -22,7 +22,6 @@ retry_backoff_seconds: 0.5
 include_deleted_users: false
 dataset_name: employees
 report_items_limit: 20
-report_items_success: false
 report_include_skipped: true
 resource_exists_retries: 3
 csv_has_header: false

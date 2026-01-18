@@ -27,7 +27,6 @@ class CacheCommandService(CacheCommandServiceProtocol):
         api_transport=None,
         include_deleted_users: bool = False,
         report_items_limit: int = 200,
-        report_items_success: bool = False,
     ) -> int:
         summary = refreshCacheFromApi(
             conn=conn,
@@ -42,7 +41,6 @@ class CacheCommandService(CacheCommandServiceProtocol):
             transport=api_transport,
             includeDeletedUsers=include_deleted_users,
             reportItemsLimit=report_items_limit,
-            reportItemsSuccess=report_items_success,
         )
 
         failed = summary["users_failed"] + summary["orgs_failed"]

@@ -156,7 +156,6 @@ def test_import_apply_error_stats():
         max_actions=None,
         dry_run=False,
         report_items_limit=10,
-        report_items_success=True,
         resource_exists_retries=0,
     )
     assert code == 1

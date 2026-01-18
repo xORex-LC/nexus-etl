@@ -32,9 +32,9 @@ def _append_item(report, entity_type: str, key: str, status: str, error: str | N
     return item
 
 
-def _append_item_limited(report, entity_type: str, key: str, status: str, error: str | None, reportItemsLimit: int, includeSuccess: bool) -> None:
-    # Always keep failed/skipped until limit; success only if includeSuccess
-    if status not in ("failed", "skipped") and not includeSuccess:
+def _append_item_limited(report, entity_type: str, key: str, status: str, error: str | None, reportItemsLimit: int) -> None:
+    # Always keep failed/skipped until limit; success не сохраняем.
+    if status not in ("failed", "skipped"):
         return
     if len(report.items) >= reportItemsLimit:
         try:
@@ -58,7 +58,6 @@ def refreshCacheFromApi(
     transport=None,
     includeDeletedUsers: bool = False,
     reportItemsLimit: int = 200,
-    reportItemsSuccess: bool = False,
 ) -> dict[str, Any]:
     """
     Обновляет кэш из REST API с пагинацией.
@@ -113,11 +112,11 @@ def refreshCacheFromApi(
                             inserted_orgs += 1
                         else:
                             updated_orgs += 1
-                        _append_item_limited(report, "org", key, status, None, reportItemsLimit, reportItemsSuccess)
+                        _append_item_limited(report, "org", key, status, None, reportItemsLimit)
                     except sqlite3.IntegrityError as exc:
                         failed_orgs += 1
                         logEvent(logger, logging.DEBUG, runId, "cache", f"Org upsert integrity error key={key}: {exc}")
-                        _append_item_limited(report, "org", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
+                        _append_item_limited(report, "org", key, "failed", str(exc), reportItemsLimit)
                     except Exception as exc:
                         failed_orgs += 1
                         logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert org {key}: {exc}")
@@ -149,7 +148,7 @@ def refreshCacheFromApi(
                             deletion_norm = str(deletion_date).strip().lower() if deletion_date is not None else None
                             if status_norm == "deleted" or deletion_norm not in (None, "", "null"):
                                 skipped_deleted_users += 1
-                                _append_item_limited(report, "user", key, "skipped", None, reportItemsLimit, reportItemsSuccess)
+                                _append_item_limited(report, "user", key, "skipped", None, reportItemsLimit)
                                 continue
                         else:
                             status_raw = user.get("accountStatus")
@@ -164,7 +163,7 @@ def refreshCacheFromApi(
                             inserted_users += 1
                         else:
                             updated_users += 1
-                        _append_item_limited(report, "user", key, status, None, reportItemsLimit, reportItemsSuccess)
+                        _append_item_limited(report, "user", key, status, None, reportItemsLimit)
                         logEvent(
                             logger,
                             logging.DEBUG,
@@ -175,7 +174,7 @@ def refreshCacheFromApi(
                     except sqlite3.IntegrityError as exc:
                         failed_users += 1
                         logEvent(logger, logging.DEBUG, runId, "cache", f"User upsert integrity error key={key}: {exc}")
-                        _append_item_limited(report, "user", key, "failed", str(exc), reportItemsLimit, reportItemsSuccess)
+                        _append_item_limited(report, "user", key, "failed", str(exc), reportItemsLimit)
                     except Exception as exc:
                         failed_users += 1
                         logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert user {key}: {exc}")

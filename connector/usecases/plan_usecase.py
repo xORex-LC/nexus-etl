@@ -29,13 +29,11 @@ class PlanUseCase:
         validator_registry: ValidatorRegistry,
         planner_registry: PlannerRegistry,
         report_items_limit: int,
-        report_items_success: bool,
         include_skipped_in_report: bool,
     ) -> None:
         self.validator_registry = validator_registry
         self.planner_registry = planner_registry
         self.report_items_limit = report_items_limit
-        self.report_items_success = report_items_success
         self.include_skipped_in_report = include_skipped_in_report
 
     def run(
@@ -60,7 +58,6 @@ class PlanUseCase:
         builder = PlanBuilder(
             include_skipped_in_report=self.include_skipped_in_report,
             report_items_limit=self.report_items_limit,
-            report_items_success=self.report_items_success,
         )
 
         row_validator = self.validator_registry.create_row_validator(dataset)

@@ -19,7 +19,6 @@ class ImportPlanServiceProtocol(Protocol):
         run_id: str,
         report,
         report_items_limit: int,
-        report_items_success: bool,
         report_dir: str,
     ) -> int: ...
 
@@ -45,7 +44,6 @@ class CacheCommandServiceProtocol(Protocol):
         api_transport=None,
         include_deleted_users: bool = False,
         report_items_limit: int = 200,
-        report_items_success: bool = False,
     ) -> int: ...
 
     def status(self, conn, logger, report, run_id: str) -> tuple[int, dict]: ...

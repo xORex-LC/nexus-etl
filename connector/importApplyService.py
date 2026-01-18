@@ -48,7 +48,6 @@ class ImportApplyService:
         max_actions: int | None,
         dry_run: bool,
         report_items_limit: int,
-        report_items_success: bool,
         resource_exists_retries: int,
     ) -> int:
         created = updated = failed = 0
@@ -58,7 +57,7 @@ class ImportApplyService:
         fatal_error = False
 
         def should_append(status: str) -> bool:
-            if status not in ("failed", "skipped") and not report_items_success:
+            if status not in ("failed", "skipped"):
                 return False
             if len(report.items) >= report_items_limit:
                 try:
@@ -181,7 +180,6 @@ def readPlanFromCsv(
     run_id: str,
     report,
     report_items_limit: int,
-    report_items_success: bool,
     include_skipped_in_report: bool,
     report_dir: str,
 ) -> Plan:
@@ -196,7 +194,6 @@ def readPlanFromCsv(
         run_id=run_id,
         report=report,
         report_items_limit=report_items_limit,
-        report_items_success=report_items_success,
         include_skipped_in_report=include_skipped_in_report,
         report_dir=report_dir,
     )
