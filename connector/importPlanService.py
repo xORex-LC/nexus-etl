@@ -7,6 +7,8 @@ from .protocols_services import ImportPlanServiceProtocol
 from .loggingSetup import logEvent
 from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
 from .planner import build_import_plan, write_plan_file
+from .planning.adapters import CacheEmployeeLookup
+from .planning.factory import PlannerFactory
 from .timeUtils import getNowIso
 
 class ImportPlanService(ImportPlanServiceProtocol):
@@ -34,6 +36,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
     ) -> int:
         ensureSchema(conn)
 
+        planner_factory = PlannerFactory(employee_lookup=CacheEmployeeLookup(conn))
         plan_items, summary = build_import_plan(
             conn=conn,
             csv_path=csv_path,
@@ -44,6 +47,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
             report=report,
             report_items_limit=report_items_limit,
             report_items_success=report_items_success,
+            planner_factory=planner_factory,
         )
         generated_at = getNowIso()
         plan_meta = {
