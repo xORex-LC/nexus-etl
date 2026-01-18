@@ -8,24 +8,14 @@ from typing import Any
 from .cacheRepo import getOrgByOuid
 from .csvReader import CsvFormatError, CsvRowSource
 from .loggingSetup import logEvent
-from .planModels import EntityType, Operation
 from .planning.factory import PlannerFactory
+from .planning.plan_builder import PlanBuilder
+from .planning.registry import PlannerRegistry
 from .sanitize import maskSecret
 from .timeUtils import getNowIso
 from .validation.deps import ValidationDependencies
 from .validation.pipeline import logValidationFailure
 from .validation.registry import ValidatorRegistry
-
-def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
-    """
-    Назначение:
-        Маскирует чувствительные поля плана перед записью в отчёт/файл.
-    """
-    clone = json.loads(json.dumps(item))
-    desired = clone.get("desired_state")
-    if isinstance(desired, dict) and "password" in desired:
-        desired["password"] = maskSecret(desired["password"])
-    return clone
 
 def build_import_plan(
     conn,
@@ -45,11 +35,11 @@ def build_import_plan(
     Возвращает (items, summary).
     """
     # TODO: when legacy planner path is fully removed, keep only dataset-driven registry usage
-    plan_items: list[dict[str, Any]] = []
-    rows_processed = 0
-    valid_rows = 0
-    failed_rows = 0
-    planned_create = planned_update = skipped_rows = 0
+    builder = PlanBuilder(
+        include_skipped_in_report=include_skipped_in_report,
+        report_items_limit=report_items_limit,
+        report_items_success=report_items_success,
+    )
     class _OrgLookupAdapter:
         """Адаптер для получения организаций из кэша по протоколу валидатора."""
 
@@ -69,27 +59,9 @@ def build_import_plan(
     registry = PlannerRegistry(planner_factory)
     employee_planner = registry.get(dataset=dataset, include_deleted_users=include_deleted_users)
 
-    def append_report_item(item: dict[str, Any], status: str) -> int | None:
-        """
-        Добавляет элемент в отчёт с учётом лимита.
-        """
-        if status == "skipped" and not include_skipped_in_report:
-            return None
-        if status not in ("failed", "skipped") and not report_items_success:
-            return None
-        if len(report.items) >= report_items_limit:
-            try:
-                report.meta.items_truncated = True
-            except Exception:
-                pass
-            return None
-        sanitized = _mask_sensitive_item(item)
-        report.items.append(sanitized)
-        return len(report.items) - 1
-
     try:
         for csvRow in row_source:
-            rows_processed += 1
+            builder.inc_rows_total()
             employee, validation = row_validator.validate(csvRow)
             dataset_validator.validate(employee, validation)
             errors = list(validation.errors)
@@ -98,18 +70,7 @@ def build_import_plan(
             match_key = validation.match_key
 
             if errors:
-                failed_rows += 1
-                append_report_item(
-                    {
-                        "row_id": f"line:{validation.line_no}",
-                        "line_no": validation.line_no,
-                        "status": "invalid",
-                        "match_key": match_key,
-                        "errors": [e.__dict__ for e in errors],
-                        "warnings": [w.__dict__ for w in warnings],
-                    },
-                    "failed",
-                )
+                builder.add_invalid(validation, errors, warnings)
                 logValidationFailure(
                     logger,
                     run_id,
@@ -121,47 +82,20 @@ def build_import_plan(
                 )
                 continue
 
-            valid_rows += 1
+            builder.inc_valid_rows()
             op_status, plan_item, match_result = employee_planner.plan_row(
                 desired_state=desired,
                 line_no=validation.line_no,
                 match_key=match_key,
             )
             if op_status == "conflict":
-                failed_rows += 1
-                append_report_item(
-                    {
-                        "row_id": f"line:{validation.line_no}",
-                        "line_no": validation.line_no,
-                        "status": "invalid",
-                        "match_key": match_key,
-                        "errors": [
-                            {"code": "MATCH_CONFLICT", "field": "matchKey", "message": "multiple users with same match_key"}
-                        ],
-                        "warnings": [w.__dict__ for w in warnings],
-                    },
-                    "failed",
-                )
+                builder.add_conflict(validation.line_no, match_key, warnings)
                 continue
             if op_status == "skip":
-                skipped_rows += 1
-                append_report_item(
-                    {
-                        "row_id": f"line:{validation.line_no}",
-                        "line_no": validation.line_no,
-                        "status": "skipped",
-                        "match_key": match_key,
-                        "warnings": [w.__dict__ for w in warnings],
-                    },
-                    "skipped",
-                )
+                builder.add_skip(validation.line_no, match_key, warnings)
                 continue
             if plan_item:
-                if plan_item.op == Operation.CREATE:
-                    planned_create += 1
-                elif plan_item.op == Operation.UPDATE:
-                    planned_update += 1
-                plan_items.append(plan_item.__dict__)
+                builder.add_plan_item(plan_item)
     except CsvFormatError as exc:
         logEvent(logger, logging.ERROR, run_id, "csv", f"CSV format error: {exc}")
         raise
@@ -169,15 +103,15 @@ def build_import_plan(
         logEvent(logger, logging.ERROR, run_id, "csv", f"CSV read error: {exc}")
         raise
 
-    summary = {
-        "rows_total": rows_processed,
-        "valid_rows": valid_rows,
-        "failed_rows": failed_rows,
-        "planned_create": planned_create,
-        "planned_update": planned_update,
-        "skipped": skipped_rows,
-    }
-    return plan_items, summary
+    build_result = builder.build()
+    return build_result.items, {
+        "rows_total": build_result.summary.rows_total,
+        "valid_rows": build_result.summary.valid_rows,
+        "failed_rows": build_result.summary.failed_rows,
+        "planned_create": build_result.summary.planned_create,
+        "planned_update": build_result.summary.planned_update,
+        "skipped": build_result.summary.skipped,
+    }, build_result.report_items, build_result.items_truncated
 
 def write_plan_file(
     plan_items: list[dict[str, Any]],

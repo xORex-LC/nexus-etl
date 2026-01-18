@@ -40,7 +40,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
 
         planner_factory = PlannerFactory(employee_lookup=CacheEmployeeLookup(conn))
         row_source = CsvRowSource(csv_path, csv_has_header)
-        plan_items, summary = build_import_plan(
+        plan_items, summary, report_items, items_truncated = build_import_plan(
             conn=conn,
             row_source=row_source,
             include_deleted_users=include_deleted_users,
@@ -103,5 +103,9 @@ class ImportPlanService(ImportPlanServiceProtocol):
         report.summary.planned_update = summary["planned_update"]
         report.summary.skipped = summary["skipped"]
         report.summary.failed = summary.get("failed_rows", 0)
+        if items_truncated:
+            report.meta.items_truncated = True
+        # заменяем report.items на собранные PlanBuilder элементы
+        report.items = report_items
 
         return 1 if summary.get("failed_rows", 0) > 0 else 0
