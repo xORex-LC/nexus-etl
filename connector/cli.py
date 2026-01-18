@@ -601,6 +601,10 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         row_validator = factory.create_row_validator()
         state = factory.create_validation_context()
         dataset_validator = factory.create_dataset_validator(state)
+        report_items_limit = settings.report_items_limit
+        report_items_success = settings.report_items_success
+        report.meta.report_items_limit = report_items_limit
+        report.meta.report_items_success = report_items_success
 
         try:
             for csvRow in readEmployeeRows(csvPath, hasHeader=csv_has_header):
@@ -614,21 +618,27 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
                 if result.warnings:
                     warning_rows += 1
 
-                item_index = len(report.items)
-                report.items.append(
-                    {
-                        "row_id": f"line:{result.line_no}",
-                        "line_no": result.line_no,
-                        "match_key": result.match_key,
-                        "status": status,
-                        "errors": [
-                            {"code": e.code, "field": e.field, "message": e.message} for e in result.errors
-                        ],
-                        "warnings": [
-                            {"code": w.code, "field": w.field, "message": w.message} for w in result.warnings
-                        ],
-                    }
-                )
+                item_index = None
+                should_store = status == "invalid" or report_items_success
+                if should_store:
+                    if len(report.items) >= report_items_limit:
+                        report.meta.items_truncated = True
+                    else:
+                        report.items.append(
+                            {
+                                "row_id": f"line:{result.line_no}",
+                                "line_no": result.line_no,
+                                "match_key": result.match_key,
+                                "status": status,
+                                "errors": [
+                                    {"code": e.code, "field": e.field, "message": e.message} for e in result.errors
+                                ],
+                                "warnings": [
+                                    {"code": w.code, "field": w.field, "message": w.message} for w in result.warnings
+                                ],
+                            }
+                        )
+                        item_index = len(report.items) - 1
                 if not result.valid:
                     logValidationFailure(
                         logger,

@@ -20,7 +20,7 @@ def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) ->
         lines.append(";".join(row))
     path.write_text("\n".join(lines), encoding="utf-8")
 
-def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1"):
+def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[str, str] | None = None):
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
@@ -40,6 +40,7 @@ def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1"):
             str(csv_path),
             "--csv-has-header",
         ],
+        env=env,
     )
     report_path = report_dir / f"report_validate_{run_id}.json"
     return result, report_path
@@ -197,7 +198,7 @@ def test_validate_duplicate_matchkey_returns_1(tmp_path: Path):
     assert report["summary"]["failed"] == 1
     assert any(
         err["code"] == "DUPLICATE_MATCHKEY"
-        for err in report["items"][1]["errors"]
+        for err in report["items"][0]["errors"]
     )
 
 def test_validate_duplicate_usr_org_tab_num_returns_1(tmp_path: Path):
@@ -243,7 +244,7 @@ def test_validate_duplicate_usr_org_tab_num_returns_1(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert any(
         err["code"] == "DUPLICATE_USR_ORG_TAB_NUM"
-        for err in report["items"][1]["errors"]
+        for err in report["items"][0]["errors"]
     )
 
 def test_validate_masks_password_in_report(tmp_path: Path):
@@ -273,3 +274,51 @@ def test_validate_masks_password_in_report(tmp_path: Path):
     assert result.exit_code == 0
     report_text = report_path.read_text(encoding="utf-8")
     assert password not in report_text
+
+
+def test_validate_respects_report_items_limit(tmp_path: Path):
+    csv_path = tmp_path / "employees.csv"
+    rows = [
+        [
+            "",  # missing email -> invalid
+            "Doe",
+            "John",
+            "M",
+            "false",
+            "jdoe",
+            "+123456",
+            "SECRET1",
+            "1001",
+            "",
+            "10",
+            "Engineer",
+            "",
+            "5001",
+        ],
+        [
+            "",  # another invalid row
+            "Doe",
+            "Jane",
+            "M",
+            "false",
+            "jdoe2",
+            "+123456",
+            "SECRET2",
+            "1002",
+            "",
+            "10",
+            "Engineer",
+            "",
+            "5002",
+        ],
+    ]
+    write_csv(csv_path, rows)
+
+    env = {"ANKEY_REPORT_ITEMS_LIMIT": "1"}
+    result, report_path = run_validate(tmp_path, csv_path, run_id="limit", env=env)
+
+    assert result.exit_code == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["summary"]["failed"] == 2
+    assert len(report["items"]) == 1  # limit applied
+    assert report["meta"]["items_truncated"] is True
