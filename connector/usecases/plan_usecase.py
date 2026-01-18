@@ -1,13 +1,37 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from typing import Any
+from dataclasses import dataclass
 
+from connector.models import EmployeeInput
 from connector.planning.plan_builder import PlanBuilder, PlanBuildResult
 from connector.planning.registry import PlannerRegistry
 from connector.validation.pipeline import logValidationFailure
 from connector.validation.registry import ValidatorRegistry
 from connector.validation.dataset_rules import ValidationRowResult
+
+@dataclass
+class ValidatedRow:
+    """
+    Назначение/ответственность:
+        Унифицированное представление валидированной строки для планировщика.
+
+    Поля:
+        desired_state: dict[str, Any]
+            Готовое состояние для API/планировщика (очищенное от служебных полей).
+        identity: dict[str, Any]
+            Ключ(и) для сопоставления (набор, а не фиксированное поле).
+        line_no: int
+            Номер строки в исходном CSV (для трассировки).
+        row_id: str
+            Удобный идентификатор строки (line:<n>).
+    """
+    desired_state: dict[str, Any]
+    identity: dict[str, Any]
+    line_no: int
+    row_id: str
 
 class PlanUseCase:
     """
@@ -71,8 +95,7 @@ class PlanUseCase:
             dataset_validator.validate(employee, validation)
             errors = list(validation.errors)
             warnings = list(validation.warnings)
-            desired = employee.__dict__.copy()
-            match_key = validation.match_key
+            validated_row = self._project_validated_row(employee, validation)
 
             if errors:
                 builder.add_invalid(validation, errors, warnings)
@@ -89,17 +112,40 @@ class PlanUseCase:
 
             builder.inc_valid_rows()
             op_status, plan_item, _match_result = entity_planner.plan_row(
-                desired_state=desired,
-                line_no=validation.line_no,
-                match_key=match_key,
+                desired_state=validated_row.desired_state,
+                line_no=validated_row.line_no,
+                match_key=str(validated_row.identity.get("match_key", "")),
             )
             if op_status == "conflict":
-                builder.add_conflict(validation.line_no, match_key, warnings)
+                builder.add_conflict(validation.line_no, str(validated_row.identity.get("match_key", "")), warnings)
                 continue
             if op_status == "skip":
-                builder.add_skip(validation.line_no, match_key, warnings)
+                builder.add_skip(validation.line_no, str(validated_row.identity.get("match_key", "")), warnings)
                 continue
             if plan_item:
                 builder.add_plan_item(plan_item)
 
         return builder.build()
+
+    def _project_validated_row(self, employee: EmployeeInput, validation: ValidationRowResult) -> ValidatedRow:
+        """
+        Назначение:
+            Сформировать стандартизованное представление валидированной строки для планировщика.
+
+        Контракт (вход/выход):
+            Вход: EmployeeInput + ValidationRowResult.
+            Выход: ValidatedRow с очищенным desired_state и identity (match_key и вспомогательные ключи).
+        Ограничения:
+            Работает с одним сотрудником; при добавлении новых сущностей потребуется аналогичная проекция.
+        """
+        desired_state = asdict(employee)
+        identity = {
+            "match_key": validation.match_key,
+            "usr_org_tab_num": validation.usr_org_tab_num,
+        }
+        return ValidatedRow(
+            desired_state=desired_state,
+            identity=identity,
+            line_no=validation.line_no,
+            row_id=f"line:{validation.line_no}",
+        )
