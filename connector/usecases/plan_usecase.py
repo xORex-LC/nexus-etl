@@ -92,11 +92,27 @@ class PlanUseCase:
         for csv_row in row_source:
             builder.inc_rows_total()
             employee, validation = row_validator.validate(csv_row)
-            dataset_validator.validate(employee, validation)
             errors = list(validation.errors)
             warnings = list(validation.warnings)
             validated_row = self._project_validated_row(employee, validation)
 
+            if errors:
+                builder.add_invalid(validation, errors, warnings)
+                logValidationFailure(
+                    logger,
+                    run_id,
+                    "import-plan",
+                    validation,
+                    None,
+                    errors=errors,
+                    warnings=warnings,
+                )
+                continue
+
+            # Глобальные правила применяются только к строкам без ошибок поля
+            dataset_validator.validate(employee, validation)
+            errors = list(validation.errors)
+            warnings = list(validation.warnings)
             if errors:
                 builder.add_invalid(validation, errors, warnings)
                 logValidationFailure(
