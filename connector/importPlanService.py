@@ -70,15 +70,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
             "include_deleted_users": include_deleted_users,
             "dataset": dataset,
         }
-        summary_dict = {
-            "rows_total": plan_result.summary.rows_total,
-            "valid_rows": plan_result.summary.valid_rows,
-            "failed_rows": plan_result.summary.failed_rows,
-            "planned_create": plan_result.summary.planned_create,
-            "planned_update": plan_result.summary.planned_update,
-            "skipped": plan_result.summary.skipped,
-        }
-        plan_path = write_plan_file(plan_result.items, summary_dict, plan_meta, report_dir, run_id)
+        plan_path = write_plan_file(plan_result.items, plan_result.summary_as_dict(), plan_meta, report_dir, run_id)
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
 
         # Сохраняем немаскированный план для дальнейшего использования.

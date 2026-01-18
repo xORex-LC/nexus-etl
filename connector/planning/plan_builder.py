@@ -18,6 +18,19 @@ class PlanBuildResult:
     report_items: list[dict[str, Any]]
     items_truncated: bool
 
+    def summary_as_dict(self) -> dict[str, Any]:
+        """
+        Возвращает summary в виде dict для записи в артефакт.
+        """
+        return {
+            "rows_total": self.summary.rows_total,
+            "valid_rows": self.summary.valid_rows,
+            "failed_rows": self.summary.failed_rows,
+            "planned_create": self.summary.planned_create,
+            "planned_update": self.summary.planned_update,
+            "skipped": self.summary.skipped,
+        }
+
 class PlanBuilder:
     """
     Назначение/ответственность:
