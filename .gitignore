@@ -13,4 +13,4 @@ cache/
 config.yml
 .vscode
 .VSCode*
-docs
+/docs/uml/*.puml

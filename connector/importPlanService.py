@@ -6,6 +6,7 @@ from .cacheDb import ensureSchema
 from .protocols_services import ImportPlanServiceProtocol
 from .loggingSetup import logEvent
 from .planModels import Plan, PlanItem, PlanMeta, PlanSummary
+from .csvReader import CsvRowSource
 from .planner import build_import_plan, write_plan_file
 from .planning.adapters import CacheEmployeeLookup
 from .planning.factory import PlannerFactory

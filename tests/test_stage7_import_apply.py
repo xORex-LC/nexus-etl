@@ -28,7 +28,14 @@ class DummyUserApi:
 
 def _make_plan(items: list[PlanItem]) -> Plan:
     return Plan(
-        meta=PlanMeta(run_id="r1", generated_at=None, csv_path=None, plan_path=None, include_deleted_users=False),
+        meta=PlanMeta(
+            run_id="r1",
+            generated_at=None,
+            csv_path=None,
+            plan_path=None,
+            include_deleted_users=False,
+            dataset="employees",
+        ),
         summary=PlanSummary(
             rows_total=len(items),
             valid_rows=len(items),
@@ -45,7 +52,7 @@ def test_plan_reader_reads_items(tmp_path: Path):
     plan_path.write_text(
         json.dumps(
             {
-                "meta": {"run_id": "r1", "generated_at": "now", "csv_path": "a.csv"},
+                "meta": {"run_id": "r1", "generated_at": "now", "csv_path": "a.csv", "dataset": "employees"},
                 "summary": {
                     "rows_total": 1,
                     "valid_rows": 1,
@@ -358,7 +365,7 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
     plan_path.write_text(
         json.dumps(
             {
-                "meta": {"run_id": "r1", "generated_at": "now"},
+                "meta": {"run_id": "r1", "generated_at": "now", "dataset": "employees"},
                 "summary": {
                     "rows_total": 2,
                     "valid_rows": 2,
