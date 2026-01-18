@@ -24,7 +24,7 @@ from .sanitize import maskSecret
 from .timeUtils import getDurationMs
 from .validation.pipeline import logValidationFailure
 from .validation.deps import ValidationDependencies
-from .validation.pipeline import ValidatorFactory
+from .validation.registry import ValidatorRegistry
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
