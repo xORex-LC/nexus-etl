@@ -31,6 +31,7 @@ def build_import_plan(
     csv_path: str,
     csv_has_header: bool,
     include_deleted_users: bool,
+    dataset: str,
     logger,
     run_id: str,
     report,
@@ -63,7 +64,10 @@ def build_import_plan(
     row_validator = factory.create_row_validator()
     state = factory.create_validation_context()
     dataset_validator = factory.create_dataset_validator(state)
-    employee_planner = planner_factory.create_employee_planner(include_deleted_users=include_deleted_users)
+    from .planning.registry import PlannerRegistry
+
+    registry = PlannerRegistry(planner_factory)
+    employee_planner = registry.get(dataset=dataset, include_deleted_users=include_deleted_users)
 
     def append_report_item(item: dict[str, Any], status: str) -> int | None:
         """

@@ -27,6 +27,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         csv_path: str,
         csv_has_header: bool,
         include_deleted_users: bool,
+        dataset: str,
         logger,
         run_id: str,
         report,
@@ -43,6 +44,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
             csv_path=csv_path,
             csv_has_header=csv_has_header,
             include_deleted_users=include_deleted_users,
+            dataset=dataset,
             logger=logger,
             run_id=run_id,
             report=report,
@@ -55,6 +57,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         plan_meta = {
             "csv_path": csv_path,
             "include_deleted_users": include_deleted_users,
+            "dataset": dataset,
         }
         plan_path = write_plan_file(plan_items, summary, plan_meta, report_dir, run_id)
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
@@ -64,6 +67,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
             meta=PlanMeta(
                 run_id=run_id,
                 generated_at=generated_at,
+                dataset=dataset,
                 csv_path=csv_path,
                 plan_path=plan_path,
                 include_deleted_users=include_deleted_users,

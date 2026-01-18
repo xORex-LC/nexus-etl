@@ -47,6 +47,7 @@ class ReportMeta:
     report_items_success: bool | None = None
     report_include_skipped: bool | None = None
     items_truncated: bool = False
+    dataset: str | None = None
 
     config_sources: list[str] = field(default_factory=list)
 

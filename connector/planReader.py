@@ -30,6 +30,7 @@ def readPlanFile(path: str) -> Plan:
     meta = PlanMeta(
         run_id=_get_str(meta_raw.get("run_id")),
         generated_at=_get_str(meta_raw.get("generated_at")),
+        dataset=_get_str(meta_raw.get("dataset") or meta_raw.get("dataset_name")),
         csv_path=_get_str(meta_raw.get("csv_path")),
         plan_path=path,
         include_deleted_users=meta_raw.get("include_deleted_users"),

@@ -64,6 +64,7 @@ class Settings:
     retries: int = 3
     retry_backoff_seconds: float = 0.5
     include_deleted_users: bool = False
+    dataset_name: str = "employees"
     report_items_limit: int = 200
     report_items_success: bool = False
     report_include_skipped: bool = True
@@ -290,6 +291,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "retries": envGet("ANKEY_RETRIES"),
         "retry_backoff_seconds": envGet("ANKEY_RETRY_BACKOFF_SECONDS"),
         "include_deleted_users": envGet("ANKEY_INCLUDE_DELETED_USERS"),
+        "dataset_name": envGet("ANKEY_DATASET_NAME"),
         "report_items_limit": envGet("ANKEY_REPORT_ITEMS_LIMIT"),
         "report_items_success": envGet("ANKEY_REPORT_ITEMS_SUCCESS"),
         "report_include_skipped": envGet("ANKEY_REPORT_INCLUDE_SKIPPED"),
@@ -324,6 +326,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "retries": cfg.get("retries", defaults.retries),
         "retry_backoff_seconds": cfg.get("retry_backoff_seconds", defaults.retry_backoff_seconds),
         "include_deleted_users": cfg.get("include_deleted_users", defaults.include_deleted_users),
+        "dataset_name": cfg.get("dataset_name", defaults.dataset_name),
         "report_items_limit": cfg.get("report_items_limit", defaults.report_items_limit),
         "report_items_success": cfg.get("report_items_success", defaults.report_items_success),
         "report_include_skipped": cfg.get("report_include_skipped", defaults.report_include_skipped),
@@ -374,6 +377,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["retry_backoff_seconds"] = parseFloat(env["retry_backoff_seconds"])
     if env["include_deleted_users"] is not None:
         merged["include_deleted_users"] = parseBool(env["include_deleted_users"])
+    if env["dataset_name"] is not None:
+        merged["dataset_name"] = env["dataset_name"]
     if env["report_items_limit"] is not None:
         merged["report_items_limit"] = parseInt(env["report_items_limit"])
     if env["report_items_success"] is not None:
@@ -425,6 +430,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         stop_on_first_error=parseBoolAny(merged["stop_on_first_error"]) or False,
         max_actions=parseIntAny(merged["max_actions"]),
         dry_run=parseBoolAny(merged["dry_run"]) or False,
+        dataset_name=merged.get("dataset_name") or defaults.dataset_name,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)

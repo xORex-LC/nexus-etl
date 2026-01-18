@@ -372,6 +372,7 @@ def runImportPlanCommand(
     reportItemsLimit: int | None,
     reportItemsSuccess: bool | None,
     reportIncludeSkipped: bool | None,
+    dataset: str | None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -393,10 +394,12 @@ def runImportPlanCommand(
         report_include_skipped = (
             reportIncludeSkipped if reportIncludeSkipped is not None else settings.report_include_skipped
         )
+        dataset_name = dataset if dataset is not None else settings.dataset_name
         csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
         report.meta.report_items_limit = report_items_limit
         report.meta.report_items_success = report_items_success
         report.meta.report_include_skipped = report_include_skipped
+        report.meta.dataset = dataset_name
 
         try:
             service: ImportPlanServiceProtocol = ImportPlanService()
@@ -405,6 +408,7 @@ def runImportPlanCommand(
                 csv_path=csvPath or "",
                 csv_has_header=csv_has_header,
                 include_deleted_users=include_deleted,
+                dataset=dataset_name,
                 logger=logger,
                 run_id=runId,
                 report=report,
@@ -448,6 +452,7 @@ def runImportApplyCommand(
     reportItemsLimit: int | None,
     reportItemsSuccess: bool | None,
     resourceExistsRetries: int | None,
+    dataset: str | None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -466,6 +471,7 @@ def runImportApplyCommand(
         resource_exists_retries = (
             resourceExistsRetries if resourceExistsRetries is not None else settings.resource_exists_retries
         )
+        dataset_name = dataset if dataset is not None else settings.dataset_name
         csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
         stop_on_first_error = (
             stopOnFirstError if stopOnFirstError is not None else settings.stop_on_first_error
@@ -488,6 +494,7 @@ def runImportApplyCommand(
                     csv_path=csvPath,
                     csv_has_header=csv_has_header,
                     include_deleted_users=include_deleted,
+                    dataset=dataset_name,
                     logger=logger,
                     run_id=runId,
                     report=report,
@@ -517,6 +524,7 @@ def runImportApplyCommand(
         report.meta.csv_path = csvPath
         report.meta.plan_path = planPath or plan.meta.plan_path
         report.meta.include_deleted_users = include_deleted
+        report.meta.dataset = dataset_name
         report.meta.stop_on_first_error = stop_on_first_error
         report.meta.max_actions = max_actions
         report.meta.dry_run = dry_run
@@ -802,6 +810,12 @@ def importPlan(
         help="Include skipped rows in plan report",
         show_default=True,
     ),
+    dataset: str | None = typer.Option(
+        None,
+        "--dataset",
+        help="Dataset name (e.g., employees)",
+        show_default=True,
+    ),
 ):
     runImportPlanCommand(
         ctx=ctx,
@@ -811,6 +825,7 @@ def importPlan(
         reportItemsLimit=reportItemsLimit,
         reportItemsSuccess=reportItemsSuccess,
         reportIncludeSkipped=reportIncludeSkipped,
+        dataset=dataset,
     )
 
 @importApp.command("apply")
@@ -845,6 +860,12 @@ def importApply(
         help="Include successful items in report",
         show_default=True,
     ),
+    dataset: str | None = typer.Option(
+        None,
+        "--dataset",
+        help="Dataset name (e.g., employees)",
+        show_default=True,
+    ),
 ):
     runImportApplyCommand(
         ctx=ctx,
@@ -858,6 +879,7 @@ def importApply(
         reportItemsLimit=reportItemsLimit,
         reportItemsSuccess=reportItemsSuccess,
         resourceExistsRetries=resourceExistsRetries,
+        dataset=dataset,
     )
 
 @app.command("check-api")

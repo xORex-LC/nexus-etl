@@ -28,6 +28,7 @@ class PlanMeta:
 
     run_id: str | None
     generated_at: str | None
+    dataset: str | None
     csv_path: str | None
     plan_path: str | None
     include_deleted_users: bool | None
