@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from connector.domain.models import MatchResult
 from connector.planModels import EntityType, Operation, PlanItem
-from connector.matcher import MatchResult
+from connector.domain.planning.protocols import PlanningKind, PlanningResult
 from .decision import EmployeeDecisionPolicy
 from .differ import EmployeeDiffer
 from .matcher import EmployeeMatcher
-from connector.domain.planning.protocols import PlanningKind, PlanningResult
 
 class EmployeePlanner:
     """

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
+from connector.domain.models import MatchResult
+
 @runtime_checkable
 class OrgLookupProtocol(Protocol):
     """
@@ -35,10 +37,10 @@ class MatchKeyLookupProtocol(Protocol):
         Абстракция для поиска пользователя по match_key при глобальных проверках.
 
     Контракт:
-        - find_users_by_match_key(match_key: str) -> list[dict]
-            Возвращает список кандидатов, может быть пустым.
+        - match_by_key(match_key: str, include_deleted: bool) -> MatchResult
+            Возвращает типизированный результат сопоставления.
     """
 
-    def find_users_by_match_key(self, match_key: str) -> list[dict[str, Any]]: ...
+    def match_by_key(self, match_key: str, include_deleted: bool) -> MatchResult: ...
 
-__all__ = ["OrgLookupProtocol", "UserLookupProtocol", "MatchKeyLookupProtocol"]
+__all__ = ["OrgLookupProtocol", "UserLookupProtocol", "MatchKeyLookupProtocol", "MatchResult"]

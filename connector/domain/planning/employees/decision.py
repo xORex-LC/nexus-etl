@@ -4,7 +4,7 @@ import uuid
 from typing import Any
 
 from connector.planModels import Operation
-from connector.matcher import MatchResult
+from connector.domain.models import MatchResult
 
 class EmployeeDecisionPolicy:
     """

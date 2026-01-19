@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
-from connector.matcher import MatchResult
+from connector.domain.models import MatchResult
 from connector.planModels import PlanItem
 
 
