@@ -74,3 +74,17 @@ def test_row_validator_invalid_email():
     assert not result.valid
     codes = {e.code for e in result.errors}
     assert "INVALID_EMAIL" in codes
+
+
+def test_row_validator_produces_row_ref_even_with_errors():
+    row = CsvRow(
+        file_line_no=5,
+        data_line_no=5,
+        values=[None for _ in range(14)],
+    )
+    validator = RowValidator(FIELD_RULES)
+    _employee, result = validator.validate(row)
+
+    assert result.row_ref is not None
+    assert result.row_ref.row_id == "line:5"
+    assert result.row_ref.identity_primary == "match_key"
