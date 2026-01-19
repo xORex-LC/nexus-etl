@@ -5,7 +5,7 @@ from dataclasses import asdict
 from typing import Any
 from dataclasses import dataclass
 
-from connector.domain.models import EmployeeInput
+from connector.domain.models import EmployeeInput, Identity
 from connector.domain.planning.plan_builder import PlanBuilder, PlanBuildResult
 from connector.datasets.planning.registry import PlannerRegistry
 from connector.domain.validation.pipeline import logValidationFailure
@@ -22,7 +22,7 @@ class ValidatedRow:
     Поля:
         desired_state: dict[str, Any]
             Готовое состояние для API/планировщика (очищенное от служебных полей).
-        identity: dict[str, Any]
+        identity: Identity
             Ключ(и) для сопоставления (набор, а не фиксированное поле).
         line_no: int
             Номер строки в исходном CSV (для трассировки).
@@ -30,7 +30,7 @@ class ValidatedRow:
             Удобный идентификатор строки (line:<n>).
     """
     desired_state: dict[str, Any]
-    identity: dict[str, Any]
+    identity: Identity
     line_no: int
     row_id: str
 
@@ -132,13 +132,13 @@ class PlanUseCase:
             plan_result: PlanningResult = entity_planner.plan_row(
                 desired_state=validated_row.desired_state,
                 line_no=validated_row.line_no,
-                match_key=str(validated_row.identity.get("match_key", "")),
+                identity=validated_row.identity,
             )
             if plan_result.kind == PlanningKind.CONFLICT:
-                builder.add_conflict(validation.line_no, str(validated_row.identity.get("match_key", "")), warnings)
+                builder.add_conflict(validation.line_no, validated_row.identity.primary_value, warnings)
                 continue
             if plan_result.kind == PlanningKind.SKIP:
-                builder.add_skip(validation.line_no, str(validated_row.identity.get("match_key", "")), warnings)
+                builder.add_skip(validation.line_no, validated_row.identity.primary_value, warnings)
                 continue
             if plan_result.item:
                 builder.add_plan_item(plan_result.item)
@@ -157,10 +157,13 @@ class PlanUseCase:
             Работает с одним сотрудником; при добавлении новых сущностей потребуется аналогичная проекция.
         """
         desired_state = asdict(employee)
-        identity = {
-            "match_key": validation.match_key,
-            "usr_org_tab_num": validation.usr_org_tab_num,
-        }
+        identity = Identity(
+            primary="match_key",
+            values={
+                "match_key": validation.match_key,
+                "usr_org_tab_num": validation.usr_org_tab_num or "",
+            },
+        )
         return ValidatedRow(
             desired_state=desired_state,
             identity=identity,

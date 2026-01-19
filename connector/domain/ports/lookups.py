@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from connector.domain.models import MatchResult, MatchStatus
+from connector.domain.models import Identity, MatchResult, MatchStatus
 
 @runtime_checkable
 class OrgLookupProtocol(Protocol):
@@ -31,16 +31,12 @@ class UserLookupProtocol(Protocol):
     def get_user_by_id(self, user_id: int) -> dict[str, Any] | None: ...
 
 @runtime_checkable
-class MatchKeyLookupProtocol(Protocol):
+class IdentityLookupProtocol(Protocol):
     """
     Назначение:
-        Абстракция для поиска пользователя по match_key при глобальных проверках.
-
-    Контракт:
-        - match_by_key(match_key: str, include_deleted: bool) -> MatchResult
-            Возвращает типизированный результат сопоставления.
+        Абстракция для поиска сущностей по универсальному Identity при глобальных проверках.
     """
 
-    def match_by_key(self, match_key: str, include_deleted: bool) -> MatchResult: ...
+    def match(self, identity: Identity, include_deleted: bool) -> MatchResult: ...
 
-__all__ = ["OrgLookupProtocol", "UserLookupProtocol", "MatchKeyLookupProtocol", "MatchResult", "MatchStatus"]
+__all__ = ["OrgLookupProtocol", "UserLookupProtocol", "IdentityLookupProtocol", "MatchResult", "MatchStatus", "Identity"]

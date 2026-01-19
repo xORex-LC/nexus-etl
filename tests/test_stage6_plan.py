@@ -247,13 +247,10 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
     import connector.domain.planning.adapters as planning_adapters
     from connector.domain.models import MatchResult, MatchStatus
 
-    monkeypatch.setattr(
-        planning_adapters.CacheEmployeeLookup,
-        "match_by_key",
-        lambda self, mk, include_deleted: MatchResult(
-            status=MatchStatus.CONFLICT, candidate=None, candidates=[{"_id": "a"}, {"_id": "b"}]
-        ),
-    )
+    def _fake_match(self, identity, include_deleted):
+        return MatchResult(status=MatchStatus.CONFLICT, candidate=None, candidates=[{"_id": "a"}, {"_id": "b"}])
+
+    monkeypatch.setattr(planning_adapters.CacheEmployeeLookup, "match", _fake_match)
 
     csv_path = tmp_path / "conflict.csv"
     _write_csv(

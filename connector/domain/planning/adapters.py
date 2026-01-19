@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.models import MatchResult, MatchStatus
+from connector.domain.models import Identity, MatchResult, MatchStatus
 from connector.infra.cache.repo import findUsersByMatchKey
 from .protocols import EmployeeLookup
 
@@ -18,19 +18,22 @@ class CacheEmployeeLookup(EmployeeLookup):
     def __init__(self, conn):
         self.conn = conn
 
-    def match_by_key(self, match_key: str, include_deleted: bool) -> MatchResult:
+    def match(self, identity: Identity, include_deleted: bool) -> MatchResult:
         """
         Назначение:
-            Поиск пользователя по match_key в кэше.
+            Поиск пользователя в кэше по Identity (primary поддерживает только match_key).
         Контракт (вход/выход):
-            - Вход: match_key: str, include_deleted: bool.
+            - Вход: identity: Identity, include_deleted: bool.
             - Выход: MatchResult (found/not_found/conflict и кандидат).
         Ошибки/исключения:
             Пробрасывает исключения работы с БД.
         Алгоритм:
             Фильтрует удалённых (при необходимости) и определяет статус.
         """
-        candidates = findUsersByMatchKey(self.conn, match_key)
+        if identity.primary != "match_key":
+            raise ValueError(f"Unsupported identity primary for employees: {identity.primary}")
+        key_value = identity.values.get("match_key", "")
+        candidates = findUsersByMatchKey(self.conn, key_value)
         if not include_deleted:
             candidates = [c for c in candidates if not _is_deleted(c)]
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from connector.domain.ports.lookups import MatchKeyLookupProtocol, OrgLookupProtocol, UserLookupProtocol
+from connector.domain.ports.lookups import IdentityLookupProtocol, OrgLookupProtocol, UserLookupProtocol
 
 @dataclass
 class ValidationDependencies:
@@ -19,7 +19,7 @@ class ValidationDependencies:
 
     org_lookup: OrgLookupProtocol | None = None
     user_lookup: UserLookupProtocol | None = None
-    matchkey_lookup: MatchKeyLookupProtocol | None = None
+    matchkey_lookup: IdentityLookupProtocol | None = None
 
 @dataclass
 class DatasetValidationState:

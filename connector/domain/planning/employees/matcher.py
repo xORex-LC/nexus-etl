@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.models import MatchResult
+from connector.domain.models import Identity, MatchResult
 from connector.domain.planning.protocols import EmployeeLookup
 
 class EmployeeMatcher:
@@ -17,16 +17,16 @@ class EmployeeMatcher:
         self.lookup = lookup
         self.include_deleted_users = include_deleted_users
 
-    def match(self, match_key: str) -> MatchResult:
+    def match(self, identity: Identity) -> MatchResult:
         """
         Назначение:
-            Найти кандидата в хранилище по match_key.
+            Найти кандидата в хранилище по identity.
         Контракт (вход/выход):
-            - Вход: match_key: str.
+            - Вход: identity: Identity.
             - Выход: MatchResult со статусом found/not_found/conflict.
         Ошибки/исключения:
             Пробрасывает исключения порта lookup.
         Алгоритм:
-            Делегирует в EmployeeLookup.match_by_key.
+            Делегирует в EmployeeLookup.match.
         """
-        return self.lookup.match_by_key(match_key, include_deleted=self.include_deleted_users)
+        return self.lookup.match(identity, include_deleted=self.include_deleted_users)

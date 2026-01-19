@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Mapping
 
 @dataclass
 class CsvRow:
@@ -82,3 +83,21 @@ class MatchResult:
     status: MatchStatus
     candidate: dict | None
     candidates: list[dict]
+
+
+@dataclass(frozen=True)
+class Identity:
+    """
+    Назначение:
+        Унифицированное представление ключей сопоставления для сущностей разных датасетов.
+
+    Поля:
+        primary: имя первичного ключа (например, "match_key" или "ouid").
+        values: словарь значений ключей для сопоставления/аудита.
+    """
+    primary: str
+    values: Mapping[str, str]
+
+    @property
+    def primary_value(self) -> str:
+        return self.values.get(self.primary, "")
