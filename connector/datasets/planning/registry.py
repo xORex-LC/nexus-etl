@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from connector.domain.planning.employees.decision import EmployeeDecisionPolicy
+from connector.domain.planning.employees.differ import EmployeeDiffer
+from connector.domain.planning.employees.matcher import EmployeeMatcher
 from connector.domain.planning.employees.planner import EmployeePlanner
-from connector.domain.planning.factory import PlannerFactory
-from connector.domain.planning.protocols import EntityPlanner
+from connector.domain.planning.protocols import EmployeeLookup, EntityPlanner
 
 class PlannerRegistry:
     """
@@ -14,8 +16,8 @@ class PlannerRegistry:
         Пока поддерживает только dataset 'employees'.
     """
 
-    def __init__(self, factory: PlannerFactory):
-        self.factory = factory
+    def __init__(self, employee_lookup: EmployeeLookup):
+        self.employee_lookup = employee_lookup
 
     def get(self, dataset: str, include_deleted_users: bool) -> EntityPlanner:
         """
@@ -27,8 +29,11 @@ class PlannerRegistry:
         Ошибки/исключения:
             ValueError — если датасет не поддерживается.
         Алгоритм:
-            Сейчас только employees -> factory.create_employee_planner.
+            Сейчас только employees: собирает matcher/differ/decision.
         """
         if dataset != "employees":
             raise ValueError(f"Unsupported dataset: {dataset}")
-        return self.factory.create_employee_planner(include_deleted_users)
+        matcher = EmployeeMatcher(self.employee_lookup, include_deleted_users)
+        differ = EmployeeDiffer()
+        decision = EmployeeDecisionPolicy()
+        return EmployeePlanner(matcher=matcher, differ=differ, decision=decision)

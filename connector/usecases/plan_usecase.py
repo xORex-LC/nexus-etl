@@ -1,39 +1,17 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
-from typing import Any
 from dataclasses import dataclass
+from typing import Any
 
-from connector.domain.models import EmployeeInput, Identity
+from connector.datasets.spec import DatasetSpec
+from connector.domain.models import Identity
 from connector.domain.planning.plan_builder import PlanBuilder, PlanBuildResult
-from connector.datasets.planning.registry import PlannerRegistry
 from connector.domain.validation.pipeline import logValidationFailure
-from connector.datasets.validation.registry import ValidatorRegistry
 from connector.domain.validation.dataset_rules import ValidationRowResult
 from connector.domain.planning.protocols import PlanningKind, PlanningResult
 
 @dataclass
-class ValidatedRow:
-    """
-    Назначение/ответственность:
-        Унифицированное представление валидированной строки для планировщика.
-
-    Поля:
-        desired_state: dict[str, Any]
-            Готовое состояние для API/планировщика (очищенное от служебных полей).
-        identity: Identity
-            Ключ(и) для сопоставления (набор, а не фиксированное поле).
-        line_no: int
-            Номер строки в исходном CSV (для трассировки).
-        row_id: str
-            Удобный идентификатор строки (line:<n>).
-    """
-    desired_state: dict[str, Any]
-    identity: Identity
-    line_no: int
-    row_id: str
-
 class PlanUseCase:
     """
     Назначение/ответственность:
@@ -51,23 +29,20 @@ class PlanUseCase:
 
     def __init__(
         self,
-        validator_registry: ValidatorRegistry,
-        planner_registry: PlannerRegistry,
         report_items_limit: int,
         include_skipped_in_report: bool,
     ) -> None:
-        self.validator_registry = validator_registry
-        self.planner_registry = planner_registry
         self.report_items_limit = report_items_limit
         self.include_skipped_in_report = include_skipped_in_report
 
     def run(
         self,
         row_source,
-        dataset: str,
+        dataset_spec: DatasetSpec,
         include_deleted_users: bool,
         logger: logging.Logger,
         run_id: str,
+        validation_deps,
     ) -> PlanBuildResult:
         """
         Контракт (вход/выход):
@@ -80,15 +55,20 @@ class PlanUseCase:
             - Проходит строки: валидирует, планирует, накапливает builder.
             - Возвращает результат builder.build().
         """
+        report_adapter = dataset_spec.get_report_adapter()
         builder = PlanBuilder(
             include_skipped_in_report=self.include_skipped_in_report,
             report_items_limit=self.report_items_limit,
+            identity_label=report_adapter.identity_label,
+            conflict_code=report_adapter.conflict_code,
+            conflict_field=report_adapter.conflict_field,
         )
 
-        row_validator = self.validator_registry.create_row_validator(dataset)
-        state = self.validator_registry.create_state()
-        dataset_validator = self.validator_registry.create_dataset_validator(dataset, state)
-        entity_planner = self.planner_registry.get(dataset=dataset, include_deleted_users=include_deleted_users)
+        validators = dataset_spec.build_validators(validation_deps)
+        row_validator = validators.row_validator
+        dataset_validator = validators.dataset_validator
+        entity_planner = dataset_spec.build_planner(include_deleted_users=include_deleted_users)
+        projector = dataset_spec.get_projector()
 
         for csv_row in row_source:
             builder.inc_rows_total()
@@ -126,47 +106,23 @@ class PlanUseCase:
                 )
                 continue
 
-            validated_row = self._project_validated_row(employee, validation)
+            desired_state = projector.to_desired_state(employee)
+            identity: Identity = projector.to_identity(employee, validation)
+            # source_ref строится позже в планировщике/плане
 
             builder.inc_valid_rows()
             plan_result: PlanningResult = entity_planner.plan_row(
-                desired_state=validated_row.desired_state,
-                line_no=validated_row.line_no,
-                identity=validated_row.identity,
+                desired_state=desired_state,
+                line_no=validation.line_no,
+                identity=identity,
             )
             if plan_result.kind == PlanningKind.CONFLICT:
-                builder.add_conflict(validation.line_no, validated_row.identity.primary_value, warnings)
+                builder.add_conflict(validation.line_no, identity.primary_value, warnings)
                 continue
             if plan_result.kind == PlanningKind.SKIP:
-                builder.add_skip(validation.line_no, validated_row.identity.primary_value, warnings)
+                builder.add_skip(validation.line_no, identity.primary_value, warnings)
                 continue
             if plan_result.item:
                 builder.add_plan_item(plan_result.item)
 
         return builder.build()
-
-    def _project_validated_row(self, employee: EmployeeInput, validation: ValidationRowResult) -> ValidatedRow:
-        """
-        Назначение:
-            Сформировать стандартизованное представление валидированной строки для планировщика.
-
-        Контракт (вход/выход):
-            Вход: EmployeeInput + ValidationRowResult.
-            Выход: ValidatedRow с очищенным desired_state и identity (match_key и вспомогательные ключи).
-        Ограничения:
-            Работает с одним сотрудником; при добавлении новых сущностей потребуется аналогичная проекция.
-        """
-        desired_state = asdict(employee)
-        identity = Identity(
-            primary="match_key",
-            values={
-                "match_key": validation.match_key,
-                "usr_org_tab_num": validation.usr_org_tab_num or "",
-            },
-        )
-        return ValidatedRow(
-            desired_state=desired_state,
-            identity=identity,
-            line_no=validation.line_no,
-            row_id=f"line:{validation.line_no}",
-        )
