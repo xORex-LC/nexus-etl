@@ -244,13 +244,13 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
         conn.close()
 
     # Force duplicate candidates despite UNIQUE constraint by monkeypatching matcher
-    import connector.matcher as matcher_module
     import connector.domain.planning.adapters as planning_adapters
+    from connector.domain.models import MatchResult
 
     monkeypatch.setattr(
         planning_adapters.CacheEmployeeLookup,
         "match_by_key",
-        lambda self, mk, include_deleted: matcher_module.MatchResult(
+        lambda self, mk, include_deleted: MatchResult(
             status="conflict", candidate=None, candidates=[{"_id": "a"}, {"_id": "b"}]
         ),
     )
