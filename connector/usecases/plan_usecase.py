@@ -5,10 +5,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.datasets.spec import DatasetSpec
-from connector.domain.models import Identity
+from connector.domain.models import Identity, ValidationRowResult
 from connector.domain.planning.plan_builder import PlanBuilder, PlanBuildResult
 from connector.domain.validation.pipeline import logValidationFailure
-from connector.domain.validation.dataset_rules import ValidationRowResult
 from connector.domain.planning.protocols import PlanningKind, PlanningResult
 
 @dataclass
@@ -43,10 +42,12 @@ class PlanUseCase:
         logger: logging.Logger,
         run_id: str,
         validation_deps,
+        planning_deps,
     ) -> PlanBuildResult:
         """
         Контракт (вход/выход):
-            Вход: row_source (Iterable[CsvRow]), dataset: str, include_deleted_users: bool, logger, run_id.
+            Вход: row_source (Iterable[CsvRow]), dataset_spec, include_deleted_users: bool, logger, run_id,
+                  validation_deps, planning_deps.
             Выход: PlanBuildResult (items, summary, report_items, items_truncated).
         Ошибки/исключения:
             Пробрасывает CsvFormatError/OSError и исключения зависимостей.
@@ -67,7 +68,9 @@ class PlanUseCase:
         validators = dataset_spec.build_validators(validation_deps)
         row_validator = validators.row_validator
         dataset_validator = validators.dataset_validator
-        entity_planner = dataset_spec.build_planner(include_deleted_users=include_deleted_users)
+        entity_planner = dataset_spec.build_planner(
+            include_deleted_users=include_deleted_users, deps=planning_deps
+        )
         projector = dataset_spec.get_projector()
 
         for csv_row in row_source:
