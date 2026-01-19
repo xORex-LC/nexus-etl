@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
-from ..models import CsvRow, EmployeeInput, ValidationErrorItem, ValidationRowResult
+from ..models import CsvRow, EmployeeInput, RowRef, ValidationErrorItem, ValidationRowResult
 from .deps import DatasetValidationState, ValidationDependencies
 from .row_rules import FIELD_RULES, RowRule, normalize_whitespace
 from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
@@ -75,11 +75,19 @@ class RowValidator:
             [employee.last_name, employee.first_name, employee.middle_name, employee.personnel_number]
         )
 
+        row_ref = RowRef(
+            line_no=csv_row.file_line_no,
+            row_id=f"line:{csv_row.file_line_no}",
+            identity_primary="match_key",
+            identity_value=match_key,
+        )
+
         result = ValidationRowResult(
             line_no=csv_row.file_line_no,
             match_key=match_key,
             match_key_complete=match_key_complete,
             usr_org_tab_num=employee.usr_org_tab_num,
+            row_ref=row_ref,
             errors=errors,
             warnings=warnings,
         )

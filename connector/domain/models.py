@@ -55,6 +55,7 @@ class ValidationRowResult:
     match_key: str
     match_key_complete: bool
     usr_org_tab_num: str | None
+    row_ref: "RowRef" | None = None
     errors: list[ValidationErrorItem] = field(default_factory=list)
     warnings: list[ValidationErrorItem] = field(default_factory=list)
 
@@ -101,3 +102,15 @@ class Identity:
     @property
     def primary_value(self) -> str:
         return self.values.get(self.primary, "")
+
+
+@dataclass(frozen=True)
+class RowRef:
+    """
+    Назначение:
+        Унифицированная ссылка на строку входного набора для отчётов.
+    """
+    line_no: int
+    row_id: str
+    identity_primary: str | None
+    identity_value: str | None

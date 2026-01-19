@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.planModels import Operation, PlanItem, PlanSummary
-from connector.domain.validation.dataset_rules import ValidationRowResult
+from connector.domain.models import ValidationRowResult
 
 @dataclass
 class PlanBuildResult:
@@ -81,10 +81,12 @@ class PlanBuilder:
         """
         self.failed_rows += 1
         if self._can_store_report("failed"):
-            identity_value = getattr(result, "match_key", None)
+            row_ref = result.row_ref
+            identity_value = row_ref.identity_value if row_ref else None
+            row_id = row_ref.row_id if row_ref else f"line:{result.line_no}"
             self.report_items.append(
                 {
-                    "row_id": f"line:{result.line_no}",
+                    "row_id": row_id,
                     "line_no": result.line_no,
                     "status": "invalid",
                     self.identity_label: identity_value,
