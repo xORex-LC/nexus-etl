@@ -45,9 +45,15 @@ class PlanBuilder:
         self,
         include_skipped_in_report: bool,
         report_items_limit: int,
+        identity_label: str,
+        conflict_code: str,
+        conflict_field: str,
     ) -> None:
         self.include_skipped_in_report = include_skipped_in_report
         self.report_items_limit = report_items_limit
+        self.identity_label = identity_label
+        self.conflict_code = conflict_code
+        self.conflict_field = conflict_field
 
         self.plan_items: list[dict[str, Any]] = []
         self.report_items: list[dict[str, Any]] = []
@@ -75,18 +81,19 @@ class PlanBuilder:
         """
         self.failed_rows += 1
         if self._can_store_report("failed"):
+            identity_value = getattr(result, "match_key", None)
             self.report_items.append(
                 {
                     "row_id": f"line:{result.line_no}",
                     "line_no": result.line_no,
                     "status": "invalid",
-                    "match_key": result.match_key,
+                    self.identity_label: identity_value,
                     "errors": [e.__dict__ for e in errors],
                     "warnings": [w.__dict__ for w in warnings],
                 }
             )
 
-    def add_conflict(self, line_no: int, match_key: str, warnings: list[Any]) -> None:
+    def add_conflict(self, line_no: int, identity_value: str, warnings: list[Any]) -> None:
         """
         Назначение:
             Учесть конфликт сопоставления.
@@ -98,15 +105,15 @@ class PlanBuilder:
                     "row_id": f"line:{line_no}",
                     "line_no": line_no,
                     "status": "invalid",
-                    "match_key": match_key,
+                    self.identity_label: identity_value,
                     "errors": [
-                        {"code": "MATCH_CONFLICT", "field": "matchKey", "message": "multiple users with same match_key"}
+                        {"code": self.conflict_code, "field": self.conflict_field, "message": "multiple candidates found"}
                     ],
                     "warnings": [w.__dict__ for w in warnings],
                 }
             )
 
-    def add_skip(self, line_no: int, match_key: str, warnings: list[Any]) -> None:
+    def add_skip(self, line_no: int, identity_value: str, warnings: list[Any]) -> None:
         """
         Назначение:
             Учесть строку без изменений (skip).
@@ -118,7 +125,7 @@ class PlanBuilder:
                     "row_id": f"line:{line_no}",
                     "line_no": line_no,
                     "status": "skipped",
-                    "match_key": match_key,
+                    self.identity_label: identity_value,
                     "warnings": [w.__dict__ for w in warnings],
                 }
             )

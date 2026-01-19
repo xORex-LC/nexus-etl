@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from ..models import EmployeeInput, ValidationErrorItem, ValidationRowResult
 from .deps import DatasetValidationState, ValidationDependencies
 
@@ -16,7 +14,7 @@ class MatchKeyUniqueRule:
         employee: EmployeeInput,
         result: ValidationRowResult,
         state: DatasetValidationState,
-        deps: ValidationDependencies,
+        deps: ValidationDependencies,  # noqa: ARG002
     ) -> None:
         if not result.match_key_complete:
             result.errors.append(
@@ -39,10 +37,11 @@ class UsrOrgTabUniqueRule:
 
     def apply(
         self,
+        # TODO: мёртвый код
         employee: EmployeeInput,
         result: ValidationRowResult,
         state: DatasetValidationState,
-        deps: ValidationDependencies,
+        deps: ValidationDependencies,  # noqa: ARG002
     ) -> None:
         if not result.usr_org_tab_num:
             return
@@ -66,7 +65,7 @@ class OrgExistsRule:
         self,
         employee: EmployeeInput,
         result: ValidationRowResult,
-        state: DatasetValidationState,
+        state: DatasetValidationState,  # noqa: ARG002
         deps: ValidationDependencies,
     ) -> None:
         if deps.org_lookup is None:

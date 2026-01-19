@@ -7,15 +7,12 @@ from connector.infra.sources.csv_reader import CsvRowSource
 from connector.infra.logging.setup import logEvent
 from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.planner import write_plan_file
-from connector.domain.planning.adapters import CacheEmployeeLookup
-from connector.domain.planning.factory import PlannerFactory
-from connector.datasets.planning.registry import PlannerRegistry
 from connector.usecases.ports import ImportPlanServiceProtocol
 from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
 from connector.infra.cache.validation_lookups import CacheOrgLookup
 from connector.domain.validation.deps import ValidationDependencies
-from connector.datasets.validation.registry import ValidatorRegistry
+from connector.datasets.registry import get_spec
 
 class ImportPlanService(ImportPlanServiceProtocol):
     """
@@ -44,24 +41,21 @@ class ImportPlanService(ImportPlanServiceProtocol):
         ensureSchema(conn)
         generated_at = getNowIso()
 
-        planner_factory = PlannerFactory(employee_lookup=CacheEmployeeLookup(conn))
-        planner_registry = PlannerRegistry(planner_factory)
         org_lookup = CacheOrgLookup(conn)
         deps = ValidationDependencies(org_lookup=org_lookup)
-        validator_registry = ValidatorRegistry(deps)
+        dataset_spec = get_spec(dataset, conn=conn)
         row_source = CsvRowSource(csv_path, csv_has_header)
         use_case = PlanUseCase(
-            validator_registry=validator_registry,
-            planner_registry=planner_registry,
             report_items_limit=report_items_limit,
             include_skipped_in_report=include_skipped_in_report,
         )
         plan_result = use_case.run(
             row_source=row_source,
-            dataset=dataset,
+            dataset_spec=dataset_spec,
             include_deleted_users=include_deleted_users,
             logger=logger,
             run_id=run_id,
+            validation_deps=deps,
         )
         plan_meta = {
             "csv_path": csv_path,
