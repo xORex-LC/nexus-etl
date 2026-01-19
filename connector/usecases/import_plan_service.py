@@ -10,8 +10,6 @@ from connector.planner import write_plan_file
 from connector.usecases.ports import ImportPlanServiceProtocol
 from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
-from connector.infra.cache.validation_lookups import CacheOrgLookup
-from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.registry import get_spec
 
 class ImportPlanService(ImportPlanServiceProtocol):
@@ -37,13 +35,14 @@ class ImportPlanService(ImportPlanServiceProtocol):
         report_items_limit: int,
         include_skipped_in_report: bool,
         report_dir: str,
+        settings=None,
     ) -> int:
         ensureSchema(conn)
         generated_at = getNowIso()
 
-        org_lookup = CacheOrgLookup(conn)
-        deps = ValidationDependencies(org_lookup=org_lookup)
-        dataset_spec = get_spec(dataset, conn=conn)
+        dataset_spec = get_spec(dataset)
+        validation_deps = dataset_spec.build_validation_deps(conn, settings)
+        planning_deps = dataset_spec.build_planning_deps(conn, settings)
         row_source = CsvRowSource(csv_path, csv_has_header)
         use_case = PlanUseCase(
             report_items_limit=report_items_limit,
@@ -55,7 +54,8 @@ class ImportPlanService(ImportPlanServiceProtocol):
             include_deleted_users=include_deleted_users,
             logger=logger,
             run_id=run_id,
-            validation_deps=deps,
+            validation_deps=validation_deps,
+            planning_deps=planning_deps,
         )
         plan_meta = {
             "csv_path": csv_path,

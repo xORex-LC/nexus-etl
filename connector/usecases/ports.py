@@ -15,11 +15,14 @@ class ImportPlanServiceProtocol(Protocol):
         csv_path: str,
         csv_has_header: bool,
         include_deleted_users: bool,
+        dataset: str,
         logger,
         run_id: str,
         report,
         report_items_limit: int,
+        include_skipped_in_report: bool,
         report_dir: str,
+        settings=None,
     ) -> int: ...
 
 @runtime_checkable
