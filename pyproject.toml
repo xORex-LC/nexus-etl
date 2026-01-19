@@ -25,4 +25,4 @@ include = ["connector*"]
 exclude = ["logs*", "cache*", "reports*"]
 
 [project.scripts]
-syncEmployees = "connector.cli:app"
+syncEmployees = "connector.main:app"
