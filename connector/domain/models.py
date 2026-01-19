@@ -59,3 +59,19 @@ class ValidationRowResult:
     @property
     def valid(self) -> bool:
         return len(self.errors) == 0
+
+
+@dataclass(frozen=True)
+class MatchResult:
+    """
+    Назначение:
+        Типизированный результат поиска/сопоставления по match_key.
+
+    Поля:
+        status: matched | conflict | not_found
+        candidate: выбранный пользователь (если matched, иначе None)
+        candidates: список всех найденных кандидатов после фильтров
+    """
+    status: str
+    candidate: dict | None
+    candidates: list[dict]

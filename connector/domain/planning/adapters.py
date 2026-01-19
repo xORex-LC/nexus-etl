@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from connector.domain.models import MatchResult
 from connector.infra.cache.repo import findUsersByMatchKey
-from connector.matcher import MatchResult  # TODO: move MatchResult to domain if/when matcher is relocated
 from .protocols import EmployeeLookup
 
 
