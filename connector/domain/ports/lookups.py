@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from connector.domain.models import MatchResult
+from connector.domain.models import MatchResult, MatchStatus
 
 @runtime_checkable
 class OrgLookupProtocol(Protocol):
@@ -43,4 +43,4 @@ class MatchKeyLookupProtocol(Protocol):
 
     def match_by_key(self, match_key: str, include_deleted: bool) -> MatchResult: ...
 
-__all__ = ["OrgLookupProtocol", "UserLookupProtocol", "MatchKeyLookupProtocol", "MatchResult"]
+__all__ = ["OrgLookupProtocol", "UserLookupProtocol", "MatchKeyLookupProtocol", "MatchResult", "MatchStatus"]

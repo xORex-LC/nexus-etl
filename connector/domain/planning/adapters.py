@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.models import MatchResult
+from connector.domain.models import MatchResult, MatchStatus
 from connector.infra.cache.repo import findUsersByMatchKey
 from .protocols import EmployeeLookup
 
@@ -35,10 +35,10 @@ class CacheEmployeeLookup(EmployeeLookup):
             candidates = [c for c in candidates if not _is_deleted(c)]
 
         if len(candidates) == 0:
-            return MatchResult(status="not_found", candidate=None, candidates=[])
+            return MatchResult(status=MatchStatus.NOT_FOUND, candidate=None, candidates=[])
         if len(candidates) > 1:
-            return MatchResult(status="conflict", candidate=None, candidates=candidates)
-        return MatchResult(status="matched", candidate=candidates[0], candidates=candidates)
+            return MatchResult(status=MatchStatus.CONFLICT, candidate=None, candidates=candidates)
+        return MatchResult(status=MatchStatus.MATCHED, candidate=candidates[0], candidates=candidates)
 
 
 def _is_deleted(user_row) -> bool:

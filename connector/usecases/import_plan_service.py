@@ -63,7 +63,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
             logger=logger,
             run_id=run_id,
         )
-        generated_at = getNowIso()
         plan_meta = {
             "csv_path": csv_path,
             "include_deleted_users": include_deleted_users,

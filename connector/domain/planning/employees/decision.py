@@ -3,8 +3,15 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from enum import Enum
+
 from connector.planModels import Operation
-from connector.domain.models import MatchResult
+from connector.domain.models import MatchResult, MatchStatus
+
+class DecisionOutcome(str, Enum):
+    CREATE = "create"
+    UPDATE = "update"
+    SKIP = "skip"
 
 class EmployeeDecisionPolicy:
     """
@@ -19,7 +26,7 @@ class EmployeeDecisionPolicy:
         match_result: MatchResult,
         changes: dict[str, Any],
         desired_state: dict[str, Any],
-    ) -> tuple[str, str | None]:
+    ) -> tuple[DecisionOutcome, str | None]:
         """
         Назначение:
             Определить действие плана по текущему состоянию и diff.
@@ -33,8 +40,8 @@ class EmployeeDecisionPolicy:
             found + diff пуст -> skip
             found + diff -> update (id из кандидата)
         """
-        if match_result.status == "not_found":
-            return Operation.CREATE, str(uuid.uuid4())
+        if match_result.status == MatchStatus.NOT_FOUND:
+            return DecisionOutcome.CREATE, str(uuid.uuid4())
         if not changes:
-            return "skip", match_result.candidate.get("_id") if match_result.candidate else None
-        return Operation.UPDATE, match_result.candidate.get("_id") if match_result.candidate else None
+            return DecisionOutcome.SKIP, match_result.candidate.get("_id") if match_result.candidate else None
+        return DecisionOutcome.UPDATE, match_result.candidate.get("_id") if match_result.candidate else None

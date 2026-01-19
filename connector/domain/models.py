@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 
 @dataclass
 class CsvRow:
@@ -61,6 +62,12 @@ class ValidationRowResult:
         return len(self.errors) == 0
 
 
+class MatchStatus(str, Enum):
+    MATCHED = "matched"
+    CONFLICT = "conflict"
+    NOT_FOUND = "not_found"
+
+
 @dataclass(frozen=True)
 class MatchResult:
     """
@@ -68,10 +75,10 @@ class MatchResult:
         Типизированный результат поиска/сопоставления по match_key.
 
     Поля:
-        status: matched | conflict | not_found
+        status: MatchStatus
         candidate: выбранный пользователь (если matched, иначе None)
         candidates: список всех найденных кандидатов после фильтров
     """
-    status: str
+    status: MatchStatus
     candidate: dict | None
     candidates: list[dict]

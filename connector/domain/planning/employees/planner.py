@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.domain.models import MatchResult
+from connector.domain.models import MatchStatus
 from connector.planModels import EntityType, Operation, PlanItem
 from connector.domain.planning.protocols import PlanningKind, PlanningResult
-from .decision import EmployeeDecisionPolicy
+from .decision import DecisionOutcome, EmployeeDecisionPolicy
 from .differ import EmployeeDiffer
 from .matcher import EmployeeMatcher
 
@@ -47,24 +47,24 @@ class EmployeePlanner:
             matcher.match -> diff -> decision -> PlanItem (кроме skip/conflict).
         """
         match_result = self.matcher.match(match_key)
-        if match_result.status == "conflict":
+        if match_result.status == MatchStatus.CONFLICT:
             return PlanningResult(kind=PlanningKind.CONFLICT, item=None, match_result=match_result)
 
         changes = self.differ.calculate_changes(match_result.candidate, desired_state)
         op, resource_id = self.decision.decide(match_result, changes, desired_state)
 
-        if op == "skip":
+        if op == DecisionOutcome.SKIP:
             return PlanningResult(kind=PlanningKind.SKIP, item=None, match_result=match_result)
 
         plan_item = PlanItem(
             row_id=f"line:{line_no}",
             line_no=line_no,
             entity_type=EntityType.EMPLOYEE,
-            op=op,
+            op=Operation.CREATE if op == DecisionOutcome.CREATE else Operation.UPDATE,
             resource_id=resource_id or "",
             desired_state=desired_state,
             changes=changes,
             source_ref={"match_key": match_key},
         )
-        result_kind = PlanningKind.CREATE if op == Operation.CREATE else PlanningKind.UPDATE
+        result_kind = PlanningKind.CREATE if op == DecisionOutcome.CREATE else PlanningKind.UPDATE
         return PlanningResult(kind=result_kind, item=plan_item, match_result=match_result)
