@@ -10,8 +10,9 @@ class RequestSpec:
     Назначение/ответственность:
         Описывает инструкцию для выполнения внешнего запроса без привязки к HTTP-клиенту.
     Инварианты/гарантии:
-        - method и path заданы явно.
-        - expected_statuses задаёт допустимые коды ответа (может быть пустым).
+        - method хранится в верхнем регистре.
+        - path задан явно.
+        - expected_statuses непустой, описывает допустимые коды ответа.
     Взаимодействия:
         Передаётся в RequestExecutorProtocol.execute().
     """
@@ -23,6 +24,95 @@ class RequestSpec:
     headers: dict[str, str] | None = None
     expected_statuses: Tuple[int, ...] = field(default_factory=tuple)
     idempotency_key: str | None = None
+
+    def __post_init__(self) -> None:
+        # Нормализуем метод и гарантируем непустые ожидаемые статусы.
+        self.method = self.method.upper()
+        if not self.expected_statuses:
+            raise ValueError("expected_statuses must not be empty")
+
+    @classmethod
+    def put(
+        cls,
+        path: str,
+        json: Any | None = None,
+        *,
+        query: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        expected_statuses: Tuple[int, ...] = (200, 201, 204),
+        idempotency_key: str | None = None,
+    ) -> "RequestSpec":
+        return cls(
+            method="PUT",
+            path=path,
+            json=json,
+            query=query,
+            headers=headers,
+            expected_statuses=tuple(expected_statuses),
+            idempotency_key=idempotency_key,
+        )
+
+    @classmethod
+    def patch(
+        cls,
+        path: str,
+        json: Any | None = None,
+        *,
+        query: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        expected_statuses: Tuple[int, ...] = (200, 204),
+        idempotency_key: str | None = None,
+    ) -> "RequestSpec":
+        return cls(
+            method="PATCH",
+            path=path,
+            json=json,
+            query=query,
+            headers=headers,
+            expected_statuses=tuple(expected_statuses),
+            idempotency_key=idempotency_key,
+        )
+
+    @classmethod
+    def post(
+        cls,
+        path: str,
+        json: Any | None = None,
+        *,
+        query: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        expected_statuses: Tuple[int, ...] = (200, 201, 202),
+        idempotency_key: str | None = None,
+    ) -> "RequestSpec":
+        return cls(
+            method="POST",
+            path=path,
+            json=json,
+            query=query,
+            headers=headers,
+            expected_statuses=tuple(expected_statuses),
+            idempotency_key=idempotency_key,
+        )
+
+    @classmethod
+    def delete(
+        cls,
+        path: str,
+        *,
+        query: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        expected_statuses: Tuple[int, ...] = (200, 204),
+        idempotency_key: str | None = None,
+    ) -> "RequestSpec":
+        return cls(
+            method="DELETE",
+            path=path,
+            json=None,
+            query=query,
+            headers=headers,
+            expected_statuses=tuple(expected_statuses),
+            idempotency_key=idempotency_key,
+        )
 
 
 @dataclass
