@@ -3,6 +3,7 @@ from __future__ import annotations
 from connector.datasets.spec import DatasetSpec, ValidatorBundle
 from connector.datasets.employees.projector import EmployeesProjector
 from connector.datasets.employees.reporting import employees_report_adapter
+from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
 from connector.domain.planning.adapters import CacheEmployeeLookup
 from connector.domain.planning.deps import PlanningDependencies
 from connector.domain.validation.deps import ValidationDependencies
@@ -18,6 +19,7 @@ class EmployeesSpec(DatasetSpec):
     def __init__(self):
         self._projector = EmployeesProjector()
         self._report_adapter = employees_report_adapter
+        self._apply_adapter = EmployeesApplyAdapter()
 
     def build_validation_deps(self, conn, settings) -> ValidationDependencies:
         return ValidationDependencies(org_lookup=CacheOrgLookup(conn))
@@ -41,6 +43,9 @@ class EmployeesSpec(DatasetSpec):
 
     def get_report_adapter(self):
         return self._report_adapter
+
+    def get_apply_adapter(self):
+        return self._apply_adapter
 
 # Фабрика экземпляра спеки
 def make_employees_spec() -> EmployeesSpec:
