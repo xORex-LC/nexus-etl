@@ -18,6 +18,13 @@ class ApiError(AppError):
         details: dict | None = None,
         code: str | None = None,
     ):
+        """
+        Назначение:
+            Исключение для ошибок HTTP/API уровня AnkeyApiClient.
+        Контракт:
+            - code: строковый код (HTTP_*, NETWORK_ERROR, INVALID_JSON и т.п.).
+            - status_code/body_snippet используются для диагностики.
+        """
         super().__init__(
             category="api",
             code=code or (f"HTTP_{status_code}" if status_code else "API_ERROR"),
@@ -42,6 +49,13 @@ class AnkeyApiClient:
         retryBackoffSeconds: float = 0.5,
         transport: httpx.BaseTransport | None = None,
     ):
+        """
+        Назначение:
+            Клиент Ankey API с простой политикой ретраев.
+        Контракт:
+            - baseUrl, username, password обязательны.
+            - retries/ retryBackoffSeconds управляют повторными попытками.
+        """
         verify: bool | str = True
         if tlsSkipVerify:
             verify = False
@@ -63,12 +77,15 @@ class AnkeyApiClient:
         )
 
     def resetRetryAttempts(self) -> None:
+        """Сбрасывает счётчик retry_attempts."""
         self.retry_attempts = 0
 
     def getRetryAttempts(self) -> int:
+        """Возвращает количество выполненных повторных попыток."""
         return self.retry_attempts
 
     def _headers(self) -> dict[str, str]:
+        """Базовые заголовки аутентификации Ankey."""
         return {
             "accept": "application/json",
             "X-Ankey-Username": self.username,
@@ -76,7 +93,15 @@ class AnkeyApiClient:
             "X-Ankey-NoSession": "true",
         }
 
+    def _headers_with(self, extra: dict[str, str] | None) -> dict[str, str]:
+        """Базовые заголовки + дополнительные."""
+        base = self._headers()
+        if extra:
+            base.update(extra)
+        return base
+
     def _should_retry(self, resp: httpx.Response) -> bool:
+        """Решает, стоит ли повторить запрос (429 или 5xx)."""
         if resp.status_code == 429:
             return True
         if 500 <= resp.status_code <= 599:
@@ -84,10 +109,12 @@ class AnkeyApiClient:
         return False
 
     def _sleep_backoff(self, attempt: int) -> None:
+        """Задержка с экспоненциальным ростом для ретраев."""
         delay = self.retryBackoffSeconds * (2 ** attempt)
         time.sleep(delay)
 
     def _request_with_retry(self, path: str, params: dict[str, Any]) -> httpx.Response:
+        """GET с ретраями по 429/5xx и сетевым ошибкам, иначе ApiError."""
         attempt = 0
         while True:
             try:
@@ -119,6 +146,7 @@ class AnkeyApiClient:
             )
 
     def getJson(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        """GET JSON с ретраями, парсит ответ или бросает ApiError."""
         params = params or {}
         resp = self._request_with_retry(path, params)
         try:
@@ -138,6 +166,10 @@ class AnkeyApiClient:
         params: dict[str, Any] | None = None,
         jsonBody: Any | None = None,
     ) -> tuple[int, Any]:
+        """
+        Универсальный JSON-запрос с ретраями и проверкой (200/201/204).
+        Возвращает (status_code, json|text) или бросает ApiError.
+        """
         params = params or {}
         attempt = 0
         while True:
@@ -175,6 +207,7 @@ class AnkeyApiClient:
             )
 
     def _extract_items(self, data: Any) -> list[Any]:
+        """Пытается вытащить массив items из разных возможных ключей."""
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
@@ -200,3 +233,52 @@ class AnkeyApiClient:
             if len(items) < pageSize:
                 break
             page += 1
+
+    def requestAny(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+        json: Any | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> tuple[int, Any | None, str | None]:
+        """
+        Выполняет запрос без проверки ожидаемых статусов.
+
+        Возвращает кортеж: (status_code, response_json_or_text, body_snippet).
+        """
+        params = params or {}
+        attempt = 0
+        while True:
+            try:
+                resp = self.client.request(
+                    method,
+                    path,
+                    params=params,
+                    headers=self._headers_with(headers),
+                    json=json,
+                    timeout=timeout,
+                )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                if attempt >= self.retries:
+                    raise ApiError("Network error", status_code=None, retryable=False, code="NETWORK_ERROR") from exc
+                self.retry_attempts += 1
+                self._sleep_backoff(attempt)
+                attempt += 1
+                continue
+
+            if self._should_retry(resp) and attempt < self.retries:
+                self.retry_attempts += 1
+                self._sleep_backoff(attempt)
+                attempt += 1
+                continue
+
+            status_code = resp.status_code
+            body_snippet = resp.text[:200] if resp.text else None
+            if resp.text:
+                try:
+                    return status_code, resp.json(), body_snippet
+                except ValueError:
+                    return status_code, resp.text, body_snippet
+            return status_code, None, body_snippet
