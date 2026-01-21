@@ -17,6 +17,8 @@ class ErrorCode(str, Enum):
     FORBIDDEN = "FORBIDDEN"
     CONFLICT = "CONFLICT"
     UNEXPECTED_ERROR = "UNEXPECTED_ERROR"
+    SECRET_REQUIRED = "SECRET_REQUIRED"
+    SECRET_SOURCE_UNAVAILABLE = "SECRET_SOURCE_UNAVAILABLE"
 
     @classmethod
     def from_status(cls, status_code: int | None) -> "ErrorCode":
