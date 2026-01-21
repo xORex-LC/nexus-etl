@@ -9,6 +9,7 @@ from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.datasets.registry import get_spec
 from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol
+from connector.usecases.import_plan_service import ImportPlanService
 
 class ImportApplyService:
     """

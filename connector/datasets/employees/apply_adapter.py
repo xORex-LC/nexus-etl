@@ -32,7 +32,9 @@ class EmployeesApplyAdapter(ApplyAdapter):
         """
         if retries_left <= 0:
             return None
-        if result.error_code == ErrorCode.CONFLICT:
+        if item.op != "create":
+            return None
+        if result.error_reason == "resourceexists":
             return PlanItem(
                 row_id=item.row_id,
                 line_no=item.line_no,

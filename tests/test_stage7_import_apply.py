@@ -344,7 +344,9 @@ def test_import_apply_resource_exists_retries():
     plan = _make_plan(items)
     executor = DummyExecutor(
         [
-            ExecutionResult(ok=False, status_code=409, error_code=ErrorCode.CONFLICT, error_message="conflict"),
+            ExecutionResult(
+                ok=False, status_code=409, error_code=ErrorCode.CONFLICT, error_message="conflict", error_reason="resourceexists"
+            ),
             ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
         ]
     )

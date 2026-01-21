@@ -124,6 +124,7 @@ class ExecutionResult:
     response_json: Any | None = None
     error_code: ErrorCode | None = None
     error_message: str | None = None
+    error_reason: str | None = None
 
 
 class RequestExecutorProtocol(Protocol):
