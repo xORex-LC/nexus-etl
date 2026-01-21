@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from connector.common.sanitize import maskSecret
+from connector.common.sanitize import maskSecretsInObject
 from connector.common.time import getNowIso
 
 def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -13,10 +13,7 @@ def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
         Маскирует чувствительные поля плана перед записью в файл/отчёт.
     """
     clone = json.loads(json.dumps(item))
-    desired = clone.get("desired_state")
-    if isinstance(desired, dict) and "password" in desired:
-        desired["password"] = maskSecret(desired["password"])
-    return clone
+    return maskSecretsInObject(clone)
 
 
 def write_plan_file(

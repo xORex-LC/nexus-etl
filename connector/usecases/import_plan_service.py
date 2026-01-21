@@ -5,7 +5,6 @@ import logging
 from connector.infra.cache.db import ensureSchema
 from connector.infra.sources.csv_reader import CsvRowSource
 from connector.infra.logging.setup import logEvent
-from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.planner import write_plan_file
 from connector.usecases.ports import ImportPlanServiceProtocol
 from connector.common.time import getNowIso
@@ -16,11 +15,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
     """
     Оркестратор построения плана импорта.
     """
-
-    def __init__(self) -> None:
-        # Храним последний построенный план в памяти (без маскирования пароля),
-        # чтобы apply мог использовать его напрямую без чтения файла.
-        self.last_plan: Plan | None = None
 
     def run(
         self,
@@ -71,39 +65,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
             generated_at=generated_at,
         )
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
-
-        # Сохраняем немаскированный план для дальнейшего использования.
-        self.last_plan = Plan(
-            meta=PlanMeta(
-                run_id=run_id,
-                generated_at=generated_at,
-                dataset=dataset,
-                csv_path=csv_path,
-                plan_path=plan_path,
-                include_deleted_users=include_deleted_users,
-            ),
-            summary=PlanSummary(
-                rows_total=plan_result.summary.rows_total,
-                valid_rows=plan_result.summary.valid_rows,
-                failed_rows=plan_result.summary.failed_rows,
-                planned_create=plan_result.summary.planned_create,
-                planned_update=plan_result.summary.planned_update,
-                skipped=plan_result.summary.skipped,
-            ),
-            items=[
-                PlanItem(
-                    row_id=item.get("row_id") or "",
-                    line_no=item.get("line_no"),
-                    entity_type=item.get("entity_type") or "",
-                    op=item.get("op") or "",
-                    resource_id=item.get("resource_id") or "",
-                    desired_state=item.get("desired_state") or {},
-                    changes=item.get("changes") or {},
-                    source_ref=item.get("source_ref") or {},
-                )
-                for item in plan_result.items
-            ],
-        )
 
         report.meta.plan_file = plan_path
         report.meta.include_deleted_users = include_deleted_users

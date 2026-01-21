@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.datasets.spec import DatasetSpec
-from connector.domain.models import Identity, ValidationRowResult
+from connector.domain.models import Identity
 from connector.domain.planning.plan_builder import PlanBuilder, PlanBuildResult
 from connector.domain.validation.pipeline import logValidationFailure
 from connector.domain.planning.protocols import PlanningKind, PlanningResult
@@ -20,7 +20,7 @@ class PlanUseCase:
     Взаимодействия:
         - Использует ValidatorRegistry для получения валидаторов по dataset.
         - Использует PlannerRegistry для получения EntityPlanner по dataset.
-        - Не знает об артефактах/файлах/last_plan.
+        - Не знает об артефактах/файлах и не хранит планы в памяти.
 
     Ограничения:
         Синхронное выполнение; источники строк и зависимости передаются извне.
