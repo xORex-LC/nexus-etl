@@ -1,25 +1,23 @@
 from __future__ import annotations
 
 import logging
-import uuid
-from typing import Any
+from typing import Any, Callable
 
-from connector.infra.http.ankey_client import ApiError, AnkeyApiClient
-from connector.usecases.import_plan_service import ImportPlanService
 from connector.infra.logging.setup import logEvent
 from connector.planModels import Plan
 from connector.infra.artifacts.plan_reader import readPlanFile
-from connector.domain.ports.api import UserApiProtocol
-from connector.infra.http.user_api import UserApi
-from connector.domain.mappers.user_payload import buildUserUpsertPayload
+from connector.datasets.registry import get_spec
+from connector.datasets.spec import DatasetSpec
+from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol
 
 class ImportApplyService:
     """
     Оркестратор выполнения плана импорта.
     """
 
-    def __init__(self, user_api: UserApiProtocol):
-        self.user_api = user_api
+    def __init__(self, executor: RequestExecutorProtocol, spec_resolver: Callable[[str], DatasetSpec] = get_spec):
+        self.executor = executor
+        self.spec_resolver = spec_resolver
 
     def _append_item(self, report, item: dict[str, Any], status: str) -> None:
         report.items.append(
@@ -56,6 +54,10 @@ class ImportApplyService:
         error_stats: dict[str, int] = {}
         fatal_error = False
 
+        dataset_name = getattr(plan.meta, "dataset", None)
+        dataset_spec = self.spec_resolver(dataset_name) if dataset_name else None
+        apply_adapter = dataset_spec.get_apply_adapter() if dataset_spec else None
+
         def should_append(status: str) -> bool:
             if status not in ("failed", "skipped"):
                 return False
@@ -81,8 +83,7 @@ class ImportApplyService:
                 break
 
             actions_count += 1
-            resource_id = item.resource_id
-            if not resource_id:
+            if not item.resource_id:
                 failed += 1
                 if should_append("failed"):
                     self._append_item(report, item.__dict__, "failed")
@@ -90,72 +91,69 @@ class ImportApplyService:
                     break
                 continue
 
-            try:
-                if not dry_run:
-                    desired = item.desired_state if isinstance(item.desired_state, dict) else {}
-                    if not desired:
-                        raise ValueError("Plan item missing desired data")
-                    payload = buildUserUpsertPayload(desired)
-                    retries_left = resource_exists_retries
-                    while True:
-                        try:
-                            status_code, resp = self.user_api.upsertUser(resource_id, payload)
-                            break
-                        except ApiError as exc:
-                            if (
-                                action == "create"
-                                and exc.status_code == 403
-                                and exc.body_snippet
-                                and "resourceexists" in exc.body_snippet.lower()
-                                and retries_left > 0
-                            ):
-                                retries_left -= 1
-                                resource_id = str(uuid.uuid4())
-                                continue
-                            raise
-                else:
-                    status_code, resp = 200, {"dry_run": True}
-                result_item = item.__dict__.copy()
-                result_item["resource_id"] = resource_id
-                result_item["api_status"] = status_code
-                result_item["api_response"] = resp
-                status = "created" if action == "create" else "updated"
-                if should_append(status):
-                    self._append_item(report, result_item, status)
-                if action == "create":
-                    created += 1
-                else:
-                    updated += 1
-            except ApiError as exc:
-                # Фатальные ошибки авторизации — прекращаем выполнение сразу
-                if exc.status_code in (401, 403):
-                    fatal_error = True
-                failed += 1
-                err_code = exc.code or "API_ERROR"
-                err = {"code": err_code, "field": None, "message": str(exc)}
-                error_stats[err_code] = error_stats.get(err_code, 0) + 1
-                result_item = item.__dict__.copy()
-                result_item["resource_id"] = resource_id
-                result_item["errors"] = list(result_item.get("errors", [])) + [err]
-                result_item["api_status"] = exc.status_code
-                result_item["api_body_snippet"] = exc.body_snippet
-                if should_append("failed"):
-                    self._append_item(report, result_item, "failed")
-                logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
-                if stop_on_first_error or fatal_error:
+            retries_left = resource_exists_retries
+            current_item = item
+            while True:
+                try:
+                    if dry_run:
+                        exec_result = ExecutionResult(
+                            ok=True, status_code=200, response_json={"dry_run": True}, error_code=None, error_message=None
+                        )
+                    else:
+                        if apply_adapter is None:
+                            raise ValueError("Apply adapter is not configured")
+                        request_spec = apply_adapter.to_request(current_item)
+                        exec_result = self.executor.execute(request_spec)
+
+                    if exec_result.ok:
+                        result_item = current_item.__dict__.copy()
+                        result_item["api_status"] = exec_result.status_code
+                        result_item["api_response"] = exec_result.response_json
+                        status = "created" if action == "create" else "updated"
+                        if should_append(status):
+                            self._append_item(report, result_item, status)
+                        if action == "create":
+                            created += 1
+                        else:
+                            updated += 1
+                        break
+
+                    next_item = None
+                    if not dry_run and apply_adapter:
+                        next_item = apply_adapter.on_failed_request(current_item, exec_result, retries_left)
+                    if next_item and retries_left > 0:
+                        retries_left -= 1
+                        current_item = next_item
+                        continue
+
+                    failed += 1
+                    code = exec_result.error_code.name if exec_result.error_code else "API_ERROR"
+                    err = {"code": code, "field": None, "message": exec_result.error_message or "request failed"}
+                    error_stats[code] = error_stats.get(code, 0) + 1
+                    result_item = current_item.__dict__.copy()
+                    result_item["errors"] = list(result_item.get("errors", [])) + [err]
+                    result_item["api_status"] = exec_result.status_code
+                    result_item["api_response"] = exec_result.response_json
+                    if should_append("failed"):
+                        self._append_item(report, result_item, "failed")
+                    if code in ("UNAUTHORIZED", "FORBIDDEN"):
+                        fatal_error = True
+                    logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {err['message']}")
                     break
-            except Exception as exc:
-                failed += 1
-                err = {"code": "UNEXPECTED_ERROR", "field": None, "message": str(exc)}
-                error_stats[err["code"]] = error_stats.get(err["code"], 0) + 1
-                result_item = item.__dict__.copy()
-                result_item["resource_id"] = resource_id
-                result_item["errors"] = list(result_item.get("errors", [])) + [err]
-                if should_append("failed"):
-                    self._append_item(report, result_item, "failed")
-                logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
-                if stop_on_first_error:
+                except Exception as exc:
+                    failed += 1
+                    err_code = "UNEXPECTED_ERROR"
+                    err = {"code": err_code, "field": None, "message": str(exc)}
+                    error_stats[err_code] = error_stats.get(err_code, 0) + 1
+                    result_item = current_item.__dict__.copy()
+                    result_item["errors"] = list(result_item.get("errors", [])) + [err]
+                    if should_append("failed"):
+                        self._append_item(report, result_item, "failed")
+                    logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
                     break
+
+            if stop_on_first_error and failed:
+                break
 
         report.summary.created = created
         report.summary.updated = updated
@@ -163,8 +161,8 @@ class ImportApplyService:
         report.summary.failed = failed
         report.summary.error_stats = error_stats
         retries_total = 0
-        if hasattr(self.user_api, "client") and hasattr(self.user_api.client, "getRetryAttempts"):
-            retries_total = self.user_api.client.getRetryAttempts() or 0
+        if hasattr(self.executor, "client") and hasattr(self.executor.client, "getRetryAttempts"):
+            retries_total = self.executor.client.getRetryAttempts() or 0
         report.summary.retries_total = retries_total
         if fatal_error:
             return 2
@@ -205,19 +203,3 @@ def readPlanFromCsv(
     if not plan_path:
         raise ValueError("plan file not created")
     return readPlanFile(plan_path)
-
-def createUserApiClient(settings, transport=None) -> UserApi:
-    baseUrl = f"https://{settings.host}:{settings.port}"
-    client = AnkeyApiClient(
-        baseUrl=baseUrl,
-        username=settings.api_username or "",
-        password=settings.api_password or "",
-        timeoutSeconds=settings.timeout_seconds,
-        tlsSkipVerify=settings.tls_skip_verify,
-        caFile=settings.ca_file,
-        retries=settings.retries,
-        retryBackoffSeconds=settings.retry_backoff_seconds,
-        transport=transport,
-    )
-    client.resetRetryAttempts()
-    return UserApi(client)

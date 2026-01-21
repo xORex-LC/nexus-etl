@@ -6,6 +6,9 @@ from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
 from connector.main import app
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
+from connector.domain.error_codes import ErrorCode
+from connector.domain.ports.execution import ExecutionResult, RequestSpec
+from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
 
 runner = CliRunner()
 
@@ -22,6 +25,24 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
 
     monkeypatch.setattr(cli_module, "AnkeyApiClient", factory)
     monkeypatch.setattr(cache_service_module, "AnkeyApiClient", factory)
+
+
+class DummyExecutor:
+    def __init__(self, result: ExecutionResult):
+        self.result = result
+        self.calls: list[RequestSpec] = []
+
+    def execute(self, spec: RequestSpec) -> ExecutionResult:
+        self.calls.append(spec)
+        return self.result
+
+
+class DummySpec:
+    def __init__(self, adapter):
+        self.adapter = adapter
+
+    def get_apply_adapter(self):
+        return self.adapter
 
 def test_cache_refresh_max_pages_exceeded(monkeypatch, tmp_path):
     def responder(request: httpx.Request) -> httpx.Response:
@@ -146,7 +167,11 @@ def test_import_apply_error_stats():
 
     logger = logging.getLogger("dummy")
     logger.addHandler(logging.NullHandler())
-    service = ImportApplyService(DummyUserApi())
+    executor = DummyExecutor(
+        ExecutionResult(ok=False, status_code=400, error_code=ErrorCode.HTTP_ERROR, error_message="HTTP 400")
+    )
+    adapter = EmployeesApplyAdapter()
+    service = ImportApplyService(executor, spec_resolver=lambda _: DummySpec(adapter))
     code = service.applyPlan(
         plan=plan,
         logger=logger,
@@ -159,4 +184,4 @@ def test_import_apply_error_stats():
         resource_exists_retries=0,
     )
     assert code == 1
-    assert report.summary.error_stats.get("HTTP_400") == 1
+    assert report.summary.error_stats.get("HTTP_ERROR") == 1

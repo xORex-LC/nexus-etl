@@ -7,24 +7,34 @@ from typer.testing import CliRunner
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.planModels import EntityType, Plan, PlanItem, PlanMeta, PlanSummary
 from connector.infra.artifacts.plan_reader import readPlanFile
-from connector.infra.http.user_api import UserApi
+from connector.domain.error_codes import ErrorCode
+from connector.domain.ports.execution import ExecutionResult, RequestSpec
 from connector.domain.mappers.user_payload import buildUserUpsertPayload
+from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
 from connector.main import app
 from connector.infra.http.ankey_client import ApiError
 
 runner = CliRunner()
 
-class DummyUserApi:
+class DummyExecutor:
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls = []
 
-    def upsertUser(self, resourceId: str, payload: dict):
-        self.calls.append((resourceId, payload))
+    def execute(self, spec: RequestSpec) -> ExecutionResult:
+        self.calls.append(spec)
         result = self.responses.pop(0)
         if isinstance(result, Exception):
             raise result
         return result
+
+
+class DummySpec:
+    def __init__(self, adapter):
+        self.adapter = adapter
+
+    def get_apply_adapter(self):
+        return self.adapter
 
 def _make_plan(items: list[PlanItem]) -> Plan:
     return Plan(
@@ -117,23 +127,36 @@ def test_payload_builder_contains_exact_keys():
         "usrOrgTabNum",
     }
 
-def test_user_api_put_path_and_query():
-    calls = {}
-
-    class FakeClient:
-        def requestJson(self, method, path, params=None, jsonBody=None):
-            calls["method"] = method
-            calls["path"] = path
-            calls["params"] = params
-            calls["json"] = jsonBody
-            return 200, {"ok": True}
-
-    api = UserApi(FakeClient())
-    status, _ = api.upsertUser("abc", {"k": "v"})
-    assert status == 200
-    assert calls["method"] == "PUT"
-    assert calls["path"].endswith("/ankey/managed/user/abc")
-    assert calls["params"] == {"_prettyPrint": "true", "decrypt": "false"}
+def test_apply_adapter_builds_request():
+    adapter = EmployeesApplyAdapter()
+    item = PlanItem(
+        row_id="line:1",
+        line_no=1,
+        entity_type=EntityType.EMPLOYEE,
+        op="create",
+        resource_id="abc",
+        desired_state={
+            "email": "u@example.com",
+            "last_name": "L",
+            "first_name": "F",
+            "middle_name": "M",
+            "is_logon_disable": False,
+            "user_name": "u",
+            "phone": "+1",
+            "password": "secret",
+            "personnel_number": "10",
+            "manager_id": None,
+            "organization_id": 5,
+            "position": "P",
+            "usr_org_tab_num": "TAB",
+        },
+        changes={},
+        source_ref={"match_key": "A"},
+    )
+    spec = adapter.to_request(item)
+    assert spec.method == "PUT"
+    assert spec.path.endswith("/ankey/managed/user/abc")
+    assert spec.query == {"_prettyPrint": "true", "decrypt": "false"}
 
 def test_import_apply_stop_on_first_error():
     items = [
@@ -187,7 +210,13 @@ def test_import_apply_stop_on_first_error():
         ),
     ]
     plan = _make_plan(items)
-    service = ImportApplyService(DummyUserApi([Exception("boom")]))
+    executor = DummyExecutor(
+        [
+            ExecutionResult(ok=False, status_code=500, error_code=ErrorCode.HTTP_ERROR, error_message="boom"),
+        ]
+    )
+    adapter = EmployeesApplyAdapter()
+    service = ImportApplyService(executor, spec_resolver=lambda _: DummySpec(adapter))
     logger = logging.getLogger("test")
     logger.addHandler(logging.NullHandler())
     report = type(
@@ -259,8 +288,14 @@ def test_import_apply_max_actions_limits_requests():
         ),
     ]
     plan = _make_plan(items)
-    user_api = DummyUserApi([(200, {"ok": True}), (200, {"ok": True})])
-    service = ImportApplyService(user_api)
+    executor = DummyExecutor(
+        [
+            ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
+            ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
+        ]
+    )
+    adapter = EmployeesApplyAdapter()
+    service = ImportApplyService(executor, spec_resolver=lambda _: DummySpec(adapter))
     logger = logging.getLogger("test2")
     logger.addHandler(logging.NullHandler())
     report = type(
@@ -277,7 +312,7 @@ def test_import_apply_max_actions_limits_requests():
         report_items_limit=10,
         resource_exists_retries=0,
     )
-    assert len(user_api.calls) == 1
+    assert len(executor.calls) == 1
 
 def test_import_apply_resource_exists_retries():
     items = [
@@ -307,13 +342,14 @@ def test_import_apply_resource_exists_retries():
         )
     ]
     plan = _make_plan(items)
-    user_api = DummyUserApi(
+    executor = DummyExecutor(
         [
-            ApiError("HTTP 403", status_code=403, body_snippet="resourceExists"),
-            (200, {"ok": True}),
+            ExecutionResult(ok=False, status_code=409, error_code=ErrorCode.CONFLICT, error_message="conflict"),
+            ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
         ]
     )
-    service = ImportApplyService(user_api)
+    adapter = EmployeesApplyAdapter()
+    service = ImportApplyService(executor, spec_resolver=lambda _: DummySpec(adapter))
     logger = logging.getLogger("test3")
     logger.addHandler(logging.NullHandler())
     report = type(
@@ -332,6 +368,7 @@ def test_import_apply_resource_exists_retries():
     )
     assert code == 0
     assert report.summary.created == 1
+    assert len(executor.calls) == 2
 
 def test_import_apply_requires_csv_or_plan(tmp_path: Path):
     result = runner.invoke(

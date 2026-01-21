@@ -10,12 +10,13 @@ from pathlib import Path
 import typer
 
 from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
+from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.cache.db import ensureSchema, getCacheDbPath, openCacheDb
 from connector.usecases.cache_command_service import CacheCommandService
 from connector.config.config import Settings, loadSettings
 from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
-from connector.usecases.import_apply_service import ImportApplyService, createUserApiClient, readPlanFromCsv
+from connector.usecases.import_apply_service import ImportApplyService, readPlanFromCsv
 from connector.usecases.import_plan_service import ImportPlanService
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServiceProtocol
@@ -25,6 +26,7 @@ from connector.common.time import getDurationMs
 from connector.domain.validation.pipeline import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.validation.registry import ValidatorRegistry
+from connector.datasets.registry import get_spec
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
@@ -526,8 +528,19 @@ def runImportApplyCommand(
         report.summary.skipped = plan.summary.skipped
         report.summary.failed = plan.summary.failed_rows
 
-        user_api = createUserApiClient(settings)
-        service = ImportApplyService(user_api)
+        client = AnkeyApiClient(
+            baseUrl=f"https://{settings.host}:{settings.port}",
+            username=settings.api_username or "",
+            password=settings.api_password or "",
+            timeoutSeconds=settings.timeout_seconds,
+            tlsSkipVerify=settings.tls_skip_verify,
+            caFile=settings.ca_file,
+            retries=settings.retries,
+            retryBackoffSeconds=settings.retry_backoff_seconds,
+        )
+        client.resetRetryAttempts()
+        executor = AnkeyRequestExecutor(client)
+        service = ImportApplyService(executor, spec_resolver=get_spec)
         exit_code = service.applyPlan(
             plan=plan,
             logger=logger,
@@ -539,8 +552,8 @@ def runImportApplyCommand(
             report_items_limit=report_items_limit,
             resource_exists_retries=resource_exists_retries,
         )
-        if hasattr(user_api, "client"):
-            report.meta.retries_used = getattr(user_api.client, "getRetryAttempts", lambda: None)()
+        if hasattr(client, "getRetryAttempts"):
+            report.meta.retries_used = client.getRetryAttempts()
         return exit_code
 
     runWithReport(
