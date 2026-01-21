@@ -14,4 +14,3 @@ config.yml
 .vscode
 .VSCode*
 /docs/uml/*.puml
-repository.zip

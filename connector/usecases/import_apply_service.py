@@ -9,6 +9,8 @@ from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.datasets.registry import get_spec
 from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol
+from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.domain.exceptions import MissingRequiredSecretError
 from connector.usecases.import_plan_service import ImportPlanService
 
 class ImportApplyService:
@@ -16,8 +18,14 @@ class ImportApplyService:
     Оркестратор выполнения плана импорта.
     """
 
-    def __init__(self, executor: RequestExecutorProtocol, spec_resolver: Callable[[str], DatasetSpec] = get_spec):
+    def __init__(
+        self,
+        executor: RequestExecutorProtocol,
+        secrets: SecretProviderProtocol | None = None,
+        spec_resolver: Callable[..., DatasetSpec] = get_spec,
+    ):
         self.executor = executor
+        self.secrets = secrets
         self.spec_resolver = spec_resolver
 
     def _append_item(self, report, item: dict[str, Any], status: str) -> None:
@@ -56,7 +64,12 @@ class ImportApplyService:
         fatal_error = False
 
         dataset_name = getattr(plan.meta, "dataset", None)
-        dataset_spec = self.spec_resolver(dataset_name) if dataset_name else None
+        dataset_spec = None
+        if dataset_name:
+            try:
+                dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
+            except TypeError:
+                dataset_spec = self.spec_resolver(dataset_name)
         apply_adapter = dataset_spec.get_apply_adapter() if dataset_spec else None
 
         def should_append(status: str) -> bool:
@@ -142,6 +155,17 @@ class ImportApplyService:
                     if code in ("UNAUTHORIZED", "FORBIDDEN"):
                         fatal_error = True
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {err['message']}")
+                    break
+                except MissingRequiredSecretError as exc:
+                    failed += 1
+                    err_code = exc.code.value
+                    err = {"code": err_code, "field": exc.field, "message": str(exc)}
+                    error_stats[err_code] = error_stats.get(err_code, 0) + 1
+                    result_item = current_item.__dict__.copy()
+                    result_item["errors"] = list(result_item.get("errors", [])) + [err]
+                    if should_append("failed"):
+                        self._append_item(report, result_item, "failed")
+                    logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
                     break
                 except Exception as exc:
                     failed += 1

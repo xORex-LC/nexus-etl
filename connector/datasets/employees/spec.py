@@ -10,16 +10,17 @@ from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.planning.registry import PlannerRegistry
 from connector.datasets.validation.registry import ValidatorRegistry
 from connector.infra.cache.validation_lookups import CacheOrgLookup
+from connector.domain.ports.secrets import SecretProviderProtocol
 
 class EmployeesSpec(DatasetSpec):
     """
     DatasetSpec для employees: собирает валидаторы, проектор, планировщик и отчётные настройки.
     """
 
-    def __init__(self):
+    def __init__(self, secrets: SecretProviderProtocol | None = None):
         self._projector = EmployeesProjector()
         self._report_adapter = employees_report_adapter
-        self._apply_adapter = EmployeesApplyAdapter()
+        self._apply_adapter = EmployeesApplyAdapter(secrets=secrets)
 
     def build_validation_deps(self, conn, settings) -> ValidationDependencies:
         return ValidationDependencies(org_lookup=CacheOrgLookup(conn))
@@ -48,5 +49,5 @@ class EmployeesSpec(DatasetSpec):
         return self._apply_adapter
 
 # Фабрика экземпляра спеки
-def make_employees_spec() -> EmployeesSpec:
-    return EmployeesSpec()
+def make_employees_spec(secrets: SecretProviderProtocol | None = None) -> EmployeesSpec:
+    return EmployeesSpec(secrets=secrets)
