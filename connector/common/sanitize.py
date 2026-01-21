@@ -29,42 +29,7 @@ def isMaskedSecret(value: str | None) -> bool:
     return value == "***"
 
 
-def truncateText(value: str | None, max_length: int = 500) -> str | None:
-    """
-    Назначение:
-        Безопасно усечь строку для логирования/отчётов.
-
-    Контракт:
-        - None возвращается как None.
-        - Строки короче max_length возвращаются без изменений.
-        - Длинные строки обрезаются и дополняются '...'.
-    """
-    if value is None:
-        return None
-    if len(value) <= max_length:
-        return value
-    return value[: max_length - 3] + "..."
-
-
-def maskSecretsInObject(value, secret_keys: tuple[str, ...] = ("password", "token", "authorization")):
-    """
-    Назначение:
-        Рекурсивно маскировать секреты в словарях/списках для безопасного вывода.
-    """
-    if isinstance(value, dict):
-        masked = {}
-        for k, v in value.items():
-            if isinstance(k, str) and k.lower() in secret_keys:
-                masked[k] = "***"
-            else:
-                masked[k] = maskSecretsInObject(v, secret_keys)
-        return masked
-    if isinstance(value, list):
-        return [maskSecretsInObject(v, secret_keys) for v in value]
-    return value
-
-
-def truncateText(value: str | None, limit: int = 2000) -> str | None:
+def truncateText(value: str | None, limit: int = 500) -> str | None:
     """
     Назначение:
         Ограничивает длину текста, чтобы избежать раздувания логов/отчётов.
@@ -83,7 +48,9 @@ def truncateText(value: str | None, limit: int = 2000) -> str | None:
         return None
     if len(value) <= limit:
         return value
-    return value[:limit]
+    suffix = "..." if limit > 3 else ""
+    head = limit - len(suffix)
+    return value[:head] + suffix
 
 
 def maskSecretsInObject(
@@ -110,10 +77,11 @@ def maskSecretsInObject(
         object
             Новая структура с замаскированными секретами.
     """
+    sensitive = {key.lower() for key in sensitive_keys}
     if isinstance(obj, dict):
         masked: dict[str, object] = {}
         for k, v in obj.items():
-            if k.lower() in (key.lower() for key in sensitive_keys):
+            if k.lower() in sensitive:
                 masked[k] = maskSecret(str(v) if v is not None else None)
             else:
                 masked[k] = maskSecretsInObject(v, sensitive_keys)
