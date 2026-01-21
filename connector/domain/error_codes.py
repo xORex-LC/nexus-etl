@@ -1,36 +1,33 @@
-"""
-Централизованные коды ошибок приложения.
+from __future__ import annotations
 
-Назначение/ответственность:
-    Содержит единый набор строковых кодов, используемых во всех слоях
-    (use-case, отчёты, infra-адаптеры) для унификации сообщений и логов.
-Инварианты/гарантии:
-    - Коды стабильны и задаются как константы.
-    - Новые коды добавляются здесь, а не "на лету" в разных модулях.
-Взаимодействия:
-    - ExecutionResult.error_code должен ссылаться на значения отсюда.
-    - ApiError.code (если проброшен из infra) маппится в один из этих кодов.
-Ограничения:
-    - Строковые значения остаются человекочитаемыми для логов/отчётов.
-"""
+from enum import Enum
 
-class ErrorCode:
-    # Сетевые/транспортные ошибки
-    HTTP_TIMEOUT = "HTTP_TIMEOUT"
-    HTTP_CONNECTION = "HTTP_CONNECTION"
-    HTTP_4XX = "HTTP_4XX"
-    HTTP_5XX = "HTTP_5XX"
-    HTTP_UNEXPECTED_STATUS = "HTTP_UNEXPECTED_STATUS"
+
+class ErrorCode(str, Enum):
+    """
+    Назначение:
+        Единая таксономия кодов ошибок для ExecutionResult.
+    """
+
     NETWORK_ERROR = "NETWORK_ERROR"
-    UNKNOWN_ERROR = "UNKNOWN_ERROR"
-
-    # Ошибки формата/контента
+    HTTP_ERROR = "HTTP_ERROR"
     INVALID_JSON = "INVALID_JSON"
+    API_ERROR = "API_ERROR"
+    UNAUTHORIZED = "UNAUTHORIZED"
+    FORBIDDEN = "FORBIDDEN"
+    CONFLICT = "CONFLICT"
+    UNEXPECTED_ERROR = "UNEXPECTED_ERROR"
 
-    # Прикладные/ограничения API
-    MAX_PAGES_EXCEEDED = "MAX_PAGES_EXCEEDED"
-    API_CONFLICT = "API_CONFLICT"
-    API_VALIDATION = "API_VALIDATION"
-
-
-__all__ = ["ErrorCode"]
+    @classmethod
+    def from_status(cls, status_code: int | None) -> "ErrorCode":
+        """
+        Назначение:
+            Подбор общего кода по HTTP-статусу.
+        """
+        if status_code == 401:
+            return cls.UNAUTHORIZED
+        if status_code == 403:
+            return cls.FORBIDDEN
+        if status_code == 409:
+            return cls.CONFLICT
+        return cls.HTTP_ERROR

@@ -29,6 +29,41 @@ def isMaskedSecret(value: str | None) -> bool:
     return value == "***"
 
 
+def truncateText(value: str | None, max_length: int = 500) -> str | None:
+    """
+    Назначение:
+        Безопасно усечь строку для логирования/отчётов.
+
+    Контракт:
+        - None возвращается как None.
+        - Строки короче max_length возвращаются без изменений.
+        - Длинные строки обрезаются и дополняются '...'.
+    """
+    if value is None:
+        return None
+    if len(value) <= max_length:
+        return value
+    return value[: max_length - 3] + "..."
+
+
+def maskSecretsInObject(value, secret_keys: tuple[str, ...] = ("password", "token", "authorization")):
+    """
+    Назначение:
+        Рекурсивно маскировать секреты в словарях/списках для безопасного вывода.
+    """
+    if isinstance(value, dict):
+        masked = {}
+        for k, v in value.items():
+            if isinstance(k, str) and k.lower() in secret_keys:
+                masked[k] = "***"
+            else:
+                masked[k] = maskSecretsInObject(v, secret_keys)
+        return masked
+    if isinstance(value, list):
+        return [maskSecretsInObject(v, secret_keys) for v in value]
+    return value
+
+
 def truncateText(value: str | None, limit: int = 2000) -> str | None:
     """
     Назначение:

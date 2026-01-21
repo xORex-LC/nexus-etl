@@ -8,6 +8,7 @@ from connector.domain.validation.deps import DatasetValidationState, ValidationD
 from connector.domain.validation.pipeline import DatasetValidator, RowValidator
 from connector.domain.planning.protocols import EntityPlanner
 from connector.domain.planning.deps import PlanningDependencies
+from connector.domain.ports.execution import RequestSpec, ExecutionResult
 
 @dataclass
 class ValidatorBundle:
@@ -37,7 +38,16 @@ class ApplyAdapter(Protocol):
         Используется на слое apply для получения RequestSpec из PlanItem.
     """
 
-    def to_request(self, item) -> "RequestSpec": ...
+    def to_request(self, item) -> RequestSpec: ...
+
+    def on_failed_request(self, item, result: ExecutionResult, retries_left: int):
+        """
+        Назначение:
+            Опционально предложить повторную попытку с модификацией PlanItem.
+        Контракт:
+            - Вернуть новый PlanItem для ретрая или None, чтобы прекратить попытки.
+        """
+        ...
 
 @dataclass(frozen=True)
 class ReportAdapter:
