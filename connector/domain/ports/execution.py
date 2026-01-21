@@ -125,6 +125,7 @@ class ExecutionResult:
     error_code: ErrorCode | None = None
     error_message: str | None = None
     error_reason: str | None = None
+    error_details: dict[str, Any] | None = None
 
 
 class RequestExecutorProtocol(Protocol):

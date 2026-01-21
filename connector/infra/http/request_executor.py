@@ -32,28 +32,45 @@ class AnkeyRequestExecutor(RequestExecutorProtocol):
             )
             ok = spec.is_expected(status_code)
             safe_body = self._sanitize(resp)
+            safe_json = safe_body if isinstance(safe_body, (dict, list)) else None
+            safe_snippet = truncateText(body_snippet) if body_snippet else None
             reason = self._detect_error_reason(resp, body_snippet)
             if ok:
-                return ExecutionResult(ok=True, status_code=status_code, response_json=safe_body, error_reason=None)
+                return ExecutionResult(
+                    ok=True,
+                    status_code=status_code,
+                    response_json=safe_json,
+                    error_reason=None,
+                    error_details=None,
+                )
+            details: dict[str, Any] | None = None
+            if safe_snippet or safe_json is not None:
+                details = {}
+                if safe_snippet:
+                    details["body_snippet"] = safe_snippet
+                if safe_json is not None:
+                    details["response_json"] = safe_json
             return ExecutionResult(
                 ok=False,
                 status_code=status_code,
-                response_json=safe_body or truncateText(body_snippet),
+                response_json=safe_json,
                 error_code=ErrorCode.from_status(status_code),
                 error_message=f"HTTP {status_code}",
                 error_reason=reason,
+                error_details=details,
             )
         except ApiError as exc:
             safe_msg = truncateText(str(exc))
-            safe_body = truncateText(exc.body_snippet)
-            reason = self._detect_error_reason(safe_body, exc.body_snippet)
+            safe_snippet = truncateText(exc.body_snippet) if exc.body_snippet else None
+            reason = self._detect_error_reason(safe_snippet, exc.body_snippet)
             return ExecutionResult(
                 ok=False,
                 status_code=exc.status_code,
-                response_json=safe_body,
+                response_json=None,
                 error_code=self._error_from_api_error(exc),
                 error_message=safe_msg,
                 error_reason=reason,
+                error_details={"body_snippet": safe_snippet} if safe_snippet else None,
             )
         except Exception as exc:
             return ExecutionResult(
@@ -63,6 +80,7 @@ class AnkeyRequestExecutor(RequestExecutorProtocol):
                 error_code=ErrorCode.UNEXPECTED_ERROR,
                 error_message=truncateText(str(exc)),
                 error_reason=None,
+                error_details=None,
             )
 
     def _sanitize(self, payload: Any) -> Any:

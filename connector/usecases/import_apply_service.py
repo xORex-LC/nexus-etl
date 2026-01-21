@@ -33,7 +33,7 @@ class ImportApplyService:
                 "desired_state": item.get("desired_state", {}),
                 "api_status": item.get("api_status"),
                 "api_response": item.get("api_response"),
-                "api_body_snippet": item.get("api_body_snippet"),
+                "error_details": item.get("error_details"),
             }
         )
 
@@ -110,6 +110,7 @@ class ImportApplyService:
                         result_item = current_item.__dict__.copy()
                         result_item["api_status"] = exec_result.status_code
                         result_item["api_response"] = exec_result.response_json
+                        result_item["error_details"] = exec_result.error_details
                         status = "created" if action == "create" else "updated"
                         if should_append(status):
                             self._append_item(report, result_item, status)
@@ -135,6 +136,7 @@ class ImportApplyService:
                     result_item["errors"] = list(result_item.get("errors", [])) + [err]
                     result_item["api_status"] = exec_result.status_code
                     result_item["api_response"] = exec_result.response_json
+                    result_item["error_details"] = exec_result.error_details
                     if should_append("failed"):
                         self._append_item(report, result_item, "failed")
                     if code in ("UNAUTHORIZED", "FORBIDDEN"):
