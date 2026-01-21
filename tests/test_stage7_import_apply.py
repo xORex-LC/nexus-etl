@@ -216,7 +216,7 @@ def test_import_apply_stop_on_first_error():
         ]
     )
     adapter = EmployeesApplyAdapter()
-    service = ImportApplyService(executor, spec_resolver=lambda _: DummySpec(adapter))
+    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     logger = logging.getLogger("test")
     logger.addHandler(logging.NullHandler())
     report = type(
@@ -295,7 +295,7 @@ def test_import_apply_max_actions_limits_requests():
         ]
     )
     adapter = EmployeesApplyAdapter()
-    service = ImportApplyService(executor, spec_resolver=lambda _: DummySpec(adapter))
+    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     logger = logging.getLogger("test2")
     logger.addHandler(logging.NullHandler())
     report = type(
@@ -351,7 +351,7 @@ def test_import_apply_resource_exists_retries():
         ]
     )
     adapter = EmployeesApplyAdapter()
-    service = ImportApplyService(executor, spec_resolver=lambda _: DummySpec(adapter))
+    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     logger = logging.getLogger("test3")
     logger.addHandler(logging.NullHandler())
     report = type(

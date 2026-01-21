@@ -171,7 +171,7 @@ def test_import_apply_error_stats():
         ExecutionResult(ok=False, status_code=400, error_code=ErrorCode.HTTP_ERROR, error_message="HTTP 400")
     )
     adapter = EmployeesApplyAdapter()
-    service = ImportApplyService(executor, spec_resolver=lambda _: DummySpec(adapter))
+    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     code = service.applyPlan(
         plan=plan,
         logger=logger,

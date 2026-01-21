@@ -5,13 +5,12 @@ from typing import Any, Callable
 
 from connector.infra.logging.setup import logEvent
 from connector.planModels import Plan
-from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.datasets.registry import get_spec
 from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol
 from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.domain.exceptions import MissingRequiredSecretError
-from connector.usecases.import_plan_service import ImportPlanService
+from connector.common.sanitize import maskSecretsInObject
 
 class ImportApplyService:
     """
@@ -29,19 +28,20 @@ class ImportApplyService:
         self.spec_resolver = spec_resolver
 
     def _append_item(self, report, item: dict[str, Any], status: str) -> None:
+        safe_item = maskSecretsInObject(item)
         report.items.append(
             {
-                "row_id": item.get("row_id"),
-                "op": item.get("op"),
-                "entity_type": item.get("entity_type"),
-                "resource_id": item.get("resource_id"),
+                "row_id": safe_item.get("row_id"),
+                "op": safe_item.get("op"),
+                "entity_type": safe_item.get("entity_type"),
+                "resource_id": safe_item.get("resource_id"),
                 "status": status,
-                "errors": item.get("errors", []),
-                "changes": item.get("changes", {}),
-                "desired_state": item.get("desired_state", {}),
-                "api_status": item.get("api_status"),
-                "api_response": item.get("api_response"),
-                "error_details": item.get("error_details"),
+                "errors": safe_item.get("errors", []),
+                "changes": safe_item.get("changes", {}),
+                "desired_state": safe_item.get("desired_state", {}),
+                "api_status": safe_item.get("api_status"),
+                "api_response": safe_item.get("api_response"),
+                "error_details": safe_item.get("error_details"),
             }
         )
 
@@ -66,10 +66,7 @@ class ImportApplyService:
         dataset_name = getattr(plan.meta, "dataset", None)
         dataset_spec = None
         if dataset_name:
-            try:
-                dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
-            except TypeError:
-                dataset_spec = self.spec_resolver(dataset_name)
+            dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
         apply_adapter = dataset_spec.get_apply_adapter() if dataset_spec else None
 
         def should_append(status: str) -> bool:
@@ -194,39 +191,3 @@ class ImportApplyService:
         if fatal_error:
             return 2
         return 1 if failed > 0 else 0
-
-def readPlanFromCsv(
-    conn,
-    csv_path: str,
-    csv_has_header: bool,
-    include_deleted_users: bool,
-    settings,
-    dataset: str,
-    logger,
-    run_id: str,
-    report,
-    report_items_limit: int,
-    include_skipped_in_report: bool,
-    report_dir: str,
-) -> Plan:
-    service = ImportPlanService()
-    service.run(
-        conn=conn,
-        csv_path=csv_path,
-        csv_has_header=csv_has_header,
-        include_deleted_users=include_deleted_users,
-        settings=settings,
-        dataset=dataset,
-        logger=logger,
-        run_id=run_id,
-        report=report,
-        report_items_limit=report_items_limit,
-        include_skipped_in_report=include_skipped_in_report,
-        report_dir=report_dir,
-    )
-    if service.last_plan:
-        return service.last_plan
-    plan_path = report.meta.plan_file
-    if not plan_path:
-        raise ValueError("plan file not created")
-    return readPlanFile(plan_path)

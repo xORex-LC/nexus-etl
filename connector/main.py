@@ -16,7 +16,7 @@ from connector.usecases.cache_command_service import CacheCommandService
 from connector.config.config import Settings, loadSettings
 from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
-from connector.usecases.import_apply_service import ImportApplyService, readPlanFromCsv
+from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServiceProtocol
@@ -27,6 +27,8 @@ from connector.domain.validation.pipeline import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.validation.registry import ValidatorRegistry
 from connector.datasets.registry import get_spec
+from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
+from connector.domain.ports.secrets import SecretProviderProtocol
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
@@ -446,14 +448,18 @@ def runImportApplyCommand(
     reportItemsLimit: int | None,
     resourceExistsRetries: int | None,
     dataset: str | None,
+    secretsFrom: str | None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report) -> int:
-        if (csvPath and planPath) or (not csvPath and not planPath):
-            typer.echo("ERROR: specify exactly one of --csv or --plan", err=True)
+        if planPath and csvPath:
+            typer.echo("ERROR: specify only --plan (apply no longer builds plan from CSV)", err=True)
+            return 2
+        if not planPath:
+            typer.echo("ERROR: --plan is required (apply no longer builds plan from CSV)", err=True)
             return 2
 
         include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
@@ -470,40 +476,12 @@ def runImportApplyCommand(
         dry_run = dryRun if dryRun is not None else settings.dry_run
 
         plan = None
-        conn = None
         try:
-            if csvPath:
-                try:
-                    conn = openCacheDb(cacheDbPath)
-                except sqlite3.Error as exc:
-                    logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-                    typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-                    return 2
-                plan = readPlanFromCsv(
-                    conn=conn,
-                    csv_path=csvPath,
-                    csv_has_header=csv_has_header,
-                    include_deleted_users=include_deleted,
-                    settings=settings,
-                    dataset=dataset_name,
-                    logger=logger,
-                    run_id=runId,
-                    report=report,
-                    report_items_limit=report_items_limit,
-                    include_skipped_in_report=settings.report_include_skipped,
-                    report_dir=settings.report_dir,
-                )
-                # Очистим report.items, чтобы в отчёте apply остались только результаты выполнения
-                report.items = []
-            else:
-                plan = readPlanFile(planPath or "")
-        except (CsvFormatError, OSError, ValueError) as exc:
+            plan = readPlanFile(planPath or "")
+        except (OSError, ValueError) as exc:
             logEvent(logger, logging.ERROR, runId, "plan", f"Import apply failed: {exc}")
             typer.echo(f"ERROR: import apply failed: {exc}", err=True)
             return 2
-        finally:
-            if conn is not None:
-                conn.close()
 
         if plan is None:
             typer.echo("ERROR: failed to load plan", err=True)
@@ -539,8 +517,9 @@ def runImportApplyCommand(
             retryBackoffSeconds=settings.retry_backoff_seconds,
         )
         client.resetRetryAttempts()
+        secrets_provider = build_secret_provider(secretsFrom)
         executor = AnkeyRequestExecutor(client)
-        service = ImportApplyService(executor, spec_resolver=get_spec)
+        service = ImportApplyService(executor, secrets=secrets_provider, spec_resolver=get_spec)
         exit_code = service.applyPlan(
             plan=plan,
             logger=logger,
@@ -696,6 +675,22 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         runner=execute,
     )
 
+
+def build_secret_provider(source: str | None) -> SecretProviderProtocol:
+    """
+    Назначение:
+        Фабрика провайдера секретов для apply.
+    Контракт:
+        - source None/\"none\" -> NullSecretProvider
+        - source \"prompt\" -> PromptSecretProvider
+        - любое другое значение: NullSecretProvider (по умолчанию)
+    """
+    if not source or source == "none":
+        return NullSecretProvider()
+    if source == "prompt":
+        return PromptSecretProvider()
+    return NullSecretProvider()
+
 @app.callback()
 def main(
     ctx: typer.Context,
@@ -823,9 +818,9 @@ def importPlan(
 @importApp.command("apply")
 def importApply(
     ctx: typer.Context,
-    csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
+    csv: str | None = typer.Option(None, "--csv", help="(deprecated) Path to input CSV"),
     plan: str | None = typer.Option(None, "--plan", help="Path to plan_import.json"),
-    csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
+    csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="(unused for apply) CSV includes header row"),
     stopOnFirstError: bool | None = typer.Option(
         None,
         "--stop-on-first-error/--no-stop-on-first-error",
@@ -852,6 +847,12 @@ def importApply(
         help="Dataset name (e.g., employees)",
         show_default=True,
     ),
+    secretsFrom: str | None = typer.Option(
+        None,
+        "--secrets-from",
+        help="Secret source: none|prompt",
+        show_default=True,
+    ),
 ):
     runImportApplyCommand(
         ctx=ctx,
@@ -865,6 +866,7 @@ def importApply(
         reportItemsLimit=reportItemsLimit,
         resourceExistsRetries=resourceExistsRetries,
         dataset=dataset,
+        secretsFrom=secretsFrom,
     )
 
 @app.command("check-api")
