@@ -36,8 +36,7 @@ def _resolve_dataset(meta_raw: dict, items_raw: list) -> str:
     raise ValueError("Invalid plan format: dataset is missing in meta")
 
 
-def readPlanFile(path: str) -> Plan:
-    meta_raw, summary_raw, items_raw = _load_plan_raw(path)
+def _build_plan(meta_raw: dict, summary_raw: dict, items_raw: list, path: str) -> Plan:
     dataset = _resolve_dataset(meta_raw, items_raw)
 
     meta = PlanMeta(
@@ -80,12 +79,18 @@ def readPlanFile(path: str) -> Plan:
     return Plan(meta=meta, summary=summary, items=items)
 
 
+def readPlanFile(path: str) -> Plan:
+    meta_raw, summary_raw, items_raw = _load_plan_raw(path)
+    return _build_plan(meta_raw, summary_raw, items_raw, path)
+
+
 def readResolvedPlanFile(path: str) -> ResolvedPlan:
     """
     Назначение:
         Прочитать план и вернуть runtime-представление с гарантированным dataset.
     """
-    plan = readPlanFile(path)
+    meta_raw, summary_raw, items_raw = _load_plan_raw(path)
+    plan = _build_plan(meta_raw, summary_raw, items_raw, path)
     dataset = plan.meta.dataset or ""
     resolved_items = [ResolvedPlanItem(dataset=dataset, item=it) for it in plan.items]
     return ResolvedPlan(meta=plan.meta, items=resolved_items, summary=plan.summary)
