@@ -14,7 +14,7 @@ class ImportPlanServiceProtocol(Protocol):
         conn,
         csv_path: str,
         csv_has_header: bool,
-        include_deleted_users: bool,
+        include_deleted: bool,
         dataset: str,
         logger,
         run_id: str,
@@ -45,7 +45,7 @@ class CacheCommandServiceProtocol(Protocol):
         report,
         run_id: str,
         api_transport=None,
-        include_deleted_users: bool = False,
+        include_deleted: bool = False,
         report_items_limit: int = 200,
     ) -> int: ...
 

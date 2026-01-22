@@ -25,7 +25,7 @@ class CacheCommandService(CacheCommandServiceProtocol):
         report,
         run_id: str,
         api_transport=None,
-        include_deleted_users: bool = False,
+        include_deleted: bool = False,
         report_items_limit: int = 200,
     ) -> int:
         summary = refreshCacheFromApi(
@@ -39,7 +39,7 @@ class CacheCommandService(CacheCommandServiceProtocol):
             logger=logger,
             report=report,
             transport=api_transport,
-            includeDeletedUsers=include_deleted_users,
+            includeDeleted=include_deleted,
             reportItemsLimit=report_items_limit,
         )
 

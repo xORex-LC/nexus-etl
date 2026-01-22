@@ -56,7 +56,7 @@ def refreshCacheFromApi(
     logger,
     report,
     transport=None,
-    includeDeletedUsers: bool = False,
+    includeDeleted: bool = False,
     reportItemsLimit: int = 200,
 ) -> dict[str, Any]:
     """
@@ -84,13 +84,13 @@ def refreshCacheFromApi(
     inserted_orgs = updated_orgs = failed_orgs = 0
     pages_users = pages_orgs = 0
     error_stats: dict[str, int] = {}
-    include_deleted = True if includeDeletedUsers is True else False
+    include_deleted = True if includeDeleted is True else False
     logEvent(
         logger,
         logging.INFO,
         runId,
         "cache",
-        f"cache-refresh start mode=api page_size={pageSize} max_pages={maxPages} include_deleted_users={include_deleted}",
+        f"cache-refresh start mode=api page_size={pageSize} max_pages={maxPages} include_deleted={include_deleted}",
     )
     start_monotonic = time.monotonic()
 
@@ -216,7 +216,7 @@ def refreshCacheFromApi(
     report.meta.retries = retries
     report.meta.retries_used = client.getRetryAttempts()
     report.meta.retry_backoff_seconds = retryBackoffSeconds
-    report.meta.include_deleted_users = include_deleted
+    report.meta.include_deleted = include_deleted
     report.meta.skipped_deleted_users = deleted_included_users if include_deleted else skipped_deleted_users
 
     report.summary.created = inserted_users + inserted_orgs

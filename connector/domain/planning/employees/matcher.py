@@ -13,9 +13,9 @@ class EmployeeMatcher:
         Не кеширует результаты, работает синхронно.
     """
 
-    def __init__(self, lookup: IdentityLookup, include_deleted_users: bool):
+    def __init__(self, lookup: IdentityLookup, include_deleted: bool):
         self.lookup = lookup
-        self.include_deleted_users = include_deleted_users
+        self.include_deleted = include_deleted
 
     def match(self, identity: Identity) -> MatchResult:
         """
@@ -29,4 +29,4 @@ class EmployeeMatcher:
         Алгоритм:
             Делегирует в IdentityLookup.match.
         """
-        return self.lookup.match(identity, include_deleted=self.include_deleted_users)
+        return self.lookup.match(identity, include_deleted=self.include_deleted)

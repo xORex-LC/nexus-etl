@@ -44,7 +44,7 @@ def _make_plan(items: list[PlanItem]) -> Plan:
             generated_at=None,
             csv_path=None,
             plan_path=None,
-            include_deleted_users=False,
+            include_deleted=False,
             dataset="employees",
         ),
         summary=PlanSummary(

@@ -63,11 +63,14 @@ class EmployeesPlanningPolicy(PlanningPolicyProtocol):
             )
 
         decision_kind = PlanDecisionKind.CREATE if op == DecisionOutcome.CREATE else PlanDecisionKind.UPDATE
+        if not resource_id:
+            raise ValueError("Employee decision returned empty resource_id")
+
         return PlanDecision(
             kind=decision_kind,
             identity=identity,
             desired_state=desired_state,
             changes=changes,
-            resource_id=resource_id or "",
+            resource_id=resource_id,
             source_ref=source_ref,
         )

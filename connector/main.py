@@ -233,7 +233,7 @@ def runCacheRefreshCommand(
     retries: int | None,
     retryBackoffSeconds: float | None,
     apiTransport=None,
-    includeDeletedUsers: bool | None = None,
+    includeDeleted: bool | None = None,
     reportItemsLimit: int | None = None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
@@ -269,7 +269,7 @@ def runCacheRefreshCommand(
                 report=report,
                 run_id=runId,
                 api_transport=apiTransport,
-                include_deleted_users=includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users,
+                include_deleted=includeDeleted if includeDeleted is not None else settings.include_deleted,
                 report_items_limit=reportItemsLimit or settings.report_items_limit,
             )
         except ValueError as exc:
@@ -369,7 +369,7 @@ def runImportPlanCommand(
     ctx: typer.Context,
     csvPath: str | None,
     csvHasHeader: bool | None,
-    includeDeletedUsers: bool | None,
+    includeDeleted: bool | None,
     reportItemsLimit: int | None,
     reportIncludeSkipped: bool | None,
     dataset: str | None,
@@ -386,7 +386,7 @@ def runImportPlanCommand(
             typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
             return 2
 
-        include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
+        include_deleted = includeDeleted if includeDeleted is not None else settings.include_deleted
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
         report_include_skipped = (
             reportIncludeSkipped if reportIncludeSkipped is not None else settings.report_include_skipped
@@ -403,7 +403,7 @@ def runImportPlanCommand(
                 conn=conn,
                 csv_path=csvPath or "",
                 csv_has_header=csv_has_header,
-                include_deleted_users=include_deleted,
+                include_deleted=include_deleted,
                 settings=settings,
                 dataset=dataset_name,
                 logger=logger,
@@ -478,7 +478,7 @@ def runImportApplyCommand(
         report.meta.api_base_url = baseUrl
         report.meta.csv_path = None
         report.meta.plan_path = planPath or plan.meta.plan_path
-        report.meta.include_deleted_users = plan.meta.include_deleted_users
+        report.meta.include_deleted = plan.meta.include_deleted
         report.meta.dataset = dataset_name
         report.meta.stop_on_first_error = stop_on_first_error
         report.meta.max_actions = max_actions
@@ -772,9 +772,9 @@ def importPlan(
     ctx: typer.Context,
     csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
     csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
-    includeDeletedUsers: bool | None = typer.Option(
+    includeDeleted: bool | None = typer.Option(
         None,
-        "--include-deleted-users/--no-include-deleted-users",
+        "--include-deleted/--no-include-deleted",
         help="Include deleted users in matching",
         show_default=True,
     ),
@@ -796,7 +796,7 @@ def importPlan(
         ctx=ctx,
         csvPath=csv,
         csvHasHeader=csvHasHeader,
-        includeDeletedUsers=includeDeletedUsers,
+        includeDeleted=includeDeleted,
         reportItemsLimit=reportItemsLimit,
         reportIncludeSkipped=reportIncludeSkipped,
         dataset=dataset,
@@ -850,9 +850,9 @@ def cacheRefresh(
     timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
     retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API requests"),
     retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff seconds for retries"),
-    includeDeletedUsers: bool | None = typer.Option(
+    includeDeleted: bool | None = typer.Option(
         None,
-        "--include-deleted-users/--no-include-deleted-users",
+        "--include-deleted/--no-include-deleted",
         help="Include users with accountStatus=deleted or deletionDate set",
         show_default=True,
     ),
@@ -865,7 +865,7 @@ def cacheRefresh(
         timeoutSeconds=timeoutSeconds if timeoutSeconds is not None else ctx.obj["settings"].timeout_seconds,
         retries=retries if retries is not None else ctx.obj["settings"].retries,
         retryBackoffSeconds=retryBackoffSeconds if retryBackoffSeconds is not None else ctx.obj["settings"].retry_backoff_seconds,
-        includeDeletedUsers=includeDeletedUsers if includeDeletedUsers is not None else ctx.obj["settings"].include_deleted_users,
+        includeDeleted=includeDeleted if includeDeleted is not None else ctx.obj["settings"].include_deleted,
         reportItemsLimit=reportItemsLimit if reportItemsLimit is not None else ctx.obj["settings"].report_items_limit,
     )
 

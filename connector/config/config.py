@@ -63,7 +63,7 @@ class Settings:
     timeout_seconds: float = 20.0
     retries: int = 3
     retry_backoff_seconds: float = 0.5
-    include_deleted_users: bool = False
+    include_deleted: bool = False
     dataset_name: str = "employees"
     report_items_limit: int = 200
     report_include_skipped: bool = True
@@ -289,7 +289,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "timeout_seconds": envGet("ANKEY_TIMEOUT_SECONDS"),
         "retries": envGet("ANKEY_RETRIES"),
         "retry_backoff_seconds": envGet("ANKEY_RETRY_BACKOFF_SECONDS"),
-        "include_deleted_users": envGet("ANKEY_INCLUDE_DELETED_USERS"),
+        "include_deleted": envGet("ANKEY_INCLUDE_DELETED"),
         "dataset_name": envGet("ANKEY_DATASET_NAME"),
         "report_items_limit": envGet("ANKEY_REPORT_ITEMS_LIMIT"),
         "report_include_skipped": envGet("ANKEY_REPORT_INCLUDE_SKIPPED"),
@@ -323,7 +323,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "timeout_seconds": cfg.get("timeout_seconds", defaults.timeout_seconds),
         "retries": cfg.get("retries", defaults.retries),
         "retry_backoff_seconds": cfg.get("retry_backoff_seconds", defaults.retry_backoff_seconds),
-        "include_deleted_users": cfg.get("include_deleted_users", defaults.include_deleted_users),
+        "include_deleted": cfg.get("include_deleted", defaults.include_deleted),
         "dataset_name": cfg.get("dataset_name", defaults.dataset_name),
         "report_items_limit": cfg.get("report_items_limit", defaults.report_items_limit),
         "report_include_skipped": cfg.get("report_include_skipped", defaults.report_include_skipped),
@@ -371,8 +371,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["retries"] = parseInt(env["retries"])
     if env["retry_backoff_seconds"] is not None:
         merged["retry_backoff_seconds"] = parseFloat(env["retry_backoff_seconds"])
-    if env["include_deleted_users"] is not None:
-        merged["include_deleted_users"] = parseBool(env["include_deleted_users"])
+    if env["include_deleted"] is not None:
+        merged["include_deleted"] = parseBool(env["include_deleted"])
     if env["dataset_name"] is not None:
         merged["dataset_name"] = env["dataset_name"]
     if env["report_items_limit"] is not None:
@@ -415,7 +415,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         timeout_seconds=parseFloatAny(merged["timeout_seconds"]) or defaults.timeout_seconds,
         retries=parseIntAny(merged["retries"]) or defaults.retries,
         retry_backoff_seconds=parseFloatAny(merged["retry_backoff_seconds"]) or defaults.retry_backoff_seconds,
-        include_deleted_users=parseBoolAny(merged["include_deleted_users"]) or False,
+        include_deleted=parseBoolAny(merged["include_deleted"]) or False,
         report_items_limit=parseIntAny(merged["report_items_limit"]) or defaults.report_items_limit,
         report_include_skipped=parseBoolAny(merged.get("report_include_skipped")) if merged.get("report_include_skipped") is not None else defaults.report_include_skipped,
         resource_exists_retries=parseIntAny(merged["resource_exists_retries"]) or defaults.resource_exists_retries,

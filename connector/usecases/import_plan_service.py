@@ -21,7 +21,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         conn,
         csv_path: str,
         csv_has_header: bool,
-        include_deleted_users: bool,
+        include_deleted: bool,
         dataset: str,
         logger,
         run_id: str,
@@ -45,7 +45,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         plan_result = use_case.run(
             row_source=row_source,
             dataset_spec=dataset_spec,
-            include_deleted_users=include_deleted_users,
+            include_deleted=include_deleted,
             logger=logger,
             run_id=run_id,
             validation_deps=validation_deps,
@@ -53,7 +53,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         )
         plan_meta = {
             "csv_path": csv_path,
-            "include_deleted_users": include_deleted_users,
+            "include_deleted": include_deleted,
             "dataset": dataset,
         }
         plan_path = write_plan_file(
@@ -67,7 +67,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
 
         report.meta.plan_file = plan_path
-        report.meta.include_deleted_users = include_deleted_users
+        report.meta.include_deleted = include_deleted
         report.meta.csv_rows_total = plan_result.summary.rows_total
         report.meta.csv_rows_processed = plan_result.summary.rows_total
         report.summary.planned_create = plan_result.summary.planned_create

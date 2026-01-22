@@ -23,7 +23,7 @@ class PlanMeta:
     dataset: str | None
     csv_path: str | None
     plan_path: str | None
-    include_deleted_users: bool | None
+    include_deleted: bool | None
 
 @dataclass
 class PlanSummary:

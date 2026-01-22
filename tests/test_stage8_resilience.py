@@ -112,7 +112,7 @@ def test_import_apply_error_stats():
             generated_at=None,
             csv_path=None,
             plan_path=None,
-            include_deleted_users=False,
+            include_deleted=False,
             dataset="employees",
         ),
         summary=PlanSummary(

@@ -44,7 +44,7 @@ def _build_plan(meta_raw: dict, summary_raw: dict, items_raw: list, path: str) -
         dataset=dataset,
         csv_path=_get_str(meta_raw.get("csv_path")),
         plan_path=path,
-        include_deleted_users=meta_raw.get("include_deleted_users"),
+        include_deleted=meta_raw.get("include_deleted"),
     )
     summary = PlanSummary(
         rows_total=int(summary_raw.get("rows_total") or 0),

@@ -37,7 +37,7 @@ class PlanUseCase:
         self,
         row_source,
         dataset_spec: DatasetSpec,
-        include_deleted_users: bool,
+        include_deleted: bool,
         logger: logging.Logger,
         run_id: str,
         validation_deps,
@@ -45,7 +45,7 @@ class PlanUseCase:
     ) -> PlanBuildResult:
         """
         Контракт (вход/выход):
-            Вход: row_source (Iterable[CsvRow]), dataset_spec, include_deleted_users: bool, logger, run_id,
+            Вход: row_source (Iterable[CsvRow]), dataset_spec, include_deleted: bool, logger, run_id,
                   validation_deps, planning_deps.
             Выход: PlanBuildResult (items, summary, report_items, items_truncated).
         Ошибки/исключения:
@@ -68,7 +68,7 @@ class PlanUseCase:
         row_validator = validators.row_validator
         dataset_validator = validators.dataset_validator
         planning_policy = dataset_spec.build_planning_policy(
-            include_deleted_users=include_deleted_users, deps=planning_deps
+            include_deleted=include_deleted, deps=planning_deps
         )
         planner = GenericPlanner(policy=planning_policy, builder=builder)
 

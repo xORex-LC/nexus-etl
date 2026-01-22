@@ -20,7 +20,7 @@ class DummyExecutor(RequestExecutorProtocol):
 
 
 def make_plan(op: str, desired_state: dict) -> Plan:
-    meta = PlanMeta(run_id="r1", generated_at="now", dataset="employees", csv_path=None, plan_path=None, include_deleted_users=None)
+    meta = PlanMeta(run_id="r1", generated_at="now", dataset="employees", csv_path=None, plan_path=None, include_deleted=None)
     summary = PlanSummary(rows_total=1, valid_rows=1, failed_rows=0, planned_create=1 if op == "create" else 0, planned_update=1 if op == "update" else 0, skipped=0)
     item = PlanItem(
         row_id="row1",

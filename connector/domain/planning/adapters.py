@@ -5,7 +5,7 @@ from connector.infra.cache.repo import findUsersByMatchKey
 from .protocols import IdentityLookup
 
 
-class CacheIdentityLookup(IdentityLookup):
+class CacheEmployeeLookup(IdentityLookup):
     """
     Назначение/ответственность:
         Адаптер порта IdentityLookup, использующий локальный кэш/БД.
@@ -13,6 +13,9 @@ class CacheIdentityLookup(IdentityLookup):
         Делегирует поиск в findUsersByMatchKey.
     Ограничения:
         Транзакционность/соединение остаются на уровне вызывающего кода.
+    Примечание:
+        TODO: Это employees-специфика (match_key). Нужна универсальная реализация,
+        когда будет общий lookup между доменной identity и схемой хранения кэша.
     """
 
     def __init__(self, conn):

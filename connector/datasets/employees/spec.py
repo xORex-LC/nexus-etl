@@ -4,7 +4,7 @@ from connector.datasets.spec import DatasetSpec, ValidatorBundle
 from connector.datasets.employees.projector import EmployeesProjector
 from connector.datasets.employees.reporting import employees_report_adapter
 from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
-from connector.domain.planning.adapters import CacheIdentityLookup
+from connector.domain.planning.adapters import CacheEmployeeLookup
 from connector.domain.planning.deps import PlanningDependencies
 from connector.domain.planning.employees.decision import EmployeeDecisionPolicy
 from connector.domain.planning.employees.differ import EmployeeDiffer
@@ -28,7 +28,7 @@ class EmployeesSpec(DatasetSpec):
         return ValidationDependencies(org_lookup=CacheOrgLookup(conn))
 
     def build_planning_deps(self, conn, settings) -> PlanningDependencies:
-        return PlanningDependencies(identity_lookup=CacheIdentityLookup(conn))
+        return PlanningDependencies(identity_lookup=CacheEmployeeLookup(conn))
 
     def build_validators(self, deps: ValidationDependencies) -> ValidatorBundle:
         registry = ValidatorRegistry(deps)
@@ -37,9 +37,9 @@ class EmployeesSpec(DatasetSpec):
         dataset_validator = registry.create_dataset_validator("employees", state)
         return ValidatorBundle(row_validator=row_validator, dataset_validator=dataset_validator, state=state)
 
-    def build_planning_policy(self, include_deleted_users: bool, deps: PlanningDependencies):
+    def build_planning_policy(self, include_deleted: bool, deps: PlanningDependencies):
         projector = EmployeesProjector()
-        matcher = EmployeeMatcher(deps.identity_lookup, include_deleted_users)
+        matcher = EmployeeMatcher(deps.identity_lookup, include_deleted)
         differ = EmployeeDiffer()
         decision = EmployeeDecisionPolicy()
         return EmployeesPlanningPolicy(

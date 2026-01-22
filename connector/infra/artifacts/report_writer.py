@@ -35,7 +35,7 @@ class ReportMeta:
     retries: int | None = None
     retries_used: int | None = None
     retry_backoff_seconds: float | None = None
-    include_deleted_users: bool | None = None
+    include_deleted: bool | None = None
     skipped_deleted_users: int | None = None
     plan_file: str | None = None
     plan_path: str | None = None
