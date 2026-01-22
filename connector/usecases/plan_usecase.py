@@ -19,7 +19,7 @@ class PlanUseCase:
 
     Взаимодействия:
         - Использует ValidatorRegistry для получения валидаторов по dataset.
-        - Использует PlannerRegistry для получения EntityPlanner по dataset.
+        - Использует PlannerRegistry для получения DatasetPlanner по dataset.
         - Не знает об артефактах/файлах и не хранит планы в памяти.
 
     Ограничения:

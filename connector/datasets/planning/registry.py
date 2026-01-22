@@ -4,7 +4,7 @@ from connector.domain.planning.employees.decision import EmployeeDecisionPolicy
 from connector.domain.planning.employees.differ import EmployeeDiffer
 from connector.domain.planning.employees.matcher import EmployeeMatcher
 from connector.domain.planning.employees.planner import EmployeePlanner
-from connector.domain.planning.protocols import EmployeeLookup, EntityPlanner
+from connector.domain.planning.protocols import EmployeeLookup, DatasetPlanner
 
 class PlannerRegistry:
     """
@@ -19,7 +19,7 @@ class PlannerRegistry:
     def __init__(self, employee_lookup: EmployeeLookup):
         self.employee_lookup = employee_lookup
 
-    def get(self, dataset: str, include_deleted_users: bool) -> EntityPlanner:
+    def get(self, dataset: str, include_deleted_users: bool) -> DatasetPlanner:
         """
         Назначение:
             Вернуть планировщик нужного датасета.

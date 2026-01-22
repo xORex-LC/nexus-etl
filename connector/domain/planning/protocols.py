@@ -8,10 +8,10 @@ from connector.domain.models import Identity, MatchResult
 from connector.planModels import PlanItem
 
 
-class EntityPlanner(Protocol):
+class DatasetPlanner(Protocol):
     """
     Назначение/ответственность:
-        Общий контракт планировщика сущности (строка -> операция плана).
+        Общий контракт планировщика датасета (строка -> операция плана).
     Взаимодействия:
         Используется реестром планировщиков и оркестратором планирования.
     """
