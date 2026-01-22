@@ -18,7 +18,7 @@ from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
-from connector.infra.artifacts.plan_reader import readPlanFile
+from connector.infra.artifacts.plan_reader import readPlanFile, readResolvedPlanFile
 from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.common.sanitize import maskSecret
@@ -475,17 +475,14 @@ def runImportApplyCommand(
         max_actions = maxActions if maxActions is not None else settings.max_actions
         dry_run = dryRun if dryRun is not None else settings.dry_run
 
-        plan = None
         try:
-            plan = readPlanFile(planPath or "")
+            plan = readResolvedPlanFile(planPath or "")
         except (OSError, ValueError) as exc:
             logEvent(logger, logging.ERROR, runId, "plan", f"Import apply failed: {exc}")
             typer.echo(f"ERROR: import apply failed: {exc}", err=True)
             return 2
 
-        if plan is None:
-            typer.echo("ERROR: failed to load plan", err=True)
-            return 2
+        dataset_name = plan.meta.dataset
 
         baseUrl = f"https://{settings.host}:{settings.port}"
         report.meta.api_base_url = baseUrl
@@ -501,10 +498,10 @@ def runImportApplyCommand(
         report.meta.retry_backoff_seconds = settings.retry_backoff_seconds
         report.meta.report_items_limit = report_items_limit
 
-        report.summary.planned_create = plan.summary.planned_create
-        report.summary.planned_update = plan.summary.planned_update
-        report.summary.skipped = plan.summary.skipped
-        report.summary.failed = plan.summary.failed_rows
+        report.summary.planned_create = plan.summary.planned_create if plan.summary else 0
+        report.summary.planned_update = plan.summary.planned_update if plan.summary else 0
+        report.summary.skipped = plan.summary.skipped if plan.summary else 0
+        report.summary.failed = plan.summary.failed_rows if plan.summary else 0
 
         client = AnkeyApiClient(
             baseUrl=f"https://{settings.host}:{settings.port}",
