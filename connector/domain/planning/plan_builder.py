@@ -141,7 +141,7 @@ class PlanBuilder:
             self.planned_create += 1
         elif plan_item.op == Operation.UPDATE:
             self.planned_update += 1
-        self.plan_items.append(plan_item.__dict__)
+        self.plan_items.append(self._serialize_plan_item(plan_item))
 
     def inc_rows_total(self) -> None:
         self.rows_total += 1
@@ -168,3 +168,20 @@ class PlanBuilder:
             report_items=self.report_items,
             items_truncated=self.items_truncated,
         )
+
+    def _serialize_plan_item(self, plan_item: PlanItem) -> dict[str, Any]:
+        """
+        Назначение:
+            Явная сериализация плановой операции для сохранения в артефакт.
+        Контракт:
+            - Только разрешённые поля; без dataset/entity_type.
+        """
+        return {
+            "row_id": plan_item.row_id,
+            "line_no": plan_item.line_no,
+            "op": plan_item.op,
+            "resource_id": plan_item.resource_id,
+            "desired_state": plan_item.desired_state,
+            "changes": plan_item.changes,
+            "source_ref": plan_item.source_ref,
+        }

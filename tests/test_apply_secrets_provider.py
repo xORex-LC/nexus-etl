@@ -25,7 +25,6 @@ def make_plan(op: str, desired_state: dict) -> Plan:
     item = PlanItem(
         row_id="row1",
         line_no=1,
-        dataset="employees",
         op=op,
         resource_id="user-1",
         desired_state=desired_state,

@@ -53,7 +53,6 @@ class PlanItem:
         Операция плана для последующего применения.
 
     Поля:
-        dataset: имя датасета/сущности (например, employees)
         op: операция (create/update)
         resource_id: идентификатор ресурса (новый UUID для create, существующий id для update)
         desired_state: полное желаемое состояние (для create; для update можно хранить тоже полное)
@@ -63,7 +62,6 @@ class PlanItem:
 
     row_id: str
     line_no: int | None
-    dataset: str
     op: str
     resource_id: str
     desired_state: dict[str, Any]

@@ -127,7 +127,6 @@ def test_import_apply_error_stats():
         PlanItem(
             row_id="line:1",
             line_no=1,
-            dataset="employees",
             op="create",
             resource_id="id-1",
             desired_state={

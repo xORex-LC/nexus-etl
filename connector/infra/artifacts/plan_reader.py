@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
-from connector.plan_runtime import ResolvedPlan, ResolvedPlanItem
 from connector.common.sanitize import isMaskedSecret
 
 
@@ -61,13 +60,18 @@ def _build_plan(meta_raw: dict, summary_raw: dict, items_raw: list, path: str) -
         if not isinstance(raw, dict):
             continue
         desired_raw = raw.get("desired_state") if isinstance(raw.get("desired_state"), dict) else {}
+        legacy_dataset = _get_str(raw.get("dataset"))
+        legacy_entity = _get_str(raw.get("entity_type"))
+        if legacy_dataset and legacy_dataset != dataset:
+            raise ValueError(f"Plan item dataset mismatch: meta={dataset}, item={legacy_dataset}")
+        if legacy_entity and legacy_entity != dataset:
+            raise ValueError(f"Plan item entity_type mismatch: meta={dataset}, item={legacy_entity}")
         if isMaskedSecret(desired_raw.get("password")):
             desired_raw = {k: v for k, v in desired_raw.items() if k != "password"}
         items.append(
             PlanItem(
                 row_id=_get_str(raw.get("row_id")) or "",
                 line_no=raw.get("line_no"),
-                dataset=dataset,
                 op=_get_str(raw.get("op")) or "",
                 resource_id=_get_str(raw.get("resource_id")) or "",
                 desired_state=desired_raw if isinstance(desired_raw, dict) else {},
@@ -82,15 +86,3 @@ def _build_plan(meta_raw: dict, summary_raw: dict, items_raw: list, path: str) -
 def readPlanFile(path: str) -> Plan:
     meta_raw, summary_raw, items_raw = _load_plan_raw(path)
     return _build_plan(meta_raw, summary_raw, items_raw, path)
-
-
-def readResolvedPlanFile(path: str) -> ResolvedPlan:
-    """
-    Назначение:
-        Прочитать план и вернуть runtime-представление с гарантированным dataset.
-    """
-    meta_raw, summary_raw, items_raw = _load_plan_raw(path)
-    plan = _build_plan(meta_raw, summary_raw, items_raw, path)
-    dataset = plan.meta.dataset or ""
-    resolved_items = [ResolvedPlanItem(dataset=dataset, item=it) for it in plan.items]
-    return ResolvedPlan(meta=plan.meta, items=resolved_items, summary=plan.summary)

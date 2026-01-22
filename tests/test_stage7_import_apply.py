@@ -10,6 +10,7 @@ from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.domain.error_codes import ErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
 from connector.domain.mappers.user_payload import buildUserUpsertPayload
+from connector.domain.planning.plan_builder import PlanBuilder
 from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
 from connector.main import app
 from connector.infra.http.ankey_client import ApiError
@@ -132,7 +133,6 @@ def test_apply_adapter_builds_request():
     item = PlanItem(
         row_id="line:1",
         line_no=1,
-        dataset="employees",
         op="create",
         resource_id="abc",
         desired_state={
@@ -163,7 +163,6 @@ def test_import_apply_stop_on_first_error():
         PlanItem(
             row_id="line:1",
             line_no=1,
-            dataset="employees",
             op="create",
             resource_id="id-1",
             desired_state={
@@ -187,7 +186,6 @@ def test_import_apply_stop_on_first_error():
         PlanItem(
             row_id="line:2",
             line_no=2,
-            dataset="employees",
             op="update",
             resource_id="id-2",
             desired_state={
@@ -241,7 +239,6 @@ def test_import_apply_max_actions_limits_requests():
         PlanItem(
             row_id="line:1",
             line_no=1,
-            dataset="employees",
             op="create",
             resource_id="id-1",
             desired_state={
@@ -265,7 +262,6 @@ def test_import_apply_max_actions_limits_requests():
         PlanItem(
             row_id="line:2",
             line_no=2,
-            dataset="employees",
             op="create",
             resource_id="id-2",
             desired_state={
@@ -319,7 +315,6 @@ def test_import_apply_resource_exists_retries():
         PlanItem(
             row_id="line:1",
             line_no=1,
-            dataset="employees",
             op="create",
             resource_id="id-1",
             desired_state={
@@ -496,3 +491,81 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
     assert result.exit_code == 0
     report_path = tmp_path / "reports" / f"report_import-apply_{run_id}.json"
     assert report_path.exists()
+
+
+def test_plan_builder_does_not_emit_dataset_in_items():
+    builder = PlanBuilder(
+        include_skipped_in_report=False,
+        report_items_limit=10,
+        identity_label="match_key",
+        conflict_code="conflict",
+        conflict_field="match_key",
+    )
+    builder.add_plan_item(
+        PlanItem(
+            row_id="r1",
+            line_no=1,
+            op="create",
+            resource_id="id-1",
+            desired_state={"email": "a@b.c"},
+            changes={},
+        )
+    )
+    result = builder.build()
+    assert "dataset" not in result.items[0]
+    assert "entity_type" not in result.items[0]
+
+
+def test_apply_report_items_include_dataset():
+    dataset = "employees"
+    plan = _make_plan(
+        [
+            PlanItem(
+                row_id="r1",
+                line_no=1,
+                op="create",
+                resource_id="id-1",
+                desired_state={
+                    "email": "u@example.com",
+                    "password": "secret",
+                    "last_name": "L",
+                    "first_name": "F",
+                    "middle_name": "M",
+                    "is_logon_disable": False,
+                    "user_name": "user1",
+                    "phone": "+1",
+                    "personnel_number": "10",
+                    "organization_id": 1,
+                    "position": "P",
+                    "usr_org_tab_num": "TAB",
+                },
+                changes={},
+            )
+        ]
+    )
+    executor = DummyExecutor(
+        [
+            ExecutionResult(ok=False, status_code=500, error_code=ErrorCode.HTTP_ERROR, error_message="boom"),
+        ]
+    )
+    adapter = EmployeesApplyAdapter()
+    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
+    logger = logging.getLogger("test-report-dataset")
+    logger.addHandler(logging.NullHandler())
+    report = type(
+        "R", (), {"items": [], "summary": type("S", (), {"created": 0, "updated": 0, "skipped": 0, "failed": 0})()}
+    )
+    code = service.applyPlan(
+        plan=plan,
+        logger=logger,
+        report=report,
+        run_id="r",
+        stop_on_first_error=False,
+        max_actions=None,
+        dry_run=False,
+        report_items_limit=10,
+        resource_exists_retries=0,
+    )
+    assert code == 1
+    assert report.items
+    assert report.items[0]["dataset"] == dataset

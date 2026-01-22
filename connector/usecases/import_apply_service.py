@@ -5,7 +5,6 @@ from typing import Any, Callable
 
 from connector.infra.logging.setup import logEvent
 from connector.planModels import Plan
-from connector.plan_runtime import ResolvedPlan, ResolvedPlanItem
 from connector.datasets.registry import get_spec
 from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol
@@ -28,13 +27,13 @@ class ImportApplyService:
         self.secrets = secrets
         self.spec_resolver = spec_resolver
 
-    def _append_item(self, report, item: dict[str, Any], status: str) -> None:
-        safe_item = maskSecretsInObject(item)
+    def _append_item(self, report, item: dict[str, Any], status: str, dataset: str) -> None:
+        safe_item = maskSecretsInObject({**item, "dataset": dataset})
         report.items.append(
             {
                 "row_id": safe_item.get("row_id"),
                 "op": safe_item.get("op"),
-                "dataset": safe_item.get("dataset"),
+                "dataset": dataset,
                 "resource_id": safe_item.get("resource_id"),
                 "status": status,
                 "errors": safe_item.get("errors", []),
@@ -48,7 +47,7 @@ class ImportApplyService:
 
     def applyPlan(
         self,
-        plan: Plan | ResolvedPlan,
+        plan: Plan,
         logger,
         report,
         run_id: str,
@@ -82,14 +81,14 @@ class ImportApplyService:
             return True
 
         for raw in plan.items:
-            # План однородный: dataset берём строго из meta (игнорируем любые item.dataset/ResolvedPlanItem.dataset).
-            item = raw.item if isinstance(raw, ResolvedPlanItem) else raw
+            # План однородный: dataset берём строго из meta.
+            item = raw
             item_dataset = dataset_name
             action = item.op
             if action not in ("create", "update"):
                 failed += 1
                 if should_append("failed"):
-                    self._append_item(report, {**item.__dict__, "dataset": item_dataset}, "failed")
+                    self._append_item(report, item.__dict__, "failed", item_dataset)
                 if stop_on_first_error:
                     break
                 continue
@@ -101,7 +100,7 @@ class ImportApplyService:
             if not item.resource_id:
                 failed += 1
                 if should_append("failed"):
-                    self._append_item(report, {**item.__dict__, "dataset": item_dataset}, "failed")
+                    self._append_item(report, item.__dict__, "failed", item_dataset)
                 if stop_on_first_error:
                     break
                 continue
@@ -122,13 +121,12 @@ class ImportApplyService:
 
                     if exec_result.ok:
                         result_item = current_item.__dict__.copy()
-                        result_item["dataset"] = item_dataset
                         result_item["api_status"] = exec_result.status_code
                         result_item["api_response"] = exec_result.response_json
                         result_item["error_details"] = exec_result.error_details
                         status = "created" if action == "create" else "updated"
                         if should_append(status):
-                            self._append_item(report, result_item, status)
+                            self._append_item(report, result_item, status, item_dataset)
                         if action == "create":
                             created += 1
                         else:
@@ -148,13 +146,12 @@ class ImportApplyService:
                     err = {"code": code, "field": None, "message": exec_result.error_message or "request failed"}
                     error_stats[code] = error_stats.get(code, 0) + 1
                     result_item = current_item.__dict__.copy()
-                    result_item["dataset"] = item_dataset
                     result_item["errors"] = list(result_item.get("errors", [])) + [err]
                     result_item["api_status"] = exec_result.status_code
                     result_item["api_response"] = exec_result.response_json
                     result_item["error_details"] = exec_result.error_details
                     if should_append("failed"):
-                        self._append_item(report, result_item, "failed")
+                        self._append_item(report, result_item, "failed", item_dataset)
                     if code in ("UNAUTHORIZED", "FORBIDDEN"):
                         fatal_error = True
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {err['message']}")
@@ -167,7 +164,7 @@ class ImportApplyService:
                     result_item = current_item.__dict__.copy()
                     result_item["errors"] = list(result_item.get("errors", [])) + [err]
                     if should_append("failed"):
-                        self._append_item(report, result_item, "failed")
+                        self._append_item(report, result_item, "failed", item_dataset)
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
                     break
                 except Exception as exc:
@@ -178,7 +175,7 @@ class ImportApplyService:
                     result_item = current_item.__dict__.copy()
                     result_item["errors"] = list(result_item.get("errors", [])) + [err]
                     if should_append("failed"):
-                        self._append_item(report, result_item, "failed")
+                        self._append_item(report, result_item, "failed", item_dataset)
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
                     break
 

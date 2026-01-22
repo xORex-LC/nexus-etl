@@ -18,7 +18,7 @@ from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
-from connector.infra.artifacts.plan_reader import readPlanFile, readResolvedPlanFile
+from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.common.sanitize import maskSecret
@@ -438,16 +438,12 @@ def runImportPlanCommand(
 
 def runImportApplyCommand(
     ctx: typer.Context,
-    csvPath: str | None,
     planPath: str | None,
-    csvHasHeader: bool | None,
     stopOnFirstError: bool | None,
     maxActions: int | None,
     dryRun: bool | None,
-    includeDeletedUsers: bool | None,
     reportItemsLimit: int | None,
     resourceExistsRetries: int | None,
-    dataset: str | None,
     secretsFrom: str | None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
@@ -455,20 +451,14 @@ def runImportApplyCommand(
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report) -> int:
-        if planPath and csvPath:
-            typer.echo("ERROR: specify only --plan (apply no longer builds plan from CSV)", err=True)
-            return 2
         if not planPath:
             typer.echo("ERROR: --plan is required (apply no longer builds plan from CSV)", err=True)
             return 2
 
-        include_deleted = includeDeletedUsers if includeDeletedUsers is not None else settings.include_deleted_users
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
         resource_exists_retries = (
             resourceExistsRetries if resourceExistsRetries is not None else settings.resource_exists_retries
         )
-        dataset_name = dataset if dataset is not None else settings.dataset_name
-        csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
         stop_on_first_error = (
             stopOnFirstError if stopOnFirstError is not None else settings.stop_on_first_error
         )
@@ -476,7 +466,7 @@ def runImportApplyCommand(
         dry_run = dryRun if dryRun is not None else settings.dry_run
 
         try:
-            plan = readResolvedPlanFile(planPath or "")
+            plan = readPlanFile(planPath or "")
         except (OSError, ValueError) as exc:
             logEvent(logger, logging.ERROR, runId, "plan", f"Import apply failed: {exc}")
             typer.echo(f"ERROR: import apply failed: {exc}", err=True)
@@ -486,9 +476,9 @@ def runImportApplyCommand(
 
         baseUrl = f"https://{settings.host}:{settings.port}"
         report.meta.api_base_url = baseUrl
-        report.meta.csv_path = csvPath
+        report.meta.csv_path = None
         report.meta.plan_path = planPath or plan.meta.plan_path
-        report.meta.include_deleted_users = include_deleted
+        report.meta.include_deleted_users = plan.meta.include_deleted_users
         report.meta.dataset = dataset_name
         report.meta.stop_on_first_error = stop_on_first_error
         report.meta.max_actions = max_actions
@@ -535,7 +525,7 @@ def runImportApplyCommand(
     runWithReport(
         ctx=ctx,
         commandName="import-apply",
-        csvPath=csvPath,
+        csvPath=None,
         requiresCsv=False,
         requiresApiAccess=True,
         runner=execute,
@@ -815,9 +805,7 @@ def importPlan(
 @importApp.command("apply")
 def importApply(
     ctx: typer.Context,
-    csv: str | None = typer.Option(None, "--csv", help="(deprecated) Path to input CSV"),
     plan: str | None = typer.Option(None, "--plan", help="Path to plan_import.json"),
-    csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="(unused for apply) CSV includes header row"),
     stopOnFirstError: bool | None = typer.Option(
         None,
         "--stop-on-first-error/--no-stop-on-first-error",
@@ -826,24 +814,12 @@ def importApply(
     ),
     maxActions: int | None = typer.Option(None, "--max-actions", help="Limit number of actions to apply"),
     dryRun: bool | None = typer.Option(None, "--dry-run/--no-dry-run", help="Do not send API requests"),
-    includeDeletedUsers: bool | None = typer.Option(
-        None,
-        "--include-deleted-users/--no-include-deleted-users",
-        help="Include deleted users in matching when building plan from CSV",
-        show_default=True,
-    ),
     resourceExistsRetries: int | None = typer.Option(
         None,
         "--resource-exists-retries",
         help="Retries for resourceExists on create",
     ),
     reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
-    dataset: str | None = typer.Option(
-        None,
-        "--dataset",
-        help="Dataset name (e.g., employees)",
-        show_default=True,
-    ),
     secretsFrom: str | None = typer.Option(
         None,
         "--secrets-from",
@@ -853,16 +829,12 @@ def importApply(
 ):
     runImportApplyCommand(
         ctx=ctx,
-        csvPath=csv,
         planPath=plan,
-        csvHasHeader=csvHasHeader,
         stopOnFirstError=stopOnFirstError,
         maxActions=maxActions,
         dryRun=dryRun,
-        includeDeletedUsers=includeDeletedUsers,
         reportItemsLimit=reportItemsLimit,
         resourceExistsRetries=resourceExistsRetries,
-        dataset=dataset,
         secretsFrom=secretsFrom,
     )
 

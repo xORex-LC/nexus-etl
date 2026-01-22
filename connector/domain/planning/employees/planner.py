@@ -59,7 +59,6 @@ class EmployeePlanner:
         plan_item = PlanItem(
             row_id=f"line:{line_no}",
             line_no=line_no,
-            dataset="employees",
             op=Operation.CREATE if op == DecisionOutcome.CREATE else Operation.UPDATE,
             resource_id=resource_id or "",
             desired_state=desired_state,
