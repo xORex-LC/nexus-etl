@@ -65,10 +65,10 @@ class ImportApplyService:
         fatal_error = False
 
         dataset_name = getattr(plan.meta, "dataset", None)
-        dataset_spec = None
-        if dataset_name:
-            dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
-        apply_adapter = dataset_spec.get_apply_adapter() if dataset_spec else None
+        if not dataset_name:
+            raise ValueError("Plan meta.dataset is required for apply")
+        dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
+        apply_adapter = dataset_spec.get_apply_adapter()
 
         def should_append(status: str) -> bool:
             if status not in ("failed", "skipped"):
@@ -81,14 +81,10 @@ class ImportApplyService:
                 return False
             return True
 
-        items_iter = plan.items
-        for raw in items_iter:
-            if isinstance(raw, ResolvedPlanItem):
-                item = raw.item
-                item_dataset = raw.dataset
-            else:
-                item = raw
-                item_dataset = dataset_name
+        for raw in plan.items:
+            # План однородный: dataset берём строго из meta (игнорируем любые item.dataset/ResolvedPlanItem.dataset).
+            item = raw.item if isinstance(raw, ResolvedPlanItem) else raw
+            item_dataset = dataset_name
             action = item.op
             if action not in ("create", "update"):
                 failed += 1
