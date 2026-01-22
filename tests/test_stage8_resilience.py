@@ -124,15 +124,15 @@ def test_import_apply_error_stats():
             skipped=0,
         ),
         items=[
-            PlanItem(
-                row_id="line:1",
-                line_no=1,
-                entity_type="employee",
-                op="create",
-                resource_id="id-1",
-                desired_state={
-                    "email": "u@example.com",
-                    "last_name": "L",
+        PlanItem(
+            row_id="line:1",
+            line_no=1,
+            dataset="employees",
+            op="create",
+            resource_id="id-1",
+            desired_state={
+                "email": "u@example.com",
+                "last_name": "L",
                     "first_name": "F",
                     "middle_name": "M",
                     "is_logon_disable": False,

@@ -33,7 +33,7 @@ class ImportApplyService:
             {
                 "row_id": safe_item.get("row_id"),
                 "op": safe_item.get("op"),
-                "entity_type": safe_item.get("entity_type"),
+                "dataset": safe_item.get("dataset"),
                 "resource_id": safe_item.get("resource_id"),
                 "status": status,
                 "errors": safe_item.get("errors", []),
@@ -121,6 +121,7 @@ class ImportApplyService:
                         result_item["api_status"] = exec_result.status_code
                         result_item["api_response"] = exec_result.response_json
                         result_item["error_details"] = exec_result.error_details
+                        result_item["dataset"] = plan.meta.dataset
                         status = "created" if action == "create" else "updated"
                         if should_append(status):
                             self._append_item(report, result_item, status)

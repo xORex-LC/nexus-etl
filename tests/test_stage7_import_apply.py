@@ -5,7 +5,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from connector.usecases.import_apply_service import ImportApplyService
-from connector.planModels import EntityType, Plan, PlanItem, PlanMeta, PlanSummary
+from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.domain.error_codes import ErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
@@ -75,9 +75,9 @@ def test_plan_reader_reads_items(tmp_path: Path):
                     {
                         "row_id": "line:1",
                         "line_no": 1,
-                        "entity_type": "employee",
-                        "op": "create",
-                        "resource_id": "id-1",
+                            "dataset": "employees",
+                            "op": "create",
+                            "resource_id": "id-1",
                         "desired_state": {"email": "a@b.c"},
                         "changes": {"mail": "a@b.c"},
                         "source_ref": {"match_key": "A|B|C|1"},
@@ -132,7 +132,7 @@ def test_apply_adapter_builds_request():
     item = PlanItem(
         row_id="line:1",
         line_no=1,
-        entity_type=EntityType.EMPLOYEE,
+        dataset="employees",
         op="create",
         resource_id="abc",
         desired_state={
@@ -163,7 +163,7 @@ def test_import_apply_stop_on_first_error():
         PlanItem(
             row_id="line:1",
             line_no=1,
-            entity_type=EntityType.EMPLOYEE,
+            dataset="employees",
             op="create",
             resource_id="id-1",
             desired_state={
@@ -187,7 +187,7 @@ def test_import_apply_stop_on_first_error():
         PlanItem(
             row_id="line:2",
             line_no=2,
-            entity_type=EntityType.EMPLOYEE,
+            dataset="employees",
             op="update",
             resource_id="id-2",
             desired_state={
@@ -241,7 +241,7 @@ def test_import_apply_max_actions_limits_requests():
         PlanItem(
             row_id="line:1",
             line_no=1,
-            entity_type=EntityType.EMPLOYEE,
+            dataset="employees",
             op="create",
             resource_id="id-1",
             desired_state={
@@ -265,7 +265,7 @@ def test_import_apply_max_actions_limits_requests():
         PlanItem(
             row_id="line:2",
             line_no=2,
-            entity_type=EntityType.EMPLOYEE,
+            dataset="employees",
             op="create",
             resource_id="id-2",
             desired_state={
@@ -319,7 +319,7 @@ def test_import_apply_resource_exists_retries():
         PlanItem(
             row_id="line:1",
             line_no=1,
-            entity_type=EntityType.EMPLOYEE,
+            dataset="employees",
             op="create",
             resource_id="id-1",
             desired_state={
@@ -414,8 +414,8 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
                     {
                         "row_id": "line:1",
                         "line_no": 1,
-                        "entity_type": "employee",
-                        "op": "create",
+                            "dataset": "employees",
+                            "op": "create",
                         "resource_id": "id-1",
                         "desired_state": {
                             "email": "u1@example.com",
@@ -438,8 +438,8 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
                     {
                         "row_id": "line:2",
                         "line_no": 2,
-                        "entity_type": "employee",
-                        "op": "update",
+                            "dataset": "employees",
+                            "op": "update",
                         "resource_id": "id-2",
                         "desired_state": {
                             "email": "u2@example.com",

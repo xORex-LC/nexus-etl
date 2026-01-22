@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from connector.domain.models import Identity, MatchStatus
-from connector.planModels import EntityType, Operation, PlanItem
+from connector.planModels import Operation, PlanItem
 from connector.domain.planning.protocols import PlanningKind, PlanningResult
 from .decision import DecisionOutcome, EmployeeDecisionPolicy
 from .differ import EmployeeDiffer
@@ -59,7 +59,7 @@ class EmployeePlanner:
         plan_item = PlanItem(
             row_id=f"line:{line_no}",
             line_no=line_no,
-            entity_type=EntityType.EMPLOYEE,
+            dataset="employees",
             op=Operation.CREATE if op == DecisionOutcome.CREATE else Operation.UPDATE,
             resource_id=resource_id or "",
             desired_state=desired_state,

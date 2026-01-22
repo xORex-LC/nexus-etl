@@ -64,7 +64,7 @@ class EmployeesApplyAdapter(ApplyAdapter):
             return PlanItem(
                 row_id=item.row_id,
                 line_no=item.line_no,
-                entity_type=item.entity_type,
+                dataset=item.dataset,
                 op=item.op,
                 resource_id=str(uuid.uuid4()),
                 desired_state=item.desired_state,

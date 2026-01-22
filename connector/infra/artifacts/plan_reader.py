@@ -53,7 +53,7 @@ def readPlanFile(path: str) -> Plan:
             PlanItem(
                 row_id=_get_str(raw.get("row_id")) or "",
                 line_no=raw.get("line_no"),
-                entity_type=_get_str(raw.get("entity_type")) or "",
+                dataset=_get_str(raw.get("dataset")) or _get_str(raw.get("entity_type")) or "",
                 op=_get_str(raw.get("op")) or "",
                 resource_id=_get_str(raw.get("resource_id")) or "",
                 desired_state=desired_raw if isinstance(desired_raw, dict) else {},

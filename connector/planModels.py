@@ -3,14 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-class EntityType:
-    """
-    Константы типов сущностей в планах.
-    """
-
-    EMPLOYEE = "employee"
-
-
 class Operation:
     """
     Константы операций плана.
@@ -61,7 +53,7 @@ class PlanItem:
         Операция плана для последующего применения.
 
     Поля:
-        entity_type: тип сущности (например, employee)
+        dataset: имя датасета/сущности (например, employees)
         op: операция (create/update)
         resource_id: идентификатор ресурса (новый UUID для create, существующий id для update)
         desired_state: полное желаемое состояние (для create; для update можно хранить тоже полное)
@@ -71,7 +63,7 @@ class PlanItem:
 
     row_id: str
     line_no: int | None
-    entity_type: str
+    dataset: str
     op: str
     resource_id: str
     desired_state: dict[str, Any]
