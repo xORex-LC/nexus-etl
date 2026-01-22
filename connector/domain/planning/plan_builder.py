@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from connector.planModels import Operation, PlanItem, PlanSummary
+from connector.domain.planning.plan_models import Operation, PlanItem, PlanSummary
 from connector.domain.models import ValidationRowResult
 
 @dataclass

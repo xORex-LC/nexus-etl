@@ -5,7 +5,7 @@ from typing import Any
 
 from enum import Enum
 
-from connector.planModels import Operation
+from connector.domain.planning.plan_models import Operation
 from connector.domain.models import MatchResult, MatchStatus
 
 class DecisionOutcome(str, Enum):

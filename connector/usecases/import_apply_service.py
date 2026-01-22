@@ -4,7 +4,7 @@ import logging
 from typing import Any, Callable
 
 from connector.infra.logging.setup import logEvent
-from connector.planModels import Plan
+from connector.domain.planning.plan_models import Plan
 from connector.datasets.registry import get_spec
 from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol

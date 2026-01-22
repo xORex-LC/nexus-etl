@@ -6,8 +6,11 @@ from connector.datasets.employees.reporting import employees_report_adapter
 from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
 from connector.domain.planning.adapters import CacheEmployeeLookup
 from connector.domain.planning.deps import PlanningDependencies
+from connector.domain.planning.employees.decision import EmployeeDecisionPolicy
+from connector.domain.planning.employees.differ import EmployeeDiffer
+from connector.domain.planning.employees.matcher import EmployeeMatcher
+from connector.datasets.employees.planning_policy import EmployeesPlanningPolicy
 from connector.domain.validation.deps import ValidationDependencies
-from connector.datasets.planning.registry import PlannerRegistry
 from connector.datasets.validation.registry import ValidatorRegistry
 from connector.infra.cache.validation_lookups import CacheOrgLookup
 from connector.domain.ports.secrets import SecretProviderProtocol
@@ -38,9 +41,16 @@ class EmployeesSpec(DatasetSpec):
     def get_projector(self):
         return self._projector
 
-    def build_planner(self, include_deleted_users: bool, deps: PlanningDependencies):
-        registry = PlannerRegistry(employee_lookup=deps.employee_lookup)
-        return registry.get(dataset="employees", include_deleted_users=include_deleted_users)
+    def build_planning_policy(self, include_deleted_users: bool, deps: PlanningDependencies):
+        matcher = EmployeeMatcher(deps.employee_lookup, include_deleted_users)
+        differ = EmployeeDiffer()
+        decision = EmployeeDecisionPolicy()
+        return EmployeesPlanningPolicy(
+            projector=self._projector,
+            matcher=matcher,
+            differ=differ,
+            decision=decision,
+        )
 
     def get_report_adapter(self):
         return self._report_adapter

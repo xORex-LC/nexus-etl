@@ -1,36 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol
+from typing import Any, Protocol
 
-from connector.domain.models import Identity, MatchResult
-from connector.planModels import PlanItem
-
-
-class DatasetPlanner(Protocol):
-    """
-    Назначение/ответственность:
-        Общий контракт планировщика датасета (строка -> операция плана).
-    Взаимодействия:
-        Используется реестром планировщиков и оркестратором планирования.
-    """
-
-    def plan_row(self, desired_state, line_no: int, identity: Identity) -> "PlanningResult":
-        """
-        Назначение:
-            Решить операцию плана по строке входного набора.
-        Контракт:
-            Вход: desired_state (dict-like), line_no, identity.
-            Выход: PlanningResult с типом результата и данными.
-        """
-        ...
+from connector.domain.models import Identity, MatchResult, ValidationRowResult, ValidationErrorItem
 
 
-class PlanningKind(str, Enum):
+class PlanDecisionKind(str, Enum):
     """
     Назначение:
-        Тип результата планирования по строке.
+        Тип решения планирования по строке.
     """
 
     CREATE = "create"
@@ -40,21 +20,45 @@ class PlanningKind(str, Enum):
 
 
 @dataclass
-class PlanningResult:
+class PlanDecision:
     """
     Назначение:
-        Результат планирования одной строки.
-    Контракт:
-        - kind: тип результата (create/update/skip/conflict)
-        - item: PlanItem для create/update, иначе None
-        - match_result: подробности сопоставления (для аудита/конфликтов)
-        - skip_reason: причина skip (опционально)
+        Унифицированное решение policy по строке.
+    Инварианты:
+        - Policy не бросает обычных исключений; всё ожидаемое возвращается через PlanDecision.
+        - Для create/update обязателен desired_state, changes и resource_id.
     """
 
-    kind: PlanningKind
-    item: PlanItem | None
-    match_result: MatchResult | None = None
-    skip_reason: str | None = None
+    kind: PlanDecisionKind
+    identity: Identity
+    desired_state: dict[str, Any] | None = None
+    changes: dict[str, Any] | None = None
+    resource_id: str | None = None
+    source_ref: dict[str, Any] | None = None
+    reason_code: str | None = None
+    message: str | None = None
+    warnings: list[ValidationErrorItem] = field(default_factory=list)
+
+
+class PlanningPolicyProtocol(Protocol):
+    """
+    Назначение/ответственность:
+        Контракт датасетной политики планирования (вся специфика внутри).
+    Взаимодействия:
+        Используется GenericPlanner и не содержит IO/infra.
+    """
+
+    def decide(self, validated_entity: Any, validation: ValidationRowResult) -> PlanDecision:
+        """
+        Назначение:
+            Вернуть решение по одной валидированной строке.
+        Контракт (вход/выход):
+            - Вход: validated_entity + ValidationRowResult.
+            - Выход: PlanDecision (create/update/skip/conflict).
+        Ошибки/исключения:
+            Бросает исключения только для фатальных/некорректных входов.
+        """
+        ...
 
 class EmployeeLookup(Protocol):
     """

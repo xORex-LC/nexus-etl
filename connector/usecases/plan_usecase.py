@@ -5,10 +5,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.datasets.spec import DatasetSpec
-from connector.domain.models import Identity
 from connector.domain.planning.plan_builder import PlanBuilder, PlanBuildResult
+from connector.domain.planning.generic_planner import GenericPlanner
 from connector.domain.validation.pipeline import logValidationFailure
-from connector.domain.planning.protocols import PlanningKind, PlanningResult
 
 @dataclass
 class PlanUseCase:
@@ -19,7 +18,7 @@ class PlanUseCase:
 
     Взаимодействия:
         - Использует ValidatorRegistry для получения валидаторов по dataset.
-        - Использует PlannerRegistry для получения DatasetPlanner по dataset.
+        - Использует DatasetSpec для получения датасетной политики планирования.
         - Не знает об артефактах/файлах и не хранит планы в памяти.
 
     Ограничения:
@@ -68,10 +67,10 @@ class PlanUseCase:
         validators = dataset_spec.build_validators(validation_deps)
         row_validator = validators.row_validator
         dataset_validator = validators.dataset_validator
-        entity_planner = dataset_spec.build_planner(
+        planning_policy = dataset_spec.build_planning_policy(
             include_deleted_users=include_deleted_users, deps=planning_deps
         )
-        projector = dataset_spec.get_projector()
+        planner = GenericPlanner(policy=planning_policy, builder=builder)
 
         for csv_row in row_source:
             builder.inc_rows_total()
@@ -109,23 +108,7 @@ class PlanUseCase:
                 )
                 continue
 
-            desired_state = projector.to_desired_state(employee)
-            identity: Identity = projector.to_identity(employee, validation)
-            # source_ref строится позже в планировщике/плане
-
             builder.inc_valid_rows()
-            plan_result: PlanningResult = entity_planner.plan_row(
-                desired_state=desired_state,
-                line_no=validation.line_no,
-                identity=identity,
-            )
-            if plan_result.kind == PlanningKind.CONFLICT:
-                builder.add_conflict(validation.line_no, identity.primary_value, warnings)
-                continue
-            if plan_result.kind == PlanningKind.SKIP:
-                builder.add_skip(validation.line_no, identity.primary_value, warnings)
-                continue
-            if plan_result.item:
-                builder.add_plan_item(plan_result.item)
+            planner.plan_validated_row(employee, validation, warnings)
 
         return builder.build()

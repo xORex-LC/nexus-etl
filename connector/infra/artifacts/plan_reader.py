@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
+from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.common.sanitize import isMaskedSecret
 
 

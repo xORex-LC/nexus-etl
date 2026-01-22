@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
+from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.infra.secrets.dict_provider import DictSecretProvider
 from connector.infra.secrets.null_provider import NullSecretProvider

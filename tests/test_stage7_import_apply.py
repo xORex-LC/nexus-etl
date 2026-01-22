@@ -5,7 +5,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from connector.usecases.import_apply_service import ImportApplyService
-from connector.planModels import Plan, PlanItem, PlanMeta, PlanSummary
+from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.domain.error_codes import ErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
