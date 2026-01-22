@@ -5,7 +5,7 @@ import logging
 from connector.infra.cache.db import ensureSchema
 from connector.infra.sources.csv_reader import CsvRowSource
 from connector.infra.logging.setup import logEvent
-from connector.planner import write_plan_file
+from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.usecases.ports import ImportPlanServiceProtocol
 from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase

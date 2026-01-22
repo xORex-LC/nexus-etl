@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from connector.domain.models import Identity, MatchResult, MatchStatus
 from connector.infra.cache.repo import findUsersByMatchKey
-from .protocols import EmployeeLookup
+from .protocols import IdentityLookup
 
 
-class CacheEmployeeLookup(EmployeeLookup):
+class CacheIdentityLookup(IdentityLookup):
     """
     Назначение/ответственность:
-        Адаптер порта EmployeeLookup, использующий локальный кэш/БД.
+        Адаптер порта IdentityLookup, использующий локальный кэш/БД.
     Взаимодействия:
         Делегирует поиск в findUsersByMatchKey.
     Ограничения:

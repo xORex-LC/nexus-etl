@@ -250,7 +250,7 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
     def _fake_match(self, identity, include_deleted):
         return MatchResult(status=MatchStatus.CONFLICT, candidate=None, candidates=[{"_id": "a"}, {"_id": "b"}])
 
-    monkeypatch.setattr(planning_adapters.CacheEmployeeLookup, "match", _fake_match)
+    monkeypatch.setattr(planning_adapters.CacheIdentityLookup, "match", _fake_match)
 
     csv_path = tmp_path / "conflict.csv"
     _write_csv(
