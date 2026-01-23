@@ -1,27 +1,19 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
 import time
 from typing import Any
 
-from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
-from connector.infra.cache.db import ensureSchema
-from connector.infra.cache.repo import (
-    clearOrgs,
-    clearUsers,
-    getCounts,
-    getMetaValue,
-    setMetaValue,
-    upsertOrganization,
-    upsertUser,
-)
-from connector.infra.cache.source_api import mapOrgFromApi, mapUserFromApi
-from connector.infra.logging.setup import logEvent
 from connector.common.time import getNowIso
+from connector.datasets.cache_sync import CacheSyncAdapterProtocol
+from connector.domain.ports.cache_repo import CacheRepositoryProtocol
+from connector.domain.ports.target_read import TargetPagedReaderProtocol
+from connector.infra.logging.setup import logEvent
 
-def _append_item(report, entity_type: str, key: str, status: str, error: str | None = None) -> dict:
+
+def _append_item(report, dataset: str, entity_type: str, key: str, status: str, error: str | None = None) -> dict:
     item = {
+        "dataset": dataset,
         "entity_type": entity_type,
         "key": key,
         "status": status,
@@ -32,284 +24,214 @@ def _append_item(report, entity_type: str, key: str, status: str, error: str | N
     return item
 
 
-def _append_item_limited(report, entity_type: str, key: str, status: str, error: str | None, reportItemsLimit: int) -> None:
+def _append_item_limited(
+    report,
+    dataset: str,
+    entity_type: str,
+    key: str,
+    status: str,
+    error: str | None,
+    report_items_limit: int,
+) -> None:
     # Always keep failed/skipped until limit; success не сохраняем.
     if status not in ("failed", "skipped"):
         return
-    if len(report.items) >= reportItemsLimit:
+    if len(report.items) >= report_items_limit:
         try:
             report.meta.items_truncated = True
         except Exception:
             pass
         return
-    _append_item(report, entity_type, key, status, error)
+    _append_item(report, dataset, entity_type, key, status, error)
 
 
-def refreshCacheFromApi(
-    conn,
-    settings,
-    pageSize: int,
-    maxPages: int | None,
-    timeoutSeconds: float,
-    retries: int,
-    retryBackoffSeconds: float,
-    logger,
-    report,
-    transport=None,
-    includeDeleted: bool = False,
-    reportItemsLimit: int = 200,
-) -> dict[str, Any]:
+class CacheRefreshUseCase:
     """
-    Обновляет кэш из REST API с пагинацией.
+    Назначение/ответственность:
+        Обновление кэша из целевой системы через порты read/repo.
+    Взаимодействия:
+        - TargetPagedReaderProtocol для чтения страниц.
+        - CacheRepositoryProtocol для записи в кэш.
+        - CacheSyncAdapterProtocol для маппинга и upsert.
     """
-    ensureSchema(conn)
-    runId = getattr(report.meta, "run_id", "unknown")
 
-    baseUrl = f"https://{settings.host}:{settings.port}"
-    client = AnkeyApiClient(
-        baseUrl=baseUrl,
-        username=settings.api_username or "",
-        password=settings.api_password or "",
-        timeoutSeconds=timeoutSeconds,
-        tlsSkipVerify=settings.tls_skip_verify,
-        caFile=settings.ca_file,
-        retries=retries,
-        retryBackoffSeconds=retryBackoffSeconds,
-        transport=transport,
-    )
-    client.resetRetryAttempts()
+    def __init__(
+        self,
+        target_reader: TargetPagedReaderProtocol,
+        cache_repo: CacheRepositoryProtocol,
+        adapters: list[CacheSyncAdapterProtocol],
+    ):
+        self.target_reader = target_reader
+        self.cache_repo = cache_repo
+        self.adapters = adapters
 
-    inserted_users = updated_users = failed_users = skipped_deleted_users = 0
-    deleted_included_users = 0
-    inserted_orgs = updated_orgs = failed_orgs = 0
-    pages_users = pages_orgs = 0
-    error_stats: dict[str, int] = {}
-    include_deleted = True if includeDeleted is True else False
-    logEvent(
+    def refresh(
+        self,
+        page_size: int,
+        max_pages: int | None,
         logger,
-        logging.INFO,
-        runId,
-        "cache",
-        f"cache-refresh start mode=api page_size={pageSize} max_pages={maxPages} include_deleted={include_deleted}",
-    )
-    start_monotonic = time.monotonic()
+        report,
+        run_id: str,
+        include_deleted: bool = False,
+        report_items_limit: int = 200,
+        api_base_url: str | None = None,
+        retries: int | None = None,
+        retry_backoff_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """
+        Обновляет кэш из целевой системы с пагинацией.
+        """
+        self.cache_repo.ensure_schema()
+        logEvent(
+            logger,
+            logging.INFO,
+            run_id,
+            "cache",
+            f"cache-refresh start page_size={page_size} max_pages={max_pages} include_deleted={include_deleted}",
+        )
+        start_monotonic = time.monotonic()
 
-    try:
-        conn.execute("BEGIN")
+        inserted_users = updated_users = failed_users = skipped_deleted_users = 0
+        deleted_included_users = 0
+        inserted_orgs = updated_orgs = failed_orgs = 0
+        pages_users = pages_orgs = 0
+        error_stats: dict[str, int] = {}
 
-        # Organizations
         try:
-            for page, items in client.getPagedItems("/ankey/managed/organization", pageSize, maxPages):
-                pages_orgs = max(pages_orgs, page)
-                logEvent(logger, logging.DEBUG, runId, "api", f"GET org page={page} rows={pageSize}")
-                logEvent(logger, logging.DEBUG, runId, "api", f"org page={page} items={len(items)}")
-                for org in items:
-                    key = str(org.get("_ouid"))
-                    try:
-                        mapped = mapOrgFromApi(org)
-                        status = upsertOrganization(conn, mapped)
-                        if status == "inserted":
-                            inserted_orgs += 1
-                        else:
-                            updated_orgs += 1
-                        _append_item_limited(report, "org", key, status, None, reportItemsLimit)
-                    except sqlite3.IntegrityError as exc:
-                        failed_orgs += 1
-                        logEvent(logger, logging.DEBUG, runId, "cache", f"Org upsert integrity error key={key}: {exc}")
-                        _append_item_limited(report, "org", key, "failed", str(exc), reportItemsLimit)
-                    except Exception as exc:
-                        failed_orgs += 1
-                        logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert org {key}: {exc}")
-                        _append_item(report, "org", key, "failed", str(exc))
-        except ApiError as exc:
-            conn.rollback()
-            logEvent(
-                logger,
-                logging.ERROR,
-                runId,
-                "cache",
-                f"Org fetch failed: {exc} body={exc.body_snippet}",
-            )
+            self.cache_repo.begin()
+
+            for adapter in self.adapters:
+                for page_result in self.target_reader.iter_pages(adapter.list_path, page_size, max_pages):
+                    if not page_result.ok:
+                        code = page_result.error_code.name if page_result.error_code else "API_ERROR"
+                        error_stats[code] = error_stats.get(code, 0) + 1
+                        raise RuntimeError(page_result.error_message or "Target read failed")
+
+                    if adapter.report_entity == "user":
+                        pages_users = max(pages_users, page_result.page)
+                    if adapter.report_entity == "org":
+                        pages_orgs = max(pages_orgs, page_result.page)
+
+                    items = page_result.items or []
+                    logEvent(
+                        logger,
+                        logging.DEBUG,
+                        run_id,
+                        "api",
+                        f"GET {adapter.report_entity} page={page_result.page} rows={page_size} items={len(items)}",
+                    )
+                    for raw in items:
+                        key = adapter.get_item_key(raw)
+                        try:
+                            if adapter.is_deleted(raw):
+                                if include_deleted:
+                                    deleted_included_users += 1
+                                else:
+                                    skipped_deleted_users += 1
+                                    _append_item_limited(
+                                        report,
+                                        adapter.dataset,
+                                        adapter.report_entity,
+                                        key,
+                                        "skipped",
+                                        None,
+                                        report_items_limit,
+                                    )
+                                    continue
+
+                            mapped = adapter.map_target_to_cache(raw)
+                            status = adapter.upsert(self.cache_repo, mapped)
+                            if adapter.report_entity == "user":
+                                if status == "inserted":
+                                    inserted_users += 1
+                                else:
+                                    updated_users += 1
+                            if adapter.report_entity == "org":
+                                if status == "inserted":
+                                    inserted_orgs += 1
+                                else:
+                                    updated_orgs += 1
+                            _append_item_limited(
+                                report,
+                                adapter.dataset,
+                                adapter.report_entity,
+                                key,
+                                status,
+                                None,
+                                report_items_limit,
+                            )
+                        except Exception as exc:
+                            if adapter.report_entity == "user":
+                                failed_users += 1
+                            if adapter.report_entity == "org":
+                                failed_orgs += 1
+                            logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to upsert {key}: {exc}")
+                            _append_item(
+                                report,
+                                adapter.dataset,
+                                adapter.report_entity,
+                                key,
+                                "failed",
+                                str(exc),
+                            )
+
+            users_count, org_count = self.cache_repo.get_counts()
+            now_iso = getNowIso()
+
+            self.cache_repo.set_meta("users_count", str(users_count))
+            self.cache_repo.set_meta("org_count", str(org_count))
+            self.cache_repo.set_meta("users_last_refresh_at", now_iso)
+            self.cache_repo.set_meta("org_last_refresh_at", now_iso)
+            if api_base_url:
+                self.cache_repo.set_meta("source_api_base", api_base_url)
+
+            self.cache_repo.commit()
+        except Exception as exc:
+            self.cache_repo.rollback()
+            logEvent(logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
             raise
 
-        # Users
-        try:
-            for page, items in client.getPagedItems("/ankey/managed/user", pageSize, maxPages):
-                pages_users = max(pages_users, page)
-                logEvent(logger, logging.DEBUG, runId, "api", f"GET user page={page} rows={pageSize}")
-                logEvent(logger, logging.DEBUG, runId, "api", f"user page={page} items={len(items)}")
-                for user in items:
-                    key = str(user.get("_id"))
-                    try:
-                        if not include_deleted:
-                            status_raw = user.get("accountStatus")
-                            deletion_date = user.get("deletionDate")
-                            status_norm = str(status_raw).strip().lower() if status_raw is not None else ""
-                            deletion_norm = str(deletion_date).strip().lower() if deletion_date is not None else None
-                            if status_norm == "deleted" or deletion_norm not in (None, "", "null"):
-                                skipped_deleted_users += 1
-                                _append_item_limited(report, "user", key, "skipped", None, reportItemsLimit)
-                                continue
-                        else:
-                            status_raw = user.get("accountStatus")
-                            deletion_date = user.get("deletionDate")
-                            status_norm = str(status_raw).strip().lower() if status_raw is not None else ""
-                            deletion_norm = str(deletion_date).strip().lower() if deletion_date is not None else None
-                            if status_norm == "deleted" or deletion_norm not in (None, "", "null"):
-                                deleted_included_users += 1
-                        mapped = mapUserFromApi(user)
-                        status = upsertUser(conn, mapped)
-                        if status == "inserted":
-                            inserted_users += 1
-                        else:
-                            updated_users += 1
-                        _append_item_limited(report, "user", key, status, None, reportItemsLimit)
-                        logEvent(
-                            logger,
-                            logging.DEBUG,
-                            runId,
-                            "cache",
-                            f"upsert user key={key} status={status} inserted={inserted_users} updated={updated_users} skipped_deleted={skipped_deleted_users}",
-                        )
-                    except sqlite3.IntegrityError as exc:
-                        failed_users += 1
-                        logEvent(logger, logging.DEBUG, runId, "cache", f"User upsert integrity error key={key}: {exc}")
-                        _append_item_limited(report, "user", key, "failed", str(exc), reportItemsLimit)
-                    except Exception as exc:
-                        failed_users += 1
-                        logEvent(logger, logging.ERROR, runId, "cache", f"Failed to upsert user {key}: {exc}")
-                        _append_item(report, "user", key, "failed", str(exc))
-        except ApiError as exc:
-            conn.rollback()
-            logEvent(
-                logger,
-                logging.ERROR,
-                runId,
-                "cache",
-                f"User fetch failed: {exc} body={exc.body_snippet}",
-            )
-            code = exc.code if hasattr(exc, "code") else "API_ERROR"
-            error_stats[code] = error_stats.get(code, 0) + 1
-            raise
+        report.meta.pages_users = pages_users or None
+        report.meta.pages_orgs = pages_orgs or None
+        report.meta.api_base_url = api_base_url
+        report.meta.page_size = page_size
+        report.meta.max_pages = max_pages
+        report.meta.retries = retries
+        report.meta.retry_backoff_seconds = retry_backoff_seconds
+        report.meta.include_deleted = include_deleted
+        report.meta.skipped_deleted_users = deleted_included_users if include_deleted else skipped_deleted_users
 
-        usersCount, orgCount = getCounts(conn)
-        nowIso = getNowIso()
+        retries_used = 0
+        if hasattr(self.target_reader, "client") and hasattr(self.target_reader.client, "getRetryAttempts"):
+            retries_used = self.target_reader.client.getRetryAttempts() or 0
+        report.meta.retries_used = retries_used
 
-        setMetaValue(conn, "users_count", str(usersCount))
-        setMetaValue(conn, "org_count", str(orgCount))
-        setMetaValue(conn, "users_last_refresh_at", nowIso)
-        setMetaValue(conn, "org_last_refresh_at", nowIso)
-        setMetaValue(conn, "source_api_base", baseUrl)
+        report.summary.created = inserted_users + inserted_orgs
+        report.summary.updated = updated_users + updated_orgs
+        report.summary.failed = failed_users + failed_orgs
+        report.summary.error_stats = error_stats
+        report.summary.skipped = skipped_deleted_users
+        report.summary.retries_total = retries_used
 
-        conn.commit()
-    except Exception as exc:
-        conn.rollback()
-        logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh from API failed: {exc}")
-        raise
+        duration_ms = int((time.monotonic() - start_monotonic) * 1000)
+        logEvent(
+            logger,
+            logging.INFO,
+            run_id,
+            "cache",
+            f"cache-refresh done users_count={users_count} org_count={org_count} duration_ms={duration_ms}",
+        )
 
-    report.meta.pages_users = pages_users or None
-    report.meta.pages_orgs = pages_orgs or None
-    report.meta.api_base_url = baseUrl
-    report.meta.page_size = pageSize
-    report.meta.max_pages = maxPages
-    report.meta.timeout_seconds = timeoutSeconds
-    report.meta.retries = retries
-    report.meta.retries_used = client.getRetryAttempts()
-    report.meta.retry_backoff_seconds = retryBackoffSeconds
-    report.meta.include_deleted = include_deleted
-    report.meta.skipped_deleted_users = deleted_included_users if include_deleted else skipped_deleted_users
-
-    report.summary.created = inserted_users + inserted_orgs
-    report.summary.updated = updated_users + updated_orgs
-    report.summary.failed = failed_users + failed_orgs
-    report.summary.error_stats = error_stats
-    report.summary.skipped = skipped_deleted_users
-    report.summary.retries_total = client.getRetryAttempts()
-    duration_ms = int((time.monotonic() - start_monotonic) * 1000)
-    logEvent(
-        logger,
-        logging.INFO,
-        runId,
-        "cache",
-        f"org phase: pages={pages_orgs} inserted={inserted_orgs} updated={updated_orgs} failed={failed_orgs}",
-    )
-    logEvent(
-        logger,
-        logging.INFO,
-        runId,
-        "cache",
-        f"user phase: pages={pages_users} inserted={inserted_users} updated={updated_users} failed={failed_users} skipped_deleted={skipped_deleted_users}",
-    )
-
-    summary = {
-        "users_inserted": inserted_users,
-        "users_updated": updated_users,
-        "users_failed": failed_users,
-        "users_skipped_deleted": skipped_deleted_users,
-        "orgs_inserted": inserted_orgs,
-        "orgs_updated": updated_orgs,
-        "orgs_failed": failed_orgs,
-        "users_count": usersCount,
-        "org_count": orgCount,
-        "pages_users": pages_users,
-        "pages_orgs": pages_orgs,
-    }
-    logEvent(
-        logger,
-        logging.INFO,
-        runId,
-        "cache",
-        f"cache-refresh done users_count={usersCount} org_count={orgCount} duration_ms={duration_ms}",
-    )
-    return summary
-
-def clearCache(conn) -> dict[str, int]:
-    """
-    Очищает таблицы users/organizations и сбрасывает meta счётчики.
-    """
-    ensureSchema(conn)
-    conn.execute("BEGIN")
-    try:
-        users_deleted = clearUsers(conn)
-        orgs_deleted = clearOrgs(conn)
-
-        setMetaValue(conn, "users_count", "0")
-        setMetaValue(conn, "org_count", "0")
-        setMetaValue(conn, "users_last_refresh_at", None)
-        setMetaValue(conn, "org_last_refresh_at", None)
-        setMetaValue(conn, "source_api_base", None)
-
-        conn.commit()
-        return {"users_deleted": users_deleted, "orgs_deleted": orgs_deleted}
-    except Exception:
-        conn.rollback()
-        raise
-
-def _safe_int(value: str | None) -> int:
-    if value is None or value == "":
-        return 0
-    try:
-        return int(value)
-    except ValueError:
-        return 0
-
-def getCacheStatus(conn) -> dict[str, Any]:
-    """
-    Возвращает состояние кэша: counts, last refresh, schema_version.
-    """
-    ensureSchema(conn)
-    usersCount, orgCount = getCounts(conn)
-    status = {
-        "schema_version": getMetaValue(conn, "schema_version"),
-        "users_count": usersCount,
-        "org_count": orgCount,
-        "users_last_refresh_at": getMetaValue(conn, "users_last_refresh_at"),
-        "org_last_refresh_at": getMetaValue(conn, "org_last_refresh_at"),
-        "source_api_base": getMetaValue(conn, "source_api_base"),
-    }
-
-    meta_users_count = _safe_int(getMetaValue(conn, "users_count"))
-    meta_org_count = _safe_int(getMetaValue(conn, "org_count"))
-    status["meta_users_count"] = meta_users_count
-    status["meta_org_count"] = meta_org_count
-    return status
+        return {
+            "users_inserted": inserted_users,
+            "users_updated": updated_users,
+            "users_failed": failed_users,
+            "users_skipped_deleted": skipped_deleted_users,
+            "orgs_inserted": inserted_orgs,
+            "orgs_updated": updated_orgs,
+            "orgs_failed": failed_orgs,
+            "users_count": users_count,
+            "org_count": org_count,
+            "pages_users": pages_users,
+            "pages_orgs": pages_orgs,
+        }

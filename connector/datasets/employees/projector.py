@@ -3,6 +3,29 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from connector.domain.models import Identity
+from connector.domain.validation.row_rules import normalize_whitespace
+
+
+def build_match_key(
+    last_name: str | None,
+    first_name: str | None,
+    middle_name: str | None,
+    personnel_number: str | None,
+) -> str:
+    """
+    Назначение:
+        Построить match_key для датасета employees.
+
+    Контракт:
+        На входе — сырые значения полей; на выходе — строка вида "last|first|middle|personnel".
+    """
+    parts = [
+        normalize_whitespace(last_name) or "",
+        normalize_whitespace(first_name) or "",
+        normalize_whitespace(middle_name) or "",
+        normalize_whitespace(personnel_number) or "",
+    ]
+    return "|".join(parts)
 
 class EmployeesProjector:
     """

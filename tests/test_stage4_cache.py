@@ -52,14 +52,12 @@ def make_transport(responder):
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.main as cli_module
-    import connector.usecases.cache_refresh_service as cache_service_module
 
     def factory(*args, **kwargs):
         kwargs["transport"] = transport
         return AnkeyApiClient(*args, **kwargs)
 
     monkeypatch.setattr(cli_module, "AnkeyApiClient", factory)
-    monkeypatch.setattr(cache_service_module, "AnkeyApiClient", factory)
 
 def test_cache_schema_created(tmp_path: Path):
     cache_dir = tmp_path / "cache"

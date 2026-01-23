@@ -34,22 +34,19 @@ class CacheCommandServiceProtocol(Protocol):
 
     def refresh(
         self,
-        conn,
-        settings,
         page_size: int,
         max_pages: int,
-        timeout_seconds: float,
-        retries: int,
-        retry_backoff_seconds: float,
         logger,
         report,
         run_id: str,
-        api_transport=None,
         include_deleted: bool = False,
         report_items_limit: int = 200,
+        api_base_url: str | None = None,
+        retries: int | None = None,
+        retry_backoff_seconds: float | None = None,
     ) -> int: ...
 
-    def status(self, conn, logger, report, run_id: str) -> tuple[int, dict]: ...
-    def clear(self, conn, logger, report, run_id: str) -> tuple[int, dict]: ...
+    def status(self, logger, report, run_id: str) -> tuple[int, dict]: ...
+    def clear(self, logger, report, run_id: str) -> tuple[int, dict]: ...
 
 __all__ = ["ImportPlanServiceProtocol", "CacheCommandServiceProtocol"]

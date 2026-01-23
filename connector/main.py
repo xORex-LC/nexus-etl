@@ -12,7 +12,10 @@ import typer
 from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
 from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.cache.db import ensureSchema, getCacheDbPath, openCacheDb
+from connector.infra.cache.sqlite_cache_repository import SqliteCacheRepository
+from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
 from connector.usecases.cache_command_service import CacheCommandService
+from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.config.config import Settings, loadSettings
 from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
@@ -27,6 +30,7 @@ from connector.domain.validation.pipeline import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.validation.registry import ValidatorRegistry
 from connector.datasets.registry import get_spec
+from connector.datasets.cache_registry import get_cache_adapters
 from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
 from connector.domain.ports.secrets import SecretProviderProtocol
 
@@ -256,28 +260,40 @@ def runCacheRefreshCommand(
             return 2
 
         try:
-            service: CacheCommandServiceProtocol = CacheCommandService()
+            base_url = f"https://{settings.host}:{settings.port}"
+            client = AnkeyApiClient(
+                baseUrl=base_url,
+                username=settings.api_username or "",
+                password=settings.api_password or "",
+                timeoutSeconds=timeoutSeconds or settings.timeout_seconds,
+                tlsSkipVerify=settings.tls_skip_verify,
+                caFile=settings.ca_file,
+                retries=retries or settings.retries,
+                retryBackoffSeconds=retryBackoffSeconds or settings.retry_backoff_seconds,
+                transport=apiTransport,
+            )
+            client.resetRetryAttempts()
+
+            cache_repo = SqliteCacheRepository(conn)
+            reader = AnkeyTargetPagedReader(client)
+            adapters = get_cache_adapters()
+            cache_refresh = CacheRefreshUseCase(reader, cache_repo, adapters)
+            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo, cache_refresh)
+
             return service.refresh(
-                conn=conn,
-                settings=settings,
                 page_size=pageSize or settings.page_size,
                 max_pages=maxPages or settings.max_pages,
-                timeout_seconds=timeoutSeconds or settings.timeout_seconds,
-                retries=retries or settings.retries,
-                retry_backoff_seconds=retryBackoffSeconds or settings.retry_backoff_seconds,
                 logger=logger,
                 report=report,
                 run_id=runId,
-                api_transport=apiTransport,
                 include_deleted=includeDeleted if includeDeleted is not None else settings.include_deleted,
                 report_items_limit=reportItemsLimit or settings.report_items_limit,
+                api_base_url=base_url,
+                retries=retries or settings.retries,
+                retry_backoff_seconds=retryBackoffSeconds or settings.retry_backoff_seconds,
             )
         except ValueError as exc:
             typer.echo(f"ERROR: {exc}", err=True)
-            return 2
-        except ApiError as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
-            typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
             return 2
         except Exception as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
@@ -309,8 +325,9 @@ def runCacheStatusCommand(ctx: typer.Context) -> None:
             return 2
 
         try:
-            service: CacheCommandServiceProtocol = CacheCommandService()
-            code, status = service.status(conn, logger, report, runId)
+            cache_repo = SqliteCacheRepository(conn)
+            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo)
+            code, status = service.status(logger, report, runId)
             if code != 0:
                 typer.echo("ERROR: cache status failed (see logs/report)", err=True)
                 return code
@@ -347,8 +364,9 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
             return 2
 
         try:
-            service: CacheCommandServiceProtocol = CacheCommandService()
-            code, _cleared = service.clear(conn, logger, report, runId)
+            cache_repo = SqliteCacheRepository(conn)
+            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo)
+            code, _cleared = service.clear(logger, report, runId)
             if code != 0:
                 typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
                 return code

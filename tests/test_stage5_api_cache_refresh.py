@@ -18,7 +18,6 @@ def make_transport(responder: Callable[[httpx.Request], httpx.Response]) -> http
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.main as cli_module
-    import connector.usecases.cache_refresh_service as cache_service_module
     from connector.infra.http.ankey_client import AnkeyApiClient
 
     def factory(*args, **kwargs):
@@ -26,7 +25,6 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
         return AnkeyApiClient(*args, **kwargs)
 
     monkeypatch.setattr(cli_module, "AnkeyApiClient", factory)
-    monkeypatch.setattr(cache_service_module, "AnkeyApiClient", factory)
 
 
 def test_check_api_ok(monkeypatch, tmp_path: Path):

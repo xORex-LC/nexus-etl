@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from connector.domain.validation.row_rules import normalize_whitespace
+from connector.datasets.employees.projector import build_match_key
+from connector.datasets.cache_sync import CacheSyncAdapterProtocol
+from connector.domain.ports.cache_repo import CacheRepositoryProtocol
+
 
 def _to_str_or_none(value: Any) -> str | None:
     if value is None:
@@ -16,6 +20,7 @@ def _to_str_or_none(value: Any) -> str | None:
         return trimmed or None
     return str(value)
 
+
 def _to_int_or_none(value: Any) -> int | None:
     if value is None or value == "":
         return None
@@ -27,20 +32,13 @@ def _to_int_or_none(value: Any) -> int | None:
         return int(value.strip())
     return int(value)
 
-def _build_match_key(last_name: str | None, first_name: str | None, middle_name: str | None, personnel_number: str | None) -> str:
-    parts = [
-        normalize_whitespace(_to_str_or_none(last_name)) or "",
-        normalize_whitespace(_to_str_or_none(first_name)) or "",
-        normalize_whitespace(_to_str_or_none(middle_name)) or "",
-        normalize_whitespace(_to_str_or_none(personnel_number)) or "",
-    ]
-    return "|".join(parts)
 
 def _get_first(item: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         if key in item:
             return item[key]
     return None
+
 
 def _require(value: Any, field: str) -> Any:
     """
@@ -51,6 +49,7 @@ def _require(value: Any, field: str) -> Any:
     if isinstance(value, str) and value.strip() == "":
         raise ValueError(f"Missing required field: {field}")
     return value
+
 
 def _to_bool_int(value: Any) -> int | None:
     if value is None:
@@ -67,7 +66,16 @@ def _to_bool_int(value: Any) -> int | None:
             return 0
     raise ValueError("Invalid boolean value for is_logon_disabled")
 
-def mapUserFromApi(item: dict[str, Any]) -> dict[str, Any]:
+
+def _is_deleted_flag(raw_item: dict[str, Any]) -> bool:
+    status_raw = _get_first(raw_item, "accountStatus", "account_status")
+    deletion_raw = _get_first(raw_item, "deletionDate", "deletion_date")
+    status_norm = str(status_raw).strip().lower() if status_raw is not None else ""
+    deletion_norm = str(deletion_raw).strip().lower() if deletion_raw is not None else None
+    return status_norm == "deleted" or deletion_norm not in (None, "", "null")
+
+
+def map_user_from_api(item: dict[str, Any]) -> dict[str, Any]:
     _id = _to_str_or_none(_get_first(item, "_id", "id"))
     _ouid = _to_int_or_none(_get_first(item, "_ouid", "ouid", "userId"))
     _require(_id, "_id")
@@ -87,7 +95,7 @@ def mapUserFromApi(item: dict[str, Any]) -> dict[str, Any]:
         "organization_id",
     )
 
-    match_key = _build_match_key(last_name, first_name, middle_name, personnel_number)
+    match_key = build_match_key(last_name, first_name, middle_name, personnel_number)
     if not match_key or match_key == "|||":
         raise ValueError("Cannot build match_key for user")
 
@@ -113,15 +121,25 @@ def mapUserFromApi(item: dict[str, Any]) -> dict[str, Any]:
         "updated_at": _to_str_or_none(_get_first(item, "updated_at", "updatedAt")),
     }
 
-def mapOrgFromApi(item: dict[str, Any]) -> dict[str, Any]:
-    _ouid = _to_int_or_none(_get_first(item, "_ouid", "ouid", "id"))
-    if _ouid is None:
-        raise ValueError("Organization must contain _ouid")
 
-    return {
-        "_ouid": _ouid,
-        "code": _to_str_or_none(item.get("code")),
-        "name": _to_str_or_none(item.get("name")),
-        "parent_id": _to_int_or_none(_get_first(item, "parent_id", "parentId")),
-        "updated_at": _to_str_or_none(_get_first(item, "updated_at", "updatedAt")),
-    }
+class EmployeesCacheSyncAdapter(CacheSyncAdapterProtocol):
+    """
+    Назначение/ответственность:
+        Синхронизация кэша сотрудников с целевой системой.
+    """
+
+    dataset = "employees"
+    list_path = "/ankey/managed/user"
+    report_entity = "user"
+
+    def get_item_key(self, raw_item: dict[str, Any]) -> str:
+        return str(_get_first(raw_item, "_id", "id") or "")
+
+    def is_deleted(self, raw_item: dict[str, Any]) -> bool:
+        return _is_deleted_flag(raw_item)
+
+    def map_target_to_cache(self, raw_item: dict[str, Any]) -> dict[str, Any]:
+        return map_user_from_api(raw_item)
+
+    def upsert(self, repo: CacheRepositoryProtocol, mapped_item: dict[str, Any]) -> str:
+        return repo.upsert_user(mapped_item)

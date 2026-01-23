@@ -5,8 +5,9 @@ from typing import Any, Protocol
 
 from ..models import CsvRow, EmployeeInput, RowRef, ValidationErrorItem, ValidationRowResult
 from .deps import DatasetValidationState, ValidationDependencies
-from .row_rules import FIELD_RULES, RowRule, normalize_whitespace
+from .row_rules import FIELD_RULES, RowRule
 from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
+from connector.datasets.employees.projector import build_match_key
 
 class DatasetRule(Protocol):
     """
@@ -70,7 +71,12 @@ class RowValidator:
             usr_org_tab_num=values.get("usrOrgTabNum"),
         )
 
-        match_key = build_match_key(employee)
+        match_key = build_match_key(
+            employee.last_name,
+            employee.first_name,
+            employee.middle_name,
+            employee.personnel_number,
+        )
         match_key_complete = all(
             [employee.last_name, employee.first_name, employee.middle_name, employee.personnel_number]
         )
@@ -117,15 +123,6 @@ class DatasetValidator:
         """
         for rule in self.rules:
             rule.apply(employee, result, self.state, self.deps)
-
-def build_match_key(employee: EmployeeInput) -> str:
-    parts = [
-        normalize_whitespace(employee.last_name) or "",
-        normalize_whitespace(employee.first_name) or "",
-        normalize_whitespace(employee.middle_name) or "",
-        normalize_whitespace(employee.personnel_number) or "",
-    ]
-    return "|".join(parts)
 
 class ValidatorFactory:
     """
