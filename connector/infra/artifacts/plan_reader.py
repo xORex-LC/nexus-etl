@@ -60,12 +60,6 @@ def _build_plan(meta_raw: dict, summary_raw: dict, items_raw: list, path: str) -
         if not isinstance(raw, dict):
             continue
         desired_raw = raw.get("desired_state") if isinstance(raw.get("desired_state"), dict) else {}
-        legacy_dataset = _get_str(raw.get("dataset"))
-        legacy_entity = _get_str(raw.get("entity_type"))
-        if legacy_dataset and legacy_dataset != dataset:
-            raise ValueError(f"Plan item dataset mismatch: meta={dataset}, item={legacy_dataset}")
-        if legacy_entity and legacy_entity != dataset:
-            raise ValueError(f"Plan item entity_type mismatch: meta={dataset}, item={legacy_entity}")
         if isMaskedSecret(desired_raw.get("password")):
             desired_raw = {k: v for k, v in desired_raw.items() if k != "password"}
         items.append(
