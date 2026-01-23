@@ -13,34 +13,31 @@ class CacheStatusUseCase:
         self.cache_repo = cache_repo
 
     def status(self, dataset: str | None = None) -> dict:
-        meta = self.cache_repo.get_meta(None).values
+        global_meta = self.cache_repo.get_meta(None).values
         if dataset:
             counts = self.cache_repo.count_by_table(dataset)
             return {
                 "dataset": dataset,
-                "schema_version": meta.get("schema_version"),
+                "schema_version": global_meta.get("schema_version"),
                 "counts": counts,
                 "meta": self.cache_repo.get_meta(dataset).values,
             }
 
-        users_count = self.cache_repo.count("employees")
-        org_count = self.cache_repo.count("organizations")
+        by_dataset: dict[str, dict] = {}
+        total = 0
+        for name in self.cache_repo.list_datasets():
+            counts = self.cache_repo.count_by_table(name)
+            dataset_total = sum(counts.values())
+            total += dataset_total
+            by_dataset[name] = {
+                "count": dataset_total,
+                "counts": counts,
+                "meta": self.cache_repo.get_meta(name).values,
+            }
+
         return {
-            "schema_version": meta.get("schema_version"),
-            "users_count": users_count,
-            "org_count": org_count,
-            "users_last_refresh_at": meta.get("users_last_refresh_at"),
-            "org_last_refresh_at": meta.get("org_last_refresh_at"),
-            "source_api_base": meta.get("source_api_base"),
-            "meta_users_count": _safe_int(meta.get("users_count")),
-            "meta_org_count": _safe_int(meta.get("org_count")),
+            "schema_version": global_meta.get("schema_version"),
+            "meta": global_meta,
+            "by_dataset": by_dataset,
+            "total": total,
         }
-
-
-def _safe_int(value: str | None) -> int:
-    if value is None or value == "":
-        return 0
-    try:
-        return int(value)
-    except ValueError:
-        return 0

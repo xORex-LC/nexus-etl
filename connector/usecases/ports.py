@@ -44,6 +44,7 @@ class CacheCommandServiceProtocol(Protocol):
         api_base_url: str | None = None,
         retries: int | None = None,
         retry_backoff_seconds: float | None = None,
+        dataset: str | None = None,
     ) -> int: ...
 
     def status(self, logger, report, run_id: str, dataset: str | None = None) -> tuple[int, dict]: ...

@@ -27,8 +27,6 @@ class ReportMeta:
     cache_dir: str | None = None
     report_dir: str | None = None
     api_base_url: str | None = None
-    pages_users: int | None = None
-    pages_orgs: int | None = None
     page_size: int | None = None
     max_pages: int | None = None
     timeout_seconds: float | None = None
@@ -36,7 +34,6 @@ class ReportMeta:
     retries_used: int | None = None
     retry_backoff_seconds: float | None = None
     include_deleted: bool | None = None
-    skipped_deleted_users: int | None = None
     plan_file: str | None = None
     plan_path: str | None = None
     stop_on_first_error: bool | None = None
@@ -65,6 +62,7 @@ class ReportSummary:
     warnings: int = 0
     error_stats: dict[str, int] = field(default_factory=dict)
     retries_total: int = 0
+    by_dataset: dict[str, dict[str, int]] = field(default_factory=dict)
 
 @dataclass
 class Report:

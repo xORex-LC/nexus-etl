@@ -206,8 +206,8 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
     report_path = report_dir / "report_cache-refresh_api-refresh.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["failed"] == 0
-    assert report["meta"]["pages_users"] == 2
-    assert report["meta"]["pages_orgs"] == 1
+    assert report["summary"]["by_dataset"]["employees"]["pages"] == 2
+    assert report["summary"]["by_dataset"]["organizations"]["pages"] == 1
 
 
 def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):

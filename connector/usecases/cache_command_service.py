@@ -38,6 +38,7 @@ class CacheCommandService(CacheCommandServiceProtocol):
         api_base_url: str | None = None,
         retries: int | None = None,
         retry_backoff_seconds: float | None = None,
+        dataset: str | None = None,
     ) -> int:
         if self.cache_refresh is None:
             raise ValueError("Cache refresh usecase is not configured")
@@ -52,15 +53,16 @@ class CacheCommandService(CacheCommandServiceProtocol):
             api_base_url=api_base_url,
             retries=retries,
             retry_backoff_seconds=retry_backoff_seconds,
+            dataset=dataset,
         )
 
-        failed = summary["users_failed"] + summary["orgs_failed"]
-        report.summary.created = summary["users_inserted"] + summary["orgs_inserted"]
-        report.summary.updated = summary["users_updated"] + summary["orgs_updated"]
-        report.summary.failed = failed
-        if "users_skipped_deleted" in summary:
-            report.summary.skipped = summary["users_skipped_deleted"]
-        return 0 if failed == 0 else 1
+        total = summary.get("total", {})
+        report.summary.created = int(total.get("inserted", 0))
+        report.summary.updated = int(total.get("updated", 0))
+        report.summary.failed = int(total.get("failed", 0))
+        report.summary.skipped = int(total.get("skipped", 0))
+        report.summary.by_dataset = summary.get("by_dataset", {})
+        return 0 if report.summary.failed == 0 else 1
 
     def status(self, logger, report, run_id: str, dataset: str | None = None) -> tuple[int, dict]:
         try:
@@ -81,7 +83,7 @@ class CacheCommandService(CacheCommandServiceProtocol):
                 logging.INFO,
                 run_id,
                 "cache",
-                f"cache clear: users={cleared.get('users_deleted')} orgs={cleared.get('orgs_deleted')}",
+                f"cache clear: {cleared}",
             )
             report.items.append({"cleared": cleared})
             report.summary.failed = 0

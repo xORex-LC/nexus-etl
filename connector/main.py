@@ -245,6 +245,7 @@ def runCacheRefreshCommand(
     apiTransport=None,
     includeDeleted: bool | None = None,
     reportItemsLimit: int | None = None,
+    dataset: str | None = None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -287,11 +288,13 @@ def runCacheRefreshCommand(
             ensure_cache_ready(engine, handler_registry)
 
             cache_repo = SqliteCacheRepository(engine, handler_registry)
+            if dataset is not None and dataset not in cache_repo.list_datasets():
+                typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
+                return 2
             reader = AnkeyTargetPagedReader(client)
             adapters = list_cache_sync_adapters()
             cache_refresh = CacheRefreshUseCase(reader, cache_repo, adapters)
-            cache_clear = CacheClearUseCase(cache_repo, adapters)
-            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo, cache_refresh, cache_clear=cache_clear)
+            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo, cache_refresh)
 
             return service.refresh(
                 page_size=pageSize or settings.page_size,
@@ -304,6 +307,7 @@ def runCacheRefreshCommand(
                 api_base_url=base_url,
                 retries=retries or settings.retries,
                 retry_backoff_seconds=retryBackoffSeconds or settings.retry_backoff_seconds,
+                dataset=dataset,
             )
         except ValueError as exc:
             typer.echo(f"ERROR: {exc}", err=True)
@@ -324,7 +328,7 @@ def runCacheRefreshCommand(
         runner=execute,
     )
 
-def runCacheStatusCommand(ctx: typer.Context) -> None:
+def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
@@ -345,17 +349,26 @@ def runCacheStatusCommand(ctx: typer.Context) -> None:
             ensure_cache_ready(engine, handler_registry)
 
             cache_repo = SqliteCacheRepository(engine, handler_registry)
+            if dataset is not None and dataset not in cache_repo.list_datasets():
+                typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
+                return 2
             service: CacheCommandServiceProtocol = CacheCommandService(cache_repo)
-            code, status = service.status(logger, report, runId)
+            code, status = service.status(logger, report, runId, dataset=dataset)
             if code != 0:
                 typer.echo("ERROR: cache status failed (see logs/report)", err=True)
                 return code
-            typer.echo(
-                "schema_version={schema_version} users={users_count} orgs={org_count} "
-                "users_last_refresh_at={users_last_refresh_at} org_last_refresh_at={org_last_refresh_at}".format(
-                    **status
+            if "by_dataset" in status:
+                schema_version = status.get("schema_version")
+                total = status.get("total")
+                typer.echo(f"schema_version={schema_version} total={total}")
+                for name, info in status["by_dataset"].items():
+                    typer.echo(f"{name}: count={info.get('count')} meta={info.get('meta')}")
+            else:
+                typer.echo(
+                    "schema_version={schema_version} dataset={dataset} counts={counts} meta={meta}".format(
+                        **status
+                    )
                 )
-            )
             return 0
         finally:
             conn.close()
@@ -369,7 +382,7 @@ def runCacheStatusCommand(ctx: typer.Context) -> None:
         runner=execute,
     )
 
-def runCacheClearCommand(ctx: typer.Context) -> None:
+def runCacheClearCommand(ctx: typer.Context, dataset: str | None = None) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
@@ -390,10 +403,12 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
             ensure_cache_ready(engine, handler_registry)
 
             cache_repo = SqliteCacheRepository(engine, handler_registry)
-            adapters = list_cache_sync_adapters()
-            cache_clear = CacheClearUseCase(cache_repo, adapters)
+            if dataset is not None and dataset not in cache_repo.list_datasets():
+                typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
+                return 2
+            cache_clear = CacheClearUseCase(cache_repo)
             service: CacheCommandServiceProtocol = CacheCommandService(cache_repo, cache_clear=cache_clear)
-            code, _cleared = service.clear(logger, report, runId)
+            code, _cleared = service.clear(logger, report, runId, dataset=dataset)
             if code != 0:
                 typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
                 return code
@@ -901,6 +916,7 @@ def cacheRefresh(
     timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
     retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API requests"),
     retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff seconds for retries"),
+    dataset: str | None = typer.Option(None, "--dataset", help="Limit refresh to a specific dataset"),
     includeDeleted: bool | None = typer.Option(
         None,
         "--include-deleted/--no-include-deleted",
@@ -918,15 +934,22 @@ def cacheRefresh(
         retryBackoffSeconds=retryBackoffSeconds if retryBackoffSeconds is not None else ctx.obj["settings"].retry_backoff_seconds,
         includeDeleted=includeDeleted if includeDeleted is not None else ctx.obj["settings"].include_deleted,
         reportItemsLimit=reportItemsLimit if reportItemsLimit is not None else ctx.obj["settings"].report_items_limit,
+        dataset=dataset,
     )
 
 @cacheApp.command("status")
-def cacheStatus(ctx: typer.Context):
-    runCacheStatusCommand(ctx)
+def cacheStatus(
+    ctx: typer.Context,
+    dataset: str | None = typer.Option(None, "--dataset", help="Show status for a specific dataset"),
+):
+    runCacheStatusCommand(ctx, dataset=dataset)
 
 @cacheApp.command("clear")
-def cacheClear(ctx: typer.Context):
-    runCacheClearCommand(ctx)
+def cacheClear(
+    ctx: typer.Context,
+    dataset: str | None = typer.Option(None, "--dataset", help="Clear a specific dataset"),
+):
+    runCacheClearCommand(ctx, dataset=dataset)
 
 app.add_typer(cacheApp, name="cache")
 app.add_typer(importApp, name="import")

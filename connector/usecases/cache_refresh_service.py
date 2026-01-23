@@ -11,10 +11,9 @@ from connector.domain.ports.target_read import TargetPagedReaderProtocol
 from connector.infra.logging.setup import logEvent
 
 
-def _append_item(report, dataset: str, entity_type: str, key: str, status: str, error: str | None = None) -> dict:
+def _append_item(report, dataset: str, key: str, status: str, error: str | None = None) -> dict:
     item = {
         "dataset": dataset,
-        "entity_type": entity_type,
         "key": key,
         "status": status,
         "errors": [] if error is None else [{"code": "CACHE_ERROR", "field": None, "message": error}],
@@ -27,7 +26,6 @@ def _append_item(report, dataset: str, entity_type: str, key: str, status: str, 
 def _append_item_limited(
     report,
     dataset: str,
-    entity_type: str,
     key: str,
     status: str,
     error: str | None,
@@ -42,7 +40,7 @@ def _append_item_limited(
         except Exception:
             pass
         return
-    _append_item(report, dataset, entity_type, key, status, error)
+    _append_item(report, dataset, key, status, error)
 
 
 class CacheRefreshUseCase:
@@ -91,10 +89,7 @@ class CacheRefreshUseCase:
         )
         start_monotonic = time.monotonic()
 
-        inserted_users = updated_users = failed_users = skipped_deleted_users = 0
-        deleted_included_users = 0
-        inserted_orgs = updated_orgs = failed_orgs = 0
-        pages_users = pages_orgs = 0
+        stats_by_dataset: dict[str, dict[str, int]] = {}
         error_stats: dict[str, int] = {}
 
         active_adapters = self.adapters
@@ -106,16 +101,23 @@ class CacheRefreshUseCase:
         try:
             with self.cache_repo.transaction():
                 for adapter in active_adapters:
+                    stats = stats_by_dataset.setdefault(
+                        adapter.dataset,
+                        {
+                            "inserted": 0,
+                            "updated": 0,
+                            "failed": 0,
+                            "skipped": 0,
+                            "pages": 0,
+                        },
+                    )
                     for page_result in self.target_reader.iter_pages(adapter.list_path, page_size, max_pages):
                         if not page_result.ok:
                             code = page_result.error_code.name if page_result.error_code else "API_ERROR"
                             error_stats[code] = error_stats.get(code, 0) + 1
                             raise RuntimeError(page_result.error_message or "Target read failed")
 
-                        if adapter.report_entity == "user":
-                            pages_users = max(pages_users, page_result.page)
-                        if adapter.report_entity == "org":
-                            pages_orgs = max(pages_orgs, page_result.page)
+                        stats["pages"] = max(stats["pages"], page_result.page)
 
                         items = page_result.items or []
                         logEvent(
@@ -130,13 +132,12 @@ class CacheRefreshUseCase:
                             try:
                                 if adapter.is_deleted(raw):
                                     if include_deleted:
-                                        deleted_included_users += 1
+                                        pass
                                     else:
-                                        skipped_deleted_users += 1
+                                        stats["skipped"] += 1
                                         _append_item_limited(
                                             report,
                                             adapter.dataset,
-                                            adapter.report_entity,
                                             key,
                                             "skipped",
                                             None,
@@ -146,75 +147,74 @@ class CacheRefreshUseCase:
 
                                 mapped = adapter.map_target_to_cache(raw)
                                 result = self.cache_repo.upsert(adapter.dataset, mapped)
-                                if adapter.report_entity == "user":
-                                    if result == UpsertResult.INSERTED:
-                                        inserted_users += 1
-                                    else:
-                                        updated_users += 1
-                                if adapter.report_entity == "org":
-                                    if result == UpsertResult.INSERTED:
-                                        inserted_orgs += 1
-                                    else:
-                                        updated_orgs += 1
+                                if result == UpsertResult.INSERTED:
+                                    stats["inserted"] += 1
+                                else:
+                                    stats["updated"] += 1
                                 _append_item_limited(
                                     report,
                                     adapter.dataset,
-                                    adapter.report_entity,
                                     key,
                                     result.value,
                                     None,
                                     report_items_limit,
                                 )
                             except Exception as exc:
-                                if adapter.report_entity == "user":
-                                    failed_users += 1
-                                if adapter.report_entity == "org":
-                                    failed_orgs += 1
+                                stats["failed"] += 1
                                 logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to upsert {key}: {exc}")
                                 _append_item(
                                     report,
                                     adapter.dataset,
-                                    adapter.report_entity,
                                     key,
                                     "failed",
                                     str(exc),
                                 )
 
-                users_count = self.cache_repo.count("employees") if dataset in (None, "employees") else 0
-                org_count = self.cache_repo.count("organizations") if dataset in (None, "organizations") else 0
                 now_iso = getNowIso()
 
-                self.cache_repo.set_meta(None, "users_count", str(users_count))
-                self.cache_repo.set_meta(None, "org_count", str(org_count))
-                self.cache_repo.set_meta(None, "users_last_refresh_at", now_iso)
-                self.cache_repo.set_meta(None, "org_last_refresh_at", now_iso)
+                for name in stats_by_dataset.keys():
+                    count_total = self.cache_repo.count(name)
+                    stats_by_dataset[name]["count_total"] = count_total
+                    self.cache_repo.set_meta(name, "last_refresh_at", now_iso)
+                    self.cache_repo.set_meta(name, "last_refresh_run_id", run_id)
+                    self.cache_repo.set_meta(name, "last_refresh_pages", str(stats_by_dataset[name]["pages"]))
+                    self.cache_repo.set_meta(
+                        name,
+                        "last_refresh_items",
+                        str(
+                            stats_by_dataset[name]["inserted"]
+                            + stats_by_dataset[name]["updated"]
+                            + stats_by_dataset[name]["failed"]
+                            + stats_by_dataset[name]["skipped"]
+                        ),
+                    )
+                    self.cache_repo.set_meta(name, "count_total", str(count_total))
                 if api_base_url:
                     self.cache_repo.set_meta(None, "source_api_base", api_base_url)
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
             raise
 
-        report.meta.pages_users = pages_users or None
-        report.meta.pages_orgs = pages_orgs or None
         report.meta.api_base_url = api_base_url
         report.meta.page_size = page_size
         report.meta.max_pages = max_pages
         report.meta.retries = retries
         report.meta.retry_backoff_seconds = retry_backoff_seconds
         report.meta.include_deleted = include_deleted
-        report.meta.skipped_deleted_users = deleted_included_users if include_deleted else skipped_deleted_users
 
         retries_used = 0
         if hasattr(self.target_reader, "client") and hasattr(self.target_reader.client, "getRetryAttempts"):
             retries_used = self.target_reader.client.getRetryAttempts() or 0
         report.meta.retries_used = retries_used
 
-        report.summary.created = inserted_users + inserted_orgs
-        report.summary.updated = updated_users + updated_orgs
-        report.summary.failed = failed_users + failed_orgs
+        totals = _sum_stats(stats_by_dataset)
+        report.summary.created = totals["inserted"]
+        report.summary.updated = totals["updated"]
+        report.summary.failed = totals["failed"]
         report.summary.error_stats = error_stats
-        report.summary.skipped = skipped_deleted_users
+        report.summary.skipped = totals["skipped"]
         report.summary.retries_total = retries_used
+        report.summary.by_dataset = stats_by_dataset
 
         duration_ms = int((time.monotonic() - start_monotonic) * 1000)
         logEvent(
@@ -222,19 +222,20 @@ class CacheRefreshUseCase:
             logging.INFO,
             run_id,
             "cache",
-            f"cache-refresh done users_count={users_count} org_count={org_count} duration_ms={duration_ms}",
+            f"cache-refresh done datasets={len(stats_by_dataset)} duration_ms={duration_ms}",
         )
 
         return {
-            "users_inserted": inserted_users,
-            "users_updated": updated_users,
-            "users_failed": failed_users,
-            "users_skipped_deleted": skipped_deleted_users,
-            "orgs_inserted": inserted_orgs,
-            "orgs_updated": updated_orgs,
-            "orgs_failed": failed_orgs,
-            "users_count": users_count,
-            "org_count": org_count,
-            "pages_users": pages_users,
-            "pages_orgs": pages_orgs,
+            "by_dataset": stats_by_dataset,
+            "total": totals,
         }
+
+
+def _sum_stats(stats_by_dataset: dict[str, dict[str, int]]) -> dict[str, int]:
+    totals = {"inserted": 0, "updated": 0, "failed": 0, "skipped": 0}
+    for stats in stats_by_dataset.values():
+        totals["inserted"] += int(stats.get("inserted", 0))
+        totals["updated"] += int(stats.get("updated", 0))
+        totals["failed"] += int(stats.get("failed", 0))
+        totals["skipped"] += int(stats.get("skipped", 0))
+    return totals

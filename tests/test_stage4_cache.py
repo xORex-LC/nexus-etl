@@ -229,8 +229,9 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
     report_path = report_dir / "report_cache-status_status-1.json"
 
     assert result.exit_code == 0
-    assert "users=1" in result.stdout
-    assert "orgs=1" in result.stdout
+    assert "total=2" in result.stdout
+    assert "employees: count=1" in result.stdout
+    assert "organizations: count=1" in result.stdout
     assert report_path.exists()
 
 def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):

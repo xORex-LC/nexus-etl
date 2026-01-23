@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.domain.models import Identity, MatchResult, MatchStatus
-from connector.infra.cache.repo import findUsersByMatchKey
+from connector.infra.cache.legacy_queries import findUsersByMatchKey
 from .protocols import IdentityLookup
 
 

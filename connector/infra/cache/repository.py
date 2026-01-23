@@ -39,6 +39,9 @@ class SqliteCacheRepository(CacheRepositoryProtocol):
         handler = self.registry.get(dataset)
         handler.clear(self.engine)
 
+    def list_datasets(self) -> list[str]:
+        return [handler.dataset for handler in self.registry.list()]
+
     def get_meta(self, dataset: str | None = None) -> CacheMeta:
         if dataset is None:
             rows = self.engine.fetchall("SELECT key, value FROM meta")
@@ -63,3 +66,6 @@ class SqliteCacheRepository(CacheRepositoryProtocol):
             """,
             (full_key, value),
         )
+
+    def reset_meta(self, dataset: str) -> None:
+        self.engine.execute("DELETE FROM meta WHERE key LIKE ?", (f"{dataset}.%",))

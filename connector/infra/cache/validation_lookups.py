@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.domain.ports.lookups import OrgLookupProtocol
-from connector.infra.cache import repo
+from connector.infra.cache import legacy_queries
 
 class CacheOrgLookup(OrgLookupProtocol):
     """
@@ -21,5 +21,5 @@ class CacheOrgLookup(OrgLookupProtocol):
             Вход: ouid организации.
             Выход: запись организации или None.
         """
-        return repo.getOrgByOuid(self.conn, ouid)
+        return legacy_queries.getOrgByOuid(self.conn, ouid)
     
