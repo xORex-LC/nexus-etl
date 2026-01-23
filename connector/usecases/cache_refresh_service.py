@@ -6,7 +6,7 @@ from typing import Any
 
 from connector.common.time import getNowIso
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
-from connector.domain.ports.cache_repo import CacheRepositoryProtocol
+from connector.domain.ports.cache_repository import CacheRepositoryProtocol, UpsertResult
 from connector.domain.ports.target_read import TargetPagedReaderProtocol
 from connector.infra.logging.setup import logEvent
 
@@ -77,11 +77,11 @@ class CacheRefreshUseCase:
         api_base_url: str | None = None,
         retries: int | None = None,
         retry_backoff_seconds: float | None = None,
+        dataset: str | None = None,
     ) -> dict[str, Any]:
         """
         Обновляет кэш из целевой системы с пагинацией.
         """
-        self.cache_repo.ensure_schema()
         logEvent(
             logger,
             logging.INFO,
@@ -97,97 +97,100 @@ class CacheRefreshUseCase:
         pages_users = pages_orgs = 0
         error_stats: dict[str, int] = {}
 
+        active_adapters = self.adapters
+        if dataset is not None:
+            active_adapters = [a for a in self.adapters if a.dataset == dataset]
+            if not active_adapters:
+                raise ValueError(f"Unsupported cache dataset: {dataset}")
+
         try:
-            self.cache_repo.begin()
+            with self.cache_repo.transaction():
+                for adapter in active_adapters:
+                    for page_result in self.target_reader.iter_pages(adapter.list_path, page_size, max_pages):
+                        if not page_result.ok:
+                            code = page_result.error_code.name if page_result.error_code else "API_ERROR"
+                            error_stats[code] = error_stats.get(code, 0) + 1
+                            raise RuntimeError(page_result.error_message or "Target read failed")
 
-            for adapter in self.adapters:
-                for page_result in self.target_reader.iter_pages(adapter.list_path, page_size, max_pages):
-                    if not page_result.ok:
-                        code = page_result.error_code.name if page_result.error_code else "API_ERROR"
-                        error_stats[code] = error_stats.get(code, 0) + 1
-                        raise RuntimeError(page_result.error_message or "Target read failed")
+                        if adapter.report_entity == "user":
+                            pages_users = max(pages_users, page_result.page)
+                        if adapter.report_entity == "org":
+                            pages_orgs = max(pages_orgs, page_result.page)
 
-                    if adapter.report_entity == "user":
-                        pages_users = max(pages_users, page_result.page)
-                    if adapter.report_entity == "org":
-                        pages_orgs = max(pages_orgs, page_result.page)
+                        items = page_result.items or []
+                        logEvent(
+                            logger,
+                            logging.DEBUG,
+                            run_id,
+                            "api",
+                            f"GET {adapter.report_entity} page={page_result.page} rows={page_size} items={len(items)}",
+                        )
+                        for raw in items:
+                            key = adapter.get_item_key(raw)
+                            try:
+                                if adapter.is_deleted(raw):
+                                    if include_deleted:
+                                        deleted_included_users += 1
+                                    else:
+                                        skipped_deleted_users += 1
+                                        _append_item_limited(
+                                            report,
+                                            adapter.dataset,
+                                            adapter.report_entity,
+                                            key,
+                                            "skipped",
+                                            None,
+                                            report_items_limit,
+                                        )
+                                        continue
 
-                    items = page_result.items or []
-                    logEvent(
-                        logger,
-                        logging.DEBUG,
-                        run_id,
-                        "api",
-                        f"GET {adapter.report_entity} page={page_result.page} rows={page_size} items={len(items)}",
-                    )
-                    for raw in items:
-                        key = adapter.get_item_key(raw)
-                        try:
-                            if adapter.is_deleted(raw):
-                                if include_deleted:
-                                    deleted_included_users += 1
-                                else:
-                                    skipped_deleted_users += 1
-                                    _append_item_limited(
-                                        report,
-                                        adapter.dataset,
-                                        adapter.report_entity,
-                                        key,
-                                        "skipped",
-                                        None,
-                                        report_items_limit,
-                                    )
-                                    continue
+                                mapped = adapter.map_target_to_cache(raw)
+                                result = self.cache_repo.upsert(adapter.dataset, mapped)
+                                if adapter.report_entity == "user":
+                                    if result == UpsertResult.INSERTED:
+                                        inserted_users += 1
+                                    else:
+                                        updated_users += 1
+                                if adapter.report_entity == "org":
+                                    if result == UpsertResult.INSERTED:
+                                        inserted_orgs += 1
+                                    else:
+                                        updated_orgs += 1
+                                _append_item_limited(
+                                    report,
+                                    adapter.dataset,
+                                    adapter.report_entity,
+                                    key,
+                                    result.value,
+                                    None,
+                                    report_items_limit,
+                                )
+                            except Exception as exc:
+                                if adapter.report_entity == "user":
+                                    failed_users += 1
+                                if adapter.report_entity == "org":
+                                    failed_orgs += 1
+                                logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to upsert {key}: {exc}")
+                                _append_item(
+                                    report,
+                                    adapter.dataset,
+                                    adapter.report_entity,
+                                    key,
+                                    "failed",
+                                    str(exc),
+                                )
 
-                            mapped = adapter.map_target_to_cache(raw)
-                            status = adapter.upsert(self.cache_repo, mapped)
-                            if adapter.report_entity == "user":
-                                if status == "inserted":
-                                    inserted_users += 1
-                                else:
-                                    updated_users += 1
-                            if adapter.report_entity == "org":
-                                if status == "inserted":
-                                    inserted_orgs += 1
-                                else:
-                                    updated_orgs += 1
-                            _append_item_limited(
-                                report,
-                                adapter.dataset,
-                                adapter.report_entity,
-                                key,
-                                status,
-                                None,
-                                report_items_limit,
-                            )
-                        except Exception as exc:
-                            if adapter.report_entity == "user":
-                                failed_users += 1
-                            if adapter.report_entity == "org":
-                                failed_orgs += 1
-                            logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to upsert {key}: {exc}")
-                            _append_item(
-                                report,
-                                adapter.dataset,
-                                adapter.report_entity,
-                                key,
-                                "failed",
-                                str(exc),
-                            )
+                users_count = self.cache_repo.count("employees") if dataset in (None, "employees") else 0
+                org_count = self.cache_repo.count("organizations") if dataset in (None, "organizations") else 0
+                now_iso = getNowIso()
 
-            users_count, org_count = self.cache_repo.get_counts()
-            now_iso = getNowIso()
-
-            self.cache_repo.set_meta("users_count", str(users_count))
-            self.cache_repo.set_meta("org_count", str(org_count))
-            self.cache_repo.set_meta("users_last_refresh_at", now_iso)
-            self.cache_repo.set_meta("org_last_refresh_at", now_iso)
-            if api_base_url:
-                self.cache_repo.set_meta("source_api_base", api_base_url)
-
-            self.cache_repo.commit()
+                self.cache_repo.set_meta(None, "users_count", str(users_count))
+                self.cache_repo.set_meta(None, "org_count", str(org_count))
+                self.cache_repo.set_meta(None, "users_last_refresh_at", now_iso)
+                self.cache_repo.set_meta(None, "org_last_refresh_at", now_iso)
+                if api_base_url:
+                    self.cache_repo.set_meta(None, "source_api_base", api_base_url)
         except Exception as exc:
-            self.cache_repo.rollback()
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
             raise
 

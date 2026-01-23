@@ -6,7 +6,11 @@ import httpx
 from typer.testing import CliRunner
 
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.repo import getCounts
+from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.handlers.registry import CacheHandlerRegistry
+from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
+from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.repository import SqliteCacheRepository
 from connector.main import app
 
 runner = CliRunner()
@@ -187,7 +191,13 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        users_count, org_count = getCounts(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        repo = SqliteCacheRepository(engine, registry)
+        users_count = repo.count("employees")
+        org_count = repo.count("organizations")
     finally:
         conn.close()
     assert users_count == 2

@@ -3,8 +3,13 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from connector.infra.cache.db import ensureSchema, getCacheDbPath, openCacheDb
-from connector.infra.cache.repo import upsertOrganization, upsertUser
+from connector.infra.cache.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.handlers.registry import CacheHandlerRegistry
+from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
+from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.schema import ensure_cache_ready
+from connector.infra.cache.repository import SqliteCacheRepository
 from connector.main import app
 
 runner = CliRunner()
@@ -14,39 +19,48 @@ def _write_csv(path: Path, rows: list[list[str | None]]) -> None:
         for row in rows:
             f.write(";".join("" if v is None else str(v) for v in row) + "\n")
 
-def _seed_org(conn, ouid: int) -> None:
-    upsertOrganization(
-        conn,
-        {"_ouid": ouid, "code": f"ORG-{ouid}", "name": f"Org {ouid}", "parent_id": None, "updated_at": None},
-    )
-    conn.commit()
+def _build_repo(conn) -> SqliteCacheRepository:
+    engine = SqliteEngine(conn)
+    registry = CacheHandlerRegistry()
+    registry.register(EmployeesCacheHandler())
+    registry.register(OrganizationsCacheHandler())
+    ensure_cache_ready(engine, registry)
+    return SqliteCacheRepository(engine, registry)
 
-def _seed_user(conn, *, _id: str, match_key: str, phone: str, organization_id: int) -> None:
-    upsertUser(
-        conn,
-        {
-            "_id": _id,
-            "_ouid": int(_id.replace("u", "")) if _id.startswith("u") else 1,
-            "personnel_number": "100",
-            "last_name": "Doe",
-            "first_name": "John",
-            "middle_name": "M",
-            "match_key": match_key,
-            "mail": "john@example.com",
-            "user_name": "jdoe",
-            "phone": phone,
-            "usr_org_tab_num": "TAB-100",
-            "organization_id": organization_id,
-            "account_status": "active",
-            "deletion_date": None,
-            "_rev": None,
-            "manager_ouid": None,
-            "is_logon_disabled": False,
-            "position": "Engineer",
-            "updated_at": None,
-        },
-    )
-    conn.commit()
+
+def _seed_org(repo: SqliteCacheRepository, ouid: int) -> None:
+    with repo.transaction():
+        repo.upsert(
+            "organizations",
+            {"_ouid": ouid, "code": f"ORG-{ouid}", "name": f"Org {ouid}", "parent_id": None, "updated_at": None},
+        )
+
+def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: str, organization_id: int) -> None:
+    with repo.transaction():
+        repo.upsert(
+            "employees",
+            {
+                "_id": _id,
+                "_ouid": int(_id.replace("u", "")) if _id.startswith("u") else 1,
+                "personnel_number": "100",
+                "last_name": "Doe",
+                "first_name": "John",
+                "middle_name": "M",
+                "match_key": match_key,
+                "mail": "john@example.com",
+                "user_name": "jdoe",
+                "phone": phone,
+                "usr_org_tab_num": "TAB-100",
+                "organization_id": organization_id,
+                "account_status": "active",
+                "deletion_date": None,
+                "_rev": None,
+                "manager_ouid": None,
+                "is_logon_disabled": False,
+                "position": "Engineer",
+                "updated_at": None,
+            },
+        )
 
 def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
     log_dir = tmp_path / "logs"
@@ -75,8 +89,8 @@ def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
-        _seed_org(conn, ouid=10)
+        repo = _build_repo(conn)
+        _seed_org(repo, ouid=10)
     finally:
         conn.close()
 
@@ -116,8 +130,8 @@ def test_plan_create_when_not_found(tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
-        _seed_org(conn, ouid=20)
+        repo = _build_repo(conn)
+        _seed_org(repo, ouid=20)
     finally:
         conn.close()
 
@@ -156,9 +170,9 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
-        _seed_org(conn, ouid=30)
-        _seed_user(conn, _id="u1", match_key="Doe|John|M|100", phone="+111", organization_id=30)
+        repo = _build_repo(conn)
+        _seed_org(repo, ouid=30)
+        _seed_user(repo, _id="u1", match_key="Doe|John|M|100", phone="+111", organization_id=30)
     finally:
         conn.close()
 
@@ -197,9 +211,9 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
-        _seed_org(conn, ouid=40)
-        _seed_user(conn, _id="u2", match_key="Doe|John|M|100", phone="+111", organization_id=40)
+        repo = _build_repo(conn)
+        _seed_org(repo, ouid=40)
+        _seed_user(repo, _id="u2", match_key="Doe|John|M|100", phone="+111", organization_id=40)
     finally:
         conn.close()
 
@@ -238,8 +252,8 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
-        _seed_org(conn, ouid=50)
+        repo = _build_repo(conn)
+        _seed_org(repo, ouid=50)
     finally:
         conn.close()
 
@@ -286,7 +300,7 @@ def test_plan_error_when_org_missing(tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
+        _build_repo(conn)
         # org intentionally not seeded
     finally:
         conn.close()

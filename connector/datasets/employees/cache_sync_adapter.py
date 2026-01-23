@@ -5,7 +5,6 @@ from typing import Any
 from connector.domain.validation.row_rules import normalize_whitespace
 from connector.datasets.employees.projector import build_match_key
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
-from connector.domain.ports.cache_repo import CacheRepositoryProtocol
 
 
 def _to_str_or_none(value: Any) -> str | None:
@@ -140,6 +139,3 @@ class EmployeesCacheSyncAdapter(CacheSyncAdapterProtocol):
 
     def map_target_to_cache(self, raw_item: dict[str, Any]) -> dict[str, Any]:
         return map_user_from_api(raw_item)
-
-    def upsert(self, repo: CacheRepositoryProtocol, mapped_item: dict[str, Any]) -> str:
-        return repo.upsert_user(mapped_item)

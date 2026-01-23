@@ -11,11 +11,17 @@ import typer
 
 from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
 from connector.infra.http.request_executor import AnkeyRequestExecutor
-from connector.infra.cache.db import ensureSchema, getCacheDbPath, openCacheDb
-from connector.infra.cache.sqlite_cache_repository import SqliteCacheRepository
+from connector.infra.cache.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.repository import SqliteCacheRepository
+from connector.infra.cache.handlers.registry import CacheHandlerRegistry
+from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
+from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
 from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
+from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
 from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
@@ -30,7 +36,7 @@ from connector.domain.validation.pipeline import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.validation.registry import ValidatorRegistry
 from connector.datasets.registry import get_spec
-from connector.datasets.cache_registry import get_cache_adapters
+from connector.datasets.cache_registry import list_cache_sync_adapters
 from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
 from connector.domain.ports.secrets import SecretProviderProtocol
 
@@ -274,11 +280,18 @@ def runCacheRefreshCommand(
             )
             client.resetRetryAttempts()
 
-            cache_repo = SqliteCacheRepository(conn)
+            engine = SqliteEngine(conn)
+            handler_registry = CacheHandlerRegistry()
+            handler_registry.register(EmployeesCacheHandler())
+            handler_registry.register(OrganizationsCacheHandler())
+            ensure_cache_ready(engine, handler_registry)
+
+            cache_repo = SqliteCacheRepository(engine, handler_registry)
             reader = AnkeyTargetPagedReader(client)
-            adapters = get_cache_adapters()
+            adapters = list_cache_sync_adapters()
             cache_refresh = CacheRefreshUseCase(reader, cache_repo, adapters)
-            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo, cache_refresh)
+            cache_clear = CacheClearUseCase(cache_repo, adapters)
+            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo, cache_refresh, cache_clear=cache_clear)
 
             return service.refresh(
                 page_size=pageSize or settings.page_size,
@@ -325,7 +338,13 @@ def runCacheStatusCommand(ctx: typer.Context) -> None:
             return 2
 
         try:
-            cache_repo = SqliteCacheRepository(conn)
+            engine = SqliteEngine(conn)
+            handler_registry = CacheHandlerRegistry()
+            handler_registry.register(EmployeesCacheHandler())
+            handler_registry.register(OrganizationsCacheHandler())
+            ensure_cache_ready(engine, handler_registry)
+
+            cache_repo = SqliteCacheRepository(engine, handler_registry)
             service: CacheCommandServiceProtocol = CacheCommandService(cache_repo)
             code, status = service.status(logger, report, runId)
             if code != 0:
@@ -364,8 +383,16 @@ def runCacheClearCommand(ctx: typer.Context) -> None:
             return 2
 
         try:
-            cache_repo = SqliteCacheRepository(conn)
-            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo)
+            engine = SqliteEngine(conn)
+            handler_registry = CacheHandlerRegistry()
+            handler_registry.register(EmployeesCacheHandler())
+            handler_registry.register(OrganizationsCacheHandler())
+            ensure_cache_ready(engine, handler_registry)
+
+            cache_repo = SqliteCacheRepository(engine, handler_registry)
+            adapters = list_cache_sync_adapters()
+            cache_clear = CacheClearUseCase(cache_repo, adapters)
+            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo, cache_clear=cache_clear)
             code, _cleared = service.clear(logger, report, runId)
             if code != 0:
                 typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
@@ -416,6 +443,12 @@ def runImportPlanCommand(
         report.meta.dataset = dataset_name
 
         try:
+            engine = SqliteEngine(conn)
+            handler_registry = CacheHandlerRegistry()
+            handler_registry.register(EmployeesCacheHandler())
+            handler_registry.register(OrganizationsCacheHandler())
+            ensure_cache_ready(engine, handler_registry)
+
             service: ImportPlanServiceProtocol = ImportPlanService()
             return service.run(
                 conn=conn,

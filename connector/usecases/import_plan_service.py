@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from connector.infra.cache.db import ensureSchema
 from connector.infra.sources.csv_reader import CsvRowSource
 from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
@@ -31,7 +30,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
         report_dir: str,
         settings=None,
     ) -> int:
-        ensureSchema(conn)
         generated_at = getNowIso()
 
         dataset_spec = get_spec(dataset)

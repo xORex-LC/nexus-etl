@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
-from connector.domain.ports.cache_repo import CacheRepositoryProtocol
 
 
 def _to_str_or_none(value: Any) -> str | None:
@@ -70,6 +69,3 @@ class OrganizationsCacheSyncAdapter(CacheSyncAdapterProtocol):
 
     def map_target_to_cache(self, raw_item: dict[str, Any]) -> dict[str, Any]:
         return map_org_from_api(raw_item)
-
-    def upsert(self, repo: CacheRepositoryProtocol, mapped_item: dict[str, Any]) -> str:
-        return repo.upsert_org(mapped_item)

@@ -4,8 +4,14 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import httpx
-from connector.infra.cache.db import ensureSchema, getCacheDbPath, openCacheDb
-from connector.infra.cache.repo import getCounts, getUserByMatchKey, upsertUser
+from connector.infra.cache.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.handlers.registry import CacheHandlerRegistry
+from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
+from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.schema import ensure_cache_ready
+from connector.infra.cache.repository import SqliteCacheRepository
+from connector.domain.ports.cache_repository import UpsertResult
 from connector.main import app
 from connector.infra.http.ankey_client import AnkeyApiClient
 
@@ -64,10 +70,15 @@ def test_cache_schema_created(tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        ensure_cache_ready(engine, registry)
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"meta", "users", "organizations"}.issubset(tables)
-        schema_version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
+        repo = SqliteCacheRepository(engine, registry)
+        schema_version = repo.get_meta(None).values.get("schema_version")
         assert schema_version == "2"
     finally:
         conn.close()
@@ -79,7 +90,12 @@ def test_cache_upsert_user(tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        ensure_cache_ready(engine, registry)
+        repo = SqliteCacheRepository(engine, registry)
         user = {
             "_id": "user-123",
             "_ouid": 999,
@@ -101,17 +117,20 @@ def test_cache_upsert_user(tmp_path: Path):
             "position": "Engineer",
             "updated_at": "2024-01-01T00:00:00Z",
         }
-        status1 = upsertUser(conn, user)
+        status1 = repo.upsert("employees", user)
         user["phone"] = "+222"
-        status2 = upsertUser(conn, user)
-        fetched = getUserByMatchKey(conn, user["match_key"])
+        status2 = repo.upsert("employees", user)
+        fetched_row = conn.execute(
+            "SELECT * FROM users WHERE match_key = ?",
+            (user["match_key"],),
+        ).fetchone()
     finally:
         conn.close()
 
-    assert status1 == "inserted"
-    assert status2 == "updated"
-    assert fetched is not None
-    assert fetched["phone"] == "+222"
+    assert status1 == UpsertResult.INSERTED
+    assert status2 == UpsertResult.UPDATED
+    assert fetched_row is not None
+    assert fetched_row["phone"] == "+222"
 
 def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", monkeypatch=None):
     log_dir = tmp_path / "logs"
@@ -169,7 +188,13 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
 
     conn = openCacheDb(str(db_path))
     try:
-        users_count, org_count = getCounts(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        repo = SqliteCacheRepository(engine, registry)
+        users_count = repo.count("employees")
+        org_count = repo.count("organizations")
     finally:
         conn.close()
 
@@ -234,7 +259,13 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        users_count, org_count = getCounts(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        repo = SqliteCacheRepository(engine, registry)
+        users_count = repo.count("employees")
+        org_count = repo.count("organizations")
     finally:
         conn.close()
 

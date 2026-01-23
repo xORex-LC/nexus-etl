@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
+from connector.usecases.cache_status_usecase import CacheStatusUseCase
+from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.usecases.ports import CacheCommandServiceProtocol
 from connector.infra.logging.setup import logEvent
 
@@ -12,9 +14,17 @@ class CacheCommandService(CacheCommandServiceProtocol):
     Оркестратор cache-команд (refresh/status/clear).
     """
 
-    def __init__(self, cache_repo, cache_refresh: CacheRefreshUseCase | None = None):
+    def __init__(
+        self,
+        cache_repo,
+        cache_refresh: CacheRefreshUseCase | None = None,
+        cache_status: CacheStatusUseCase | None = None,
+        cache_clear: CacheClearUseCase | None = None,
+    ):
         self.cache_repo = cache_repo
         self.cache_refresh = cache_refresh
+        self.cache_status = cache_status or CacheStatusUseCase(cache_repo)
+        self.cache_clear = cache_clear
 
     def refresh(
         self,
@@ -52,18 +62,20 @@ class CacheCommandService(CacheCommandServiceProtocol):
             report.summary.skipped = summary["users_skipped_deleted"]
         return 0 if failed == 0 else 1
 
-    def status(self, logger, report, run_id: str) -> tuple[int, dict]:
+    def status(self, logger, report, run_id: str, dataset: str | None = None) -> tuple[int, dict]:
         try:
-            status = self._get_cache_status()
+            status = self.cache_status.status(dataset=dataset)
             report.items.append({"status": status})
             return 0, status
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache status failed: {exc}")
             return 2, {}
 
-    def clear(self, logger, report, run_id: str) -> tuple[int, dict]:
+    def clear(self, logger, report, run_id: str, dataset: str | None = None) -> tuple[int, dict]:
         try:
-            cleared = self._clear_cache()
+            if self.cache_clear is None:
+                raise ValueError("Cache clear usecase is not configured")
+            cleared = self.cache_clear.clear(dataset=dataset)
             logEvent(
                 logger,
                 logging.INFO,
@@ -79,56 +91,6 @@ class CacheCommandService(CacheCommandServiceProtocol):
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache clear failed: {exc}")
             return 2, {}
-
-    def _get_cache_status(self) -> dict:
-        """
-        Возвращает состояние кэша: counts, last refresh, schema_version.
-        """
-        self.cache_repo.ensure_schema()
-        users_count, org_count = self.cache_repo.get_counts()
-        status = {
-            "schema_version": self.cache_repo.get_meta("schema_version"),
-            "users_count": users_count,
-            "org_count": org_count,
-            "users_last_refresh_at": self.cache_repo.get_meta("users_last_refresh_at"),
-            "org_last_refresh_at": self.cache_repo.get_meta("org_last_refresh_at"),
-            "source_api_base": self.cache_repo.get_meta("source_api_base"),
-        }
-
-        status["meta_users_count"] = _safe_int(self.cache_repo.get_meta("users_count"))
-        status["meta_org_count"] = _safe_int(self.cache_repo.get_meta("org_count"))
-        return status
-
-    def _clear_cache(self) -> dict[str, int]:
-        """
-        Очищает таблицы users/organizations и сбрасывает meta счётчики.
-        """
-        self.cache_repo.ensure_schema()
-        self.cache_repo.begin()
-        try:
-            users_deleted = self.cache_repo.clear_users()
-            orgs_deleted = self.cache_repo.clear_orgs()
-
-            self.cache_repo.set_meta("users_count", "0")
-            self.cache_repo.set_meta("org_count", "0")
-            self.cache_repo.set_meta("users_last_refresh_at", None)
-            self.cache_repo.set_meta("org_last_refresh_at", None)
-            self.cache_repo.set_meta("source_api_base", None)
-
-            self.cache_repo.commit()
-            return {"users_deleted": users_deleted, "orgs_deleted": orgs_deleted}
-        except Exception:
-            self.cache_repo.rollback()
-            raise
-
-
-def _safe_int(value: str | None) -> int:
-    if value is None or value == "":
-        return 0
-    try:
-        return int(value)
-    except ValueError:
-        return 0
 
 
 __all__ = ["CacheCommandService"]
