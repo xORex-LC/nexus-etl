@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol
+from typing import Any, Protocol, Callable
 
 from ..models import CsvRow, EmployeeInput, RowRef, ValidationErrorItem, ValidationRowResult
 from .deps import DatasetValidationState, ValidationDependencies
-from .row_rules import FIELD_RULES, RowRule
 from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
-from connector.datasets.employees.projector import build_match_key
+from connector.domain.ports.sources import SourceMapper
 
 class DatasetRule(Protocol):
     """
@@ -29,22 +28,17 @@ class RowValidator:
         Выполняет валидацию одной строки CSV на уровне полей (парсинг/формат).
 
     Взаимодействия:
-        - Использует набор RowRule.
+        - Использует SourceMapper и адаптер к legacy EmployeeInput.
         - Не выполняет глобальные проверки (уникальности, наличие org).
     """
 
-    def __init__(self, rules: tuple[RowRule, ...]) -> None:
-        self.rules = rules
-
-    def _collect_fields(
-        self, csvRow: CsvRow
-    ) -> tuple[dict[str, Any], list[ValidationErrorItem], list[ValidationErrorItem]]:
-        errors: list[ValidationErrorItem] = []
-        warnings: list[ValidationErrorItem] = []
-        values: dict[str, Any] = {}
-        for rule in self.rules:
-            values[rule.name] = rule.apply(csvRow.values, errors, warnings)
-        return values, errors, warnings
+    def __init__(
+        self,
+        mapper: SourceMapper,
+        legacy_adapter: Callable[[Any, dict[str, str]], EmployeeInput],
+    ) -> None:
+        self.mapper = mapper
+        self.legacy_adapter = legacy_adapter
 
     def validate(self, csv_row: CsvRow) -> tuple[EmployeeInput, ValidationRowResult]:
         """
@@ -52,50 +46,27 @@ class RowValidator:
             csv_row: нормализованная строка CSV.
             Возвращает EmployeeInput + ValidationRowResult с ошибками/варнингами полей.
         """
-        values, errors, warnings = self._collect_fields(csv_row)
+        map_result = self.mapper.map(csv_row)
+        employee = self.legacy_adapter(map_result.row, map_result.secret_candidates)
 
-        employee = EmployeeInput(
-            email=values.get("email"),
-            last_name=values.get("lastName"),
-            first_name=values.get("firstName"),
-            middle_name=values.get("middleName"),
-            is_logon_disable=values.get("isLogonDisable"),
-            user_name=values.get("userName"),
-            phone=values.get("phone"),
-            password=values.get("password"),
-            personnel_number=values.get("personnelNumber"),
-            manager_id=values.get("managerId"),
-            organization_id=values.get("organization_id"),
-            position=values.get("position"),
-            avatar_id=values.get("avatarId"),
-            usr_org_tab_num=values.get("usrOrgTabNum"),
-        )
+        match_key_value = map_result.match_key.value if map_result.match_key else ""
+        match_key_complete = map_result.match_key is not None
 
-        match_key = build_match_key(
-            employee.last_name,
-            employee.first_name,
-            employee.middle_name,
-            employee.personnel_number,
-        )
-        match_key_complete = all(
-            [employee.last_name, employee.first_name, employee.middle_name, employee.personnel_number]
-        )
-
-        row_ref = RowRef(
+        row_ref = map_result.row_ref or RowRef(
             line_no=csv_row.file_line_no,
             row_id=f"line:{csv_row.file_line_no}",
             identity_primary="match_key",
-            identity_value=match_key,
+            identity_value=match_key_value or None,
         )
 
         result = ValidationRowResult(
             line_no=csv_row.file_line_no,
-            match_key=match_key,
+            match_key=match_key_value,
             match_key_complete=match_key_complete,
-            usr_org_tab_num=employee.usr_org_tab_num,
+            usr_org_tab_num=getattr(map_result.row, "usr_org_tab_num", None),
             row_ref=row_ref,
-            errors=errors,
-            warnings=warnings,
+            errors=map_result.errors,
+            warnings=map_result.warnings,
         )
         return employee, result
 
@@ -130,8 +101,15 @@ class ValidatorFactory:
         Собирает валидаторы и контекст валидации, подставляя зависимости.
     """
 
-    def __init__(self, deps: ValidationDependencies) -> None:
+    def __init__(
+        self,
+        deps: ValidationDependencies,
+        mapper: SourceMapper,
+        legacy_adapter: Callable[[Any, dict[str, str]], EmployeeInput],
+    ) -> None:
         self.deps = deps
+        self.mapper = mapper
+        self.legacy_adapter = legacy_adapter
 
     def create_validation_context(self) -> DatasetValidationState:
         """
@@ -143,9 +121,9 @@ class ValidatorFactory:
     def create_row_validator(self) -> RowValidator:
         """
         Возвращает:
-            RowValidator с базовыми FIELD_RULES.
+            RowValidator на базе SourceMapper.
         """
-        return RowValidator(FIELD_RULES)
+        return RowValidator(self.mapper, self.legacy_adapter)
 
     def create_dataset_validator(self, state: DatasetValidationState) -> DatasetValidator:
         """

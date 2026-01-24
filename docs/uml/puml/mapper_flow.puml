@@ -1,0 +1,82 @@
+@startuml mapper_flow
+left to right direction
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor #FEFECE
+skinparam classBorderColor #A80036
+skinparam interfaceBackgroundColor #FEFECE
+skinparam interfaceBorderColor #A80036
+
+package "Ports" {
+  interface SourceMapper
+}
+
+package "Domain Models" {
+  class CsvRow {
+    file_line_no : int
+    data_line_no : int
+    values : list[str | None]
+  }
+  class RowRef {
+    line_no : int
+    row_id : str
+    identity_primary : str | None
+    identity_value : str | None
+  }
+  class ValidationErrorItem {
+    code : str
+    field : str | None
+    message : str
+  }
+}
+
+package "Domain Transform" {
+  class MatchKey {
+    value : str
+  }
+  class MapResult {
+    row_ref : RowRef
+    row
+    match_key : MatchKey | None
+    secret_candidates : dict[str, str]
+    errors : list[ValidationErrorItem]
+    warnings : list[ValidationErrorItem]
+  }
+}
+
+package "Employees Dataset" {
+  class EmployeesRowPublic {
+    email : str | None
+    last_name : str | None
+    first_name : str | None
+    middle_name : str | None
+    is_logon_disable : bool | None
+    user_name : str | None
+    phone : str | None
+    personnel_number : str | None
+    manager_id : int | None
+    organization_id : int | None
+    position : str | None
+    avatar_id : str | None
+    usr_org_tab_num : str | None
+  }
+  class EmployeesSourceMapper {
+    map(raw: CsvRow) -> MapResult
+  }
+  class FieldRule {
+    name : str
+    index : int
+    required : bool
+  }
+}
+
+SourceMapper <|.. EmployeesSourceMapper
+CsvRow --> EmployeesSourceMapper : input
+EmployeesSourceMapper --> MapResult : output
+MapResult --> EmployeesRowPublic : row
+MapResult --> MatchKey : match_key
+MapResult --> RowRef : row_ref
+MapResult --> ValidationErrorItem : errors/warnings
+EmployeesSourceMapper --> FieldRule : uses FIELD_RULES
+@enduml

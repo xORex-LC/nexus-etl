@@ -24,3 +24,4 @@
 22) Ослабить хрупкие CLI-тесты (usage/help) — проверять стабильные подстроки или отключить rich.
 23) Добавить тесты на PromptSecretProvider (интерактивный ввод).
 24) Запланировать отдельный слой нормализации/обогащения (порт + адаптеры) для multi-source.
+25) TODO: удалить legacy EmployeeInput/RowValidator adapter после миграции пайплайна на public rows (PrepareForSink).

@@ -34,7 +34,6 @@ from connector.common.sanitize import maskSecret
 from connector.common.time import getDurationMs
 from connector.domain.validation.pipeline import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
-from connector.datasets.validation.registry import ValidatorRegistry
 from connector.datasets.registry import get_spec
 from connector.datasets.cache_registry import list_cache_sync_adapters
 from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
@@ -645,10 +644,10 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         failed_rows = 0
         warning_rows = 0
         deps = ValidationDependencies()
-        validator_registry = ValidatorRegistry(deps)
-        row_validator = validator_registry.create_row_validator(dataset_name)
-        state = validator_registry.create_state()
-        dataset_validator = validator_registry.create_dataset_validator(dataset_name, state)
+        dataset_spec = get_spec(dataset_name)
+        validators = dataset_spec.build_validators(deps)
+        row_validator = validators.row_validator
+        dataset_validator = validators.dataset_validator
         report_items_limit = settings.report_items_limit
         report.meta.report_items_limit = report_items_limit
         report.meta.dataset = dataset_name

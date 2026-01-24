@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import Iterable, Protocol
+from typing import Iterable, Protocol, TypeVar, Generic
 
 from connector.domain.models import CsvRow
+from connector.domain.transform.map_result import MapResult
+
+T = TypeVar("T")
 
 class RowSource(Protocol):
     """
@@ -32,5 +35,20 @@ class RowMapper(Protocol):
         Контракт:
             Вход: сырой dict/строка.
             Выход: CsvRow с values и file_line_no.
+        """
+        ...
+
+
+class SourceMapper(Protocol, Generic[T]):
+    """
+    Назначение/ответственность:
+        Маппер источника в каноническую форму для датасета.
+    """
+
+    def map(self, raw: CsvRow) -> MapResult[T]:
+        """
+        Контракт:
+            Вход: CsvRow (сырой источник).
+            Выход: MapResult с row_ref/row/match_key.
         """
         ...

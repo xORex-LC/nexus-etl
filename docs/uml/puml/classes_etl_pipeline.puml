@@ -174,6 +174,17 @@ class "MatchResult" as connector.domain.models.MatchResult <<plan>> {
 class "MatchStatus" as connector.domain.models.MatchStatus <<plan>> {
   name
 }
+class "MatchKey" as connector.domain.transform.match_key.MatchKey <<validate>> {
+  value : str
+}
+class "MapResult" as connector.domain.transform.map_result.MapResult <<validate>> {
+  row_ref : RowRef
+  row
+  match_key : MatchKey | None
+  secret_candidates : dict[str, str]
+  errors : list[ValidationErrorItem]
+  warnings : list[ValidationErrorItem]
+}
 class "<color:red>MissingRequiredSecretError</color>" as connector.domain.exceptions.MissingRequiredSecretError <<secrets>> {
   code : ErrorCode
   dataset : str
@@ -263,7 +274,8 @@ class "RowRule" as connector.domain.validation.row_rules.RowRule <<validate>> {
   apply(row_values: list[Any], errors: list[ValidationErrorItem], warnings: list[ValidationErrorItem]) -> Any
 }
 class "RowValidator" as connector.domain.validation.pipeline.RowValidator <<validate>> {
-  rules : tuple[RowRule, ...]
+  mapper : SourceMapper
+  legacy_adapter
   validate(csv_row: CsvRow) -> tuple[EmployeeInput, ValidationRowResult]
 }
 class "UsrOrgTabUniqueRule" as connector.domain.validation.dataset_rules.UsrOrgTabUniqueRule <<validate>> {
@@ -386,6 +398,9 @@ class "RequestSpec" as connector.domain.ports.execution.RequestSpec <<apply>> {
 class "RowMapper" as connector.domain.ports.sources.RowMapper {
   map(raw: dict) -> CsvRow
 }
+class "SourceMapper" as connector.domain.ports.sources.SourceMapper <<validate>> {
+  map(raw: CsvRow) -> MapResult
+}
 class "RowSource" as connector.domain.ports.sources.RowSource {
 }
 class "SecretProviderProtocol" as connector.domain.ports.secrets.SecretProviderProtocol <<secrets>> {
@@ -477,6 +492,24 @@ class "EmployeesProjector" as connector.datasets.employees.projector.EmployeesPr
 }
 class "EmployeesPlanningPolicy" as connector.datasets.employees.planning_policy.EmployeesPlanningPolicy <<plan>> {
   decide(validated_entity, validation: ValidationRowResult) -> PlanDecision
+}
+class "EmployeesRowPublic" as connector.datasets.employees.models.EmployeesRowPublic {
+  avatar_id : str | None
+  email : str | None
+  first_name : str | None
+  is_logon_disable : bool | None
+  last_name : str | None
+  manager_id : int | None
+  middle_name : str | None
+  organization_id : int | None
+  personnel_number : str | None
+  phone : str | None
+  position : str | None
+  user_name : str | None
+  usr_org_tab_num : str | None
+}
+class "EmployeesSourceMapper" as connector.datasets.employees.source_mapper.EmployeesSourceMapper <<validate>> {
+  map(raw: CsvRow) -> MapResult
 }
 class "EmployeesCacheSyncAdapter" as connector.datasets.employees.cache_sync_adapter.EmployeesCacheSyncAdapter <<cache>> {
   dataset : str
@@ -741,6 +774,12 @@ connector.usecases.cache_command_service.CacheCommandService --> connector.useca
 connector.domain.validation.pipeline.ValidatorFactory --* connector.datasets.validation.registry.ValidatorRegistry : factory
 connector.datasets.cache_sync.CacheSyncAdapterProtocol --o connector.usecases.cache_refresh_service.CacheRefreshUseCase : adapters
 connector.datasets.spec.DatasetSpec --o connector.usecases.import_apply_service.ImportApplyService : spec_resolver
+connector.domain.ports.sources.SourceMapper ..> connector.domain.transform.map_result.MapResult : map
+connector.domain.validation.pipeline.RowValidator --> connector.domain.ports.sources.SourceMapper : mapper
+connector.domain.transform.map_result.MapResult --> connector.domain.models.RowRef : row_ref
+connector.domain.transform.map_result.MapResult --> connector.domain.transform.match_key.MatchKey : match_key
+connector.datasets.employees.source_mapper.EmployeesSourceMapper --|> connector.domain.ports.sources.SourceMapper
+connector.datasets.employees.source_mapper.EmployeesSourceMapper --> connector.datasets.employees.models.EmployeesRowPublic : maps
 connector.domain.ports.cache_repository.CacheRepositoryProtocol --o connector.usecases.cache_clear_usecase.CacheClearUseCase : cache_repo
 connector.domain.ports.cache_repository.CacheRepositoryProtocol --o connector.usecases.cache_refresh_service.CacheRefreshUseCase : cache_repo
 connector.domain.ports.cache_repository.CacheRepositoryProtocol --o connector.usecases.cache_status_usecase.CacheStatusUseCase : cache_repo

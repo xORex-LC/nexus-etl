@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from typing import Any, Callable
+
 from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
 from connector.domain.validation.pipeline import DatasetValidator, RowValidator, ValidatorFactory
+from connector.domain.ports.sources import SourceMapper
+from connector.domain.models import EmployeeInput
 
 class ValidatorRegistry:
     """
@@ -13,9 +17,14 @@ class ValidatorRegistry:
         Синхронный, не кеширует состояние.
     """
 
-    def __init__(self, deps: ValidationDependencies):
+    def __init__(
+        self,
+        deps: ValidationDependencies,
+        mapper: SourceMapper,
+        legacy_adapter: Callable[[Any, dict[str, str]], EmployeeInput],
+    ):
         self.deps = deps
-        self.factory = ValidatorFactory(deps)
+        self.factory = ValidatorFactory(deps, mapper, legacy_adapter)
 
     def create_row_validator(self, dataset: str) -> RowValidator:
         """

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from connector.domain.validation.row_rules import normalize_whitespace
-from connector.datasets.employees.projector import build_match_key
+from connector.domain.transform.match_key import build_delimited_match_key
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 
 
@@ -94,7 +94,7 @@ def map_user_from_api(item: dict[str, Any]) -> dict[str, Any]:
         "organization_id",
     )
 
-    match_key = build_match_key(last_name, first_name, middle_name, personnel_number)
+    match_key = build_delimited_match_key([last_name, first_name, middle_name, personnel_number]).value
     if not match_key or match_key == "|||":
         raise ValueError("Cannot build match_key for user")
 
