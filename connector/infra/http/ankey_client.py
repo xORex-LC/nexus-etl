@@ -164,7 +164,7 @@ class AnkeyApiClient:
         method: str,
         path: str,
         params: dict[str, Any] | None = None,
-        jsonBody: Any | None = None,
+        json: Any | None = None,
     ) -> tuple[int, Any]:
         """
         Универсальный JSON-запрос с ретраями и проверкой (200/201/204).
@@ -174,7 +174,7 @@ class AnkeyApiClient:
         attempt = 0
         while True:
             try:
-                resp = self.client.request(method, path, params=params, headers=self._headers_with(), json=jsonBody)
+                resp = self.client.request(method, path, params=params, headers=self._headers_with(), json=json)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 if attempt >= self.retries:
                     raise ApiError("Network error", status_code=None, retryable=False, code="NETWORK_ERROR") from exc
@@ -205,50 +205,6 @@ class AnkeyApiClient:
                 retryable=self._should_retry(resp),
                 details={"body_snippet": body_snippet},
             )
-
-    def requestAny(
-        self,
-        method: str,
-        path: str,
-        params: dict[str, Any] | None = None,
-        jsonBody: Any | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> tuple[int, Any | None, str | None]:
-        """
-        Назначение:
-            Универсальный запрос, возвращающий статус и тело без исключений по статусу.
-        """
-        params = params or {}
-        attempt = 0
-        while True:
-            try:
-                resp = self.client.request(
-                    method,
-                    path,
-                    params=params,
-                    headers=self._headers_with(headers),
-                    json=jsonBody,
-                )
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
-                if attempt >= self.retries:
-                    raise ApiError("Network error", status_code=None, retryable=False, code="NETWORK_ERROR") from exc
-                self.retry_attempts += 1
-                self._sleep_backoff(attempt)
-                attempt += 1
-                continue
-
-            if self._should_retry(resp) and attempt < self.retries:
-                self.retry_attempts += 1
-                self._sleep_backoff(attempt)
-                attempt += 1
-                continue
-
-            body_snippet = resp.text[:200] if resp.text else None
-            try:
-                parsed = resp.json() if resp.text else None
-            except ValueError:
-                parsed = resp.text or None
-            return resp.status_code, parsed, body_snippet
 
     def _extract_items(self, data: Any) -> list[Any]:
         """Пытается вытащить массив items из разных возможных ключей."""

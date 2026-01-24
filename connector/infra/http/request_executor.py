@@ -27,7 +27,7 @@ class AnkeyRequestExecutor(RequestExecutorProtocol):
                 method=spec.method,
                 path=spec.path,
                 params=spec.query,
-                jsonBody=spec.payload,
+                json=spec.payload,
                 headers=spec.headers,
             )
             ok = spec.is_expected(status_code)
