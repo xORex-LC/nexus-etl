@@ -13,5 +13,4 @@ reports/
 config.yml
 .vscode
 .VSCode*
-/docs/uml/*.puml
 .coverage

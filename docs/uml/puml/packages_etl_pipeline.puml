@@ -1,0 +1,302 @@
+@startuml packages_etl_pipeline
+set namespaceSeparator none
+package "connector" as connector {
+}
+package "connector.common" as connector.common {
+}
+package "connector.common.sanitize" as connector.common.sanitize {
+}
+package "connector.common.time" as connector.common.time {
+}
+package "connector.config" as connector.config {
+}
+package "connector.config.config" as connector.config.config {
+}
+package "connector.datasets" as connector.datasets {
+}
+package "connector.datasets.cache_registry" as connector.datasets.cache_registry {
+}
+package "connector.datasets.cache_sync" as connector.datasets.cache_sync {
+}
+package "connector.datasets.organizations" as connector.datasets.organizations {
+}
+package "connector.datasets.organizations.cache_sync_adapter" as connector.datasets.organizations.cache_sync_adapter {
+}
+package "connector.datasets.registry" as connector.datasets.registry {
+}
+package "connector.datasets.spec" as connector.datasets.spec {
+}
+package "connector.datasets.validation" as connector.datasets.validation {
+}
+package "connector.datasets.validation.registry" as connector.datasets.validation.registry {
+}
+package "connector.domain" as connector.domain {
+}
+package "connector.domain.error_codes" as connector.domain.error_codes {
+}
+package "connector.domain.exceptions" as connector.domain.exceptions {
+}
+package "connector.domain.mappers" as connector.domain.mappers {
+}
+package "connector.domain.mappers.user_payload" as connector.domain.mappers.user_payload {
+}
+package "connector.domain.models" as connector.domain.models {
+}
+package "connector.domain.planning" as connector.domain.planning {
+}
+package "connector.domain.planning.adapters" as connector.domain.planning.adapters {
+}
+package "connector.domain.planning.deps" as connector.domain.planning.deps {
+}
+package "connector.domain.planning.generic_planner" as connector.domain.planning.generic_planner {
+}
+package "connector.domain.planning.plan_builder" as connector.domain.planning.plan_builder {
+}
+package "connector.domain.planning.plan_models" as connector.domain.planning.plan_models {
+}
+package "connector.domain.planning.protocols" as connector.domain.planning.protocols {
+}
+package "connector.domain.ports" as connector.domain.ports {
+}
+package "connector.domain.ports.cache_repository" as connector.domain.ports.cache_repository {
+}
+package "connector.domain.ports.execution" as connector.domain.ports.execution {
+}
+package "connector.domain.ports.lookups" as connector.domain.ports.lookups {
+}
+package "connector.domain.ports.secrets" as connector.domain.ports.secrets {
+}
+package "connector.domain.ports.sources" as connector.domain.ports.sources {
+}
+package "connector.domain.ports.target_read" as connector.domain.ports.target_read {
+}
+package "connector.domain.validation" as connector.domain.validation {
+}
+package "connector.domain.validation.dataset_rules" as connector.domain.validation.dataset_rules {
+}
+package "connector.domain.validation.deps" as connector.domain.validation.deps {
+}
+package "connector.domain.validation.pipeline" as connector.domain.validation.pipeline {
+}
+package "connector.domain.validation.row_rules" as connector.domain.validation.row_rules {
+}
+package "connector.errors" as connector.errors {
+}
+package "connector.infra" as connector.infra {
+}
+package "connector.infra.artifacts" as connector.infra.artifacts {
+}
+package "connector.infra.artifacts.plan_reader" as connector.infra.artifacts.plan_reader {
+}
+package "connector.infra.artifacts.plan_writer" as connector.infra.artifacts.plan_writer {
+}
+package "connector.infra.artifacts.report_writer" as connector.infra.artifacts.report_writer {
+}
+package "connector.infra.cache" as connector.infra.cache {
+}
+package "connector.infra.cache.db" as connector.infra.cache.db {
+}
+package "connector.infra.cache.handlers" as connector.infra.cache.handlers {
+}
+package "connector.infra.cache.handlers.base" as connector.infra.cache.handlers.base {
+}
+package "connector.infra.cache.handlers.employees_handler" as connector.infra.cache.handlers.employees_handler {
+}
+package "connector.infra.cache.handlers.organizations_handler" as connector.infra.cache.handlers.organizations_handler {
+}
+package "connector.infra.cache.handlers.registry" as connector.infra.cache.handlers.registry {
+}
+package "connector.infra.cache.legacy_queries" as connector.infra.cache.legacy_queries {
+}
+package "connector.infra.cache.repository" as connector.infra.cache.repository {
+}
+package "connector.infra.cache.schema" as connector.infra.cache.schema {
+}
+package "connector.infra.cache.sqlite_engine" as connector.infra.cache.sqlite_engine {
+}
+package "connector.infra.cache.validation_lookups" as connector.infra.cache.validation_lookups {
+}
+package "connector.infra.http" as connector.infra.http {
+}
+package "connector.infra.http.ankey_client" as connector.infra.http.ankey_client {
+}
+package "connector.infra.http.request_executor" as connector.infra.http.request_executor {
+}
+package "connector.infra.logging" as connector.infra.logging {
+}
+package "connector.infra.logging.setup" as connector.infra.logging.setup {
+}
+package "connector.infra.secrets" as connector.infra.secrets {
+}
+package "connector.infra.secrets.composite_provider" as connector.infra.secrets.composite_provider {
+}
+package "connector.infra.secrets.dict_provider" as connector.infra.secrets.dict_provider {
+}
+package "connector.infra.secrets.null_provider" as connector.infra.secrets.null_provider {
+}
+package "connector.infra.secrets.prompt_provider" as connector.infra.secrets.prompt_provider {
+}
+package "connector.infra.sources" as connector.infra.sources {
+}
+package "connector.infra.sources.csv_reader" as connector.infra.sources.csv_reader {
+}
+package "connector.infra.target" as connector.infra.target {
+}
+package "connector.infra.target.ankey_gateway" as connector.infra.target.ankey_gateway {
+}
+package "connector.main" as connector.main {
+}
+package "connector.usecases" as connector.usecases {
+}
+package "connector.usecases.cache_clear_usecase" as connector.usecases.cache_clear_usecase {
+}
+package "connector.usecases.cache_command_service" as connector.usecases.cache_command_service {
+}
+package "connector.usecases.cache_refresh_service" as connector.usecases.cache_refresh_service {
+}
+package "connector.usecases.cache_status_usecase" as connector.usecases.cache_status_usecase {
+}
+package "connector.usecases.import_apply_service" as connector.usecases.import_apply_service {
+}
+package "connector.usecases.import_plan_service" as connector.usecases.import_plan_service {
+}
+package "connector.usecases.plan_usecase" as connector.usecases.plan_usecase {
+}
+package "connector.usecases.ports" as connector.usecases.ports {
+}
+connector.datasets.cache_registry --> connector.datasets.cache_sync
+connector.datasets.cache_registry --> connector.datasets.organizations.cache_sync_adapter
+connector.datasets.organizations.cache_sync_adapter --> connector.datasets.cache_sync
+connector.datasets.registry --> connector.datasets.spec
+connector.datasets.registry --> connector.domain.ports.secrets
+connector.datasets.spec --> connector.domain.planning.deps
+connector.datasets.spec --> connector.domain.planning.protocols
+connector.datasets.spec --> connector.domain.ports.execution
+connector.datasets.spec --> connector.domain.validation.deps
+connector.datasets.spec --> connector.domain.validation.pipeline
+connector.datasets.validation.registry --> connector.domain.validation.deps
+connector.datasets.validation.registry --> connector.domain.validation.pipeline
+connector.domain.exceptions --> connector.domain.error_codes
+connector.domain.planning.adapters --> connector.domain.models
+connector.domain.planning.adapters --> connector.domain.planning.protocols
+connector.domain.planning.adapters --> connector.infra.cache.legacy_queries
+connector.domain.planning.deps --> connector.domain.planning.protocols
+connector.domain.planning.generic_planner --> connector.domain.models
+connector.domain.planning.generic_planner --> connector.domain.planning.plan_builder
+connector.domain.planning.generic_planner --> connector.domain.planning.plan_models
+connector.domain.planning.generic_planner --> connector.domain.planning.protocols
+connector.domain.planning.plan_builder --> connector.domain.models
+connector.domain.planning.plan_builder --> connector.domain.planning.plan_models
+connector.domain.planning.protocols --> connector.domain.models
+connector.domain.ports.execution --> connector.domain.error_codes
+connector.domain.ports.lookups --> connector.domain.models
+connector.domain.ports.sources --> connector.domain.models
+connector.domain.ports.target_read --> connector.domain.error_codes
+connector.domain.validation.dataset_rules --> connector.domain.validation.deps
+connector.domain.validation.deps --> connector.domain.ports.lookups
+connector.domain.validation.pipeline --> connector.domain.validation.dataset_rules
+connector.domain.validation.pipeline --> connector.domain.validation.deps
+connector.domain.validation.pipeline --> connector.domain.validation.row_rules
+connector.infra.artifacts.plan_reader --> connector.common.sanitize
+connector.infra.artifacts.plan_reader --> connector.domain.planning.plan_models
+connector.infra.artifacts.plan_writer --> connector.common.sanitize
+connector.infra.artifacts.plan_writer --> connector.common.time
+connector.infra.artifacts.report_writer --> connector.common.time
+connector.infra.cache.handlers.base --> connector.domain.ports.cache_repository
+connector.infra.cache.handlers.base --> connector.infra.cache.sqlite_engine
+connector.infra.cache.handlers.employees_handler --> connector.domain.ports.cache_repository
+connector.infra.cache.handlers.employees_handler --> connector.infra.cache.handlers.base
+connector.infra.cache.handlers.employees_handler --> connector.infra.cache.sqlite_engine
+connector.infra.cache.handlers.organizations_handler --> connector.domain.ports.cache_repository
+connector.infra.cache.handlers.organizations_handler --> connector.infra.cache.handlers.base
+connector.infra.cache.handlers.organizations_handler --> connector.infra.cache.sqlite_engine
+connector.infra.cache.handlers.registry --> connector.infra.cache.handlers.base
+connector.infra.cache.repository --> connector.domain.ports.cache_repository
+connector.infra.cache.repository --> connector.infra.cache.handlers.registry
+connector.infra.cache.repository --> connector.infra.cache.sqlite_engine
+connector.infra.cache.schema --> connector.infra.cache.handlers.registry
+connector.infra.cache.schema --> connector.infra.cache.sqlite_engine
+connector.infra.cache.validation_lookups --> connector.domain.ports.lookups
+connector.infra.cache.validation_lookups --> connector.infra.cache
+connector.infra.cache.validation_lookups --> connector.infra.cache.legacy_queries
+connector.infra.http.ankey_client --> connector.errors
+connector.infra.http.request_executor --> connector.common.sanitize
+connector.infra.http.request_executor --> connector.domain.error_codes
+connector.infra.http.request_executor --> connector.domain.ports.execution
+connector.infra.http.request_executor --> connector.infra.http.ankey_client
+connector.infra.secrets --> connector.infra.secrets.composite_provider
+connector.infra.secrets --> connector.infra.secrets.dict_provider
+connector.infra.secrets --> connector.infra.secrets.null_provider
+connector.infra.secrets --> connector.infra.secrets.prompt_provider
+connector.infra.secrets.composite_provider --> connector.domain.ports.secrets
+connector.infra.secrets.dict_provider --> connector.domain.ports.secrets
+connector.infra.secrets.null_provider --> connector.domain.ports.secrets
+connector.infra.secrets.prompt_provider --> connector.domain.ports.secrets
+connector.infra.sources.csv_reader --> connector.domain.models
+connector.infra.sources.csv_reader --> connector.domain.ports.sources
+connector.infra.target.ankey_gateway --> connector.common.sanitize
+connector.infra.target.ankey_gateway --> connector.domain.error_codes
+connector.infra.target.ankey_gateway --> connector.domain.ports.target_read
+connector.infra.target.ankey_gateway --> connector.infra.http.ankey_client
+connector.main --> connector.common.sanitize
+connector.main --> connector.common.time
+connector.main --> connector.config.config
+connector.main --> connector.datasets.cache_registry
+connector.main --> connector.datasets.registry
+connector.main --> connector.datasets.validation.registry
+connector.main --> connector.domain.ports.secrets
+connector.main --> connector.domain.validation.deps
+connector.main --> connector.domain.validation.pipeline
+connector.main --> connector.infra.artifacts.plan_reader
+connector.main --> connector.infra.artifacts.report_writer
+connector.main --> connector.infra.cache.db
+connector.main --> connector.infra.cache.handlers.employees_handler
+connector.main --> connector.infra.cache.handlers.organizations_handler
+connector.main --> connector.infra.cache.handlers.registry
+connector.main --> connector.infra.cache.repository
+connector.main --> connector.infra.cache.schema
+connector.main --> connector.infra.cache.sqlite_engine
+connector.main --> connector.infra.http.ankey_client
+connector.main --> connector.infra.http.request_executor
+connector.main --> connector.infra.logging.setup
+connector.main --> connector.infra.secrets
+connector.main --> connector.infra.sources.csv_reader
+connector.main --> connector.infra.target.ankey_gateway
+connector.main --> connector.usecases.cache_clear_usecase
+connector.main --> connector.usecases.cache_command_service
+connector.main --> connector.usecases.cache_refresh_service
+connector.main --> connector.usecases.import_apply_service
+connector.main --> connector.usecases.import_plan_service
+connector.main --> connector.usecases.ports
+connector.usecases.cache_clear_usecase --> connector.domain.ports.cache_repository
+connector.usecases.cache_command_service --> connector.infra.logging.setup
+connector.usecases.cache_command_service --> connector.usecases.cache_clear_usecase
+connector.usecases.cache_command_service --> connector.usecases.cache_refresh_service
+connector.usecases.cache_command_service --> connector.usecases.cache_status_usecase
+connector.usecases.cache_command_service --> connector.usecases.ports
+connector.usecases.cache_refresh_service --> connector.common.time
+connector.usecases.cache_refresh_service --> connector.datasets.cache_sync
+connector.usecases.cache_refresh_service --> connector.domain.ports.cache_repository
+connector.usecases.cache_refresh_service --> connector.domain.ports.target_read
+connector.usecases.cache_refresh_service --> connector.infra.logging.setup
+connector.usecases.cache_status_usecase --> connector.domain.ports.cache_repository
+connector.usecases.import_apply_service --> connector.common.sanitize
+connector.usecases.import_apply_service --> connector.datasets.registry
+connector.usecases.import_apply_service --> connector.datasets.spec
+connector.usecases.import_apply_service --> connector.domain.exceptions
+connector.usecases.import_apply_service --> connector.domain.planning.plan_models
+connector.usecases.import_apply_service --> connector.domain.ports.execution
+connector.usecases.import_apply_service --> connector.domain.ports.secrets
+connector.usecases.import_apply_service --> connector.infra.logging.setup
+connector.usecases.import_plan_service --> connector.common.time
+connector.usecases.import_plan_service --> connector.datasets.registry
+connector.usecases.import_plan_service --> connector.infra.artifacts.plan_writer
+connector.usecases.import_plan_service --> connector.infra.logging.setup
+connector.usecases.import_plan_service --> connector.infra.sources.csv_reader
+connector.usecases.import_plan_service --> connector.usecases.plan_usecase
+connector.usecases.import_plan_service --> connector.usecases.ports
+connector.usecases.plan_usecase --> connector.datasets.spec
+connector.usecases.plan_usecase --> connector.domain.planning.generic_planner
+connector.usecases.plan_usecase --> connector.domain.planning.plan_builder
+connector.usecases.plan_usecase --> connector.domain.validation.pipeline
+@enduml

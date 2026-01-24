@@ -1,0 +1,28 @@
+@startuml activitys
+start
+:Read RawRow;
+:Decode -> RawRow;
+
+:Normalize (Raw -> Canonical);
+:Row Validation;
+
+if (Has ERROR?) then (yes)
+  :Write report item;
+  if (stop-fast?) then (yes)
+    stop
+  else (no)
+    :Continue next row;
+    stop
+  endif
+endif
+
+:Enrich (lookups/defaults/secrets);
+:Compute match_key;
+
+if (dump_intermediate?) then (yes)
+  :Dump raw/normalized/enriched/request;
+endif
+
+:Map to TargetRequest;
+stop
+@enduml

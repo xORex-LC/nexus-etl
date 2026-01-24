@@ -1,0 +1,112 @@
+@startuml packages
+left to right direction
+skinparam packageStyle rectangle
+skinparam packageBackgroundColor #FEFECE
+skinparam packageBorderColor #A80036
+skinparam interfaceBackgroundColor #FEFECE
+skinparam interfaceBorderColor #A80036
+
+package "delivery" as delivery {
+  [cli.commands] <<implemented>>
+  [cli.transform_commands] <<planned>>
+  [orchestrator] <<implemented>>
+}
+
+package "application" as app {
+  [ValidateUseCase] <<implemented>>
+  [PlanUseCase] <<implemented>>
+  [ApplyUseCase] <<implemented>>
+  [CacheRefreshUseCase] <<implemented>>
+
+  [PrepareForSinkUseCase] <<planned>>
+  [NormalizeUseCase] <<planned>>
+  [EnrichUseCase] <<planned>>
+  [MapUseCase] <<planned>>
+}
+
+package "domain" as domain {
+  package "core" {
+    [RawRow] <<implemented>>
+    [CanonicalRow] <<planned>>
+    [PlanAction] <<implemented>>
+    [SyncPolicy] <<implemented>>
+    [ValidationRules] <<implemented>>
+    [DatasetRules] <<implemented>>
+  }
+
+  package "transform" {
+    [Normalizer] <<planned>>
+    [Enricher] <<planned>>
+    [SinkMapper] <<planned>>
+    [MatchKeyBuilder] <<planned>>
+    [StageResults] <<planned>>
+  }
+
+  package "planning" {
+    [GenericPlanner] <<implemented>>
+    [DecisionPolicy] <<implemented>>
+  }
+}
+
+package "ports" as ports {
+  interface RowSource <<implemented>>
+  interface DatasetRegistry <<implemented>>
+  interface LookupPort <<implemented>>
+  interface SecretsPort <<implemented>>
+  interface CacheRepositoryPort <<implemented>>
+  interface SinkGatewayPort <<implemented>>
+  interface PlanWriterPort <<implemented>>
+  interface PlanReaderPort <<implemented>>
+  interface ReportWriterPort <<implemented>>
+  interface ClockPort <<planned>>
+}
+
+package "datasets" as datasets {
+  [DatasetSpec<T>] <<implemented>>
+  [EmployeesSpec] <<implemented>>
+  [OrganizationsSpec] <<implemented>>
+  [DatasetTransformKit] <<planned>>
+}
+
+package "infra" as infra {
+  package "sources" {
+    [CsvRowSource] <<implemented>>
+    [HttpRowSource] <<planned>>
+  }
+
+  package "cache" {
+    [SqliteCacheRepository] <<implemented>>
+    [LegacyQueries] <<implemented>>
+  }
+
+  package "sink" {
+    [AnkeyIdmSinkGateway] <<implemented>>
+    [RequestExecutor] <<implemented>>
+  }
+
+  package "artifacts" {
+    [PlanFileWriter] <<implemented>>
+    [PlanFileReader] <<implemented>>
+    [ReportWriter] <<implemented>>
+  }
+
+  package "secrets" {
+    [PromptSecretsProvider] <<implemented>>
+    [EnvSecretsProvider] <<planned>>
+    [VaultSecretsProvider] <<planned>>
+  }
+}
+
+' Dependencies (outer -> inner)
+delivery -right-> app
+app -down-> domain
+app -right-> ports
+datasets -down-> domain
+datasets -right-> ports
+infra -right-> ports
+
+' Prohibited / should be eliminated
+domain ..[#red]> infra : <<should NOT>>\n(legacy now)
+domain ..[#red]> datasets : <<should NOT>>\n(validation now)
+
+@enduml

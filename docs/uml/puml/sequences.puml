@@ -1,0 +1,56 @@
+@startuml sequences
+actor Operator as op
+participant CLI
+participant Orchestrator as orch
+participant PlanUseCase as plan
+participant DatasetRegistry as reg
+participant RowSource as src
+participant ReportWriter as rep
+participant PlanWriter as pw
+participant CacheRepositoryPort as cache
+participant Normalizer as norm
+participant RowValidators as rvalid
+participant Enricher as enr
+participant SyncPolicy as policy
+
+op -> CLI : import plan --dataset X --source csv
+CLI -> orch : runPlan(dataset=X, sourceRef, opts)
+orch -> plan : execute(dataset, source, opts)
+
+plan -> reg : getSpec(X)
+reg --> plan : DatasetSpec
+
+plan -> rep : open(run_id)
+plan -> src : rows()
+
+loop for each RawRow
+  plan -> norm : normalize(raw, ctx)
+  norm --> plan : CanonicalRow
+
+  plan -> rvalid : validate(row, ctx)
+  rvalid --> plan : issues
+
+  alt issues contain ERROR and stop-fast
+    plan -> rep : write(stage="validate", status="failed", issues)
+    break
+  else issues contain ERROR and continue
+    plan -> rep : write(stage="validate", status="failed", issues)
+  else valid row
+    plan -> enr : enrich(row, ctx)
+    enr --> plan : EnrichedRow
+
+    plan -> plan : compute match_key
+    plan -> cache : getByMatchKey(dataset, match_key)
+    cache --> plan : existing?
+
+    plan -> policy : decide(desired, existing, ctx)
+    policy --> plan : CREATE/UPDATE/SKIP
+
+    plan -> pw : append(PlanAction)  ' writer masks secrets per options
+    plan -> rep : write(stage="plan", status=op)
+  end
+end
+
+plan -> pw : finalize()
+plan -> rep : finalize(summary)
+@enduml

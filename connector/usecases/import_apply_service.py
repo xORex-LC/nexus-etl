@@ -39,7 +39,7 @@ class ImportApplyService:
                 "errors": safe_item.get("errors", []),
                 "changes": safe_item.get("changes", {}),
                 "desired_state": safe_item.get("desired_state", {}),
-                "api_status": safe_item.get("api_status"),
+                "status_code": safe_item.get("status_code"),
                 "api_response": safe_item.get("api_response"),
                 "error_details": safe_item.get("error_details"),
             }
@@ -85,14 +85,6 @@ class ImportApplyService:
             item = raw
             item_dataset = dataset_name
             action = item.op
-            if action not in ("create", "update"):
-                failed += 1
-                if should_append("failed"):
-                    self._append_item(report, item.__dict__, "failed", item_dataset)
-                if stop_on_first_error:
-                    break
-                continue
-
             if max_actions is not None and actions_count >= max_actions:
                 break
 
@@ -121,15 +113,15 @@ class ImportApplyService:
 
                     if exec_result.ok:
                         result_item = current_item.__dict__.copy()
-                        result_item["api_status"] = exec_result.status_code
+                        result_item["status_code"] = exec_result.status_code
                         result_item["api_response"] = exec_result.response_json
                         result_item["error_details"] = exec_result.error_details
-                        status = "created" if action == "create" else "updated"
+                        status = action or "applied"
                         if should_append(status):
                             self._append_item(report, result_item, status, item_dataset)
                         if action == "create":
                             created += 1
-                        else:
+                        elif action == "update":
                             updated += 1
                         break
 
@@ -147,7 +139,7 @@ class ImportApplyService:
                     error_stats[code] = error_stats.get(code, 0) + 1
                     result_item = current_item.__dict__.copy()
                     result_item["errors"] = list(result_item.get("errors", [])) + [err]
-                    result_item["api_status"] = exec_result.status_code
+                    result_item["status_code"] = exec_result.status_code
                     result_item["api_response"] = exec_result.response_json
                     result_item["error_details"] = exec_result.error_details
                     if should_append("failed"):

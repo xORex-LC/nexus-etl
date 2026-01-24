@@ -1,0 +1,86 @@
+@startuml components
+skinparam componentStyle rectangle
+skinparam componentBackgroundColor #FEFECE
+skinparam componentBorderColor #A80036
+skinparam interfaceBackgroundColor #FEFECE
+skinparam interfaceBorderColor #A80036
+
+component "CLI" as CLI
+component "Transform CLI" as TCLI
+component "Orchestrator" as ORCH
+
+component "ValidateUseCase" as VUC
+component "PlanUseCase" as PUC
+component "ApplyUseCase" as AUC
+component "CacheRefreshUseCase" as CUC
+
+component "PrepareForSinkUseCase" as PREP
+component "Normalizer" as NORM
+component "RowValidators" as RVAL
+component "Enricher" as ENR
+component "SinkMapper" as MAP
+
+interface "RowSource" as IRowSource
+interface "DatasetRegistry" as IDatasets
+interface "LookupPort" as ILookup
+interface "SecretsPort" as ISecrets
+interface "CacheRepositoryPort" as ICache
+interface "SinkGatewayPort" as ISink
+interface "PlanWriterPort" as IPlanW
+interface "PlanReaderPort" as IPlanR
+interface "ReportWriterPort" as IReport
+
+component "CsvRowSource" as CSV
+component "DatasetRegistryImpl" as REG
+component "IdentityLookupAdapter" as LOOKAD
+component "SqliteCacheRepo" as CACHE
+component "SecretsProvider" as SECP
+component "PlanFileWriter" as PLANW
+component "PlanFileReader" as PLANR
+component "ReportWriter" as REP
+component "AnkeyIdmGateway" as SINK
+
+CLI --> ORCH
+TCLI --> ORCH
+
+ORCH --> VUC
+ORCH --> PUC
+ORCH --> AUC
+ORCH --> CUC
+
+VUC --> PREP
+PUC --> PREP
+AUC --> PREP
+
+PREP --> NORM
+PREP --> RVAL
+PREP --> ENR
+PREP --> MAP
+
+CSV --|> IRowSource
+REG --|> IDatasets
+LOOKAD --|> ILookup
+CACHE --|> ICache
+SECP --|> ISecrets
+PLANW --|> IPlanW
+PLANR --|> IPlanR
+REP --|> IReport
+SINK --|> ISink
+
+ENR ..> ILookup
+ENR ..> ISecrets
+ENR ..> ICache
+
+PUC ..> IRowSource
+PUC ..> IPlanW
+PUC ..> IReport
+
+AUC ..> IPlanR
+AUC ..> ISink
+AUC ..> IReport
+
+CUC ..> ISink
+CUC ..> ICache
+CUC ..> IReport
+
+@enduml
