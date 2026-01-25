@@ -22,9 +22,9 @@ from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
-from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
+from connector.infra.sources.csv_reader import CsvFormatError
 from connector.infra.sources.employees_source_csv_reader import EmployeesSourceCsvRowSource
-from connector.infra.sources.record_source import CollectingRecordSource
+from connector.infra.sources.record_source import CsvCollectResultSource
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
@@ -658,9 +658,10 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         report.meta.report_items_limit = report_items_limit
         report.meta.dataset = dataset_name
         record_adapter = dataset_spec.build_record_adapter()
-        record_source = CollectingRecordSource(
-            CsvRowSource(csvPath, csv_has_header),
-            record_adapter,
+        record_source = CsvCollectResultSource(
+            csv_path=csvPath,
+            csv_has_header=csv_has_header,
+            adapter=record_adapter,
         )
 
         try:
@@ -764,12 +765,20 @@ def runMappingCommand(
         report.meta.dataset = dataset_name
 
         try:
-            if source_format == "source":
-                row_source = EmployeesSourceCsvRowSource(csvPath, csv_has_header)
-            else:
-                row_source = CsvRowSource(csvPath, csv_has_header)
             record_adapter = dataset_spec.build_record_adapter()
-            record_source = CollectingRecordSource(row_source, record_adapter)
+            if source_format == "source":
+                record_source = CsvCollectResultSource(
+                    csv_path=csvPath,
+                    csv_has_header=csv_has_header,
+                    adapter=record_adapter,
+                    row_source_cls=EmployeesSourceCsvRowSource,
+                )
+            else:
+                record_source = CsvCollectResultSource(
+                    csv_path=csvPath,
+                    csv_has_header=csv_has_header,
+                    adapter=record_adapter,
+                )
             usecase = MappingUseCase(
                 report_items_limit=report_items_limit,
                 include_mapped_items=include_mapped_items,

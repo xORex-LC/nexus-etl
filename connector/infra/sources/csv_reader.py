@@ -4,7 +4,7 @@ import csv
 from typing import Iterator
 
 from connector.domain.models import CsvRow
-from connector.domain.ports.sources import RowSource
+from connector.domain.ports.sources import LegacyRowSource
 
 EXPECTED_COLUMNS = 14
 
@@ -48,10 +48,12 @@ def readEmployeeRows(csvPath: str, hasHeader: bool) -> Iterator[CsvRow]:
             yield CsvRow(file_line_no=csv_line_no, data_line_no=data_line_no, values=values)
 
 
-class CsvRowSource(RowSource):
+class CsvRowSource(LegacyRowSource):
     """
     Назначение/ответственность:
         Источник CsvRow на основе локального CSV-файла.
+
+        TODO: TECHDEBT - удалить после внедрения полноценного extract/transform слоя.
     """
 
     def __init__(self, path: str, has_header: bool):

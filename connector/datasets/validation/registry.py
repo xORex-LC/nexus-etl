@@ -27,20 +27,16 @@ class ValidatorRegistry:
         self.deps = deps
         self.factory = ValidatorFactory(deps, mapper, legacy_adapter, required_fields)
 
-    def create_row_validator(self, dataset: str) -> RowValidator:
+    def create_row_validator(self) -> RowValidator:
         """
-        Возвращает RowValidator для заданного датасета.
+        Возвращает RowValidator для конкретного датасета.
         """
-        if dataset != "employees":
-            raise ValueError(f"Unsupported dataset: {dataset}")
         return self.factory.create_row_validator()
 
-    def create_dataset_validator(self, dataset: str, state: DatasetValidationState) -> DatasetValidator:
+    def create_dataset_validator(self, state: DatasetValidationState) -> DatasetValidator:
         """
-        Возвращает DatasetValidator для заданного датасета.
+        Возвращает DatasetValidator для конкретного датасета.
         """
-        if dataset != "employees":
-            raise ValueError(f"Unsupported dataset: {dataset}")
         return self.factory.create_dataset_validator(state)
 
     def create_state(self) -> DatasetValidationState:

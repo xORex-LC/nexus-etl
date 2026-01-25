@@ -37,9 +37,9 @@ class EmployeesSpec(DatasetSpec):
         mapping_spec = EmployeesMappingSpec()
         mapper = EmployeesSourceMapper(mapping_spec)
         registry = ValidatorRegistry(deps, mapper, to_employee_input, mapping_spec.required_fields)
-        row_validator = registry.create_row_validator("employees")
+        row_validator = registry.create_row_validator()
         state = registry.create_state()
-        dataset_validator = registry.create_dataset_validator("employees", state)
+        dataset_validator = registry.create_dataset_validator(state)
         return ValidatorBundle(row_validator=row_validator, dataset_validator=dataset_validator, state=state)
 
     def build_record_adapter(self) -> EmployeesCsvRecordAdapter:

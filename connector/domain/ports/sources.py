@@ -9,18 +9,32 @@ from connector.domain.transform.collect_result import CollectResult
 
 T = TypeVar("T")
 
-class RowSource(Protocol):
+class LegacyRowSource(Protocol):
     """
     Назначение/ответственность:
-        Источник нормализованных строк для валидатора/планировщика (абстракция над CSV/маппером).
-    Взаимодействия:
-        Потребляется пайплайнами validate/plan/apply.
+        Legacy источник CsvRow (используется в CSV-адаптерах).
+
+    TODO: TECHDEBT - удалить после полного перехода на SourceRecord.
     """
 
     def __iter__(self) -> Iterable[CsvRow]:
         """
         Контракт:
             Возвращает итерируемые CsvRow (с заполненными file_line_no/values).
+        """
+        ...
+
+
+class RowSource(Protocol):
+    """
+    Назначение/ответственность:
+        Источник SourceRecord для transform/validate/plan.
+    """
+
+    def __iter__(self) -> Iterable[SourceRecord]:
+        """
+        Контракт:
+            Возвращает итерируемые SourceRecord.
         """
         ...
 
@@ -32,6 +46,7 @@ class RowMapper(Protocol):
         Может использоваться нормализатором/планировщиком для разных схем.
     """
 
+    # TODO: TECHDEBT - legacy mapper for CsvRow; remove after SourceRecord migration.
     def map(self, raw: dict) -> CsvRow:
         """
         Контракт:

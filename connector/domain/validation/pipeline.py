@@ -90,6 +90,9 @@ class RowValidator:
         for attr_name, field_name in self.required_fields:
             value = getattr(map_result.row, attr_name, None)
             if value is None or (isinstance(value, str) and value.strip() == ""):
+                secret_value = map_result.secret_candidates.get(attr_name)
+                if secret_value is not None and str(secret_value).strip() != "":
+                    continue
                 map_result.errors.append(
                     ValidationErrorItem(
                         code="REQUIRED_FIELD_MISSING",

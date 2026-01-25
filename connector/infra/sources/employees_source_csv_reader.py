@@ -5,7 +5,7 @@ import re
 from typing import Iterator
 
 from connector.domain.models import CsvRow
-from connector.domain.ports.sources import RowSource
+from connector.domain.ports.sources import LegacyRowSource
 from connector.infra.sources.csv_reader import CsvFormatError
 
 EMPLOYEES_COLUMNS = 14
@@ -187,7 +187,7 @@ def readEmployeesSourceRows(csvPath: str, hasHeader: bool) -> Iterator[CsvRow]:
             yield CsvRow(file_line_no=csv_line_no, data_line_no=data_line_no, values=values)
 
 
-class EmployeesSourceCsvRowSource(RowSource):
+class EmployeesSourceCsvRowSource(LegacyRowSource):
     """
     Назначение/ответственность:
         Источник CsvRow на основе source CSV (анархичный формат).
