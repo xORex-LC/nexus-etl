@@ -37,8 +37,6 @@
 
 Sink-spec leakage (where sink/normalized specificity leaks into non-dataset layers):
 - connector/infra/sources/csv_reader.py: EXPECTED_COLUMNS=14 (employees-only нормализованный CSV).
-- connector/usecases/import_plan_service.py: читает CsvRowSource (нормализованный sink CSV).
-- connector/main.py: validate/mapping по умолчанию читает CsvRowSource (sink CSV), если не указан source-format.
 
 Sink-spec in correct place (dataset layer, ok):
 - connector/datasets/employees/field_rules.py: employees CSV schema и required-правила.

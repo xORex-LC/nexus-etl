@@ -191,6 +191,8 @@ class EmployeesSourceCsvRowSource(LegacyRowSource):
     """
     Назначение/ответственность:
         Источник CsvRow на основе source CSV (анархичный формат).
+
+    TODO: TECHDEBT - legacy reader; используйте datasets.employees.record_sources.SourceEmployeesCsvRecordSource.
     """
 
     def __init__(self, path: str, has_header: bool):

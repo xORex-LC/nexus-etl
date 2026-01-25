@@ -114,6 +114,11 @@ class "CsvRow" as connector.domain.models.CsvRow <<validate>> {
   file_line_no : int
   values : list[str | None]
 }
+class "SourceRecord" as connector.domain.transform.source_record.SourceRecord <<validate>> {
+  line_no : int
+  record_id : str
+  values : Mapping[str, Any]
+}
 class "DatasetRule" as connector.domain.validation.pipeline.DatasetRule <<validate>> {
   apply(employee: EmployeeInput, result: ValidationRowResult, state: DatasetValidationState, deps: ValidationDependencies) -> None
 }
@@ -182,6 +187,11 @@ class "MapResult" as connector.domain.transform.map_result.MapResult <<validate>
   row
   match_key : MatchKey | None
   secret_candidates : dict[str, str]
+  errors : list[ValidationErrorItem]
+  warnings : list[ValidationErrorItem]
+}
+class "CollectResult" as connector.domain.transform.collect_result.CollectResult <<validate>> {
+  record : SourceRecord
   errors : list[ValidationErrorItem]
   warnings : list[ValidationErrorItem]
 }
@@ -276,7 +286,7 @@ class "RowRule" as connector.domain.validation.row_rules.RowRule <<validate>> {
 class "RowValidator" as connector.domain.validation.pipeline.RowValidator <<validate>> {
   mapper : SourceMapper
   legacy_adapter
-  validate(csv_row: CsvRow) -> tuple[EmployeeInput, ValidationRowResult]
+  validate(collected: CollectResult) -> tuple[EmployeeInput, ValidationRowResult]
 }
 class "UsrOrgTabUniqueRule" as connector.domain.validation.dataset_rules.UsrOrgTabUniqueRule <<validate>> {
   apply(employee: EmployeeInput, result: ValidationRowResult, state: DatasetValidationState, deps: ValidationDependencies) -> None
@@ -398,8 +408,10 @@ class "RequestSpec" as connector.domain.ports.execution.RequestSpec <<apply>> {
 class "RowMapper" as connector.domain.ports.sources.RowMapper {
   map(raw: dict) -> CsvRow
 }
+class "LegacyRowSource" as connector.domain.ports.sources.LegacyRowSource {
+}
 class "SourceMapper" as connector.domain.ports.sources.SourceMapper <<validate>> {
-  map(raw: CsvRow) -> MapResult
+  map(raw: SourceRecord) -> MapResult
 }
 class "RowSource" as connector.domain.ports.sources.RowSource {
 }
@@ -441,6 +453,8 @@ class "CacheSyncAdapterProtocol" as connector.datasets.cache_sync.CacheSyncAdapt
 class "DatasetSpec" as connector.datasets.spec.DatasetSpec {
   build_planning_deps(conn, settings) -> PlanningDependencies
   build_planning_policy(include_deleted: bool, deps: PlanningDependencies) -> PlanningPolicyProtocol
+  build_record_adapter() -> RecordAdapterProtocol
+  build_record_source(csv_path: str, csv_has_header: bool, source_format: str | None) -> Iterable[CollectResult]
   build_validation_deps(conn, settings) -> ValidationDependencies
   build_validators(deps: ValidationDependencies) -> ValidatorBundle
   get_apply_adapter() -> ApplyAdapter
@@ -467,11 +481,13 @@ class "ValidatorBundle" as connector.datasets.spec.ValidatorBundle <<validate>> 
 class "ValidatorRegistry" as connector.datasets.validation.registry.ValidatorRegistry <<validate>> {
   deps
   factory
-  create_dataset_validator(dataset: str, state: DatasetValidationState) -> DatasetValidator
-  create_row_validator(dataset: str) -> RowValidator
+  create_dataset_validator(state: DatasetValidationState) -> DatasetValidator
+  create_row_validator() -> RowValidator
   create_state() -> DatasetValidationState
 }
 class "EmployeesSpec" as connector.datasets.employees.spec.EmployeesSpec {
+  build_record_adapter() -> RecordAdapterProtocol
+  build_record_source(csv_path: str, csv_has_header: bool, source_format: str | None) -> Iterable[CollectResult]
   build_planning_deps(conn, settings) -> PlanningDependencies
   build_planning_policy(include_deleted: bool, deps: PlanningDependencies) -> PlanningPolicyProtocol
   build_validation_deps(conn, settings) -> ValidationDependencies
@@ -508,8 +524,22 @@ class "EmployeesRowPublic" as connector.datasets.employees.models.EmployeesRowPu
   user_name : str | None
   usr_org_tab_num : str | None
 }
+class "EmployeesMappingSpec" as connector.datasets.employees.mapping_spec.EmployeesMappingSpec <<validate>> {
+  match_key_fields : tuple[str, ...]
+  required_fields : tuple[tuple[str, str], ...]
+  secret_fields : tuple[str, ...]
+  collect_secret_candidates(values: Mapping[str, Any]) -> dict[str, str]
+  get_match_key_parts(row: EmployeesRowPublic) -> list[str | None]
+}
 class "EmployeesSourceMapper" as connector.datasets.employees.source_mapper.EmployeesSourceMapper <<validate>> {
-  map(raw: CsvRow) -> MapResult
+  map(raw: SourceRecord) -> MapResult
+}
+class "EmployeesCsvRecordAdapter" as connector.datasets.employees.csv_record_adapter.EmployeesCsvRecordAdapter <<validate>> {
+  collect(csv_row: CsvRow) -> CollectResult
+}
+class "NormalizedEmployeesCsvRecordSource" as connector.datasets.employees.record_sources.NormalizedEmployeesCsvRecordSource <<validate>> {
+}
+class "SourceEmployeesCsvRecordSource" as connector.datasets.employees.record_sources.SourceEmployeesCsvRecordSource <<validate>> {
 }
 class "EmployeesCacheSyncAdapter" as connector.datasets.employees.cache_sync_adapter.EmployeesCacheSyncAdapter <<cache>> {
   dataset : str
@@ -754,7 +784,7 @@ connector.infra.secrets.composite_provider.CompositeSecretProvider --|> connecto
 connector.infra.secrets.dict_provider.DictSecretProvider --|> connector.domain.ports.secrets.SecretProviderProtocol
 connector.infra.secrets.null_provider.NullSecretProvider --|> connector.domain.ports.secrets.SecretProviderProtocol
 connector.infra.secrets.prompt_provider.PromptSecretProvider --|> connector.domain.ports.secrets.SecretProviderProtocol
-connector.infra.sources.csv_reader.CsvRowSource --|> connector.domain.ports.sources.RowSource
+connector.infra.sources.csv_reader.CsvRowSource --|> connector.domain.ports.sources.LegacyRowSource
 connector.infra.target.ankey_gateway.AnkeyTargetPagedReader --|> connector.domain.ports.target_read.TargetPagedReaderProtocol
 connector.usecases.cache_command_service.CacheCommandService --|> connector.usecases.ports.CacheCommandServiceProtocol
 connector.usecases.import_plan_service.ImportPlanService --|> connector.usecases.ports.ImportPlanServiceProtocol
@@ -775,6 +805,7 @@ connector.domain.validation.pipeline.ValidatorFactory --* connector.datasets.val
 connector.datasets.cache_sync.CacheSyncAdapterProtocol --o connector.usecases.cache_refresh_service.CacheRefreshUseCase : adapters
 connector.datasets.spec.DatasetSpec --o connector.usecases.import_apply_service.ImportApplyService : spec_resolver
 connector.domain.ports.sources.SourceMapper ..> connector.domain.transform.map_result.MapResult : map
+connector.domain.transform.collect_result.CollectResult --> connector.domain.transform.source_record.SourceRecord : record
 connector.domain.validation.pipeline.RowValidator --> connector.domain.ports.sources.SourceMapper : mapper
 connector.domain.transform.map_result.MapResult --> connector.domain.models.RowRef : row_ref
 connector.domain.transform.map_result.MapResult --> connector.domain.transform.match_key.MatchKey : match_key

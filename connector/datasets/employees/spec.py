@@ -17,6 +17,10 @@ from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper, to_employee_input
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.csv_record_adapter import EmployeesCsvRecordAdapter
+from connector.datasets.employees.record_sources import (
+    NormalizedEmployeesCsvRecordSource,
+    SourceEmployeesCsvRecordSource,
+)
 
 class EmployeesSpec(DatasetSpec):
     """
@@ -44,6 +48,16 @@ class EmployeesSpec(DatasetSpec):
 
     def build_record_adapter(self) -> EmployeesCsvRecordAdapter:
         return EmployeesCsvRecordAdapter()
+
+    def build_record_source(
+        self,
+        csv_path: str,
+        csv_has_header: bool,
+        source_format: str | None = None,
+    ):
+        if source_format == "source":
+            return SourceEmployeesCsvRecordSource(csv_path, csv_has_header)
+        return NormalizedEmployeesCsvRecordSource(csv_path, csv_has_header)
 
     def build_planning_policy(self, include_deleted: bool, deps: PlanningDependencies):
         projector = EmployeesProjector()

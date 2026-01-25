@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from connector.infra.sources.record_source import CsvCollectResultSource
 from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.usecases.ports import ImportPlanServiceProtocol
@@ -36,11 +35,9 @@ class ImportPlanService(ImportPlanServiceProtocol):
         dataset_spec = get_spec(dataset)
         validation_deps = dataset_spec.build_validation_deps(conn, settings)
         planning_deps = dataset_spec.build_planning_deps(conn, settings)
-        record_adapter = dataset_spec.build_record_adapter()
-        record_source = CsvCollectResultSource(
+        record_source = dataset_spec.build_record_source(
             csv_path=csv_path,
             csv_has_header=csv_has_header,
-            adapter=record_adapter,
         )
         use_case = PlanUseCase(
             report_items_limit=report_items_limit,
