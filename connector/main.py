@@ -26,6 +26,7 @@ from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
+from connector.usecases.mapping_usecase import MappingUseCase
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
@@ -42,6 +43,7 @@ from connector.domain.ports.secrets import SecretProviderProtocol
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
 importApp = typer.Typer(no_args_is_help=True)
+syncEmployeesApp = typer.Typer(no_args_is_help=True)
 userApp = typer.Typer(no_args_is_help=True)  # резерв под будущие команды
 
 def ensureDir(path: str) -> None:
@@ -730,6 +732,61 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         runner=execute,
     )
 
+def runMappingCommand(
+    ctx: typer.Context,
+    csvPath: str | None,
+    csvHasHeader: bool | None,
+    dataset: str | None,
+    reportItemsLimit: int | None,
+    includeMappedItems: bool | None,
+) -> None:
+    runId = ctx.obj["runId"]
+    settings: Settings = ctx.obj["settings"]
+    csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
+    dataset_name = dataset if dataset is not None else settings.dataset_name
+    report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
+    include_mapped_items = includeMappedItems if includeMappedItems is not None else True
+
+    def execute(logger, report) -> int:
+        deps = ValidationDependencies()
+        dataset_spec = get_spec(dataset_name)
+        validators = dataset_spec.build_validators(deps)
+        row_validator = validators.row_validator
+        report.meta.report_items_limit = report_items_limit
+        report.meta.dataset = dataset_name
+
+        try:
+            row_source = CsvRowSource(csvPath, csv_has_header)
+            usecase = MappingUseCase(
+                report_items_limit=report_items_limit,
+                include_mapped_items=include_mapped_items,
+            )
+            return usecase.run(
+                row_source=row_source,
+                row_validator=row_validator,
+                dataset=dataset_name,
+                logger=logger,
+                run_id=runId,
+                report=report,
+            )
+        except CsvFormatError as exc:
+            logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
+            typer.echo(f"ERROR: CSV format error: {exc}", err=True)
+            return 2
+        except OSError as exc:
+            logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
+            typer.echo(f"ERROR: CSV read error: {exc}", err=True)
+            return 2
+
+    runWithReport(
+        ctx=ctx,
+        commandName="mapping",
+        csvPath=csvPath,
+        requiresCsv=True,
+        requiresApiAccess=False,
+        runner=execute,
+    )
+
 
 def build_secret_provider(source: str | None, vault_file: str | None) -> SecretProviderProtocol:
     """
@@ -841,6 +898,29 @@ def validate(
     csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
 ):
     runValidateCommand(ctx, csv, csvHasHeader)
+
+@syncEmployeesApp.command("mapping")
+def syncEmployeesMapping(
+    ctx: typer.Context,
+    csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
+    csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
+    dataset: str | None = typer.Option(None, "--dataset", help="Dataset name (e.g., employees)", show_default=True),
+    reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
+    includeMappedItems: bool | None = typer.Option(
+        None,
+        "--include-mapped-items/--no-include-mapped-items",
+        help="Include mapped rows in report items",
+        show_default=True,
+    ),
+):
+    runMappingCommand(
+        ctx=ctx,
+        csvPath=csv,
+        csvHasHeader=csvHasHeader,
+        dataset=dataset,
+        reportItemsLimit=reportItemsLimit,
+        includeMappedItems=includeMappedItems,
+    )
 
 @importApp.command("plan")
 def importPlan(
@@ -966,4 +1046,5 @@ def cacheClear(
 
 app.add_typer(cacheApp, name="cache")
 app.add_typer(importApp, name="import")
+app.add_typer(syncEmployeesApp, name="syncEmployees")
 app.add_typer(userApp, name="user")

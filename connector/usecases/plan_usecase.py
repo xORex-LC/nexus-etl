@@ -111,6 +111,7 @@ class PlanUseCase:
                 continue
 
             builder.inc_valid_rows()
+            # TODO: TECHDEBT - move vault write to Enricher/SecretsPolicy once available.
             if (
                 secret_store is not None
                 and validation.match_key_complete

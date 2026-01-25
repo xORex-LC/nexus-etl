@@ -51,11 +51,7 @@ class RowValidator:
             csv_row: нормализованная строка CSV.
             Возвращает EmployeeInput + ValidationRowResult с ошибками/варнингами полей.
         """
-        # TODO: remove CSV record adapter when validator stops working with CsvRow.
-        collected: CollectResult = self.record_adapter.collect(csv_row)
-        map_result = self.mapper.map(collected.record)
-        map_result.errors = [*collected.errors, *map_result.errors]
-        map_result.warnings = [*collected.warnings, *map_result.warnings]
+        map_result = self.map_only(csv_row)
         employee = self.legacy_adapter(map_result.row, map_result.secret_candidates)
 
         match_key_value = map_result.match_key.value if map_result.match_key else ""
@@ -79,6 +75,18 @@ class RowValidator:
             warnings=map_result.warnings,
         )
         return employee, result
+
+    def map_only(self, csv_row: CsvRow):
+        """
+        Назначение:
+            Вернуть чистый MapResult без legacy-структур.
+        """
+        # TODO: remove CSV record adapter when validator stops working with CsvRow.
+        collected: CollectResult = self.record_adapter.collect(csv_row)
+        map_result = self.mapper.map(collected.record)
+        map_result.errors = [*collected.errors, *map_result.errors]
+        map_result.warnings = [*collected.warnings, *map_result.warnings]
+        return map_result
 
 class DatasetValidator:
     """

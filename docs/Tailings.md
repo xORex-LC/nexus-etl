@@ -30,3 +30,5 @@
 28) TODO: TECHDEBT — вынести FIELD_RULES (employees CSV schema) из domain в datasets/employees/field_rules.py.
 29) TODO: TECHDEBT — password не должен быть required на source-parse; перенести обязательность на sink/create после enrich.
 30) TODO: TECHDEBT — подчистить legacy-импорты/структуру в validation pipeline после рефакторинга.
+31) TODO: TECHDEBT — перенести запись секретов из PlanUseCase в Enricher/SecretsPolicy после внедрения enrich-слоя.
+32) TODO: TECHDEBT — убрать вырезание маскированного password в plan_reader после перехода на secret_fields-only.
