@@ -35,6 +35,7 @@ class PlanDecision:
     changes: dict[str, Any] | None = None
     resource_id: str | None = None
     source_ref: dict[str, Any] | None = None
+    secret_fields: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str | None = None
     warnings: list[ValidationErrorItem] = field(default_factory=list)

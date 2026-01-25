@@ -11,7 +11,9 @@ class EmployeesProjector:
     """
 
     def to_desired_state(self, validated_entity) -> dict:
-        return asdict(validated_entity)
+        desired = asdict(validated_entity)
+        desired.pop("password", None)
+        return desired
 
     def to_identity(self, validated_entity, validation_result) -> Identity:
         return Identity(

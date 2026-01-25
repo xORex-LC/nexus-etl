@@ -61,5 +61,6 @@ class GenericPlanner:
             desired_state=decision.desired_state,
             changes=decision.changes,
             source_ref=decision.source_ref,
+            secret_fields=decision.secret_fields,
         )
         self._builder.add_plan_item(plan_item)

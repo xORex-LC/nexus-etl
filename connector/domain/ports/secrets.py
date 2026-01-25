@@ -35,4 +35,25 @@ class SecretProviderProtocol(Protocol):
         ...
 
 
-__all__ = ["SecretProviderProtocol"]
+class SecretStoreProtocol(Protocol):
+    """
+    Назначение:
+        Порт записи секретов (plan-time).
+    """
+
+    def put_many(
+        self,
+        *,
+        dataset: str,
+        match_key: str,
+        secrets: dict[str, str],
+        run_id: str | None = None,
+    ) -> None:
+        """
+        Контракт:
+            Записать набор секретов для match_key.
+        """
+        ...
+
+
+__all__ = ["SecretProviderProtocol", "SecretStoreProtocol"]

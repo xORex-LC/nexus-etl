@@ -22,6 +22,7 @@ class ImportPlanServiceProtocol(Protocol):
         report_items_limit: int,
         include_skipped_in_report: bool,
         report_dir: str,
+        vault_file: str | None = None,
         settings=None,
     ) -> int: ...
 

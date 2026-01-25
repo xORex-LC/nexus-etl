@@ -19,7 +19,7 @@ class DummyExecutor(RequestExecutorProtocol):
         return ExecutionResult(ok=True, status_code=200, response_json={"ok": True})
 
 
-def make_plan(op: str, desired_state: dict) -> Plan:
+def make_plan(op: str, desired_state: dict, secret_fields: list[str] | None = None) -> Plan:
     meta = PlanMeta(run_id="r1", generated_at="now", dataset="employees", csv_path=None, plan_path=None, include_deleted=None)
     summary = PlanSummary(rows_total=1, valid_rows=1, failed_rows=0, planned_create=1 if op == "create" else 0, planned_update=1 if op == "update" else 0, skipped=0)
     item = PlanItem(
@@ -30,6 +30,7 @@ def make_plan(op: str, desired_state: dict) -> Plan:
         desired_state=desired_state,
         changes={},
         source_ref={},
+        secret_fields=secret_fields or [],
     )
     return Plan(meta=meta, summary=summary, items=[item])
 
@@ -69,7 +70,7 @@ def test_apply_create_uses_secret_provider_when_missing_password():
     provider = DictSecretProvider({("employees", "password", "row1", 1): "secret123"})
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor, secrets=provider)
-    plan = make_plan("create", base_desired_state(with_password=False))
+    plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
     report = make_report()
 
     code = service.applyPlan(
@@ -96,7 +97,7 @@ def test_apply_create_fails_when_secret_missing():
     provider = NullSecretProvider()
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor, secrets=provider)
-    plan = make_plan("create", base_desired_state(with_password=False))
+    plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
     report = make_report()
 
     code = service.applyPlan(
@@ -132,7 +133,7 @@ def test_apply_update_does_not_request_secret():
     provider = CountingProvider()
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor, secrets=provider)
-    plan = make_plan("update", base_desired_state(with_password=True))
+    plan = make_plan("update", base_desired_state(with_password=True), secret_fields=[])
     report = make_report()
 
     code = service.applyPlan(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from dataclasses import field
 
 class Operation:
     """
@@ -67,6 +68,7 @@ class PlanItem:
     desired_state: dict[str, Any]
     changes: dict[str, Any]
     source_ref: dict[str, Any] | None = None
+    secret_fields: list[str] = field(default_factory=list)
 
 @dataclass
 class Plan:

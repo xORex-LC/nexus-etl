@@ -123,6 +123,8 @@ def _avatar_validator(value: Any, errors: list[ValidationErrorItem], _: list[Val
         )
 
 FIELD_RULES: tuple[FieldRule, ...] = (
+    # TODO: TECHDEBT - move FIELD_RULES to datasets/employees/field_rules.py to keep domain dataset-agnostic.
+    # TODO: TECHDEBT - make password optional at source-parse stage; enforce on sink/create after enrich.
     FieldRule("email", 0, required=True, validators=(_email_validator,)),
     FieldRule("lastName", 1, required=True),
     FieldRule("firstName", 2, required=True),

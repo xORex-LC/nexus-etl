@@ -8,6 +8,8 @@ from .deps import DatasetValidationState, ValidationDependencies
 from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.ports.sources import SourceMapper
 from connector.infra.sources.employees_csv_record_adapter import EmployeesCsvRecordAdapter, CollectResult
+# TODO: TECHDEBT - domain validation depends on infra adapter; remove after validator works with SourceRecord directly.
+# TODO: TECHDEBT - clean up legacy imports/structures in validation pipeline after refactor.
 
 class DatasetRule(Protocol):
     """
@@ -49,7 +51,7 @@ class RowValidator:
             csv_row: нормализованная строка CSV.
             Возвращает EmployeeInput + ValidationRowResult с ошибками/варнингами полей.
         """
-        # TODO: remove CSV record adapter after extract layer switches to SourceRecord.
+        # TODO: remove CSV record adapter when validator stops working with CsvRow.
         collected: CollectResult = self.record_adapter.collect(csv_row)
         map_result = self.mapper.map(collected.record)
         map_result.errors = [*collected.errors, *map_result.errors]
@@ -72,6 +74,7 @@ class RowValidator:
             match_key_complete=match_key_complete,
             usr_org_tab_num=getattr(map_result.row, "usr_org_tab_num", None),
             row_ref=row_ref,
+            secret_candidates=map_result.secret_candidates,
             errors=map_result.errors,
             warnings=map_result.warnings,
         )

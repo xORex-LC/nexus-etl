@@ -4,7 +4,6 @@ import logging
 import sqlite3
 import sys
 import time
-import uuid
 from pathlib import Path
 
 import typer
@@ -32,6 +31,7 @@ from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServ
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.common.sanitize import maskSecret
 from connector.common.time import getDurationMs
+from connector.common.run_id import generate_run_id
 from connector.domain.validation.pipeline import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.registry import get_spec
@@ -432,6 +432,7 @@ def runImportPlanCommand(
     reportItemsLimit: int | None,
     reportIncludeSkipped: bool | None,
     dataset: str | None,
+    vaultFile: str | None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -477,6 +478,7 @@ def runImportPlanCommand(
                 report_items_limit=report_items_limit,
                 include_skipped_in_report=report_include_skipped,
                 report_dir=settings.report_dir,
+                vault_file=vaultFile,
             )
         except ValueError as exc:
             typer.echo(f"ERROR: {exc}", err=True)
@@ -510,6 +512,7 @@ def runImportApplyCommand(
     reportItemsLimit: int | None,
     resourceExistsRetries: int | None,
     secretsFrom: str | None,
+    vaultFile: str | None,
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
@@ -569,7 +572,7 @@ def runImportApplyCommand(
             retryBackoffSeconds=settings.retry_backoff_seconds,
         )
         client.resetRetryAttempts()
-        secrets_provider = build_secret_provider(secretsFrom)
+        secrets_provider = build_secret_provider(secretsFrom, vaultFile)
         executor = AnkeyRequestExecutor(client)
         service = ImportApplyService(executor, secrets=secrets_provider, spec_resolver=get_spec)
         exit_code = service.applyPlan(
@@ -728,19 +731,26 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
     )
 
 
-def build_secret_provider(source: str | None) -> SecretProviderProtocol:
+def build_secret_provider(source: str | None, vault_file: str | None) -> SecretProviderProtocol:
     """
     Назначение:
         Фабрика провайдера секретов для apply.
     Контракт:
         - source None/\"none\" -> NullSecretProvider
         - source \"prompt\" -> PromptSecretProvider
+        - source \"vault\" -> CompositeSecretProvider(FileVault -> Prompt)
         - любое другое значение: NullSecretProvider (по умолчанию)
     """
     if not source or source == "none":
         return NullSecretProvider()
     if source == "prompt":
         return PromptSecretProvider()
+    if source == "vault":
+        if not vault_file:
+            return PromptSecretProvider()
+        from connector.infra.secrets import FileVaultSecretProvider
+
+        return CompositeSecretProvider([FileVaultSecretProvider(vault_file), PromptSecretProvider()])
     return NullSecretProvider()
 
 @app.callback()
@@ -789,7 +799,7 @@ def main(
         apiPassword = p.read_text(encoding="utf-8").strip()
 
     if not runId:
-        runId = str(uuid.uuid4())
+        runId = generate_run_id()
 
     cliOverrides = {
         "host": host,
@@ -856,6 +866,7 @@ def importPlan(
         help="Dataset name (e.g., employees)",
         show_default=True,
     ),
+    vaultFile: str | None = typer.Option(None, "--vault-file", help="Path to secrets vault CSV"),
 ):
     runImportPlanCommand(
         ctx=ctx,
@@ -865,6 +876,7 @@ def importPlan(
         reportItemsLimit=reportItemsLimit,
         reportIncludeSkipped=reportIncludeSkipped,
         dataset=dataset,
+        vaultFile=vaultFile,
     )
 
 @importApp.command("apply")
@@ -888,9 +900,10 @@ def importApply(
     secretsFrom: str | None = typer.Option(
         None,
         "--secrets-from",
-        help="Secret source: none|prompt",
+        help="Secret source: none|prompt|vault",
         show_default=True,
     ),
+    vaultFile: str | None = typer.Option(None, "--vault-file", help="Path to secrets vault CSV"),
 ):
     runImportApplyCommand(
         ctx=ctx,
@@ -901,6 +914,7 @@ def importApply(
         reportItemsLimit=reportItemsLimit,
         resourceExistsRetries=resourceExistsRetries,
         secretsFrom=secretsFrom,
+        vaultFile=vaultFile,
     )
 
 @app.command("check-api")

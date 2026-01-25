@@ -184,4 +184,5 @@ class PlanBuilder:
             "desired_state": plan_item.desired_state,
             "changes": plan_item.changes,
             "source_ref": plan_item.source_ref,
+            "secret_fields": list(plan_item.secret_fields or []),
         }

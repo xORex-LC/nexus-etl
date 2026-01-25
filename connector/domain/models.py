@@ -56,6 +56,7 @@ class ValidationRowResult:
     match_key_complete: bool
     usr_org_tab_num: str | None
     row_ref: "RowRef" | None = None
+    secret_candidates: dict[str, str] = field(default_factory=dict)
     errors: list[ValidationErrorItem] = field(default_factory=list)
     warnings: list[ValidationErrorItem] = field(default_factory=list)
 

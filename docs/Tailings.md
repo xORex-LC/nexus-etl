@@ -26,3 +26,7 @@
 24) Запланировать отдельный слой нормализации/обогащения (порт + адаптеры) для multi-source.
 25) TODO: удалить legacy EmployeeInput/RowValidator adapter после миграции пайплайна на public rows (PrepareForSink).
 26) TODO: убрать EmployeesCsvRecordAdapter после перевода extract-слоя на SourceRecord для всех источников.
+27) TODO: TECHDEBT — убрать зависимость domain validation от infra (EmployeesCsvRecordAdapter в pipeline.py).
+28) TODO: TECHDEBT — вынести FIELD_RULES (employees CSV schema) из domain в datasets/employees/field_rules.py.
+29) TODO: TECHDEBT — password не должен быть required на source-parse; перенести обязательность на sink/create после enrich.
+30) TODO: TECHDEBT — подчистить legacy-импорты/структуру в validation pipeline после рефакторинга.

@@ -37,16 +37,18 @@ class PlanUseCase:
         self,
         row_source,
         dataset_spec: DatasetSpec,
+        dataset: str,
         include_deleted: bool,
         logger: logging.Logger,
         run_id: str,
         validation_deps,
         planning_deps,
+        secret_store=None,
     ) -> PlanBuildResult:
         """
         Контракт (вход/выход):
             Вход: row_source (Iterable[CsvRow]), dataset_spec, include_deleted: bool, logger, run_id,
-                  validation_deps, planning_deps.
+                  validation_deps, planning_deps, secret_store.
             Выход: PlanBuildResult (items, summary, report_items, items_truncated).
         Ошибки/исключения:
             Пробрасывает CsvFormatError/OSError и исключения зависимостей.
@@ -109,6 +111,17 @@ class PlanUseCase:
                 continue
 
             builder.inc_valid_rows()
+            if (
+                secret_store is not None
+                and validation.match_key_complete
+                and validation.secret_candidates
+            ):
+                secret_store.put_many(
+                    dataset=dataset,
+                    match_key=validation.match_key,
+                    secrets=validation.secret_candidates,
+                    run_id=run_id,
+                )
             planner.plan_validated_row(employee, validation, warnings)
 
         return builder.build()

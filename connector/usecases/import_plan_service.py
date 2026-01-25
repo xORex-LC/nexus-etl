@@ -28,6 +28,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         report_items_limit: int,
         include_skipped_in_report: bool,
         report_dir: str,
+        vault_file: str | None = None,
         settings=None,
     ) -> int:
         generated_at = getNowIso()
@@ -40,14 +41,21 @@ class ImportPlanService(ImportPlanServiceProtocol):
             report_items_limit=report_items_limit,
             include_skipped_in_report=include_skipped_in_report,
         )
+        secret_store = None
+        if vault_file:
+            from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
+
+            secret_store = FileVaultSecretStore(vault_file)
         plan_result = use_case.run(
             row_source=row_source,
             dataset_spec=dataset_spec,
+            dataset=dataset,
             include_deleted=include_deleted,
             logger=logger,
             run_id=run_id,
             validation_deps=validation_deps,
             planning_deps=planning_deps,
+            secret_store=secret_store,
         )
         plan_meta = {
             "csv_path": csv_path,

@@ -46,6 +46,7 @@ class EmployeesPlanningPolicy(PlanningPolicyProtocol):
                 kind=PlanDecisionKind.CONFLICT,
                 identity=identity,
                 source_ref=source_ref,
+                secret_fields=[],
                 reason_code="MATCH_CONFLICT",
                 message="multiple candidates found",
             )
@@ -58,6 +59,7 @@ class EmployeesPlanningPolicy(PlanningPolicyProtocol):
                 kind=PlanDecisionKind.SKIP,
                 identity=identity,
                 source_ref=source_ref,
+                secret_fields=[],
                 reason_code="NO_CHANGES",
                 message="no changes detected",
             )
@@ -66,6 +68,7 @@ class EmployeesPlanningPolicy(PlanningPolicyProtocol):
         if not resource_id:
             raise ValueError("Employee decision returned empty resource_id")
 
+        secret_fields = ["password"] if decision_kind == PlanDecisionKind.CREATE else []
         return PlanDecision(
             kind=decision_kind,
             identity=identity,
@@ -73,4 +76,5 @@ class EmployeesPlanningPolicy(PlanningPolicyProtocol):
             changes=changes,
             resource_id=resource_id,
             source_ref=source_ref,
+            secret_fields=secret_fields,
         )
