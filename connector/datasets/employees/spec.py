@@ -15,6 +15,7 @@ from connector.datasets.validation.registry import ValidatorRegistry
 from connector.infra.cache.validation_lookups import CacheOrgLookup
 from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper, to_employee_input
+from connector.infra.sources.employees_csv_record_adapter import EmployeesCsvRecordAdapter
 
 class EmployeesSpec(DatasetSpec):
     """
@@ -33,7 +34,8 @@ class EmployeesSpec(DatasetSpec):
 
     def build_validators(self, deps: ValidationDependencies) -> ValidatorBundle:
         mapper = EmployeesSourceMapper()
-        registry = ValidatorRegistry(deps, mapper, to_employee_input)
+        record_adapter = EmployeesCsvRecordAdapter()
+        registry = ValidatorRegistry(deps, mapper, to_employee_input, record_adapter)
         row_validator = registry.create_row_validator("employees")
         state = registry.create_state()
         dataset_validator = registry.create_dataset_validator("employees", state)

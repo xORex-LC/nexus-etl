@@ -3,6 +3,7 @@ import pytest
 from connector.domain.models import CsvRow
 from connector.domain.validation.pipeline import RowValidator
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper, to_employee_input
+from connector.infra.sources.employees_csv_record_adapter import EmployeesCsvRecordAdapter
 
 def test_row_validator_parses_valid_row():
     row = CsvRow(
@@ -25,7 +26,7 @@ def test_row_validator_parses_valid_row():
             "TAB-100",
         ],
     )
-    validator = RowValidator(EmployeesSourceMapper(), to_employee_input)
+    validator = RowValidator(EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter())
     employee, result = validator.validate(row)
 
     # avatarId считается ошибкой, поэтому ожидаем невалид
@@ -40,7 +41,7 @@ def test_row_validator_reports_missing_required():
         data_line_no=1,
         values=[None for _ in range(14)],  # как после parseNull в csvReader
     )
-    validator = RowValidator(EmployeesSourceMapper(), to_employee_input)
+    validator = RowValidator(EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter())
     _employee, result = validator.validate(row)
 
     assert not result.valid
@@ -68,7 +69,7 @@ def test_row_validator_invalid_email():
             "TAB-100",
         ],
     )
-    validator = RowValidator(EmployeesSourceMapper(), to_employee_input)
+    validator = RowValidator(EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter())
     _employee, result = validator.validate(row)
 
     assert not result.valid
@@ -82,7 +83,7 @@ def test_row_validator_produces_row_ref_even_with_errors():
         data_line_no=5,
         values=[None for _ in range(14)],
     )
-    validator = RowValidator(EmployeesSourceMapper(), to_employee_input)
+    validator = RowValidator(EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter())
     _employee, result = validator.validate(row)
 
     assert result.row_ref is not None

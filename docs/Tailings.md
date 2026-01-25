@@ -25,3 +25,4 @@
 23) Добавить тесты на PromptSecretProvider (интерактивный ввод).
 24) Запланировать отдельный слой нормализации/обогащения (порт + адаптеры) для multi-source.
 25) TODO: удалить legacy EmployeeInput/RowValidator adapter после миграции пайплайна на public rows (PrepareForSink).
+26) TODO: убрать EmployeesCsvRecordAdapter после перевода extract-слоя на SourceRecord для всех источников.

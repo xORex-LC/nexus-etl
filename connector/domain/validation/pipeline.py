@@ -7,6 +7,7 @@ from ..models import CsvRow, EmployeeInput, RowRef, ValidationErrorItem, Validat
 from .deps import DatasetValidationState, ValidationDependencies
 from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.ports.sources import SourceMapper
+from connector.infra.sources.employees_csv_record_adapter import EmployeesCsvRecordAdapter, CollectResult
 
 class DatasetRule(Protocol):
     """
@@ -36,9 +37,11 @@ class RowValidator:
         self,
         mapper: SourceMapper,
         legacy_adapter: Callable[[Any, dict[str, str]], EmployeeInput],
+        record_adapter: EmployeesCsvRecordAdapter,
     ) -> None:
         self.mapper = mapper
         self.legacy_adapter = legacy_adapter
+        self.record_adapter = record_adapter
 
     def validate(self, csv_row: CsvRow) -> tuple[EmployeeInput, ValidationRowResult]:
         """
@@ -46,7 +49,11 @@ class RowValidator:
             csv_row: нормализованная строка CSV.
             Возвращает EmployeeInput + ValidationRowResult с ошибками/варнингами полей.
         """
-        map_result = self.mapper.map(csv_row)
+        # TODO: remove CSV record adapter after extract layer switches to SourceRecord.
+        collected: CollectResult = self.record_adapter.collect(csv_row)
+        map_result = self.mapper.map(collected.record)
+        map_result.errors = [*collected.errors, *map_result.errors]
+        map_result.warnings = [*collected.warnings, *map_result.warnings]
         employee = self.legacy_adapter(map_result.row, map_result.secret_candidates)
 
         match_key_value = map_result.match_key.value if map_result.match_key else ""
@@ -106,10 +113,12 @@ class ValidatorFactory:
         deps: ValidationDependencies,
         mapper: SourceMapper,
         legacy_adapter: Callable[[Any, dict[str, str]], EmployeeInput],
+        record_adapter: EmployeesCsvRecordAdapter,
     ) -> None:
         self.deps = deps
         self.mapper = mapper
         self.legacy_adapter = legacy_adapter
+        self.record_adapter = record_adapter
 
     def create_validation_context(self) -> DatasetValidationState:
         """
@@ -123,7 +132,7 @@ class ValidatorFactory:
         Возвращает:
             RowValidator на базе SourceMapper.
         """
-        return RowValidator(self.mapper, self.legacy_adapter)
+        return RowValidator(self.mapper, self.legacy_adapter, self.record_adapter)
 
     def create_dataset_validator(self, state: DatasetValidationState) -> DatasetValidator:
         """

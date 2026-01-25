@@ -4,6 +4,7 @@ from typing import Iterable, Protocol, TypeVar, Generic
 
 from connector.domain.models import CsvRow
 from connector.domain.transform.map_result import MapResult
+from connector.domain.transform.source_record import SourceRecord
 
 T = TypeVar("T")
 
@@ -45,10 +46,10 @@ class SourceMapper(Protocol, Generic[T]):
         Маппер источника в каноническую форму для датасета.
     """
 
-    def map(self, raw: CsvRow) -> MapResult[T]:
+    def map(self, raw: SourceRecord) -> MapResult[T]:
         """
         Контракт:
-            Вход: CsvRow (сырой источник).
+            Вход: SourceRecord (универсальная запись источника).
             Выход: MapResult с row_ref/row/match_key.
         """
         ...

@@ -29,6 +29,11 @@ package "Domain Models" {
     field : str | None
     message : str
   }
+  class SourceRecord {
+    line_no : int
+    record_id : str
+    values : Mapping[str, Any]
+  }
 }
 
 package "Domain Transform" {
@@ -62,7 +67,7 @@ package "Employees Dataset" {
     usr_org_tab_num : str | None
   }
   class EmployeesSourceMapper {
-    map(raw: CsvRow) -> MapResult
+    map(raw: SourceRecord) -> MapResult
   }
   class FieldRule {
     name : str
@@ -72,11 +77,28 @@ package "Employees Dataset" {
 }
 
 SourceMapper <|.. EmployeesSourceMapper
-CsvRow --> EmployeesSourceMapper : input
+CsvRow --> EmployeesCsvRecordAdapter : input
+EmployeesCsvRecordAdapter --> SourceRecord : record
+SourceRecord --> EmployeesSourceMapper : input
 EmployeesSourceMapper --> MapResult : output
 MapResult --> EmployeesRowPublic : row
 MapResult --> MatchKey : match_key
 MapResult --> RowRef : row_ref
 MapResult --> ValidationErrorItem : errors/warnings
-EmployeesSourceMapper --> FieldRule : uses FIELD_RULES
+EmployeesCsvRecordAdapter --> FieldRule : uses FIELD_RULES
+
+package "Infra Sources" {
+  class CollectResult {
+    record : SourceRecord
+    errors : list[ValidationErrorItem]
+    warnings : list[ValidationErrorItem]
+  }
+  class EmployeesCsvRecordAdapter {
+    collect(csv_row: CsvRow) -> CollectResult
+  }
+}
+
+EmployeesCsvRecordAdapter --> CollectResult : output
+CollectResult --> SourceRecord : record
+CollectResult --> ValidationErrorItem : errors/warnings
 @enduml

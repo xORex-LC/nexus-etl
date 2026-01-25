@@ -6,6 +6,7 @@ from connector.domain.validation.deps import DatasetValidationState, ValidationD
 from connector.domain.validation.pipeline import DatasetValidator, RowValidator, ValidatorFactory
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.models import EmployeeInput
+from connector.infra.sources.employees_csv_record_adapter import EmployeesCsvRecordAdapter
 
 class ValidatorRegistry:
     """
@@ -22,9 +23,10 @@ class ValidatorRegistry:
         deps: ValidationDependencies,
         mapper: SourceMapper,
         legacy_adapter: Callable[[Any, dict[str, str]], EmployeeInput],
+        record_adapter: EmployeesCsvRecordAdapter,
     ):
         self.deps = deps
-        self.factory = ValidatorFactory(deps, mapper, legacy_adapter)
+        self.factory = ValidatorFactory(deps, mapper, legacy_adapter, record_adapter)
 
     def create_row_validator(self, dataset: str) -> RowValidator:
         """

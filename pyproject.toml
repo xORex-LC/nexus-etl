@@ -24,5 +24,10 @@ where = ["."]
 include = ["connector*"]
 exclude = ["logs*", "cache*", "reports*"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+python_files = ["test_*.py"]
+
 [project.scripts]
 syncEmployees = "connector.main:app"
