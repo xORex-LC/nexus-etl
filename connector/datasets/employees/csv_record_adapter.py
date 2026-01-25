@@ -1,23 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 from connector.domain.models import CsvRow, ValidationErrorItem
 from connector.domain.transform.source_record import SourceRecord
-from connector.domain.validation.row_rules import FIELD_RULES
-
-
-@dataclass(frozen=True)
-class CollectResult:
-    """
-    Назначение:
-        Результат преобразования CsvRow в SourceRecord с диагностикой.
-    """
-
-    record: SourceRecord
-    errors: list[ValidationErrorItem]
-    warnings: list[ValidationErrorItem]
+from connector.domain.transform.collect_result import CollectResult
+from connector.datasets.employees.field_rules import FIELD_RULES
 
 
 class EmployeesCsvRecordAdapter:

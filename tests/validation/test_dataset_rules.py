@@ -3,7 +3,8 @@ from connector.domain.validation.deps import DatasetValidationState, ValidationD
 from connector.domain.validation.dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.validation.pipeline import RowValidator
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper, to_employee_input
-from connector.infra.sources.employees_csv_record_adapter import EmployeesCsvRecordAdapter
+from connector.datasets.employees.csv_record_adapter import EmployeesCsvRecordAdapter
+from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 
 class DummyOrgLookup:
     def __init__(self, existing_ids: set[int]):
@@ -14,9 +15,11 @@ class DummyOrgLookup:
 
 def make_employee(values: list[str | None]):
     row = CsvRow(file_line_no=1, data_line_no=1, values=values)
+    mapping_spec = EmployeesMappingSpec()
+    adapter = EmployeesCsvRecordAdapter()
     employee, result = RowValidator(
-        EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter()
-    ).validate(row)
+        EmployeesSourceMapper(mapping_spec), to_employee_input, mapping_spec.required_fields
+    ).validate(adapter.collect(row))
     return employee, result
 
 def test_match_key_unique_rule_detects_duplicate():

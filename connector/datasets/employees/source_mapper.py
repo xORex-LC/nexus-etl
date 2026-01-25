@@ -1,19 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
-
 from connector.domain.models import RowRef, ValidationErrorItem, EmployeeInput
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.map_result import MapResult
 from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.models import EmployeesRowPublic
-
-
-def _is_present(value: Any) -> bool:
-    if value is None:
-        return False
-    return str(value).strip() != ""
+from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 
 
 def to_employee_input(row: EmployeesRowPublic, secret_candidates: dict[str, str]) -> EmployeeInput:
@@ -47,6 +40,9 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
         Маппинг CSV-строки сотрудников в публичную каноническую форму.
     """
 
+    def __init__(self, spec: EmployeesMappingSpec | None = None) -> None:
+        self.spec = spec or EmployeesMappingSpec()
+
     def map(self, raw: SourceRecord) -> MapResult[EmployeesRowPublic]:
         values = raw.values
         errors: list[ValidationErrorItem] = []
@@ -68,15 +64,12 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
             usr_org_tab_num=values.get("usr_org_tab_num"),
         )
 
-        secret_candidates: dict[str, str] = {}
-        password = values.get("password")
-        if _is_present(password):
-            secret_candidates["password"] = str(password)
+        secret_candidates = self.spec.collect_secret_candidates(values)
 
         match_key: MatchKey | None = None
         try:
             match_key = build_delimited_match_key(
-                [row.last_name, row.first_name, row.middle_name, row.personnel_number],
+                self.spec.get_match_key_parts(row),
                 strict=True,
             )
         except MatchKeyError:

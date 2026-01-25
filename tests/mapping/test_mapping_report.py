@@ -4,7 +4,8 @@ from connector.domain.models import CsvRow
 from connector.domain.validation.pipeline import RowValidator
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper, to_employee_input
 from connector.infra.artifacts.report_writer import createEmptyReport
-from connector.infra.sources.employees_csv_record_adapter import EmployeesCsvRecordAdapter
+from connector.datasets.employees.csv_record_adapter import EmployeesCsvRecordAdapter
+from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.usecases.mapping_usecase import MappingUseCase
 
 
@@ -19,9 +20,12 @@ def _make_row(values: list[str | None], line_no: int = 1) -> CsvRow:
 def _run_mapping(rows: list[CsvRow]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
-    validator = RowValidator(EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter())
+    mapping_spec = EmployeesMappingSpec()
+    adapter = EmployeesCsvRecordAdapter()
+    validator = RowValidator(EmployeesSourceMapper(mapping_spec), to_employee_input, mapping_spec.required_fields)
+    record_source = [adapter.collect(row) for row in rows]
     exit_code = usecase.run(
-        row_source=rows,
+        record_source=record_source,
         row_validator=validator,
         dataset="employees",
         logger=logging.getLogger("mapping-test"),

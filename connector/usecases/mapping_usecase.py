@@ -23,7 +23,7 @@ class MappingUseCase:
 
     def run(
         self,
-        row_source,
+        record_source,
         row_validator: RowValidator,
         dataset: str,
         logger: logging.Logger,
@@ -40,9 +40,9 @@ class MappingUseCase:
         report.meta.dataset = dataset
         report.meta.report_items_limit = self.report_items_limit
 
-        for csv_row in row_source:
+        for collected in record_source:
             rows_total += 1
-            map_result = row_validator.map_only(csv_row)
+            map_result = row_validator.map_only(collected)
 
             has_errors = len(map_result.errors) > 0
             is_mapped = not has_errors and map_result.match_key is not None
@@ -63,9 +63,10 @@ class MappingUseCase:
             should_store = status == "mapping_failed" or self.include_mapped_items
             if should_store and len(report.items) < self.report_items_limit:
                 row_ref = map_result.row_ref
+                fallback_line_no = collected.record.line_no
                 item = {
-                    "row_id": row_ref.row_id if row_ref else f"line:{csv_row.file_line_no}",
-                    "line_no": row_ref.line_no if row_ref else csv_row.file_line_no,
+                    "row_id": row_ref.row_id if row_ref else f"line:{fallback_line_no}",
+                    "line_no": row_ref.line_no if row_ref else fallback_line_no,
                     "match_key": map_result.match_key.value if map_result.match_key else None,
                     "status": status,
                     "row": asdict(map_result.row),

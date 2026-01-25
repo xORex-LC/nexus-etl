@@ -5,6 +5,7 @@ from typing import Iterable, Protocol, TypeVar, Generic
 from connector.domain.models import CsvRow
 from connector.domain.transform.map_result import MapResult
 from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.collect_result import CollectResult
 
 T = TypeVar("T")
 
@@ -51,5 +52,20 @@ class SourceMapper(Protocol, Generic[T]):
         Контракт:
             Вход: SourceRecord (универсальная запись источника).
             Выход: MapResult с row_ref/row/match_key.
+        """
+        ...
+
+
+class RecordAdapterProtocol(Protocol):
+    """
+    Назначение/ответственность:
+        Адаптер исходной строки в SourceRecord с диагностикой.
+    """
+
+    def collect(self, raw: CsvRow) -> CollectResult:
+        """
+        Контракт:
+            Вход: CsvRow (legacy CSV запись).
+            Выход: CollectResult (SourceRecord + ошибки/варнинги).
         """
         ...

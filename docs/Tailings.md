@@ -25,10 +25,25 @@
 23) Добавить тесты на PromptSecretProvider (интерактивный ввод).
 24) Запланировать отдельный слой нормализации/обогащения (порт + адаптеры) для multi-source.
 25) TODO: удалить legacy EmployeeInput/RowValidator adapter после миграции пайплайна на public rows (PrepareForSink).
-26) TODO: убрать EmployeesCsvRecordAdapter после перевода extract-слоя на SourceRecord для всех источников.
-27) TODO: TECHDEBT — убрать зависимость domain validation от infra (EmployeesCsvRecordAdapter в pipeline.py).
+26) TODO: убрать EmployeesCsvRecordAdapter (datasets/employees/csv_record_adapter.py) после перевода extract-слоя на SourceRecord для всех источников.
+27) TODO: TECHDEBT — убрать CsvRow из источников (использовать SourceRecord напрямую после extract/transform).
 28) TODO: TECHDEBT — вынести FIELD_RULES (employees CSV schema) из domain в datasets/employees/field_rules.py.
 29) TODO: TECHDEBT — password не должен быть required на source-parse; перенести обязательность на sink/create после enrich.
 30) TODO: TECHDEBT — подчистить legacy-импорты/структуру в validation pipeline после рефакторинга.
 31) TODO: TECHDEBT — перенести запись секретов из PlanUseCase в Enricher/SecretsPolicy после внедрения enrich-слоя.
 32) TODO: TECHDEBT — убрать вырезание маскированного password в plan_reader после перехода на secret_fields-only.
+
+Sink-spec leakage (where sink/normalized specificity leaks into non-dataset layers):
+- connector/datasets/validation/registry.py: жестко прошивает EmployeesCsvRecordAdapter.
+- connector/infra/sources/csv_reader.py: EXPECTED_COLUMNS=14 (employees-only нормализованный CSV).
+- connector/usecases/import_plan_service.py: читает CsvRowSource (нормализованный sink CSV).
+- connector/main.py: validate/mapping по умолчанию читает CsvRowSource (sink CSV), если не указан source-format.
+
+Sink-spec in correct place (dataset layer, ok):
+- connector/datasets/employees/field_rules.py: employees CSV schema и required-правила.
+- connector/datasets/employees/source_mapper.py: маппинг SourceRecord -> EmployeesRowPublic.
+- connector/datasets/employees/projector.py: desired_state/source_ref/identity для employees.
+- connector/datasets/employees/planning_policy.py: employees decision + desired_state.
+- connector/datasets/employees/apply_adapter.py: построение request payload для sink.
+- connector/datasets/employees/spec.py: wiring employees dataset components.
+- connector/datasets/employees/csv_record_adapter.py: employees CSV -> SourceRecord.

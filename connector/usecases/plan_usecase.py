@@ -47,7 +47,7 @@ class PlanUseCase:
     ) -> PlanBuildResult:
         """
         Контракт (вход/выход):
-            Вход: row_source (Iterable[CsvRow]), dataset_spec, include_deleted: bool, logger, run_id,
+            Вход: row_source (Iterable[CollectResult]), dataset_spec, include_deleted: bool, logger, run_id,
                   validation_deps, planning_deps, secret_store.
             Выход: PlanBuildResult (items, summary, report_items, items_truncated).
         Ошибки/исключения:
@@ -74,9 +74,9 @@ class PlanUseCase:
         )
         planner = GenericPlanner(policy=planning_policy, builder=builder)
 
-        for csv_row in row_source:
+        for collected in row_source:
             builder.inc_rows_total()
-            employee, validation = row_validator.validate(csv_row)
+            employee, validation = row_validator.validate(collected)
             errors = list(validation.errors)
             warnings = list(validation.warnings)
 

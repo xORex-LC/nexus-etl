@@ -23,6 +23,8 @@ from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
 from connector.infra.sources.csv_reader import CsvFormatError, CsvRowSource
+from connector.infra.sources.employees_source_csv_reader import EmployeesSourceCsvRowSource
+from connector.infra.sources.record_source import CollectingRecordSource
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
@@ -43,7 +45,6 @@ from connector.domain.ports.secrets import SecretProviderProtocol
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
 importApp = typer.Typer(no_args_is_help=True)
-syncEmployeesApp = typer.Typer(no_args_is_help=True)
 userApp = typer.Typer(no_args_is_help=True)  # резерв под будущие команды
 
 def ensureDir(path: str) -> None:
@@ -656,10 +657,15 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         report_items_limit = settings.report_items_limit
         report.meta.report_items_limit = report_items_limit
         report.meta.dataset = dataset_name
+        record_adapter = dataset_spec.build_record_adapter()
+        record_source = CollectingRecordSource(
+            CsvRowSource(csvPath, csv_has_header),
+            record_adapter,
+        )
 
         try:
-            for csvRow in CsvRowSource(csvPath, csv_has_header):
-                _employee, result = row_validator.validate(csvRow)
+            for collected in record_source:
+                _employee, result = row_validator.validate(collected)
                 dataset_validator.validate(_employee, result)
                 rows_processed += 1
 
@@ -739,6 +745,7 @@ def runMappingCommand(
     dataset: str | None,
     reportItemsLimit: int | None,
     includeMappedItems: bool | None,
+    sourceFormat: str | None,
 ) -> None:
     runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
@@ -746,6 +753,7 @@ def runMappingCommand(
     dataset_name = dataset if dataset is not None else settings.dataset_name
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_mapped_items = includeMappedItems if includeMappedItems is not None else True
+    source_format = sourceFormat or "normalized"
 
     def execute(logger, report) -> int:
         deps = ValidationDependencies()
@@ -756,13 +764,18 @@ def runMappingCommand(
         report.meta.dataset = dataset_name
 
         try:
-            row_source = CsvRowSource(csvPath, csv_has_header)
+            if source_format == "source":
+                row_source = EmployeesSourceCsvRowSource(csvPath, csv_has_header)
+            else:
+                row_source = CsvRowSource(csvPath, csv_has_header)
+            record_adapter = dataset_spec.build_record_adapter()
+            record_source = CollectingRecordSource(row_source, record_adapter)
             usecase = MappingUseCase(
                 report_items_limit=report_items_limit,
                 include_mapped_items=include_mapped_items,
             )
             return usecase.run(
-                row_source=row_source,
+                record_source=record_source,
                 row_validator=row_validator,
                 dataset=dataset_name,
                 logger=logger,
@@ -899,8 +912,8 @@ def validate(
 ):
     runValidateCommand(ctx, csv, csvHasHeader)
 
-@syncEmployeesApp.command("mapping")
-def syncEmployeesMapping(
+@app.command("mapping")
+def mapping(
     ctx: typer.Context,
     csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
     csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
@@ -912,6 +925,12 @@ def syncEmployeesMapping(
         help="Include mapped rows in report items",
         show_default=True,
     ),
+    sourceFormat: str | None = typer.Option(
+        None,
+        "--source-format",
+        help="Source format: normalized|source",
+        show_default=True,
+    ),
 ):
     runMappingCommand(
         ctx=ctx,
@@ -920,6 +939,7 @@ def syncEmployeesMapping(
         dataset=dataset,
         reportItemsLimit=reportItemsLimit,
         includeMappedItems=includeMappedItems,
+        sourceFormat=sourceFormat,
     )
 
 @importApp.command("plan")
@@ -1046,5 +1066,4 @@ def cacheClear(
 
 app.add_typer(cacheApp, name="cache")
 app.add_typer(importApp, name="import")
-app.add_typer(syncEmployeesApp, name="syncEmployees")
 app.add_typer(userApp, name="user")

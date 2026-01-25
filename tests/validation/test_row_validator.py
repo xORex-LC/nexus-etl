@@ -3,7 +3,8 @@ import pytest
 from connector.domain.models import CsvRow
 from connector.domain.validation.pipeline import RowValidator
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper, to_employee_input
-from connector.infra.sources.employees_csv_record_adapter import EmployeesCsvRecordAdapter
+from connector.datasets.employees.csv_record_adapter import EmployeesCsvRecordAdapter
+from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 
 def test_row_validator_parses_valid_row():
     row = CsvRow(
@@ -26,8 +27,10 @@ def test_row_validator_parses_valid_row():
             "TAB-100",
         ],
     )
-    validator = RowValidator(EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter())
-    employee, result = validator.validate(row)
+    mapping_spec = EmployeesMappingSpec()
+    adapter = EmployeesCsvRecordAdapter()
+    validator = RowValidator(EmployeesSourceMapper(mapping_spec), to_employee_input, mapping_spec.required_fields)
+    employee, result = validator.validate(adapter.collect(row))
 
     # avatarId считается ошибкой, поэтому ожидаем невалид
     assert not result.valid
@@ -41,8 +44,10 @@ def test_row_validator_reports_missing_required():
         data_line_no=1,
         values=[None for _ in range(14)],  # как после parseNull в csvReader
     )
-    validator = RowValidator(EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter())
-    _employee, result = validator.validate(row)
+    mapping_spec = EmployeesMappingSpec()
+    adapter = EmployeesCsvRecordAdapter()
+    validator = RowValidator(EmployeesSourceMapper(mapping_spec), to_employee_input, mapping_spec.required_fields)
+    _employee, result = validator.validate(adapter.collect(row))
 
     assert not result.valid
     codes = {e.code for e in result.errors}
@@ -69,8 +74,10 @@ def test_row_validator_invalid_email():
             "TAB-100",
         ],
     )
-    validator = RowValidator(EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter())
-    _employee, result = validator.validate(row)
+    mapping_spec = EmployeesMappingSpec()
+    adapter = EmployeesCsvRecordAdapter()
+    validator = RowValidator(EmployeesSourceMapper(mapping_spec), to_employee_input, mapping_spec.required_fields)
+    _employee, result = validator.validate(adapter.collect(row))
 
     assert not result.valid
     codes = {e.code for e in result.errors}
@@ -83,8 +90,10 @@ def test_row_validator_produces_row_ref_even_with_errors():
         data_line_no=5,
         values=[None for _ in range(14)],
     )
-    validator = RowValidator(EmployeesSourceMapper(), to_employee_input, EmployeesCsvRecordAdapter())
-    _employee, result = validator.validate(row)
+    mapping_spec = EmployeesMappingSpec()
+    adapter = EmployeesCsvRecordAdapter()
+    validator = RowValidator(EmployeesSourceMapper(mapping_spec), to_employee_input, mapping_spec.required_fields)
+    _employee, result = validator.validate(adapter.collect(row))
 
     assert result.row_ref is not None
     assert result.row_ref.row_id == "line:5"
