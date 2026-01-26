@@ -47,14 +47,17 @@ class ImportPlanService(ImportPlanServiceProtocol):
             csv_path=csv_path,
             csv_has_header=csv_has_header,
         )
-        validators = dataset_spec.build_validators(validation_deps, enrich_deps)
+        transform_bundle = dataset_spec.build_transformers(validation_deps, enrich_deps)
+        transformer = transform_bundle.build_pipeline()
+        validator_bundle = dataset_spec.build_validator(validation_deps)
+        validator = validator_bundle.validator
         enrich_usecase = EnrichUseCase(
             report_items_limit=report_items_limit,
             include_enriched_items=False,
         )
         enriched_ok = enrich_usecase.iter_enriched_ok(
             record_source=record_source,
-            row_validator=validators.row_validator,
+            transformer=transformer,
         )
         validate_usecase = ValidateUseCase(
             report_items_limit=report_items_limit,
@@ -62,8 +65,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
         )
         validated_rows = validate_usecase.iter_validated(
             enriched_source=enriched_ok,
-            row_validator=validators.row_validator,
-            dataset_validator=validators.dataset_validator,
+            validator=validator,
         )
         use_case = PlanUseCase(
             report_items_limit=report_items_limit,

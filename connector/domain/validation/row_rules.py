@@ -1,22 +1,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Any, Callable, Optional, Protocol
-
-from ..models import DiagnosticStage, ValidationErrorItem
+from typing import Any
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-class RowRule(Protocol):
-    """
-    Назначение:
-        Контракт для строкового правила валидации/парсинга.
-    """
-
-    name: str
-
-    def apply(self, row_values: list[Any], errors: list[ValidationErrorItem], warnings: list[ValidationErrorItem]) -> Any: ...
 
 def normalize_whitespace(value: str | None) -> str | None:
     """
@@ -43,59 +30,12 @@ def parse_int_strict(value: str) -> int:
         raise ValueError("Empty int value")
     return int(value)
 
-@dataclass
-class FieldRule:
-    """
-    Назначение:
-        Общее строковое правило: берёт значение по индексу, парсит, валидирует.
-
-    Контракт:
-        - apply(row_values, errors, warnings) -> parsed_value | None
-    """
-
-    name: str
-    index: int
-    required: bool = False
-    parser: Optional[Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], Any]] = None
-    validators: tuple[Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], None], ...] = ()
-
-    def apply(self, row_values: list[Any], errors: list[ValidationErrorItem], warnings: list[ValidationErrorItem]) -> Any:
-        raw = row_values[self.index] if self.index < len(row_values) else None
-        if self.required and raw is None:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.NORMALIZE,
-                    code="REQUIRED_FIELD_MISSING",
-                    field=self.name,
-                    message=f"{self.name} is required",
-                )
-            )
-        if raw is None:
-            return None
-        parsed = raw
-        if self.parser:
-            parsed = self.parser(raw, errors, warnings)
-        for validator in self.validators:
-            validator(parsed, errors, warnings)
-        return parsed
-
-def _email_validator(value: Any, errors: list[ValidationErrorItem], _: list[ValidationErrorItem]) -> None:
-    if value is None:
-        return
-    if not validate_email(str(value)):
-        errors.append(
-            ValidationErrorItem(
-                stage=DiagnosticStage.NORMALIZE,
-                code="INVALID_EMAIL",
-                field="email",
-                message="email has invalid format",
-            )
-        )
-
-def _boolean_parser(value: Any, errors: list[ValidationErrorItem], _: list[ValidationErrorItem]) -> bool | None:
+def _boolean_parser(value: Any, errors, _: list) -> bool | None:
     try:
         return parse_boolean_strict(str(value))
     except ValueError:
+        from connector.domain.models import DiagnosticStage, ValidationErrorItem
+
         errors.append(
             ValidationErrorItem(
                 stage=DiagnosticStage.NORMALIZE,
@@ -105,34 +45,3 @@ def _boolean_parser(value: Any, errors: list[ValidationErrorItem], _: list[Valid
             )
         )
         return None
-
-def _int_gt_zero_parser(field: str) -> Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], int | None]:
-    def _inner(value: Any, errors: list[ValidationErrorItem], _: list[ValidationErrorItem]) -> int | None:
-        try:
-            parsed = parse_int_strict(str(value))
-            if parsed <= 0:
-                raise ValueError()
-            return parsed
-        except ValueError:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.NORMALIZE,
-                    code="INVALID_INT",
-                    field=field,
-                    message=f"{field} must be an integer > 0",
-                )
-            )
-            return None
-
-    return _inner
-
-def _avatar_validator(value: Any, errors: list[ValidationErrorItem], _: list[ValidationErrorItem]) -> None:
-    if value is not None:
-        errors.append(
-            ValidationErrorItem(
-                stage=DiagnosticStage.NORMALIZE,
-                code="INVALID_AVATAR_ID",
-                field="avatarId",
-                message="avatarId must be empty or null",
-            )
-        )

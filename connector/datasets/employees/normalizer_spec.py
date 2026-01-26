@@ -2,14 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.transform.normalizer import NormalizerRule, NormalizerSpec
-from connector.domain.validation.row_rules import (
-    normalize_whitespace,
-    _boolean_parser,
-    _int_gt_zero_parser,
-    _email_validator,
-    _avatar_validator,
-)
+from connector.domain.validation.row_rules import normalize_whitespace, _boolean_parser, parse_int_strict
 from connector.datasets.employees.normalized import NormalizedEmployeesRow
 
 
@@ -22,6 +17,22 @@ def _normalize_text(value: Any, errors, warnings) -> str | None:
     return normalized or None
 
 
+def _int_parser(value: Any, errors, warnings) -> int | None:
+    _ = warnings
+    try:
+        return parse_int_strict(str(value))
+    except ValueError:
+        errors.append(
+            ValidationErrorItem(
+                stage=DiagnosticStage.NORMALIZE,
+                code="INVALID_INT",
+                field="organization_id",
+                message="organization_id must be an integer",
+            )
+        )
+        return None
+
+
 class EmployeesNormalizerSpec(NormalizerSpec[NormalizedEmployeesRow]):
     """
     Назначение:
@@ -29,7 +40,7 @@ class EmployeesNormalizerSpec(NormalizerSpec[NormalizedEmployeesRow]):
     """
 
     rules: tuple[NormalizerRule, ...] = (
-        NormalizerRule("email", "email", parser=_normalize_text, validators=(_email_validator,)),
+        NormalizerRule("email", "email", parser=_normalize_text),
         NormalizerRule("last_name", "last_name", parser=_normalize_text),
         NormalizerRule("first_name", "first_name", parser=_normalize_text),
         NormalizerRule("middle_name", "middle_name", parser=_normalize_text),
@@ -39,9 +50,9 @@ class EmployeesNormalizerSpec(NormalizerSpec[NormalizedEmployeesRow]):
         NormalizerRule("password", "password", parser=_normalize_text),
         NormalizerRule("personnel_number", "personnel_number", parser=_normalize_text),
         NormalizerRule("manager_id", "manager_id", parser=_normalize_text),
-        NormalizerRule("organization_id", "organization_id", parser=_int_gt_zero_parser("organization_id")),
+        NormalizerRule("organization_id", "organization_id", parser=_int_parser),
         NormalizerRule("position", "position", parser=_normalize_text),
-        NormalizerRule("avatar_id", "avatar_id", parser=_normalize_text, validators=(_avatar_validator,)),
+        NormalizerRule("avatar_id", "avatar_id", parser=_normalize_text),
         NormalizerRule("usr_org_tab_num", "usr_org_tab_num", parser=_normalize_text),
     )
 

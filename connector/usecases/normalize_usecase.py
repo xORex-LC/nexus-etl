@@ -4,7 +4,7 @@ import logging
 from dataclasses import asdict
 
 from connector.common.sanitize import maskSecretsInObject
-from connector.domain.validation.pipeline import RowValidator
+from connector.domain.transform.pipeline import TransformPipeline
 
 
 class NormalizeUseCase:
@@ -24,7 +24,7 @@ class NormalizeUseCase:
     def run(
         self,
         record_source,
-        row_validator: RowValidator,
+        transformer: TransformPipeline,
         dataset: str,
         logger: logging.Logger,
         run_id: str,
@@ -42,7 +42,7 @@ class NormalizeUseCase:
 
         for collected in record_source:
             rows_total += 1
-            map_result = row_validator.map_only(collected)
+            map_result = transformer.normalize_only(collected)
 
             has_errors = len(map_result.errors) > 0
             status = "normalized" if not has_errors else "normalize_failed"

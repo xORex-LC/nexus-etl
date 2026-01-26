@@ -36,7 +36,7 @@ from connector.infra.artifacts.report_writer import createEmptyReport, finalizeR
 from connector.common.sanitize import maskSecret
 from connector.common.time import getDurationMs
 from connector.common.run_id import generate_run_id
-from connector.domain.validation.pipeline import logValidationFailure
+from connector.domain.validation.validator import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.registry import get_spec
 from connector.datasets.cache_registry import list_cache_sync_adapters
@@ -652,7 +652,6 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
     dataset_name = settings.dataset_name
 
     def execute(logger, report) -> int:
-        deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         try:
             conn = openCacheDb(getCacheDbPath(settings.cache_dir))
@@ -667,10 +666,12 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
             handler_registry.register(OrganizationsCacheHandler())
             ensure_cache_ready(engine, handler_registry)
 
+            deps = dataset_spec.build_validation_deps(conn, settings)
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-            validators = dataset_spec.build_validators(deps, enrich_deps)
-            row_validator = validators.row_validator
-            dataset_validator = validators.dataset_validator
+            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
+            transformer = transform_bundle.build_pipeline()
+            validator_bundle = dataset_spec.build_validator(deps)
+            validator = validator_bundle.validator
             report_items_limit = settings.report_items_limit
             report.meta.report_items_limit = report_items_limit
             report.meta.dataset = dataset_name
@@ -686,7 +687,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
                 )
                 enriched_ok = enrich_usecase.iter_enriched_ok(
                     record_source=record_source,
-                    row_validator=row_validator,
+                    transformer=transformer,
                 )
                 validate_usecase = ValidateUseCase(
                     report_items_limit=report_items_limit,
@@ -694,8 +695,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
                 )
                 return validate_usecase.run(
                     enriched_source=enriched_ok,
-                    row_validator=row_validator,
-                    dataset_validator=dataset_validator,
+                    validator=validator,
                     dataset=dataset_name,
                     logger=logger,
                     run_id=runId,
@@ -757,8 +757,8 @@ def runMappingCommand(
             ensure_cache_ready(engine, handler_registry)
 
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-            validators = dataset_spec.build_validators(deps, enrich_deps)
-            row_validator = validators.row_validator
+            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
+            transformer = transform_bundle.build_pipeline()
 
             record_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
@@ -770,7 +770,7 @@ def runMappingCommand(
             )
             return usecase.run(
                 record_source=record_source,
-                row_validator=row_validator,
+                transformer=transformer,
                 dataset=dataset_name,
                 logger=logger,
                 run_id=runId,
@@ -831,8 +831,8 @@ def runNormalizeCommand(
             ensure_cache_ready(engine, handler_registry)
 
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-            validators = dataset_spec.build_validators(deps, enrich_deps)
-            row_validator = validators.row_validator
+            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
+            transformer = transform_bundle.build_pipeline()
 
             record_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
@@ -844,7 +844,7 @@ def runNormalizeCommand(
             )
             return usecase.run(
                 record_source=record_source,
-                row_validator=row_validator,
+                transformer=transformer,
                 dataset=dataset_name,
                 logger=logger,
                 run_id=runId,
@@ -908,8 +908,8 @@ def runEnrichCommand(
 
             secret_store = FileVaultSecretStore(vaultFile) if vaultFile else None
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
-            validators = dataset_spec.build_validators(deps, enrich_deps)
-            row_validator = validators.row_validator
+            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
+            transformer = transform_bundle.build_pipeline()
 
             record_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
@@ -921,7 +921,7 @@ def runEnrichCommand(
             )
             return usecase.run(
                 record_source=record_source,
-                row_validator=row_validator,
+                transformer=transformer,
                 dataset=dataset_name,
                 logger=logger,
                 run_id=runId,

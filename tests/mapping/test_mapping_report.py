@@ -2,7 +2,7 @@ import logging
 
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
-from connector.domain.validation.pipeline import TypedRowValidator
+from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
@@ -46,16 +46,15 @@ def _run_mapping(rows: list[TransformResult[None]]):
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    validator = TypedRowValidator(
-        normalizer,
+    transformer = TransformPipeline(
         EmployeesSourceMapper(mapping_spec),
+        normalizer,
         enricher,
-        mapping_spec.required_fields,
     )
     record_source = rows
     exit_code = usecase.run(
         record_source=record_source,
-        row_validator=validator,
+        transformer=transformer,
         dataset="employees",
         logger=logging.getLogger("mapping-test"),
         run_id="run-1",

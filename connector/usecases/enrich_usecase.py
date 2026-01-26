@@ -4,7 +4,7 @@ import logging
 from dataclasses import asdict
 
 from connector.common.sanitize import maskSecretsInObject
-from connector.domain.validation.pipeline import RowValidator
+from connector.domain.transform.pipeline import TransformPipeline
 
 
 class EnrichUseCase:
@@ -24,7 +24,7 @@ class EnrichUseCase:
     def run(
         self,
         record_source,
-        row_validator: RowValidator,
+        transformer: TransformPipeline,
         dataset: str,
         logger: logging.Logger,
         run_id: str,
@@ -42,7 +42,7 @@ class EnrichUseCase:
 
         for collected in record_source:
             rows_total += 1
-            map_result = row_validator.map_only(collected)
+            map_result = transformer.enrich(collected)
 
             has_errors = len(map_result.errors) > 0
             status = "enriched" if not has_errors else "enrich_failed"
@@ -96,14 +96,14 @@ class EnrichUseCase:
     def iter_enriched_ok(
         self,
         record_source,
-        row_validator: RowValidator,
+        transformer: TransformPipeline,
     ):
         """
         Назначение:
             Итератор обогащенных строк без ошибок.
         """
         for collected in record_source:
-            map_result = row_validator.map_only(collected)
+            map_result = transformer.enrich(collected)
             if map_result.errors:
                 continue
             yield map_result

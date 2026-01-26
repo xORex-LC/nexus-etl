@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.datasets.spec import DatasetSpec, ValidatorBundle
+from connector.datasets.spec import DatasetSpec, TransformBundle, ValidationBundle
 from connector.datasets.employees.projector import EmployeesProjector
 from connector.datasets.employees.reporting import employees_report_adapter
 from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
@@ -11,7 +11,7 @@ from connector.domain.planning.employees.differ import EmployeeDiffer
 from connector.domain.planning.employees.matcher import EmployeeMatcher
 from connector.datasets.employees.planning_policy import EmployeesPlanningPolicy
 from connector.domain.validation.deps import ValidationDependencies
-from connector.datasets.employees.validation_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
+from connector.datasets.employees.validation_spec import EmployeesValidationSpec
 from connector.infra.cache.validation_lookups import CacheOrgLookup
 from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
@@ -21,7 +21,7 @@ from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.enrich_deps import EmployeesEnrichDependencies
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
-from connector.domain.validation.pipeline import ValidatorFactory
+from connector.domain.validation.validator import Validator
 from connector.datasets.employees.record_sources import EmployeesCsvRecordSource
 
 class EmployeesSpec(DatasetSpec):
@@ -43,7 +43,8 @@ class EmployeesSpec(DatasetSpec):
         identity_lookup = CacheEmployeeLookup(conn)
         return EmployeesEnrichDependencies(conn=conn, identity_lookup=identity_lookup, secret_store=secret_store)
 
-    def build_validators(self, deps: ValidationDependencies, enrich_deps: EmployeesEnrichDependencies) -> ValidatorBundle:
+    def build_transformers(self, deps: ValidationDependencies, enrich_deps: EmployeesEnrichDependencies) -> TransformBundle:
+        _ = deps
         mapping_spec = EmployeesMappingSpec()
         normalizer = Normalizer(EmployeesNormalizerSpec())
         mapper = EmployeesSourceMapper(mapping_spec)
@@ -53,18 +54,11 @@ class EmployeesSpec(DatasetSpec):
             secret_store=enrich_deps.secret_store,
             dataset="employees",
         )
-        factory = ValidatorFactory(
-            deps,
-            normalizer,
-            mapper,
-            enricher,
-            dataset_rules=(MatchKeyUniqueRule(), UsrOrgTabUniqueRule(), OrgExistsRule()),
-            required_fields=mapping_spec.required_fields,
-        )
-        row_validator = factory.create_row_validator()
-        state = factory.create_validation_context()
-        dataset_validator = factory.create_dataset_validator(state)
-        return ValidatorBundle(row_validator=row_validator, dataset_validator=dataset_validator, state=state)
+        return TransformBundle(mapper=mapper, normalizer=normalizer, enricher=enricher)
+
+    def build_validator(self, deps: ValidationDependencies) -> ValidationBundle:
+        validator = Validator(EmployeesValidationSpec(), deps)
+        return ValidationBundle(validator=validator)
 
     def build_record_source(
         self,

@@ -7,7 +7,7 @@ from typing import Any
 from connector.datasets.spec import DatasetSpec
 from connector.domain.planning.plan_builder import PlanBuilder, PlanBuildResult
 from connector.domain.planning.generic_planner import GenericPlanner
-from connector.domain.validation.pipeline import logValidationFailure
+from connector.domain.validation.validator import logValidationFailure
 
 @dataclass
 class PlanUseCase:

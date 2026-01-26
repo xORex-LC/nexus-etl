@@ -4,7 +4,7 @@ import logging
 from dataclasses import asdict
 
 from connector.common.sanitize import maskSecretsInObject
-from connector.domain.validation.pipeline import RowValidator
+from connector.domain.transform.pipeline import TransformPipeline
 
 
 class MappingUseCase:
@@ -24,7 +24,7 @@ class MappingUseCase:
     def run(
         self,
         record_source,
-        row_validator: RowValidator,
+        transformer: TransformPipeline,
         dataset: str,
         logger: logging.Logger,
         run_id: str,
@@ -42,12 +42,11 @@ class MappingUseCase:
 
         for collected in record_source:
             rows_total += 1
-            map_result = row_validator.map_only(collected)
+            map_result = transformer.map_source(collected)
 
             has_errors = len(map_result.errors) > 0
-            is_mapped = not has_errors and map_result.match_key is not None
-            status = "mapped" if is_mapped else "mapping_failed"
-            if not is_mapped:
+            status = "mapped" if not has_errors else "mapping_failed"
+            if has_errors:
                 mapping_failed += 1
             else:
                 mapped_ok += 1

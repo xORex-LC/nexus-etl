@@ -1,15 +1,18 @@
 import pytest
 
-from connector.domain.validation.pipeline import TypedRowValidator
+from connector.domain.validation.deps import ValidationDependencies
+from connector.domain.validation.validator import Validator
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.enricher import Enricher
+from connector.domain.transform.pipeline import TransformPipeline
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
 from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.record_sources import SOURCE_COLUMNS
+from connector.datasets.employees.validation_spec import EmployeesValidationSpec
 
 
 def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
@@ -58,8 +61,9 @@ def test_row_validator_parses_valid_row():
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
-    validated = validator.validate_enriched(validator.map_only(collected))
+    transformer = TransformPipeline(EmployeesSourceMapper(mapping_spec), normalizer, enricher)
+    validator = Validator(EmployeesValidationSpec(), ValidationDependencies())
+    validated = validator.validate(transformer.enrich(collected))
     entity = validated.row.row if validated.row else None
     result = validated.row.validation if validated.row else None
 
@@ -73,8 +77,9 @@ def test_row_validator_reports_missing_required():
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
-    validated = validator.validate_enriched(validator.map_only(collected))
+    transformer = TransformPipeline(EmployeesSourceMapper(mapping_spec), normalizer, enricher)
+    validator = Validator(EmployeesValidationSpec(), ValidationDependencies())
+    validated = validator.validate(transformer.enrich(collected))
     result = validated.row.validation if validated.row else None
 
     assert not result.valid
@@ -100,13 +105,14 @@ def test_row_validator_invalid_email():
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
-    validated = validator.validate_enriched(validator.map_only(collected))
+    transformer = TransformPipeline(EmployeesSourceMapper(mapping_spec), normalizer, enricher)
+    validator = Validator(EmployeesValidationSpec(), ValidationDependencies())
+    validated = validator.validate(transformer.enrich(collected))
     result = validated.row.validation if validated.row else None
 
     assert not result.valid
     codes = {e.code for e in result.errors}
-    assert "REQUIRED_FIELD_MISSING" in codes
+    assert "INVALID_EMAIL" in codes
 
 
 def test_row_validator_produces_row_ref_even_with_errors():
@@ -114,8 +120,9 @@ def test_row_validator_produces_row_ref_even_with_errors():
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
-    validated = validator.validate_enriched(validator.map_only(collected))
+    transformer = TransformPipeline(EmployeesSourceMapper(mapping_spec), normalizer, enricher)
+    validator = Validator(EmployeesValidationSpec(), ValidationDependencies())
+    validated = validator.validate(transformer.enrich(collected))
     result = validated.row.validation if validated.row else None
 
     assert result.row_ref is not None

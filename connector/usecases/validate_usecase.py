@@ -4,7 +4,7 @@ import logging
 from dataclasses import asdict
 
 from connector.common.sanitize import maskSecretsInObject
-from connector.domain.validation.pipeline import DatasetValidator, RowValidator
+from connector.domain.validation.validator import Validator
 from connector.domain.validation.validated_row import ValidationRow
 
 
@@ -25,22 +25,20 @@ class ValidateUseCase:
     def iter_validated(
         self,
         enriched_source,
-        row_validator: RowValidator,
-        dataset_validator: DatasetValidator,
+        validator: Validator,
     ):
         """
         Назначение:
             Итератор валидированных строк без формирования отчета.
         """
         for enriched in enriched_source:
-            validated = row_validator.validate_enriched(enriched)
+            validated = validator.validate(enriched)
             validation_row = validated.row
             if validation_row is None:
                 yield validated
                 continue
             validation = validation_row.validation
             if not validation.errors:
-                dataset_validator.validate(validation_row.row, validation)
                 validated.errors = validation.errors
                 validated.warnings = validation.warnings
             yield validated
@@ -48,8 +46,7 @@ class ValidateUseCase:
     def run(
         self,
         enriched_source,
-        row_validator: RowValidator,
-        dataset_validator: DatasetValidator,
+        validator: Validator,
         dataset: str,
         logger: logging.Logger,
         run_id: str,
@@ -64,7 +61,7 @@ class ValidateUseCase:
         report.meta.dataset = dataset
         report.meta.report_items_limit = self.report_items_limit
 
-        for validated in self.iter_validated(enriched_source, row_validator, dataset_validator):
+        for validated in self.iter_validated(enriched_source, validator):
             rows_total += 1
             validation_row: ValidationRow | None = validated.row
             validation = validation_row.validation if validation_row else None
