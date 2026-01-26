@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from typing import Iterable, Protocol, TypeVar, Generic
-from connector.domain.transform.source_record import SourceRecord
 from connector.domain.transform.result import TransformResult
 
 T = TypeVar("T")
-N = TypeVar("N")
 
 class RowSource(Protocol):
     """
@@ -13,23 +11,24 @@ class RowSource(Protocol):
         Источник SourceRecord для transform/validate/plan.
     """
 
-    def __iter__(self) -> Iterable[SourceRecord]:
+    def __iter__(self) -> Iterable[TransformResult[None]]:
         """
         Контракт:
-            Возвращает итерируемые SourceRecord.
+            Возвращает итерируемые TransformResult с SourceRecord.
         """
         ...
 
-class SourceMapper(Protocol, Generic[N, T]):
+# TODO: legacy
+class SourceMapper(Protocol, Generic[T]):
     """
     Назначение/ответственность:
         Маппер источника в каноническую форму для датасета.
     """
 
-    def map(self, record: SourceRecord, normalized: N) -> TransformResult[T]:
+    def map(self, record) -> TransformResult[T]:
         """
         Контракт:
-            Вход: SourceRecord + нормализованная строка.
+            Вход: SourceRecord.
             Выход: TransformResult с row_ref/row/match_key.
         """
         ...

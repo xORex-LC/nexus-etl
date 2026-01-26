@@ -6,7 +6,6 @@ from connector.domain.models import RowRef
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
-from connector.datasets.employees.normalized import NormalizedEmployeesRow
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 
 
@@ -15,39 +14,19 @@ def test_employees_source_mapper_builds_secrets():
         line_no=1,
         record_id="line:1",
         values={
-            "email": "user@example.com",
-            "last_name": "Doe",
-            "first_name": "John",
-            "middle_name": "M",
-            "is_logon_disable": False,
-            "user_name": "jdoe",
-            "phone": "+111",
-            "password": "secret",
-            "personnel_number": "100",
-            "manager_id": None,
-            "organization_id": 20,
-            "position": "Engineer",
-            "avatar_id": None,
-            "usr_org_tab_num": "TAB-100",
+            "raw_id": "100",
+            "full_name": "Doe John M",
+            "login": "jdoe",
+            "email_or_phone": "user@example.com",
+            "contacts": "+111",
+            "org": "Org=Engineering",
+            "manager": "",
+            "flags": "disabled=false",
+            "employment": "role=Engineer",
+            "extra": "password=secret;org_id=20;tab=TAB-100",
         },
     )
-    normalized = NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password="secret",
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-    )
-    result = EmployeesSourceMapper().map(record, normalized)
+    result = EmployeesSourceMapper().map(record)
 
     assert result.errors == []
     assert result.match_key is None
@@ -61,39 +40,19 @@ def test_employees_source_mapper_does_not_add_match_key_errors():
         line_no=2,
         record_id="line:2",
         values={
-            "email": "user@example.com",
-            "last_name": "Doe",
-            "first_name": "John",
-            "middle_name": None,
-            "is_logon_disable": False,
-            "user_name": "jdoe",
-            "phone": "+111",
-            "password": "secret",
-            "personnel_number": "100",
-            "manager_id": None,
-            "organization_id": 20,
-            "position": "Engineer",
-            "avatar_id": None,
-            "usr_org_tab_num": "TAB-100",
+            "raw_id": "100",
+            "full_name": "Doe John",
+            "login": "jdoe",
+            "email_or_phone": "user@example.com",
+            "contacts": "+111",
+            "org": "Org=Engineering",
+            "manager": "",
+            "flags": "disabled=false",
+            "employment": "role=Engineer",
+            "extra": "password=secret;org_id=20;tab=TAB-100",
         },
     )
-    normalized = NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name=None,
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password="secret",
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-    )
-    result = EmployeesSourceMapper().map(record, normalized)
+    result = EmployeesSourceMapper().map(record)
 
     codes = {issue.code for issue in result.errors}
     assert "MATCH_KEY_MISSING" not in codes
@@ -105,8 +64,8 @@ def test_no_secrets_source_mapper_keeps_secret_candidates_empty():
     class CarRowPublic:
         vin: str
 
-    class CarsSourceMapper(SourceMapper[NormalizedEmployeesRow, CarRowPublic]):
-        def map(self, record: SourceRecord, normalized: NormalizedEmployeesRow) -> TransformResult[CarRowPublic]:
+    class CarsSourceMapper(SourceMapper[CarRowPublic]):
+        def map(self, record: SourceRecord) -> TransformResult[CarRowPublic]:
             row_ref = RowRef(
                 line_no=record.line_no,
                 row_id=record.record_id,
@@ -121,21 +80,5 @@ def test_no_secrets_source_mapper_keeps_secret_candidates_empty():
             )
 
     record = SourceRecord(line_no=1, record_id="line:1", values={})
-    normalized = NormalizedEmployeesRow(
-        email=None,
-        last_name=None,
-        first_name=None,
-        middle_name=None,
-        is_logon_disable=None,
-        user_name=None,
-        phone=None,
-        password=None,
-        personnel_number=None,
-        manager_id=None,
-        organization_id=None,
-        position=None,
-        avatar_id=None,
-        usr_org_tab_num=None,
-    )
-    result = CarsSourceMapper().map(record, normalized)
+    result = CarsSourceMapper().map(record)
     assert result.secret_candidates == {}

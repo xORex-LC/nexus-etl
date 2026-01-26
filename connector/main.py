@@ -729,7 +729,6 @@ def runMappingCommand(
     dataset: str | None,
     reportItemsLimit: int | None,
     includeMappedItems: bool | None,
-    sourceFormat: str | None,
 ) -> None:
     runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
@@ -737,7 +736,6 @@ def runMappingCommand(
     dataset_name = dataset if dataset is not None else settings.dataset_name
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_mapped_items = includeMappedItems if includeMappedItems is not None else True
-    source_format = sourceFormat or "normalized"
 
     def execute(logger, report) -> int:
         deps = ValidationDependencies()
@@ -765,7 +763,6 @@ def runMappingCommand(
             record_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
-                source_format=source_format,
             )
             usecase = MappingUseCase(
                 report_items_limit=report_items_limit,
@@ -806,7 +803,6 @@ def runNormalizeCommand(
     dataset: str | None,
     reportItemsLimit: int | None,
     includeNormalizedItems: bool | None,
-    sourceFormat: str | None,
 ) -> None:
     runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
@@ -814,7 +810,6 @@ def runNormalizeCommand(
     dataset_name = dataset if dataset is not None else settings.dataset_name
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_normalized_items = includeNormalizedItems if includeNormalizedItems is not None else True
-    source_format = sourceFormat or "normalized"
 
     def execute(logger, report) -> int:
         deps = ValidationDependencies()
@@ -842,7 +837,6 @@ def runNormalizeCommand(
             record_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
-                source_format=source_format,
             )
             usecase = NormalizeUseCase(
                 report_items_limit=report_items_limit,
@@ -884,7 +878,6 @@ def runEnrichCommand(
     dataset: str | None,
     reportItemsLimit: int | None,
     includeEnrichedItems: bool | None,
-    sourceFormat: str | None,
     vaultFile: str | None,
 ) -> None:
     runId = ctx.obj["runId"]
@@ -893,7 +886,6 @@ def runEnrichCommand(
     dataset_name = dataset if dataset is not None else settings.dataset_name
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_enriched_items = includeEnrichedItems if includeEnrichedItems is not None else True
-    source_format = sourceFormat or "normalized"
 
     def execute(logger, report) -> int:
         deps = ValidationDependencies()
@@ -922,7 +914,6 @@ def runEnrichCommand(
             record_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
-                source_format=source_format,
             )
             usecase = EnrichUseCase(
                 report_items_limit=report_items_limit,
@@ -1081,12 +1072,6 @@ def mapping(
         help="Include mapped rows in report items",
         show_default=True,
     ),
-    sourceFormat: str | None = typer.Option(
-        None,
-        "--source-format",
-        help="Source format: normalized|source",
-        show_default=True,
-    ),
 ):
     runMappingCommand(
         ctx=ctx,
@@ -1095,7 +1080,6 @@ def mapping(
         dataset=dataset,
         reportItemsLimit=reportItemsLimit,
         includeMappedItems=includeMappedItems,
-        sourceFormat=sourceFormat,
     )
 
 @app.command("normalize")
@@ -1111,12 +1095,6 @@ def normalize(
         help="Include normalized rows in report items",
         show_default=True,
     ),
-    sourceFormat: str | None = typer.Option(
-        None,
-        "--source-format",
-        help="Source format: normalized|source",
-        show_default=True,
-    ),
 ):
     runNormalizeCommand(
         ctx=ctx,
@@ -1125,7 +1103,6 @@ def normalize(
         dataset=dataset,
         reportItemsLimit=reportItemsLimit,
         includeNormalizedItems=includeNormalizedItems,
-        sourceFormat=sourceFormat,
     )
 
 @app.command("enrich")
@@ -1141,12 +1118,6 @@ def enrich(
         help="Include enriched rows in report items",
         show_default=True,
     ),
-    sourceFormat: str | None = typer.Option(
-        None,
-        "--source-format",
-        help="Source format: normalized|source",
-        show_default=True,
-    ),
     vaultFile: str | None = typer.Option(None, "--vault-file", help="Path to secrets vault CSV"),
 ):
     runEnrichCommand(
@@ -1156,7 +1127,6 @@ def enrich(
         dataset=dataset,
         reportItemsLimit=reportItemsLimit,
         includeEnrichedItems=includeEnrichedItems,
-        sourceFormat=sourceFormat,
         vaultFile=vaultFile,
     )
 

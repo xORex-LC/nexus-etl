@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass
 class NormalizedEmployeesRow:
     """
     Назначение:
@@ -24,3 +24,4 @@ class NormalizedEmployeesRow:
     position: str | None
     avatar_id: str | None
     usr_org_tab_num: str | None
+    resource_id: str | None = None

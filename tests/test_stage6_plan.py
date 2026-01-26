@@ -17,7 +17,38 @@ runner = CliRunner()
 def _write_csv(path: Path, rows: list[list[str | None]]) -> None:
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
-            f.write(";".join("" if v is None else str(v) for v in row) + "\n")
+            f.write(",".join("" if v is None else str(v) for v in row) + "\n")
+
+
+def make_row(
+    *,
+    raw_id: str,
+    full_name: str,
+    login: str,
+    email_or_phone: str,
+    contacts: str,
+    flags: str,
+    role: str,
+    org_id: str,
+    tab: str,
+    password: str = "secret",
+    org: str = "Org=Engineering",
+    manager: str = "",
+) -> list[str | None]:
+    extra = f"password={password};org_id={org_id};tab={tab}"
+    employment = f"role={role}"
+    return [
+        raw_id,
+        full_name,
+        login,
+        email_or_phone,
+        contacts,
+        org,
+        manager,
+        flags,
+        employment,
+        extra,
+    ]
 
 def _build_repo(conn) -> SqliteCacheRepository:
     engine = SqliteEngine(conn)
@@ -99,22 +130,17 @@ def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
     _write_csv(
         csv_path,
         [
-            [
-                "user@example.com",
-                "Doe",
-                "John",
-                "M",
-                "true",
-                "jdoe",
-                "+111",
-                "secret",
-                "",  # personnelNumber
-                "",
-                "10",
-                "Engineer",
-                "",
-                "TAB-100",
-            ]
+            make_row(
+                raw_id="",
+                full_name="Doe John M",
+                login="jdoe",
+                email_or_phone="user@example.com",
+                contacts="+111111",
+                flags="disabled=true",
+                role="Engineer",
+                org_id="10",
+                tab="TAB-100",
+            )
         ],
     )
 
@@ -139,22 +165,17 @@ def test_plan_create_when_not_found(tmp_path: Path):
     _write_csv(
         csv_path,
         [
-            [
-                "user@example.com",
-                "Doe",
-                "John",
-                "M",
-                "false",
-                "jdoe",
-                "+111",
-                "secret",
-                "100",
-                "",
-                "20",
-                "Engineer",
-                "",
-                "TAB-100",
-            ]
+            make_row(
+                raw_id="100",
+                full_name="Doe John M",
+                login="jdoe",
+                email_or_phone="user@example.com",
+                contacts="+111111",
+                flags="disabled=false",
+                role="Engineer",
+                org_id="20",
+                tab="TAB-100",
+            )
         ],
     )
 
@@ -172,7 +193,7 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
     try:
         repo = _build_repo(conn)
         _seed_org(repo, ouid=30)
-        _seed_user(repo, _id="u1", match_key="Doe|John|M|100", phone="+111", organization_id=30)
+        _seed_user(repo, _id="u1", match_key="Doe|John|M|100", phone="+111111", organization_id=30)
     finally:
         conn.close()
 
@@ -180,22 +201,17 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
     _write_csv(
         csv_path,
         [
-            [
-                "user@example.com",
-                "Doe",
-                "John",
-                "M",
-                "false",
-                "jdoe",
-                "+222",  # phone changed
-                "secret",
-                "100",
-                "",
-                "30",
-                "Engineer",
-                "",
-                "TAB-100",
-            ]
+            make_row(
+                raw_id="100",
+                full_name="Doe John M",
+                login="jdoe",
+                email_or_phone="user@example.com",
+                contacts="+222222",
+                flags="disabled=false",
+                role="Engineer",
+                org_id="30",
+                tab="TAB-100",
+            )
         ],
     )
 
@@ -213,7 +229,7 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
     try:
         repo = _build_repo(conn)
         _seed_org(repo, ouid=40)
-        _seed_user(repo, _id="u2", match_key="Doe|John|M|100", phone="+111", organization_id=40)
+        _seed_user(repo, _id="u2", match_key="Doe|John|M|100", phone="+111111", organization_id=40)
     finally:
         conn.close()
 
@@ -221,22 +237,17 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
     _write_csv(
         csv_path,
         [
-            [
-                "john@example.com",
-                "Doe",
-                "John",
-                "M",
-                "false",
-                "jdoe",
-                "+111",
-                "secret",
-                "100",
-                "",
-                "40",
-                "Engineer",
-                "",
-                "TAB-100",
-            ]
+            make_row(
+                raw_id="100",
+                full_name="Doe John M",
+                login="jdoe",
+                email_or_phone="john@example.com",
+                contacts="+111111",
+                flags="disabled=false",
+                role="Engineer",
+                org_id="40",
+                tab="TAB-100",
+            )
         ],
     )
 
@@ -270,22 +281,17 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
     _write_csv(
         csv_path,
         [
-            [
-                "user@example.com",
-                "Doe",
-                "John",
-                "M",
-                "false",
-                "jdoe",
-                "+111",
-                "secret",
-                "100",
-                "",
-                "50",
-                "Engineer",
-                "",
-                "TAB-100",
-            ]
+            make_row(
+                raw_id="100",
+                full_name="Doe John M",
+                login="jdoe",
+                email_or_phone="user@example.com",
+                contacts="+111111",
+                flags="disabled=false",
+                role="Engineer",
+                org_id="50",
+                tab="TAB-100",
+            )
         ],
     )
 
@@ -309,22 +315,17 @@ def test_plan_error_when_org_missing(tmp_path: Path):
     _write_csv(
         csv_path,
         [
-            [
-                "user@example.com",
-                "Doe",
-                "John",
-                "M",
-                "false",
-                "jdoe",
-                "+111",
-                "secret",
-                "100",
-                "",
-                "999",
-                "Engineer",
-                "",
-                "TAB-100",
-            ]
+            make_row(
+                raw_id="100",
+                full_name="Doe John M",
+                login="jdoe",
+                email_or_phone="user@example.com",
+                contacts="+111111",
+                flags="disabled=false",
+                role="Engineer",
+                org_id="999",
+                tab="TAB-100",
+            )
         ],
     )
 

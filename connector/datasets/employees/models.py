@@ -17,6 +17,7 @@ class EmployeesRowPublic:
     is_logon_disable: bool | None
     user_name: str | None
     phone: str | None
+    password: str | None
     personnel_number: str | None
     manager_id: str | int | None
     organization_id: int | None

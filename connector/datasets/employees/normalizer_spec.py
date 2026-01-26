@@ -61,4 +61,5 @@ class EmployeesNormalizerSpec(NormalizerSpec[NormalizedEmployeesRow]):
             position=values.get("position"),
             avatar_id=values.get("avatar_id"),
             usr_org_tab_num=values.get("usr_org_tab_num"),
+            resource_id=None,
         )

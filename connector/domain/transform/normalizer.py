@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Callable, Generic, Protocol, TypeVar
+from dataclasses import asdict, dataclass, is_dataclass
+from typing import Any, Callable, Generic, Mapping, Protocol, TypeVar
 
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.transform.result import TransformResult
-from connector.domain.transform.source_record import SourceRecord
 
 T = TypeVar("T")
+U = TypeVar("U")
 
 NormalizerParser = Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], Any]
 NormalizerValidator = Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], None]
@@ -67,23 +67,45 @@ class Normalizer(Generic[T]):
     def __init__(self, spec: NormalizerSpec[T]) -> None:
         self.spec = spec
 
-    def normalize(self, record: SourceRecord) -> TransformResult[T]:
+    def normalize(self, source: TransformResult[Any]) -> TransformResult[T]:
         errors: list[ValidationErrorItem] = []
         warnings: list[ValidationErrorItem] = []
         normalized_values: dict[str, Any] = {}
 
+        source_values = _to_mapping(source.row)
+        if source_values is None:
+            return TransformResult(
+                record=source.record,
+                row=None,
+                row_ref=source.row_ref,
+                match_key=source.match_key,
+                secret_candidates=source.secret_candidates,
+                errors=[*source.errors],
+                warnings=[*source.warnings],
+            )
+
         for rule in self.spec.rules:
-            normalized_values[rule.target] = rule.apply(record.values, errors, warnings)
+            normalized_values[rule.target] = rule.apply(source_values, errors, warnings)
 
         row = None
         if not errors:
             row = self.spec.build_row(normalized_values)
         return TransformResult(
-            record=record,
+            record=source.record,
             row=row,
-            row_ref=None,
-            match_key=None,
-            secret_candidates={},
-            errors=errors,
-            warnings=warnings,
+            row_ref=source.row_ref,
+            match_key=source.match_key,
+            secret_candidates=source.secret_candidates,
+            errors=[*source.errors, *errors],
+            warnings=[*source.warnings, *warnings],
         )
+
+
+def _to_mapping(value: Any) -> Mapping[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, Mapping):
+        return value
+    if is_dataclass(value):
+        return asdict(value)
+    return value.__dict__

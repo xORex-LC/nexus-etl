@@ -8,12 +8,12 @@ from connector.domain.transform.enricher import EnrichRule, EnricherSpec
 from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
 from connector.datasets.employees.enrich_deps import EmployeesEnrichDependencies
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
-from connector.datasets.employees.models import EmployeesRowPublic
+from connector.datasets.employees.normalized import NormalizedEmployeesRow
 from connector.domain.validation.row_rules import normalize_whitespace
 
 
 @dataclass(frozen=True)
-class BuildMatchKeyRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependencies]):
+class BuildMatchKeyRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
     name: str = "build_match_key"
 
     def apply(self, result, deps, errors, warnings) -> None:
@@ -36,7 +36,7 @@ class BuildMatchKeyRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependenci
 
 
 @dataclass(frozen=True)
-class ManagerLookupRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependencies]):
+class ManagerLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
     name: str = "manager_lookup"
 
     def apply(self, result, deps, errors, warnings) -> None:
@@ -95,7 +95,7 @@ class ManagerLookupRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependenci
 
 
 @dataclass(frozen=True)
-class ResourceIdRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependencies]):
+class ResourceIdRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
     name: str = "resource_id"
     max_attempts: int = 3
 
@@ -123,7 +123,7 @@ class ResourceIdRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependencies]
 
 
 @dataclass(frozen=True)
-class UsrOrgTabNumRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependencies]):
+class UsrOrgTabNumRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
     name: str = "usr_org_tab_num"
     max_attempts: int = 3
 
@@ -154,7 +154,7 @@ class UsrOrgTabNumRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependencie
 
 
 @dataclass(frozen=True)
-class PasswordRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependencies]):
+class PasswordRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
     name: str = "password"
 
     def apply(self, result, deps, errors, warnings) -> None:
@@ -168,13 +168,13 @@ class PasswordRule(EnrichRule[EmployeesRowPublic, EmployeesEnrichDependencies]):
 
 
 @dataclass(frozen=True)
-class EmployeesEnricherSpec(EnricherSpec[EmployeesRowPublic, EmployeesEnrichDependencies]):
+class EmployeesEnricherSpec(EnricherSpec[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
     """
     Назначение:
         Спецификация правил обогащения для employees.
     """
 
-    rules: tuple[EnrichRule[EmployeesRowPublic, EmployeesEnrichDependencies], ...] = (
+    rules: tuple[EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies], ...] = (
         BuildMatchKeyRule(),
         ManagerLookupRule(),
         ResourceIdRule(),

@@ -6,7 +6,7 @@ from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
-from connector.datasets.employees.models import EmployeesRowPublic
+from connector.datasets.employees.normalized import NormalizedEmployeesRow
 
 
 @dataclass
@@ -28,7 +28,9 @@ class _DummySecretStore:
         self.calls.append((dataset, match_key, secrets, run_id))
 
 
-def _build_result(row: EmployeesRowPublic, secret_candidates: dict[str, str] | None = None) -> TransformResult[EmployeesRowPublic]:
+def _build_result(
+    row: NormalizedEmployeesRow, secret_candidates: dict[str, str] | None = None
+) -> TransformResult[NormalizedEmployeesRow]:
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     return TransformResult(
         record=record,
@@ -42,7 +44,7 @@ def _build_result(row: EmployeesRowPublic, secret_candidates: dict[str, str] | N
 
 
 def test_enricher_builds_match_key_and_generates_values():
-    row = EmployeesRowPublic(
+    row = NormalizedEmployeesRow(
         email="user@example.com",
         last_name="Doe",
         first_name="John",
@@ -50,6 +52,7 @@ def test_enricher_builds_match_key_and_generates_values():
         is_logon_disable=False,
         user_name="jdoe",
         phone="+111",
+        password=None,
         personnel_number="100",
         manager_id=None,
         organization_id=20,
@@ -70,7 +73,7 @@ def test_enricher_builds_match_key_and_generates_values():
 
 
 def test_enricher_reports_missing_match_key():
-    row = EmployeesRowPublic(
+    row = NormalizedEmployeesRow(
         email="user@example.com",
         last_name="Doe",
         first_name="John",
@@ -78,6 +81,7 @@ def test_enricher_reports_missing_match_key():
         is_logon_disable=False,
         user_name="jdoe",
         phone="+111",
+        password=None,
         personnel_number="100",
         manager_id=None,
         organization_id=20,
@@ -95,7 +99,7 @@ def test_enricher_reports_missing_match_key():
 
 
 def test_enricher_writes_secrets_to_store():
-    row = EmployeesRowPublic(
+    row = NormalizedEmployeesRow(
         email="user@example.com",
         last_name="Doe",
         first_name="John",
@@ -103,6 +107,7 @@ def test_enricher_writes_secrets_to_store():
         is_logon_disable=False,
         user_name="jdoe",
         phone="+111",
+        password=None,
         personnel_number="100",
         manager_id=None,
         organization_id=20,

@@ -9,34 +9,15 @@ from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
-from connector.datasets.employees.record_sources import NORMALIZED_COLUMNS
-
-
-def _to_canonical_keys(values: dict[str, object]) -> dict[str, object]:
-    return {
-        "email": values.get("email"),
-        "last_name": values.get("lastName"),
-        "first_name": values.get("firstName"),
-        "middle_name": values.get("middleName"),
-        "is_logon_disable": values.get("isLogonDisable"),
-        "user_name": values.get("userName"),
-        "phone": values.get("phone"),
-        "password": values.get("password"),
-        "personnel_number": values.get("personnelNumber"),
-        "manager_id": values.get("managerId"),
-        "organization_id": values.get("organization_id"),
-        "position": values.get("position"),
-        "avatar_id": values.get("avatarId"),
-        "usr_org_tab_num": values.get("usrOrgTabNum"),
-    }
+from connector.datasets.employees.record_sources import SOURCE_COLUMNS
 
 
 def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
-    mapped = dict(zip(NORMALIZED_COLUMNS, values))
+    mapped = dict(zip(SOURCE_COLUMNS, values))
     record = SourceRecord(
         line_no=line_no,
         record_id=f"line:{line_no}",
-        values=_to_canonical_keys(mapped),
+        values=mapped,
     )
     return TransformResult(
         record=record,
@@ -87,40 +68,32 @@ def test_match_key_unique_rule_detects_duplicate():
 
     employee, result = make_employee(
         [
-            "user@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe",
-            "+111",
-            "secret",
             "100",
+            "Doe John M",
+            "jdoe",
+            "user@example.com",
+            "+111111",
+            "Org=Engineering",
             "",
-            "20",
-            "Engineer",
-            "",
-            "TAB-100",
+            "disabled=false",
+            "role=Engineer",
+            "password=secret;org_id=20;tab=TAB-100",
         ]
     )
     rule.apply(employee, result, state, deps)
     # второй с тем же match_key
     employee2, result2 = make_employee(
         [
-            "user2@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe2",
-            "+222",
-            "secret",
             "100",
+            "Doe John M",
+            "jdoe2",
+            "user2@example.com",
+            "+222222",
+            "Org=Engineering",
             "",
-            "20",
-            "Engineer",
-            "",
-            "TAB-200",
+            "disabled=false",
+            "role=Engineer",
+            "password=secret;org_id=20;tab=TAB-200",
         ]
     )
     rule.apply(employee2, result2, state, deps)
@@ -134,39 +107,31 @@ def test_usr_org_tab_unique_rule_detects_duplicate():
 
     employee, result = make_employee(
         [
-            "user@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe",
-            "+111",
-            "secret",
             "100",
+            "Doe John M",
+            "jdoe",
+            "user@example.com",
+            "+111111",
+            "Org=Engineering",
             "",
-            "20",
-            "Engineer",
-            "",
-            "TAB-100",
+            "disabled=false",
+            "role=Engineer",
+            "password=secret;org_id=20;tab=TAB-100",
         ]
     )
     rule.apply(employee, result, state, deps)
     employee2, result2 = make_employee(
         [
-            "user2@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe2",
-            "+222",
-            "secret",
             "200",
+            "Doe John M",
+            "jdoe2",
+            "user2@example.com",
+            "+222222",
+            "Org=Engineering",
             "",
-            "20",
-            "Engineer",
-            "",
-            "TAB-100",  # duplicate
+            "disabled=false",
+            "role=Engineer",
+            "password=secret;org_id=20;tab=TAB-100",  # duplicate
         ]
     )
     rule.apply(employee2, result2, state, deps)
@@ -180,40 +145,32 @@ def test_org_exists_rule_checks_lookup():
 
     employee, result = make_employee(
         [
-            "user@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe",
-            "+111",
-            "secret",
             "100",
+            "Doe John M",
+            "jdoe",
+            "user@example.com",
+            "+111111",
+            "Org=Engineering",
             "",
-            "20",  # exists
-            "Engineer",
-            "",
-            "TAB-100",
+            "disabled=false",
+            "role=Engineer",
+            "password=secret;org_id=20;tab=TAB-100",  # exists
         ]
     )
     rule.apply(employee, result, state, deps)
 
     employee2, result2 = make_employee(
         [
-            "user2@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe2",
-            "+222",
-            "secret",
             "200",
+            "Doe John M",
+            "jdoe2",
+            "user2@example.com",
+            "+222222",
+            "Org=Engineering",
             "",
-            "999",  # missing
-            "Engineer",
-            "",
-            "TAB-200",
+            "disabled=false",
+            "role=Engineer",
+            "password=secret;org_id=999;tab=TAB-200",  # missing
         ]
     )
     rule.apply(employee2, result2, state, deps)

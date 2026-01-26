@@ -22,10 +22,7 @@ from connector.datasets.employees.enrich_deps import EmployeesEnrichDependencies
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.pipeline import ValidatorFactory
-from connector.datasets.employees.record_sources import (
-    NormalizedEmployeesCsvRecordSource,
-    SourceEmployeesCsvRecordSource,
-)
+from connector.datasets.employees.record_sources import EmployeesCsvRecordSource
 
 class EmployeesSpec(DatasetSpec):
     """
@@ -73,11 +70,8 @@ class EmployeesSpec(DatasetSpec):
         self,
         csv_path: str,
         csv_has_header: bool,
-        source_format: str | None = None,
     ):
-        if source_format == "source":
-            return SourceEmployeesCsvRecordSource(csv_path, csv_has_header)
-        return NormalizedEmployeesCsvRecordSource(csv_path, csv_has_header)
+        return EmployeesCsvRecordSource(csv_path, csv_has_header)
 
     def build_planning_policy(self, include_deleted: bool, deps: PlanningDependencies):
         projector = EmployeesProjector()

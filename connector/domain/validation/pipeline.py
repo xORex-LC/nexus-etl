@@ -53,8 +53,8 @@ class TypedRowValidator:
     def __init__(
         self,
         normalizer: Normalizer[N],
-        mapper: SourceMapper[N, T],
-        enricher: Enricher[T, D],
+        mapper: SourceMapper[T],
+        enricher: Enricher[N, D],
         required_fields: tuple[tuple[str, str], ...] = (),
     ) -> None:
         self.normalizer = normalizer
@@ -107,23 +107,15 @@ class TypedRowValidator:
         Назначение:
             Вернуть чистый TransformResult без legacy-структур.
         """
-        normalized = self.normalizer.normalize(collected.record)
-        if normalized.errors:
-            return TransformResult(
-                record=normalized.record,
-                row=None,
-                row_ref=collected.row_ref,
-                match_key=None,
-                secret_candidates={},
-                errors=[*collected.errors, *normalized.errors],
-                warnings=[*collected.warnings, *normalized.warnings],
-            )
-        mapped = self.mapper.map(normalized.record, normalized.row)
-        mapped.errors = [*collected.errors, *normalized.errors, *mapped.errors]
-        mapped.warnings = [*collected.warnings, *normalized.warnings, *mapped.warnings]
+        mapped = self.mapper.map(collected.record)
+        mapped.errors = [*collected.errors, *mapped.errors]
+        mapped.warnings = [*collected.warnings, *mapped.warnings]
         if mapped.errors:
             return mapped
-        return self.enricher.enrich(mapped)
+        normalized = self.normalizer.normalize(mapped)
+        if normalized.errors:
+            return normalized
+        return self.enricher.enrich(normalized)
 
     def _apply_required_fields(self, map_result) -> None:
         for attr_name, field_name in self.required_fields:
