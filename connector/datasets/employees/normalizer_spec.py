@@ -41,7 +41,7 @@ class EmployeesNormalizerSpec(NormalizerSpec[NormalizedEmployeesRow]):
         NormalizerRule("manager_id", "manager_id", parser=_normalize_text),
         NormalizerRule("organization_id", "organization_id", parser=_int_gt_zero_parser("organization_id")),
         NormalizerRule("position", "position", parser=_normalize_text),
-        NormalizerRule("avatar_id", "avatar_id", validators=(_avatar_validator,)),
+        NormalizerRule("avatar_id", "avatar_id", parser=_normalize_text, validators=(_avatar_validator,)),
         NormalizerRule("usr_org_tab_num", "usr_org_tab_num", parser=_normalize_text),
     )
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from connector.domain.models import DiagnosticStage, ValidationErrorItem, ValidationRowResult
+from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
 from connector.datasets.employees.models import EmployeesRowPublic
-from ..models import DiagnosticStage, ValidationErrorItem, ValidationRowResult
-from .deps import DatasetValidationState, ValidationDependencies
+
 
 class MatchKeyUniqueRule:
     """
@@ -40,6 +41,7 @@ class MatchKeyUniqueRule:
             return
         state.matchkey_seen[result.match_key] = result.line_no
 
+
 class UsrOrgTabUniqueRule:
     """
     Назначение:
@@ -68,6 +70,7 @@ class UsrOrgTabUniqueRule:
             return
         state.usr_org_tab_seen[result.usr_org_tab_num] = result.line_no
 
+
 class OrgExistsRule:
     """
     Назначение:
@@ -83,7 +86,7 @@ class OrgExistsRule:
     ) -> None:
         if deps.org_lookup is None:
             return
-        if row.organization_id is None:
+        if row is None or row.organization_id is None:
             return
         org_exists = deps.org_lookup.get_org_by_id(row.organization_id)
         if org_exists is None:

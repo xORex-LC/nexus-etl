@@ -17,8 +17,7 @@ class PlanUseCase:
         собирает итог через PlanBuilder.
 
     Взаимодействия:
-        - Использует ValidatorRegistry для получения валидаторов по dataset.
-        - Использует DatasetSpec для получения датасетной политики планирования.
+        - Использует DatasetSpec для получения политик и адаптеров планирования.
         - Не знает об артефактах/файлах и не хранит планы в памяти.
 
     Ограничения:
@@ -35,20 +34,18 @@ class PlanUseCase:
 
     def run(
         self,
-        row_source,
+        validated_row_source,
         dataset_spec: DatasetSpec,
         dataset: str,
         include_deleted: bool,
         logger: logging.Logger,
         run_id: str,
-        validation_deps,
-        enrich_deps,
         planning_deps,
     ) -> PlanBuildResult:
         """
         Контракт (вход/выход):
-            Вход: row_source (Iterable[TransformResult]), dataset_spec, include_deleted: bool, logger, run_id,
-                  validation_deps, planning_deps, secret_store.
+            Вход: validated_row_source (Iterable[TransformResult[ValidationRow]]), dataset_spec, include_deleted: bool,
+                  logger, run_id, planning_deps.
             Выход: PlanBuildResult (items, summary, report_items, items_truncated).
         Ошибки/исключения:
             Пробрасывает CsvFormatError/OSError и исключения зависимостей.
@@ -66,37 +63,18 @@ class PlanUseCase:
             conflict_field=report_adapter.conflict_field,
         )
 
-        validators = dataset_spec.build_validators(validation_deps, enrich_deps)
-        row_validator = validators.row_validator
-        dataset_validator = validators.dataset_validator
         planning_policy = dataset_spec.build_planning_policy(
             include_deleted=include_deleted, deps=planning_deps
         )
         planner = GenericPlanner(policy=planning_policy, builder=builder)
 
-        for collected in row_source:
+        for validated in validated_row_source:
             builder.inc_rows_total()
-            entity, validation = row_validator.validate(collected)
+            validation_row = validated.row
+            validation = validation_row.validation
             errors = list(validation.errors)
             warnings = list(validation.warnings)
 
-            if errors:
-                builder.add_invalid(validation, errors, warnings)
-                logValidationFailure(
-                    logger,
-                    run_id,
-                    "import-plan",
-                    validation,
-                    None,
-                    errors=errors,
-                    warnings=warnings,
-                )
-                continue
-
-            # Глобальные правила применяются только к строкам без ошибок поля
-            dataset_validator.validate(entity, validation)
-            errors = list(validation.errors)
-            warnings = list(validation.warnings)
             if errors:
                 builder.add_invalid(validation, errors, warnings)
                 logValidationFailure(
@@ -111,6 +89,6 @@ class PlanUseCase:
                 continue
 
             builder.inc_valid_rows()
-            planner.plan_validated_row(entity, validation, warnings)
+            planner.plan_validated_row(validation_row.row, validation, warnings)
 
         return builder.build()

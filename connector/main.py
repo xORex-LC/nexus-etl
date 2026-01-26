@@ -29,6 +29,7 @@ from connector.usecases.import_plan_service import ImportPlanService
 from connector.usecases.enrich_usecase import EnrichUseCase
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.usecases.normalize_usecase import NormalizeUseCase
+from connector.usecases.validate_usecase import ValidateUseCase
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
@@ -651,9 +652,6 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
     dataset_name = settings.dataset_name
 
     def execute(logger, report) -> int:
-        rows_processed = 0
-        failed_rows = 0
-        warning_rows = 0
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         try:
@@ -682,49 +680,20 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
             )
 
             try:
-                for collected in record_source:
-                    _employee, result = row_validator.validate(collected)
-                    dataset_validator.validate(_employee, result)
-                    rows_processed += 1
-
-                    status = "valid" if result.valid else "invalid"
-                    if not result.valid:
-                        failed_rows += 1
-                    if result.warnings:
-                        warning_rows += 1
-
-                    item_index = None
-                    if status == "invalid":
-                        if len(report.items) >= report_items_limit:
-                            report.meta.items_truncated = True
-                        else:
-                            report.items.append(
-                                {
-                                    "row_id": f"line:{result.line_no}",
-                                    "line_no": result.line_no,
-                                    "match_key": result.match_key,
-                                    "status": status,
-                                    "errors": [
-                                        {"code": e.code, "field": e.field, "message": e.message}
-                                        for e in result.errors
-                                    ],
-                                    "warnings": [
-                                        {"code": w.code, "field": w.field, "message": w.message}
-                                        for w in result.warnings
-                                    ],
-                                }
-                            )
-                            item_index = len(report.items) - 1
-                    if not result.valid:
-                        logValidationFailure(
-                            logger,
-                            runId,
-                            "validate",
-                            result,
-                            item_index,
-                            errors=result.errors,
-                            warnings=result.warnings,
-                        )
+                usecase = ValidateUseCase(
+                    report_items_limit=report_items_limit,
+                    include_valid_items=False,
+                )
+                return usecase.run(
+                    record_source=record_source,
+                    row_validator=row_validator,
+                    dataset_validator=dataset_validator,
+                    dataset=dataset_name,
+                    logger=logger,
+                    run_id=runId,
+                    report=report,
+                    log_failure=logValidationFailure,
+                )
             except CsvFormatError as exc:
                 logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
                 typer.echo(f"ERROR: CSV format error: {exc}", err=True)
@@ -733,21 +702,6 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
                 logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
                 typer.echo(f"ERROR: CSV read error: {exc}", err=True)
                 return 2
-
-            report.meta.csv_rows_total = rows_processed
-            report.meta.csv_rows_processed = rows_processed
-            report.summary.failed = failed_rows
-            report.summary.warnings = warning_rows
-            report.summary.skipped = 0
-            logEvent(
-                logger,
-                logging.INFO,
-                runId,
-                "validate",
-                f"validate done rows_total={rows_processed} invalid={failed_rows} warnings={warning_rows}",
-            )
-
-            return 1 if failed_rows > 0 else 0
         finally:
             conn.close()
 

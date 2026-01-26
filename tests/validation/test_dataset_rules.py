@@ -1,7 +1,7 @@
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
-from connector.domain.validation.dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
+from connector.datasets.employees.validation_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.validation.pipeline import TypedRowValidator
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
@@ -101,9 +101,6 @@ def test_match_key_unique_rule_detects_duplicate():
         ]
     )
     rule.apply(employee, result, state, deps)
-    # avatarId правило делает строку невалидной, но это не мешает проверять rule
-    assert any(e.code == "INVALID_AVATAR_ID" for e in result.errors)
-
     # второй с тем же match_key
     employee2, result2 = make_employee(
         [
@@ -151,8 +148,6 @@ def test_usr_org_tab_unique_rule_detects_duplicate():
         ]
     )
     rule.apply(employee, result, state, deps)
-    assert any(e.code == "INVALID_AVATAR_ID" for e in result.errors)
-
     employee2, result2 = make_employee(
         [
             "user2@example.com",
@@ -199,7 +194,6 @@ def test_org_exists_rule_checks_lookup():
         ]
     )
     rule.apply(employee, result, state, deps)
-    assert any(e.code == "INVALID_AVATAR_ID" for e in result.errors)
 
     employee2, result2 = make_employee(
         [

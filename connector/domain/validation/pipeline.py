@@ -5,7 +5,7 @@ from typing import Protocol, TypeVar
 
 from ..models import DiagnosticStage, RowRef, ValidationErrorItem, ValidationRowResult
 from .deps import DatasetValidationState, ValidationDependencies
-from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
+from .validated_row import ValidationRow
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.enricher import Enricher
@@ -36,8 +36,9 @@ class RowValidator(Protocol[T]):
         Контракт строковой валидации для типизированных сущностей датасета.
     """
 
-    def validate(self, collected: TransformResult[None]) -> tuple[T, ValidationRowResult]: ...
+    def validate(self, collected: TransformResult[None]) -> tuple[T | None, ValidationRowResult]: ...
     def map_only(self, collected: TransformResult[None]) -> TransformResult[T]: ...
+    def validate_enriched(self, map_result: TransformResult[T]) -> TransformResult[ValidationRow[T]]: ...
 
 
 class TypedRowValidator:
@@ -69,32 +70,48 @@ class TypedRowValidator:
             Возвращает типизированную строку датасета + ValidationRowResult.
         """
         map_result = self.map_only(collected)
-        self._apply_required_fields(map_result)
-        if map_result.row is None:
+        validated = self.validate_enriched(map_result)
+        return validated.row.row, validated.row.validation
+
+    def validate_enriched(self, map_result: TransformResult[T]) -> TransformResult[ValidationRow[T]]:
+        """
+        Назначение:
+            Построить ValidationRowResult на основе обогащенной строки.
+        """
+        if map_result.row is not None:
+            self._apply_required_fields(map_result)
+        if map_result.row is None and not map_result.errors:
             raise ValueError("SourceMapper returned empty row for validation")
-        row = map_result.row
 
         match_key_value = map_result.match_key.value if map_result.match_key else ""
         match_key_complete = map_result.match_key is not None
 
         row_ref = map_result.row_ref or RowRef(
-            line_no=collected.record.line_no,
-            row_id=collected.record.record_id,
+            line_no=map_result.record.line_no,
+            row_id=map_result.record.record_id,
             identity_primary="match_key",
             identity_value=match_key_value or None,
         )
 
         result = ValidationRowResult(
-            line_no=collected.record.line_no,
+            line_no=map_result.record.line_no,
             match_key=match_key_value,
             match_key_complete=match_key_complete,
-            usr_org_tab_num=getattr(row, "usr_org_tab_num", None),
+            usr_org_tab_num=getattr(map_result.row, "usr_org_tab_num", None),
             row_ref=row_ref,
             secret_candidates=map_result.secret_candidates,
             errors=map_result.errors,
             warnings=map_result.warnings,
         )
-        return row, result
+        return TransformResult(
+            record=map_result.record,
+            row=ValidationRow(row=map_result.row, validation=result),
+            row_ref=row_ref,
+            match_key=map_result.match_key,
+            secret_candidates=map_result.secret_candidates,
+            errors=result.errors,
+            warnings=result.warnings,
+        )
 
     def map_only(self, collected: TransformResult[None]) -> TransformResult[T]:
         """
@@ -102,9 +119,21 @@ class TypedRowValidator:
             Вернуть чистый TransformResult без legacy-структур.
         """
         normalized = self.normalizer.normalize(collected.record)
+        if normalized.errors:
+            return TransformResult(
+                record=normalized.record,
+                row=None,
+                row_ref=collected.row_ref,
+                match_key=None,
+                secret_candidates={},
+                errors=[*collected.errors, *normalized.errors],
+                warnings=[*collected.warnings, *normalized.warnings],
+            )
         mapped = self.mapper.map(normalized.record, normalized.row)
         mapped.errors = [*collected.errors, *normalized.errors, *mapped.errors]
         mapped.warnings = [*collected.warnings, *normalized.warnings, *mapped.warnings]
+        if mapped.errors:
+            return mapped
         return self.enricher.enrich(mapped)
 
     def _apply_required_fields(self, map_result) -> None:
@@ -160,12 +189,14 @@ class ValidatorFactory:
         normalizer: Normalizer[N],
         mapper: SourceMapper[N, T],
         enricher: Enricher[T, D],
+        dataset_rules: tuple[DatasetRule[T], ...] = (),
         required_fields: tuple[tuple[str, str], ...] = (),
     ) -> None:
         self.deps = deps
         self.normalizer = normalizer
         self.mapper = mapper
         self.enricher = enricher
+        self.dataset_rules = dataset_rules
         self.required_fields = required_fields
 
     def create_validation_context(self) -> DatasetValidationState:
@@ -187,13 +218,8 @@ class ValidatorFactory:
         Возвращает:
             DatasetValidator с набором глобальных правил.
         """
-        dataset_rules: tuple[DatasetRule[T], ...] = (
-            MatchKeyUniqueRule(),
-            UsrOrgTabUniqueRule(),
-            OrgExistsRule(),
-        )
         return DatasetValidator(
-            rules=dataset_rules,
+            rules=self.dataset_rules,
             state=state,
             deps=self.deps,
         )

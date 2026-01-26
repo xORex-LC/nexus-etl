@@ -11,7 +11,7 @@ from connector.domain.planning.employees.differ import EmployeeDiffer
 from connector.domain.planning.employees.matcher import EmployeeMatcher
 from connector.datasets.employees.planning_policy import EmployeesPlanningPolicy
 from connector.domain.validation.deps import ValidationDependencies
-from connector.datasets.validation.registry import ValidatorRegistry
+from connector.datasets.employees.validation_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.infra.cache.validation_lookups import CacheOrgLookup
 from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
@@ -21,6 +21,7 @@ from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.enrich_deps import EmployeesEnrichDependencies
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
+from connector.domain.validation.pipeline import ValidatorFactory
 from connector.datasets.employees.record_sources import (
     NormalizedEmployeesCsvRecordSource,
     SourceEmployeesCsvRecordSource,
@@ -55,10 +56,17 @@ class EmployeesSpec(DatasetSpec):
             secret_store=enrich_deps.secret_store,
             dataset="employees",
         )
-        registry = ValidatorRegistry(deps, normalizer, mapper, enricher, mapping_spec.required_fields)
-        row_validator = registry.create_row_validator()
-        state = registry.create_state()
-        dataset_validator = registry.create_dataset_validator(state)
+        factory = ValidatorFactory(
+            deps,
+            normalizer,
+            mapper,
+            enricher,
+            dataset_rules=(MatchKeyUniqueRule(), UsrOrgTabUniqueRule(), OrgExistsRule()),
+            required_fields=mapping_spec.required_fields,
+        )
+        row_validator = factory.create_row_validator()
+        state = factory.create_validation_context()
+        dataset_validator = factory.create_dataset_validator(state)
         return ValidatorBundle(row_validator=row_validator, dataset_validator=dataset_validator, state=state)
 
     def build_record_source(

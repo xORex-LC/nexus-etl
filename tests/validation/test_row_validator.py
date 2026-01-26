@@ -84,8 +84,7 @@ def test_row_validator_parses_valid_row():
     validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
     entity, result = validator.validate(collected)
 
-    # avatarId считается ошибкой, поэтому ожидаем невалид
-    assert not result.valid
+    assert result.valid
     assert entity.email == "user@example.com"
     assert entity.organization_id == 20
     assert result.match_key == "Doe|John|M|100"

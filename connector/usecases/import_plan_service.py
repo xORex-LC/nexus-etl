@@ -7,6 +7,7 @@ from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.usecases.ports import ImportPlanServiceProtocol
 from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
+from connector.usecases.validate_usecase import ValidateUseCase
 from connector.datasets.registry import get_spec
 
 class ImportPlanService(ImportPlanServiceProtocol):
@@ -45,19 +46,27 @@ class ImportPlanService(ImportPlanServiceProtocol):
             csv_path=csv_path,
             csv_has_header=csv_has_header,
         )
+        validators = dataset_spec.build_validators(validation_deps, enrich_deps)
+        validate_usecase = ValidateUseCase(
+            report_items_limit=report_items_limit,
+            include_valid_items=False,
+        )
+        validated_rows = validate_usecase.iter_validated(
+            record_source=record_source,
+            row_validator=validators.row_validator,
+            dataset_validator=validators.dataset_validator,
+        )
         use_case = PlanUseCase(
             report_items_limit=report_items_limit,
             include_skipped_in_report=include_skipped_in_report,
         )
         plan_result = use_case.run(
-            row_source=record_source,
+            validated_row_source=validated_rows,
             dataset_spec=dataset_spec,
             dataset=dataset,
             include_deleted=include_deleted,
             logger=logger,
             run_id=run_id,
-            validation_deps=validation_deps,
-            enrich_deps=enrich_deps,
             planning_deps=planning_deps,
         )
         plan_meta = {

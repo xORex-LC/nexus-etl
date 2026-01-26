@@ -75,7 +75,9 @@ class Normalizer(Generic[T]):
         for rule in self.spec.rules:
             normalized_values[rule.target] = rule.apply(record.values, errors, warnings)
 
-        row = self.spec.build_row(normalized_values)
+        row = None
+        if not errors:
+            row = self.spec.build_row(normalized_values)
         return TransformResult(
             record=record,
             row=row,

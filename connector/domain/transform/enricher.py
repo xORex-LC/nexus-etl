@@ -59,6 +59,8 @@ class Enricher(Generic[T, D]):
         self.run_id = run_id
 
     def enrich(self, result: TransformResult[T]) -> TransformResult[T]:
+        if result.errors:
+            return result
         errors: list[ValidationErrorItem] = []
         warnings: list[ValidationErrorItem] = []
 
