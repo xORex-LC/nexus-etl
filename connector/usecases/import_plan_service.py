@@ -34,6 +34,12 @@ class ImportPlanService(ImportPlanServiceProtocol):
 
         dataset_spec = get_spec(dataset)
         validation_deps = dataset_spec.build_validation_deps(conn, settings)
+        secret_store = None
+        if vault_file:
+            from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
+
+            secret_store = FileVaultSecretStore(vault_file)
+        enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
         planning_deps = dataset_spec.build_planning_deps(conn, settings)
         record_source = dataset_spec.build_record_source(
             csv_path=csv_path,
@@ -43,11 +49,6 @@ class ImportPlanService(ImportPlanServiceProtocol):
             report_items_limit=report_items_limit,
             include_skipped_in_report=include_skipped_in_report,
         )
-        secret_store = None
-        if vault_file:
-            from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
-
-            secret_store = FileVaultSecretStore(vault_file)
         plan_result = use_case.run(
             row_source=record_source,
             dataset_spec=dataset_spec,
@@ -56,8 +57,8 @@ class ImportPlanService(ImportPlanServiceProtocol):
             logger=logger,
             run_id=run_id,
             validation_deps=validation_deps,
+            enrich_deps=enrich_deps,
             planning_deps=planning_deps,
-            secret_store=secret_store,
         )
         plan_meta = {
             "csv_path": csv_path,

@@ -6,9 +6,11 @@ from connector.domain.validation.deps import DatasetValidationState, ValidationD
 from connector.domain.validation.pipeline import DatasetValidator, RowValidator, ValidatorFactory
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.normalizer import Normalizer
+from connector.domain.transform.enricher import Enricher
 
 N = TypeVar("N")
 T = TypeVar("T")
+D = TypeVar("D")
 
 class ValidatorRegistry:
     """
@@ -25,10 +27,11 @@ class ValidatorRegistry:
         deps: ValidationDependencies,
         normalizer: Normalizer[N],
         mapper: SourceMapper[N, T],
+        enricher: Enricher[T, D],
         required_fields: tuple[tuple[str, str], ...] = (),
     ):
         self.deps = deps
-        self.factory = ValidatorFactory(deps, normalizer, mapper, required_fields)
+        self.factory = ValidatorFactory(deps, normalizer, mapper, enricher, required_fields)
 
     def create_row_validator(self) -> RowValidator:
         """

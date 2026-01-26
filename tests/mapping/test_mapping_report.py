@@ -1,9 +1,11 @@
 import logging
 
+from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.pipeline import TypedRowValidator
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
+from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.infra.artifacts.report_writer import createEmptyReport
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
@@ -47,13 +49,28 @@ def _make_row(values: list[str | None], line_no: int = 1) -> TransformResult[Non
         warnings=[],
     )
 
+class _DummyEnrichDeps:
+    identity_lookup = None
+
+    def find_user_by_id(self, _resource_id: str):
+        return None
+
+    def find_user_by_usr_org_tab_num(self, _tab_num: str):
+        return None
+
 
 def _run_mapping(rows: list[TransformResult[None]]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
-    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
+    validator = TypedRowValidator(
+        normalizer,
+        EmployeesSourceMapper(mapping_spec),
+        enricher,
+        mapping_spec.required_fields,
+    )
     record_source = rows
     exit_code = usecase.run(
         record_source=record_source,

@@ -17,6 +17,9 @@ from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
+from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
+from connector.datasets.employees.enrich_deps import EmployeesEnrichDependencies
+from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.datasets.employees.record_sources import (
     NormalizedEmployeesCsvRecordSource,
@@ -38,11 +41,21 @@ class EmployeesSpec(DatasetSpec):
     def build_planning_deps(self, conn, settings) -> PlanningDependencies:
         return PlanningDependencies(identity_lookup=CacheEmployeeLookup(conn))
 
-    def build_validators(self, deps: ValidationDependencies) -> ValidatorBundle:
+    def build_enrich_deps(self, conn, settings, secret_store=None) -> EmployeesEnrichDependencies:
+        identity_lookup = CacheEmployeeLookup(conn)
+        return EmployeesEnrichDependencies(conn=conn, identity_lookup=identity_lookup, secret_store=secret_store)
+
+    def build_validators(self, deps: ValidationDependencies, enrich_deps: EmployeesEnrichDependencies) -> ValidatorBundle:
         mapping_spec = EmployeesMappingSpec()
         normalizer = Normalizer(EmployeesNormalizerSpec())
         mapper = EmployeesSourceMapper(mapping_spec)
-        registry = ValidatorRegistry(deps, normalizer, mapper, mapping_spec.required_fields)
+        enricher = Enricher(
+            spec=EmployeesEnricherSpec(),
+            deps=enrich_deps,
+            secret_store=enrich_deps.secret_store,
+            dataset="employees",
+        )
+        registry = ValidatorRegistry(deps, normalizer, mapper, enricher, mapping_spec.required_fields)
         row_validator = registry.create_row_validator()
         state = registry.create_state()
         dataset_validator = registry.create_dataset_validator(state)

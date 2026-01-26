@@ -10,7 +10,7 @@ from connector.datasets.employees.normalized import NormalizedEmployeesRow
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 
 
-def test_employees_source_mapper_builds_match_key_and_secrets():
+def test_employees_source_mapper_builds_secrets():
     record = SourceRecord(
         line_no=1,
         record_id="line:1",
@@ -50,14 +50,13 @@ def test_employees_source_mapper_builds_match_key_and_secrets():
     result = EmployeesSourceMapper().map(record, normalized)
 
     assert result.errors == []
-    assert result.match_key is not None
-    assert result.match_key.value == "Doe|John|M|100"
+    assert result.match_key is None
     assert result.secret_candidates.get("password") == "secret"
     assert result.row.email == "user@example.com"
-    assert result.row_ref.identity_value == result.match_key.value
+    assert result.row_ref is None
 
 
-def test_employees_source_mapper_reports_missing_match_key():
+def test_employees_source_mapper_does_not_add_match_key_errors():
     record = SourceRecord(
         line_no=2,
         record_id="line:2",
@@ -97,7 +96,7 @@ def test_employees_source_mapper_reports_missing_match_key():
     result = EmployeesSourceMapper().map(record, normalized)
 
     codes = {issue.code for issue in result.errors}
-    assert "MATCH_KEY_MISSING" in codes
+    assert "MATCH_KEY_MISSING" not in codes
     assert result.match_key is None
 
 

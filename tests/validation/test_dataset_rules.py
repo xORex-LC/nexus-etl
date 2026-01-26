@@ -1,9 +1,11 @@
+from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
 from connector.domain.validation.dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.validation.pipeline import TypedRowValidator
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
+from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
@@ -52,11 +54,26 @@ class DummyOrgLookup:
     def get_org_by_id(self, ouid: int):
         return {"_ouid": ouid} if ouid in self.existing_ids else None
 
+
+class _DummyEnrichDeps:
+    identity_lookup = None
+
+    def find_user_by_id(self, _resource_id: str):
+        return None
+
+    def find_user_by_usr_org_tab_num(self, _tab_num: str):
+        return None
+
+
 def make_employee(values: list[str | None]):
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
     entity, result = TypedRowValidator(
-        normalizer, EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields
+        normalizer,
+        EmployeesSourceMapper(mapping_spec),
+        enricher,
+        mapping_spec.required_fields,
     ).validate(_collect(values, line_no=1))
     return entity, result
 

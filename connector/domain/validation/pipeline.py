@@ -8,10 +8,12 @@ from .deps import DatasetValidationState, ValidationDependencies
 from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.normalizer import Normalizer
+from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.result import TransformResult
 
 N = TypeVar("N")
 T = TypeVar("T")
+D = TypeVar("D")
 
 
 class DatasetRule(Protocol[T]):
@@ -52,10 +54,12 @@ class TypedRowValidator:
         self,
         normalizer: Normalizer[N],
         mapper: SourceMapper[N, T],
+        enricher: Enricher[T, D],
         required_fields: tuple[tuple[str, str], ...] = (),
     ) -> None:
         self.normalizer = normalizer
         self.mapper = mapper
+        self.enricher = enricher
         self.required_fields = required_fields
 
     def validate(self, collected: TransformResult[None]) -> tuple[T, ValidationRowResult]:
@@ -101,7 +105,7 @@ class TypedRowValidator:
         mapped = self.mapper.map(normalized.record, normalized.row)
         mapped.errors = [*collected.errors, *normalized.errors, *mapped.errors]
         mapped.warnings = [*collected.warnings, *normalized.warnings, *mapped.warnings]
-        return mapped
+        return self.enricher.enrich(mapped)
 
     def _apply_required_fields(self, map_result) -> None:
         for attr_name, field_name in self.required_fields:
@@ -155,11 +159,13 @@ class ValidatorFactory:
         deps: ValidationDependencies,
         normalizer: Normalizer[N],
         mapper: SourceMapper[N, T],
+        enricher: Enricher[T, D],
         required_fields: tuple[tuple[str, str], ...] = (),
     ) -> None:
         self.deps = deps
         self.normalizer = normalizer
         self.mapper = mapper
+        self.enricher = enricher
         self.required_fields = required_fields
 
     def create_validation_context(self) -> DatasetValidationState:
@@ -174,7 +180,7 @@ class ValidatorFactory:
         Возвращает:
             RowValidator на базе SourceMapper.
         """
-        return TypedRowValidator(self.normalizer, self.mapper, self.required_fields)
+        return TypedRowValidator(self.normalizer, self.mapper, self.enricher, self.required_fields)
 
     def create_dataset_validator(self, state: DatasetValidationState) -> DatasetValidator:
         """

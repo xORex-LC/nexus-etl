@@ -4,9 +4,11 @@ from connector.domain.validation.pipeline import TypedRowValidator
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.domain.transform.normalizer import Normalizer
+from connector.domain.transform.enricher import Enricher
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
+from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.record_sources import NORMALIZED_COLUMNS
 
 
@@ -45,6 +47,17 @@ def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None
         warnings=[],
     )
 
+
+class _DummyEnrichDeps:
+    identity_lookup = None
+    secret_store = None
+
+    def find_user_by_id(self, resource_id: str):
+        return None
+
+    def find_user_by_usr_org_tab_num(self, tab_num: str):
+        return None
+
 def test_row_validator_parses_valid_row():
     collected = _collect(
         [
@@ -67,7 +80,8 @@ def test_row_validator_parses_valid_row():
     )
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
-    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
+    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
     entity, result = validator.validate(collected)
 
     # avatarId считается ошибкой, поэтому ожидаем невалид
@@ -80,7 +94,8 @@ def test_row_validator_reports_missing_required():
     collected = _collect([None for _ in range(14)], line_no=1)
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
-    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
+    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
     _employee, result = validator.validate(collected)
 
     assert not result.valid
@@ -109,7 +124,8 @@ def test_row_validator_invalid_email():
     )
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
-    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
+    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
     _employee, result = validator.validate(collected)
 
     assert not result.valid
@@ -121,7 +137,8 @@ def test_row_validator_produces_row_ref_even_with_errors():
     collected = _collect([None for _ in range(14)], line_no=5)
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
-    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
+    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
     _employee, result = validator.validate(collected)
 
     assert result.row_ref is not None

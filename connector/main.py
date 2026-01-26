@@ -26,6 +26,7 @@ from connector.infra.sources.csv_utils import CsvFormatError
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
+from connector.usecases.enrich_usecase import EnrichUseCase
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.usecases.normalize_usecase import NormalizeUseCase
 from connector.infra.artifacts.plan_reader import readPlanFile
@@ -38,7 +39,12 @@ from connector.domain.validation.pipeline import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.registry import get_spec
 from connector.datasets.cache_registry import list_cache_sync_adapters
-from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
+from connector.infra.secrets import (
+    NullSecretProvider,
+    PromptSecretProvider,
+    CompositeSecretProvider,
+    FileVaultSecretStore,
+)
 from connector.domain.ports.secrets import SecretProviderProtocol
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -650,82 +656,100 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
         warning_rows = 0
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
-        validators = dataset_spec.build_validators(deps)
-        row_validator = validators.row_validator
-        dataset_validator = validators.dataset_validator
-        report_items_limit = settings.report_items_limit
-        report.meta.report_items_limit = report_items_limit
-        report.meta.dataset = dataset_name
-        record_source = dataset_spec.build_record_source(
-            csv_path=csvPath,
-            csv_has_header=csv_has_header,
-        )
-
         try:
-            for collected in record_source:
-                _employee, result = row_validator.validate(collected)
-                dataset_validator.validate(_employee, result)
-                rows_processed += 1
+            conn = openCacheDb(getCacheDbPath(settings.cache_dir))
+        except sqlite3.Error as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+            return 2
+        try:
+            engine = SqliteEngine(conn)
+            handler_registry = CacheHandlerRegistry()
+            handler_registry.register(EmployeesCacheHandler())
+            handler_registry.register(OrganizationsCacheHandler())
+            ensure_cache_ready(engine, handler_registry)
 
-                status = "valid" if result.valid else "invalid"
-                if not result.valid:
-                    failed_rows += 1
-                if result.warnings:
-                    warning_rows += 1
+            enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
+            validators = dataset_spec.build_validators(deps, enrich_deps)
+            row_validator = validators.row_validator
+            dataset_validator = validators.dataset_validator
+            report_items_limit = settings.report_items_limit
+            report.meta.report_items_limit = report_items_limit
+            report.meta.dataset = dataset_name
+            record_source = dataset_spec.build_record_source(
+                csv_path=csvPath,
+                csv_has_header=csv_has_header,
+            )
 
-                item_index = None
-                if status == "invalid":
-                    if len(report.items) >= report_items_limit:
-                        report.meta.items_truncated = True
-                    else:
-                        report.items.append(
-                            {
-                                "row_id": f"line:{result.line_no}",
-                                "line_no": result.line_no,
-                                "match_key": result.match_key,
-                                "status": status,
-                                "errors": [
-                                    {"code": e.code, "field": e.field, "message": e.message} for e in result.errors
-                                ],
-                                "warnings": [
-                                    {"code": w.code, "field": w.field, "message": w.message} for w in result.warnings
-                                ],
-                            }
+            try:
+                for collected in record_source:
+                    _employee, result = row_validator.validate(collected)
+                    dataset_validator.validate(_employee, result)
+                    rows_processed += 1
+
+                    status = "valid" if result.valid else "invalid"
+                    if not result.valid:
+                        failed_rows += 1
+                    if result.warnings:
+                        warning_rows += 1
+
+                    item_index = None
+                    if status == "invalid":
+                        if len(report.items) >= report_items_limit:
+                            report.meta.items_truncated = True
+                        else:
+                            report.items.append(
+                                {
+                                    "row_id": f"line:{result.line_no}",
+                                    "line_no": result.line_no,
+                                    "match_key": result.match_key,
+                                    "status": status,
+                                    "errors": [
+                                        {"code": e.code, "field": e.field, "message": e.message}
+                                        for e in result.errors
+                                    ],
+                                    "warnings": [
+                                        {"code": w.code, "field": w.field, "message": w.message}
+                                        for w in result.warnings
+                                    ],
+                                }
+                            )
+                            item_index = len(report.items) - 1
+                    if not result.valid:
+                        logValidationFailure(
+                            logger,
+                            runId,
+                            "validate",
+                            result,
+                            item_index,
+                            errors=result.errors,
+                            warnings=result.warnings,
                         )
-                        item_index = len(report.items) - 1
-                if not result.valid:
-                    logValidationFailure(
-                        logger,
-                        runId,
-                        "validate",
-                        result,
-                        item_index,
-                        errors=result.errors,
-                        warnings=result.warnings,
-                    )
-        except CsvFormatError as exc:
-            logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
-            typer.echo(f"ERROR: CSV format error: {exc}", err=True)
-            return 2
-        except OSError as exc:
-            logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
-            typer.echo(f"ERROR: CSV read error: {exc}", err=True)
-            return 2
+            except CsvFormatError as exc:
+                logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
+                typer.echo(f"ERROR: CSV format error: {exc}", err=True)
+                return 2
+            except OSError as exc:
+                logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
+                typer.echo(f"ERROR: CSV read error: {exc}", err=True)
+                return 2
 
-        report.meta.csv_rows_total = rows_processed
-        report.meta.csv_rows_processed = rows_processed
-        report.summary.failed = failed_rows
-        report.summary.warnings = warning_rows
-        report.summary.skipped = 0
-        logEvent(
-            logger,
-            logging.INFO,
-            runId,
-            "validate",
-            f"validate done rows_total={rows_processed} invalid={failed_rows} warnings={warning_rows}",
-        )
+            report.meta.csv_rows_total = rows_processed
+            report.meta.csv_rows_processed = rows_processed
+            report.summary.failed = failed_rows
+            report.summary.warnings = warning_rows
+            report.summary.skipped = 0
+            logEvent(
+                logger,
+                logging.INFO,
+                runId,
+                "validate",
+                f"validate done rows_total={rows_processed} invalid={failed_rows} warnings={warning_rows}",
+            )
 
-        return 1 if failed_rows > 0 else 0
+            return 1 if failed_rows > 0 else 0
+        finally:
+            conn.close()
 
     runWithReport(
         ctx=ctx,
@@ -756,12 +780,26 @@ def runMappingCommand(
     def execute(logger, report) -> int:
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
-        validators = dataset_spec.build_validators(deps)
-        row_validator = validators.row_validator
         report.meta.report_items_limit = report_items_limit
         report.meta.dataset = dataset_name
 
         try:
+            conn = openCacheDb(getCacheDbPath(settings.cache_dir))
+        except sqlite3.Error as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+            return 2
+        try:
+            engine = SqliteEngine(conn)
+            handler_registry = CacheHandlerRegistry()
+            handler_registry.register(EmployeesCacheHandler())
+            handler_registry.register(OrganizationsCacheHandler())
+            ensure_cache_ready(engine, handler_registry)
+
+            enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
+            validators = dataset_spec.build_validators(deps, enrich_deps)
+            row_validator = validators.row_validator
+
             record_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
@@ -787,6 +825,8 @@ def runMappingCommand(
             logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
             typer.echo(f"ERROR: CSV read error: {exc}", err=True)
             return 2
+        finally:
+            conn.close()
 
     runWithReport(
         ctx=ctx,
@@ -817,12 +857,26 @@ def runNormalizeCommand(
     def execute(logger, report) -> int:
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
-        validators = dataset_spec.build_validators(deps)
-        row_validator = validators.row_validator
         report.meta.report_items_limit = report_items_limit
         report.meta.dataset = dataset_name
 
         try:
+            conn = openCacheDb(getCacheDbPath(settings.cache_dir))
+        except sqlite3.Error as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+            return 2
+        try:
+            engine = SqliteEngine(conn)
+            handler_registry = CacheHandlerRegistry()
+            handler_registry.register(EmployeesCacheHandler())
+            handler_registry.register(OrganizationsCacheHandler())
+            ensure_cache_ready(engine, handler_registry)
+
+            enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
+            validators = dataset_spec.build_validators(deps, enrich_deps)
+            row_validator = validators.row_validator
+
             record_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
@@ -848,10 +902,92 @@ def runNormalizeCommand(
             logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
             typer.echo(f"ERROR: CSV read error: {exc}", err=True)
             return 2
+        finally:
+            conn.close()
 
     runWithReport(
         ctx=ctx,
         commandName="normalize",
+        csvPath=csvPath,
+        requiresCsv=True,
+        requiresApiAccess=False,
+        runner=execute,
+    )
+
+
+def runEnrichCommand(
+    ctx: typer.Context,
+    csvPath: str | None,
+    csvHasHeader: bool | None,
+    dataset: str | None,
+    reportItemsLimit: int | None,
+    includeEnrichedItems: bool | None,
+    sourceFormat: str | None,
+    vaultFile: str | None,
+) -> None:
+    runId = ctx.obj["runId"]
+    settings: Settings = ctx.obj["settings"]
+    csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
+    dataset_name = dataset if dataset is not None else settings.dataset_name
+    report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
+    include_enriched_items = includeEnrichedItems if includeEnrichedItems is not None else True
+    source_format = sourceFormat or "normalized"
+
+    def execute(logger, report) -> int:
+        deps = ValidationDependencies()
+        dataset_spec = get_spec(dataset_name)
+        report.meta.report_items_limit = report_items_limit
+        report.meta.dataset = dataset_name
+
+        try:
+            conn = openCacheDb(getCacheDbPath(settings.cache_dir))
+        except sqlite3.Error as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+            return 2
+        try:
+            engine = SqliteEngine(conn)
+            handler_registry = CacheHandlerRegistry()
+            handler_registry.register(EmployeesCacheHandler())
+            handler_registry.register(OrganizationsCacheHandler())
+            ensure_cache_ready(engine, handler_registry)
+
+            secret_store = FileVaultSecretStore(vaultFile) if vaultFile else None
+            enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
+            validators = dataset_spec.build_validators(deps, enrich_deps)
+            row_validator = validators.row_validator
+
+            record_source = dataset_spec.build_record_source(
+                csv_path=csvPath,
+                csv_has_header=csv_has_header,
+                source_format=source_format,
+            )
+            usecase = EnrichUseCase(
+                report_items_limit=report_items_limit,
+                include_enriched_items=include_enriched_items,
+            )
+            return usecase.run(
+                record_source=record_source,
+                row_validator=row_validator,
+                dataset=dataset_name,
+                logger=logger,
+                run_id=runId,
+                report=report,
+            )
+        except CsvFormatError as exc:
+            logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
+            typer.echo(f"ERROR: CSV format error: {exc}", err=True)
+            return 2
+        except OSError as exc:
+            logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
+            typer.echo(f"ERROR: CSV read error: {exc}", err=True)
+            return 2
+        finally:
+            conn.close()
+
+    runWithReport(
+        ctx=ctx,
+        commandName="enrich",
         csvPath=csvPath,
         requiresCsv=True,
         requiresApiAccess=False,
@@ -1028,6 +1164,38 @@ def normalize(
         reportItemsLimit=reportItemsLimit,
         includeNormalizedItems=includeNormalizedItems,
         sourceFormat=sourceFormat,
+    )
+
+@app.command("enrich")
+def enrich(
+    ctx: typer.Context,
+    csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
+    csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
+    dataset: str | None = typer.Option(None, "--dataset", help="Dataset name (e.g., employees)", show_default=True),
+    reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
+    includeEnrichedItems: bool | None = typer.Option(
+        None,
+        "--include-enriched-items/--no-include-enriched-items",
+        help="Include enriched rows in report items",
+        show_default=True,
+    ),
+    sourceFormat: str | None = typer.Option(
+        None,
+        "--source-format",
+        help="Source format: normalized|source",
+        show_default=True,
+    ),
+    vaultFile: str | None = typer.Option(None, "--vault-file", help="Path to secrets vault CSV"),
+):
+    runEnrichCommand(
+        ctx=ctx,
+        csvPath=csv,
+        csvHasHeader=csvHasHeader,
+        dataset=dataset,
+        reportItemsLimit=reportItemsLimit,
+        includeEnrichedItems=includeEnrichedItems,
+        sourceFormat=sourceFormat,
+        vaultFile=vaultFile,
     )
 
 @importApp.command("plan")

@@ -18,7 +18,8 @@ def _normalize_text(value: Any, errors, warnings) -> str | None:
     _ = warnings
     if value is None:
         return None
-    return normalize_whitespace(str(value))
+    normalized = normalize_whitespace(str(value))
+    return normalized or None
 
 
 class EmployeesNormalizerSpec(NormalizerSpec[NormalizedEmployeesRow]):
@@ -37,7 +38,7 @@ class EmployeesNormalizerSpec(NormalizerSpec[NormalizedEmployeesRow]):
         NormalizerRule("phone", "phone", parser=_normalize_text),
         NormalizerRule("password", "password", parser=_normalize_text),
         NormalizerRule("personnel_number", "personnel_number", parser=_normalize_text),
-        NormalizerRule("manager_id", "manager_id", parser=_int_gt_zero_parser("managerId")),
+        NormalizerRule("manager_id", "manager_id", parser=_normalize_text),
         NormalizerRule("organization_id", "organization_id", parser=_int_gt_zero_parser("organization_id")),
         NormalizerRule("position", "position", parser=_normalize_text),
         NormalizerRule("avatar_id", "avatar_id", validators=(_avatar_validator,)),

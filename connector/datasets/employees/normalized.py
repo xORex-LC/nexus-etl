@@ -19,7 +19,7 @@ class NormalizedEmployeesRow:
     phone: str | None
     password: str | None
     personnel_number: str | None
-    manager_id: int | None
+    manager_id: str | int | None
     organization_id: int | None
     position: str | None
     avatar_id: str | None

@@ -18,8 +18,9 @@ class EmployeesRowPublic:
     user_name: str | None
     phone: str | None
     personnel_number: str | None
-    manager_id: int | None
+    manager_id: str | int | None
     organization_id: int | None
     position: str | None
     avatar_id: str | None
     usr_org_tab_num: str | None
+    resource_id: str | None = None

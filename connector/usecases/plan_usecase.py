@@ -42,8 +42,8 @@ class PlanUseCase:
         logger: logging.Logger,
         run_id: str,
         validation_deps,
+        enrich_deps,
         planning_deps,
-        secret_store=None,
     ) -> PlanBuildResult:
         """
         Контракт (вход/выход):
@@ -66,7 +66,7 @@ class PlanUseCase:
             conflict_field=report_adapter.conflict_field,
         )
 
-        validators = dataset_spec.build_validators(validation_deps)
+        validators = dataset_spec.build_validators(validation_deps, enrich_deps)
         row_validator = validators.row_validator
         dataset_validator = validators.dataset_validator
         planning_policy = dataset_spec.build_planning_policy(
@@ -111,18 +111,6 @@ class PlanUseCase:
                 continue
 
             builder.inc_valid_rows()
-            # TODO: TECHDEBT - move vault write to Enricher/SecretsPolicy once available.
-            if (
-                secret_store is not None
-                and validation.match_key_complete
-                and validation.secret_candidates
-            ):
-                secret_store.put_many(
-                    dataset=dataset,
-                    match_key=validation.match_key,
-                    secrets=validation.secret_candidates,
-                    run_id=run_id,
-                )
             planner.plan_validated_row(entity, validation, warnings)
 
         return builder.build()

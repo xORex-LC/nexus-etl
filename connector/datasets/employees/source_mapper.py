@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem
+from connector.domain.models import ValidationErrorItem
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
-from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.models import EmployeesRowPublic
 from connector.datasets.employees.normalized import NormalizedEmployeesRow
@@ -37,38 +36,16 @@ class EmployeesSourceMapper(SourceMapper[NormalizedEmployeesRow, EmployeesRowPub
             position=normalized.position,
             avatar_id=normalized.avatar_id,
             usr_org_tab_num=normalized.usr_org_tab_num,
+            resource_id=None,
         )
 
         secret_candidates = self.spec.collect_secret_candidates(normalized)
 
-        match_key: MatchKey | None = None
-        try:
-            match_key = build_delimited_match_key(
-                self.spec.get_match_key_parts(row),
-                strict=True,
-            )
-        except MatchKeyError:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.MAP,
-                    code="MATCH_KEY_MISSING",
-                    field="matchKey",
-                    message="match_key cannot be built",
-                )
-            )
-
-        row_ref = RowRef(
-            line_no=record.line_no,
-            row_id=record.record_id,
-            identity_primary="match_key",
-            identity_value=match_key.value if match_key else None,
-        )
-
         return TransformResult(
             record=record,
             row=row,
-            row_ref=row_ref,
-            match_key=match_key,
+            row_ref=None,
+            match_key=None,
             secret_candidates=secret_candidates,
             errors=errors,
             warnings=warnings,
