@@ -4,11 +4,26 @@ import csv
 import re
 from typing import Iterable
 
-from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.models import ValidationErrorItem
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.infra.sources.csv_utils import CsvFormatError, parseNull
-from connector.datasets.employees.field_rules import FIELD_RULES
+NORMALIZED_COLUMNS = [
+    "email",
+    "lastName",
+    "firstName",
+    "middleName",
+    "isLogonDisable",
+    "userName",
+    "phone",
+    "password",
+    "personnelNumber",
+    "managerId",
+    "organization_id",
+    "position",
+    "avatarId",
+    "usrOrgTabNum",
+]
 
 EXPECTED_COLUMNS = 14
 SOURCE_COLUMNS = [
@@ -75,11 +90,7 @@ class NormalizedEmployeesCsvRecordSource:
                 values_raw = [parseNull(v) for v in row]
                 errors: list[ValidationErrorItem] = []
                 warnings: list[ValidationErrorItem] = []
-                values: dict[str, object] = {}
-                for rule in FIELD_RULES:
-                    values[rule.name] = rule.apply(values_raw, errors, warnings)
-                for issue in (*errors, *warnings):
-                    issue.stage = DiagnosticStage.NORMALIZE
+                values = dict(zip(NORMALIZED_COLUMNS, values_raw))
 
                 record = SourceRecord(
                     line_no=csv_line_no,

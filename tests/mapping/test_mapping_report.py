@@ -1,14 +1,15 @@
 import logging
 
-from connector.domain.models import DiagnosticStage
+from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.pipeline import TypedRowValidator
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.infra.artifacts.report_writer import createEmptyReport
-from connector.datasets.employees.field_rules import FIELD_RULES
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.usecases.mapping_usecase import MappingUseCase
+from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
+from connector.datasets.employees.record_sources import NORMALIZED_COLUMNS
 
 
 def _to_canonical_keys(values: dict[str, object]) -> dict[str, object]:
@@ -31,13 +32,7 @@ def _to_canonical_keys(values: dict[str, object]) -> dict[str, object]:
 
 
 def _make_row(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
-    errors = []
-    warnings = []
-    mapped: dict[str, object] = {}
-    for rule in FIELD_RULES:
-        mapped[rule.name] = rule.apply(values, errors, warnings)
-    for issue in (*errors, *warnings):
-        issue.stage = DiagnosticStage.NORMALIZE
+    mapped = dict(zip(NORMALIZED_COLUMNS, values))
     record = SourceRecord(
         line_no=line_no,
         record_id=f"line:{line_no}",
@@ -48,8 +43,8 @@ def _make_row(values: list[str | None], line_no: int = 1) -> TransformResult[Non
         row=None,
         row_ref=None,
         match_key=None,
-        errors=errors,
-        warnings=warnings,
+        errors=[],
+        warnings=[],
     )
 
 
@@ -57,7 +52,8 @@ def _run_mapping(rows: list[TransformResult[None]]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
     mapping_spec = EmployeesMappingSpec()
-    validator = TypedRowValidator(EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields)
+    normalizer = Normalizer(EmployeesNormalizerSpec())
+    validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields)
     record_source = rows
     exit_code = usecase.run(
         record_source=record_source,

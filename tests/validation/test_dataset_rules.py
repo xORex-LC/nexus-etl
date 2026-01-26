@@ -1,12 +1,13 @@
-from connector.domain.models import DiagnosticStage
+from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
 from connector.domain.validation.dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.validation.pipeline import TypedRowValidator
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
-from connector.datasets.employees.field_rules import FIELD_RULES
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
+from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
+from connector.datasets.employees.record_sources import NORMALIZED_COLUMNS
 
 
 def _to_canonical_keys(values: dict[str, object]) -> dict[str, object]:
@@ -29,13 +30,7 @@ def _to_canonical_keys(values: dict[str, object]) -> dict[str, object]:
 
 
 def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
-    errors = []
-    warnings = []
-    mapped: dict[str, object] = {}
-    for rule in FIELD_RULES:
-        mapped[rule.name] = rule.apply(values, errors, warnings)
-    for issue in (*errors, *warnings):
-        issue.stage = DiagnosticStage.NORMALIZE
+    mapped = dict(zip(NORMALIZED_COLUMNS, values))
     record = SourceRecord(
         line_no=line_no,
         record_id=f"line:{line_no}",
@@ -46,8 +41,8 @@ def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None
         row=None,
         row_ref=None,
         match_key=None,
-        errors=errors,
-        warnings=warnings,
+        errors=[],
+        warnings=[],
     )
 
 class DummyOrgLookup:
@@ -59,8 +54,9 @@ class DummyOrgLookup:
 
 def make_employee(values: list[str | None]):
     mapping_spec = EmployeesMappingSpec()
+    normalizer = Normalizer(EmployeesNormalizerSpec())
     entity, result = TypedRowValidator(
-        EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields
+        normalizer, EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields
     ).validate(_collect(values, line_no=1))
     return entity, result
 

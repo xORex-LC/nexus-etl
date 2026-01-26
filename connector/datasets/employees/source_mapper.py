@@ -6,10 +6,11 @@ from connector.domain.transform.result import TransformResult
 from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.models import EmployeesRowPublic
+from connector.datasets.employees.normalized import NormalizedEmployeesRow
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 
 
-class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
+class EmployeesSourceMapper(SourceMapper[NormalizedEmployeesRow, EmployeesRowPublic]):
     """
     Назначение/ответственность:
         Маппинг CSV-строки сотрудников в публичную каноническую форму.
@@ -18,28 +19,27 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
     def __init__(self, spec: EmployeesMappingSpec | None = None) -> None:
         self.spec = spec or EmployeesMappingSpec()
 
-    def map(self, raw: SourceRecord) -> TransformResult[EmployeesRowPublic]:
-        values = raw.values
+    def map(self, record: SourceRecord, normalized: NormalizedEmployeesRow) -> TransformResult[EmployeesRowPublic]:
         errors: list[ValidationErrorItem] = []
         warnings: list[ValidationErrorItem] = []
 
         row = EmployeesRowPublic(
-            email=values.get("email"),
-            last_name=values.get("last_name"),
-            first_name=values.get("first_name"),
-            middle_name=values.get("middle_name"),
-            is_logon_disable=values.get("is_logon_disable"),
-            user_name=values.get("user_name"),
-            phone=values.get("phone"),
-            personnel_number=values.get("personnel_number"),
-            manager_id=values.get("manager_id"),
-            organization_id=values.get("organization_id"),
-            position=values.get("position"),
-            avatar_id=values.get("avatar_id"),
-            usr_org_tab_num=values.get("usr_org_tab_num"),
+            email=normalized.email,
+            last_name=normalized.last_name,
+            first_name=normalized.first_name,
+            middle_name=normalized.middle_name,
+            is_logon_disable=normalized.is_logon_disable,
+            user_name=normalized.user_name,
+            phone=normalized.phone,
+            personnel_number=normalized.personnel_number,
+            manager_id=normalized.manager_id,
+            organization_id=normalized.organization_id,
+            position=normalized.position,
+            avatar_id=normalized.avatar_id,
+            usr_org_tab_num=normalized.usr_org_tab_num,
         )
 
-        secret_candidates = self.spec.collect_secret_candidates(values)
+        secret_candidates = self.spec.collect_secret_candidates(normalized)
 
         match_key: MatchKey | None = None
         try:
@@ -58,14 +58,14 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
             )
 
         row_ref = RowRef(
-            line_no=raw.line_no,
-            row_id=raw.record_id,
+            line_no=record.line_no,
+            row_id=record.record_id,
             identity_primary="match_key",
             identity_value=match_key.value if match_key else None,
         )
 
         return TransformResult(
-            record=raw,
+            record=record,
             row=row,
             row_ref=row_ref,
             match_key=match_key,

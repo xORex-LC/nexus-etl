@@ -5,7 +5,9 @@ from typing import TypeVar
 from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
 from connector.domain.validation.pipeline import DatasetValidator, RowValidator, ValidatorFactory
 from connector.domain.ports.sources import SourceMapper
+from connector.domain.transform.normalizer import Normalizer
 
+N = TypeVar("N")
 T = TypeVar("T")
 
 class ValidatorRegistry:
@@ -21,11 +23,12 @@ class ValidatorRegistry:
     def __init__(
         self,
         deps: ValidationDependencies,
-        mapper: SourceMapper[T],
+        normalizer: Normalizer[N],
+        mapper: SourceMapper[N, T],
         required_fields: tuple[tuple[str, str], ...] = (),
     ):
         self.deps = deps
-        self.factory = ValidatorFactory(deps, mapper, required_fields)
+        self.factory = ValidatorFactory(deps, normalizer, mapper, required_fields)
 
     def create_row_validator(self) -> RowValidator:
         """

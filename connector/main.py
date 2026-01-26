@@ -27,6 +27,7 @@ from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCo
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
 from connector.usecases.mapping_usecase import MappingUseCase
+from connector.usecases.normalize_usecase import NormalizeUseCase
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
@@ -796,6 +797,67 @@ def runMappingCommand(
         runner=execute,
     )
 
+def runNormalizeCommand(
+    ctx: typer.Context,
+    csvPath: str | None,
+    csvHasHeader: bool | None,
+    dataset: str | None,
+    reportItemsLimit: int | None,
+    includeNormalizedItems: bool | None,
+    sourceFormat: str | None,
+) -> None:
+    runId = ctx.obj["runId"]
+    settings: Settings = ctx.obj["settings"]
+    csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
+    dataset_name = dataset if dataset is not None else settings.dataset_name
+    report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
+    include_normalized_items = includeNormalizedItems if includeNormalizedItems is not None else True
+    source_format = sourceFormat or "normalized"
+
+    def execute(logger, report) -> int:
+        deps = ValidationDependencies()
+        dataset_spec = get_spec(dataset_name)
+        validators = dataset_spec.build_validators(deps)
+        row_validator = validators.row_validator
+        report.meta.report_items_limit = report_items_limit
+        report.meta.dataset = dataset_name
+
+        try:
+            record_source = dataset_spec.build_record_source(
+                csv_path=csvPath,
+                csv_has_header=csv_has_header,
+                source_format=source_format,
+            )
+            usecase = NormalizeUseCase(
+                report_items_limit=report_items_limit,
+                include_normalized_items=include_normalized_items,
+            )
+            return usecase.run(
+                record_source=record_source,
+                row_validator=row_validator,
+                dataset=dataset_name,
+                logger=logger,
+                run_id=runId,
+                report=report,
+            )
+        except CsvFormatError as exc:
+            logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
+            typer.echo(f"ERROR: CSV format error: {exc}", err=True)
+            return 2
+        except OSError as exc:
+            logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
+            typer.echo(f"ERROR: CSV read error: {exc}", err=True)
+            return 2
+
+    runWithReport(
+        ctx=ctx,
+        commandName="normalize",
+        csvPath=csvPath,
+        requiresCsv=True,
+        requiresApiAccess=False,
+        runner=execute,
+    )
+
 
 def build_secret_provider(source: str | None, vault_file: str | None) -> SecretProviderProtocol:
     """
@@ -935,6 +997,36 @@ def mapping(
         dataset=dataset,
         reportItemsLimit=reportItemsLimit,
         includeMappedItems=includeMappedItems,
+        sourceFormat=sourceFormat,
+    )
+
+@app.command("normalize")
+def normalize(
+    ctx: typer.Context,
+    csv: str | None = typer.Option(None, "--csv", help="Path to input CSV"),
+    csvHasHeader: bool | None = typer.Option(None, "--csv-has-header", help="CSV includes header row"),
+    dataset: str | None = typer.Option(None, "--dataset", help="Dataset name (e.g., employees)", show_default=True),
+    reportItemsLimit: int | None = typer.Option(None, "--report-items-limit", help="Limit report items stored"),
+    includeNormalizedItems: bool | None = typer.Option(
+        None,
+        "--include-normalized-items/--no-include-normalized-items",
+        help="Include normalized rows in report items",
+        show_default=True,
+    ),
+    sourceFormat: str | None = typer.Option(
+        None,
+        "--source-format",
+        help="Source format: normalized|source",
+        show_default=True,
+    ),
+):
+    runNormalizeCommand(
+        ctx=ctx,
+        csvPath=csv,
+        csvHasHeader=csvHasHeader,
+        dataset=dataset,
+        reportItemsLimit=reportItemsLimit,
+        includeNormalizedItems=includeNormalizedItems,
         sourceFormat=sourceFormat,
     )
 

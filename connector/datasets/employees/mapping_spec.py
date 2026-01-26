@@ -38,10 +38,13 @@ class EmployeesMappingSpec:
     def get_match_key_parts(self, row: EmployeesRowPublic) -> list[str | None]:
         return [getattr(row, field, None) for field in self.match_key_fields]
 
-    def collect_secret_candidates(self, values: Mapping[str, Any]) -> dict[str, str]:
+    def collect_secret_candidates(self, values: Mapping[str, Any] | Any) -> dict[str, str]:
         candidates: dict[str, str] = {}
         for field in self.secret_fields:
-            value = values.get(field)
+            if isinstance(values, Mapping):
+                value = values.get(field)
+            else:
+                value = getattr(values, field, None)
             if self._is_present(value):
                 candidates[field] = str(value)
         return candidates

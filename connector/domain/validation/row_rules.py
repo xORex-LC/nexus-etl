@@ -64,7 +64,7 @@ class FieldRule:
         if self.required and raw is None:
             errors.append(
                 ValidationErrorItem(
-                    stage=DiagnosticStage.VALIDATE,
+                    stage=DiagnosticStage.NORMALIZE,
                     code="REQUIRED_FIELD_MISSING",
                     field=self.name,
                     message=f"{self.name} is required",
@@ -85,7 +85,7 @@ def _email_validator(value: Any, errors: list[ValidationErrorItem], _: list[Vali
     if not validate_email(str(value)):
         errors.append(
             ValidationErrorItem(
-                stage=DiagnosticStage.VALIDATE,
+                stage=DiagnosticStage.NORMALIZE,
                 code="INVALID_EMAIL",
                 field="email",
                 message="email has invalid format",
@@ -98,7 +98,7 @@ def _boolean_parser(value: Any, errors: list[ValidationErrorItem], _: list[Valid
     except ValueError:
         errors.append(
             ValidationErrorItem(
-                stage=DiagnosticStage.VALIDATE,
+                stage=DiagnosticStage.NORMALIZE,
                 code="INVALID_BOOLEAN",
                 field="isLogonDisable",
                 message="isLogonDisable must be 'true' or 'false'",
@@ -116,7 +116,7 @@ def _int_gt_zero_parser(field: str) -> Callable[[Any, list[ValidationErrorItem],
         except ValueError:
             errors.append(
                 ValidationErrorItem(
-                    stage=DiagnosticStage.VALIDATE,
+                    stage=DiagnosticStage.NORMALIZE,
                     code="INVALID_INT",
                     field=field,
                     message=f"{field} must be an integer > 0",
@@ -130,7 +130,7 @@ def _avatar_validator(value: Any, errors: list[ValidationErrorItem], _: list[Val
     if value is not None:
         errors.append(
             ValidationErrorItem(
-                stage=DiagnosticStage.VALIDATE,
+                stage=DiagnosticStage.NORMALIZE,
                 code="INVALID_AVATAR_ID",
                 field="avatarId",
                 message="avatarId must be empty or null",

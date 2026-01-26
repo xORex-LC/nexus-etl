@@ -6,6 +6,7 @@ from connector.domain.models import RowRef
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
+from connector.datasets.employees.normalized import NormalizedEmployeesRow
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 
 
@@ -30,7 +31,23 @@ def test_employees_source_mapper_builds_match_key_and_secrets():
             "usr_org_tab_num": "TAB-100",
         },
     )
-    result = EmployeesSourceMapper().map(record)
+    normalized = NormalizedEmployeesRow(
+        email="user@example.com",
+        last_name="Doe",
+        first_name="John",
+        middle_name="M",
+        is_logon_disable=False,
+        user_name="jdoe",
+        phone="+111",
+        password="secret",
+        personnel_number="100",
+        manager_id=None,
+        organization_id=20,
+        position="Engineer",
+        avatar_id=None,
+        usr_org_tab_num="TAB-100",
+    )
+    result = EmployeesSourceMapper().map(record, normalized)
 
     assert result.errors == []
     assert result.match_key is not None
@@ -61,7 +78,23 @@ def test_employees_source_mapper_reports_missing_match_key():
             "usr_org_tab_num": "TAB-100",
         },
     )
-    result = EmployeesSourceMapper().map(record)
+    normalized = NormalizedEmployeesRow(
+        email="user@example.com",
+        last_name="Doe",
+        first_name="John",
+        middle_name=None,
+        is_logon_disable=False,
+        user_name="jdoe",
+        phone="+111",
+        password="secret",
+        personnel_number="100",
+        manager_id=None,
+        organization_id=20,
+        position="Engineer",
+        avatar_id=None,
+        usr_org_tab_num="TAB-100",
+    )
+    result = EmployeesSourceMapper().map(record, normalized)
 
     codes = {issue.code for issue in result.errors}
     assert "MATCH_KEY_MISSING" in codes
@@ -73,21 +106,37 @@ def test_no_secrets_source_mapper_keeps_secret_candidates_empty():
     class CarRowPublic:
         vin: str
 
-    class CarsSourceMapper(SourceMapper[CarRowPublic]):
-        def map(self, raw: SourceRecord) -> TransformResult[CarRowPublic]:
+    class CarsSourceMapper(SourceMapper[NormalizedEmployeesRow, CarRowPublic]):
+        def map(self, record: SourceRecord, normalized: NormalizedEmployeesRow) -> TransformResult[CarRowPublic]:
             row_ref = RowRef(
-                line_no=raw.line_no,
-                row_id=raw.record_id,
+                line_no=record.line_no,
+                row_id=record.record_id,
                 identity_primary=None,
                 identity_value=None,
             )
             return TransformResult(
-                record=raw,
+                record=record,
                 row=CarRowPublic(vin="VIN-1"),
                 row_ref=row_ref,
                 match_key=None,
             )
 
     record = SourceRecord(line_no=1, record_id="line:1", values={})
-    result = CarsSourceMapper().map(record)
+    normalized = NormalizedEmployeesRow(
+        email=None,
+        last_name=None,
+        first_name=None,
+        middle_name=None,
+        is_logon_disable=None,
+        user_name=None,
+        phone=None,
+        password=None,
+        personnel_number=None,
+        manager_id=None,
+        organization_id=None,
+        position=None,
+        avatar_id=None,
+        usr_org_tab_num=None,
+    )
+    result = CarsSourceMapper().map(record, normalized)
     assert result.secret_candidates == {}

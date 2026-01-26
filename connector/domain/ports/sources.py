@@ -5,6 +5,7 @@ from connector.domain.transform.source_record import SourceRecord
 from connector.domain.transform.result import TransformResult
 
 T = TypeVar("T")
+N = TypeVar("N")
 
 class RowSource(Protocol):
     """
@@ -19,17 +20,16 @@ class RowSource(Protocol):
         """
         ...
 
-class SourceMapper(Protocol, Generic[T]):
+class SourceMapper(Protocol, Generic[N, T]):
     """
     Назначение/ответственность:
         Маппер источника в каноническую форму для датасета.
     """
 
-    def map(self, raw: SourceRecord) -> TransformResult[T]:
+    def map(self, record: SourceRecord, normalized: N) -> TransformResult[T]:
         """
         Контракт:
-            Вход: SourceRecord (универсальная запись источника).
+            Вход: SourceRecord + нормализованная строка.
             Выход: TransformResult с row_ref/row/match_key.
         """
         ...
-

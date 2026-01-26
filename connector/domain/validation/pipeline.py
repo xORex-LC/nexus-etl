@@ -7,8 +7,10 @@ from ..models import DiagnosticStage, RowRef, ValidationErrorItem, ValidationRow
 from .deps import DatasetValidationState, ValidationDependencies
 from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.ports.sources import SourceMapper
+from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.result import TransformResult
 
+N = TypeVar("N")
 T = TypeVar("T")
 
 
@@ -48,9 +50,11 @@ class TypedRowValidator:
 
     def __init__(
         self,
-        mapper: SourceMapper[T],
+        normalizer: Normalizer[N],
+        mapper: SourceMapper[N, T],
         required_fields: tuple[tuple[str, str], ...] = (),
     ) -> None:
+        self.normalizer = normalizer
         self.mapper = mapper
         self.required_fields = required_fields
 
@@ -93,9 +97,10 @@ class TypedRowValidator:
         Назначение:
             Вернуть чистый TransformResult без legacy-структур.
         """
-        mapped = self.mapper.map(collected.record)
-        mapped.errors = [*collected.errors, *mapped.errors]
-        mapped.warnings = [*collected.warnings, *mapped.warnings]
+        normalized = self.normalizer.normalize(collected.record)
+        mapped = self.mapper.map(normalized.record, normalized.row)
+        mapped.errors = [*collected.errors, *normalized.errors, *mapped.errors]
+        mapped.warnings = [*collected.warnings, *normalized.warnings, *mapped.warnings]
         return mapped
 
     def _apply_required_fields(self, map_result) -> None:
@@ -148,10 +153,12 @@ class ValidatorFactory:
     def __init__(
         self,
         deps: ValidationDependencies,
-        mapper: SourceMapper[T],
+        normalizer: Normalizer[N],
+        mapper: SourceMapper[N, T],
         required_fields: tuple[tuple[str, str], ...] = (),
     ) -> None:
         self.deps = deps
+        self.normalizer = normalizer
         self.mapper = mapper
         self.required_fields = required_fields
 
@@ -167,7 +174,7 @@ class ValidatorFactory:
         Возвращает:
             RowValidator на базе SourceMapper.
         """
-        return TypedRowValidator(self.mapper, self.required_fields)
+        return TypedRowValidator(self.normalizer, self.mapper, self.required_fields)
 
     def create_dataset_validator(self, state: DatasetValidationState) -> DatasetValidator:
         """
