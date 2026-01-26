@@ -47,7 +47,7 @@ class PlanUseCase:
     ) -> PlanBuildResult:
         """
         Контракт (вход/выход):
-            Вход: row_source (Iterable[CollectResult]), dataset_spec, include_deleted: bool, logger, run_id,
+            Вход: row_source (Iterable[TransformResult]), dataset_spec, include_deleted: bool, logger, run_id,
                   validation_deps, planning_deps, secret_store.
             Выход: PlanBuildResult (items, summary, report_items, items_truncated).
         Ошибки/исключения:
@@ -76,7 +76,7 @@ class PlanUseCase:
 
         for collected in row_source:
             builder.inc_rows_total()
-            employee, validation = row_validator.validate(collected)
+            entity, validation = row_validator.validate(collected)
             errors = list(validation.errors)
             warnings = list(validation.warnings)
 
@@ -94,7 +94,7 @@ class PlanUseCase:
                 continue
 
             # Глобальные правила применяются только к строкам без ошибок поля
-            dataset_validator.validate(employee, validation)
+            dataset_validator.validate(entity, validation)
             errors = list(validation.errors)
             warnings = list(validation.warnings)
             if errors:
@@ -123,6 +123,6 @@ class PlanUseCase:
                     secrets=validation.secret_candidates,
                     run_id=run_id,
                 )
-            planner.plan_validated_row(employee, validation, warnings)
+            planner.plan_validated_row(entity, validation, warnings)
 
         return builder.build()

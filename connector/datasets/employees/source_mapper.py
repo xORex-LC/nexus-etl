@@ -1,37 +1,12 @@
 from __future__ import annotations
 
-from connector.domain.models import RowRef, ValidationErrorItem, EmployeeInput
+from connector.domain.models import RowRef, ValidationErrorItem
 from connector.domain.ports.sources import SourceMapper
-from connector.domain.transform.map_result import MapResult
+from connector.domain.transform.result import TransformResult
 from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.models import EmployeesRowPublic
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
-
-
-def to_employee_input(row: EmployeesRowPublic, secret_candidates: dict[str, str]) -> EmployeeInput:
-    """
-    Назначение:
-        Временный адаптер в legacy EmployeeInput.
-    """
-    # TODO: remove legacy EmployeeInput once pipeline is migrated to public rows.
-    password = secret_candidates.get("password")
-    return EmployeeInput(
-        email=row.email,
-        last_name=row.last_name,
-        first_name=row.first_name,
-        middle_name=row.middle_name,
-        is_logon_disable=row.is_logon_disable,
-        user_name=row.user_name,
-        phone=row.phone,
-        password=password,
-        personnel_number=row.personnel_number,
-        manager_id=row.manager_id,
-        organization_id=row.organization_id,
-        position=row.position,
-        avatar_id=row.avatar_id,
-        usr_org_tab_num=row.usr_org_tab_num,
-    )
 
 
 class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
@@ -43,7 +18,7 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
     def __init__(self, spec: EmployeesMappingSpec | None = None) -> None:
         self.spec = spec or EmployeesMappingSpec()
 
-    def map(self, raw: SourceRecord) -> MapResult[EmployeesRowPublic]:
+    def map(self, raw: SourceRecord) -> TransformResult[EmployeesRowPublic]:
         values = raw.values
         errors: list[ValidationErrorItem] = []
         warnings: list[ValidationErrorItem] = []
@@ -84,9 +59,10 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
             identity_value=match_key.value if match_key else None,
         )
 
-        return MapResult(
-            row_ref=row_ref,
+        return TransformResult(
+            record=raw,
             row=row,
+            row_ref=row_ref,
             match_key=match_key,
             secret_candidates=secret_candidates,
             errors=errors,

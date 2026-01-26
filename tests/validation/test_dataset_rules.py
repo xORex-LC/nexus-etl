@@ -1,10 +1,51 @@
-from connector.domain.models import CsvRow
 from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
 from connector.domain.validation.dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
-from connector.domain.validation.pipeline import RowValidator
-from connector.datasets.employees.source_mapper import EmployeesSourceMapper, to_employee_input
-from connector.datasets.employees.csv_record_adapter import EmployeesCsvRecordAdapter
+from connector.domain.validation.pipeline import TypedRowValidator
+from connector.domain.transform.result import TransformResult
+from connector.domain.transform.source_record import SourceRecord
+from connector.datasets.employees.field_rules import FIELD_RULES
+from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
+
+
+def _to_canonical_keys(values: dict[str, object]) -> dict[str, object]:
+    return {
+        "email": values.get("email"),
+        "last_name": values.get("lastName"),
+        "first_name": values.get("firstName"),
+        "middle_name": values.get("middleName"),
+        "is_logon_disable": values.get("isLogonDisable"),
+        "user_name": values.get("userName"),
+        "phone": values.get("phone"),
+        "password": values.get("password"),
+        "personnel_number": values.get("personnelNumber"),
+        "manager_id": values.get("managerId"),
+        "organization_id": values.get("organization_id"),
+        "position": values.get("position"),
+        "avatar_id": values.get("avatarId"),
+        "usr_org_tab_num": values.get("usrOrgTabNum"),
+    }
+
+
+def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
+    errors = []
+    warnings = []
+    mapped: dict[str, object] = {}
+    for rule in FIELD_RULES:
+        mapped[rule.name] = rule.apply(values, errors, warnings)
+    record = SourceRecord(
+        line_no=line_no,
+        record_id=f"line:{line_no}",
+        values=_to_canonical_keys(mapped),
+    )
+    return TransformResult(
+        record=record,
+        row=None,
+        row_ref=None,
+        match_key=None,
+        errors=errors,
+        warnings=warnings,
+    )
 
 class DummyOrgLookup:
     def __init__(self, existing_ids: set[int]):
@@ -14,13 +55,11 @@ class DummyOrgLookup:
         return {"_ouid": ouid} if ouid in self.existing_ids else None
 
 def make_employee(values: list[str | None]):
-    row = CsvRow(file_line_no=1, data_line_no=1, values=values)
     mapping_spec = EmployeesMappingSpec()
-    adapter = EmployeesCsvRecordAdapter()
-    employee, result = RowValidator(
-        EmployeesSourceMapper(mapping_spec), to_employee_input, mapping_spec.required_fields
-    ).validate(adapter.collect(row))
-    return employee, result
+    entity, result = TypedRowValidator(
+        EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields
+    ).validate(_collect(values, line_no=1))
+    return entity, result
 
 def test_match_key_unique_rule_detects_duplicate():
     state = DatasetValidationState(matchkey_seen={}, usr_org_tab_seen={})

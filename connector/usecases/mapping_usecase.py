@@ -64,12 +64,13 @@ class MappingUseCase:
             if should_store and len(report.items) < self.report_items_limit:
                 row_ref = map_result.row_ref
                 fallback_line_no = collected.record.line_no
+                row_payload = asdict(map_result.row) if map_result.row is not None else None
                 item = {
                     "row_id": row_ref.row_id if row_ref else f"line:{fallback_line_no}",
                     "line_no": row_ref.line_no if row_ref else fallback_line_no,
                     "match_key": map_result.match_key.value if map_result.match_key else None,
                     "status": status,
-                    "row": asdict(map_result.row),
+                    "row": row_payload,
                     "errors": [e.__dict__ for e in map_result.errors],
                     "warnings": [w.__dict__ for w in map_result.warnings],
                     "secret_candidate_fields": secret_fields,

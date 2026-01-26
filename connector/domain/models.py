@@ -5,37 +5,6 @@ from enum import Enum
 from typing import Mapping
 
 @dataclass
-class CsvRow:
-    """
-    Назначение:
-        Нормализованная строка CSV.
-    """
-    file_line_no: int
-    data_line_no: int
-    values: list[str | None]
-
-@dataclass
-class EmployeeInput:
-    """
-    Назначение:
-        Внутренняя модель данных сотрудника (нормализованная).
-    """
-    email: str | None
-    last_name: str | None
-    first_name: str | None
-    middle_name: str | None
-    is_logon_disable: bool | None
-    user_name: str | None
-    phone: str | None
-    password: str | None
-    personnel_number: str | None
-    manager_id: int | None
-    organization_id: int | None
-    position: str | None
-    avatar_id: str | None
-    usr_org_tab_num: str | None
-
-@dataclass
 class ValidationErrorItem:
     """
     Назначение:

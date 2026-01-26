@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from ..models import EmployeeInput, ValidationErrorItem, ValidationRowResult
+from connector.datasets.employees.models import EmployeesRowPublic
+from ..models import ValidationErrorItem, ValidationRowResult
 from .deps import DatasetValidationState, ValidationDependencies
 
 class MatchKeyUniqueRule:
@@ -11,7 +12,7 @@ class MatchKeyUniqueRule:
 
     def apply(
         self,
-        employee: EmployeeInput,
+        row: EmployeesRowPublic,  # noqa: ARG002
         result: ValidationRowResult,
         state: DatasetValidationState,
         deps: ValidationDependencies,  # noqa: ARG002
@@ -37,8 +38,7 @@ class UsrOrgTabUniqueRule:
 
     def apply(
         self,
-        # TODO: мёртвый код
-        employee: EmployeeInput,
+        row: EmployeesRowPublic,  # noqa: ARG002
         result: ValidationRowResult,
         state: DatasetValidationState,
         deps: ValidationDependencies,  # noqa: ARG002
@@ -63,16 +63,16 @@ class OrgExistsRule:
 
     def apply(
         self,
-        employee: EmployeeInput,
+        row: EmployeesRowPublic,
         result: ValidationRowResult,
         state: DatasetValidationState,  # noqa: ARG002
         deps: ValidationDependencies,
     ) -> None:
         if deps.org_lookup is None:
             return
-        if employee.organization_id is None:
+        if row.organization_id is None:
             return
-        org_exists = deps.org_lookup.get_org_by_id(employee.organization_id)
+        org_exists = deps.org_lookup.get_org_by_id(row.organization_id)
         if org_exists is None:
             result.errors.append(
                 ValidationErrorItem(

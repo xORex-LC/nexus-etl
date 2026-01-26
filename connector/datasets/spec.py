@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Iterable, Protocol
 
 from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
 from connector.domain.validation.pipeline import DatasetValidator, RowValidator
 from connector.domain.planning.protocols import PlanningPolicyProtocol
 from connector.domain.planning.deps import PlanningDependencies
 from connector.domain.ports.execution import RequestSpec, ExecutionResult
-from connector.domain.ports.sources import RecordAdapterProtocol
-from connector.domain.transform.collect_result import CollectResult
+from connector.domain.transform.result import TransformResult
 
 @dataclass
 class ValidatorBundle:
@@ -59,13 +58,12 @@ class DatasetSpec(Protocol):
     def build_validation_deps(self, conn, settings) -> ValidationDependencies: ...
     def build_planning_deps(self, conn, settings) -> PlanningDependencies: ...
     def build_validators(self, deps: ValidationDependencies) -> ValidatorBundle: ...
-    def build_record_adapter(self) -> RecordAdapterProtocol: ...
     def build_record_source(
         self,
         csv_path: str,
         csv_has_header: bool,
         source_format: str | None = None,
-    ) -> Iterable[CollectResult]: ...
+    ) -> Iterable[TransformResult[None]]: ...
     def build_planning_policy(self, include_deleted: bool, deps: PlanningDependencies) -> PlanningPolicyProtocol: ...
     def get_report_adapter(self) -> ReportAdapter: ...
     def get_apply_adapter(self) -> ApplyAdapter: ...

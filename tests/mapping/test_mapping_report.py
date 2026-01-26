@@ -1,29 +1,61 @@
 import logging
 
-from connector.domain.models import CsvRow
-from connector.domain.validation.pipeline import RowValidator
-from connector.datasets.employees.source_mapper import EmployeesSourceMapper, to_employee_input
+from connector.domain.validation.pipeline import TypedRowValidator
+from connector.domain.transform.result import TransformResult
+from connector.domain.transform.source_record import SourceRecord
+from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.infra.artifacts.report_writer import createEmptyReport
-from connector.datasets.employees.csv_record_adapter import EmployeesCsvRecordAdapter
+from connector.datasets.employees.field_rules import FIELD_RULES
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.usecases.mapping_usecase import MappingUseCase
 
 
-def _make_row(values: list[str | None], line_no: int = 1) -> CsvRow:
-    return CsvRow(
-        file_line_no=line_no,
-        data_line_no=line_no,
-        values=values,
+def _to_canonical_keys(values: dict[str, object]) -> dict[str, object]:
+    return {
+        "email": values.get("email"),
+        "last_name": values.get("lastName"),
+        "first_name": values.get("firstName"),
+        "middle_name": values.get("middleName"),
+        "is_logon_disable": values.get("isLogonDisable"),
+        "user_name": values.get("userName"),
+        "phone": values.get("phone"),
+        "password": values.get("password"),
+        "personnel_number": values.get("personnelNumber"),
+        "manager_id": values.get("managerId"),
+        "organization_id": values.get("organization_id"),
+        "position": values.get("position"),
+        "avatar_id": values.get("avatarId"),
+        "usr_org_tab_num": values.get("usrOrgTabNum"),
+    }
+
+
+def _make_row(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
+    errors = []
+    warnings = []
+    mapped: dict[str, object] = {}
+    for rule in FIELD_RULES:
+        mapped[rule.name] = rule.apply(values, errors, warnings)
+    record = SourceRecord(
+        line_no=line_no,
+        record_id=f"line:{line_no}",
+        values=_to_canonical_keys(mapped),
+    )
+    return TransformResult(
+        record=record,
+        row=None,
+        row_ref=None,
+        match_key=None,
+        errors=errors,
+        warnings=warnings,
     )
 
 
-def _run_mapping(rows: list[CsvRow]):
+def _run_mapping(rows: list[TransformResult[None]]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
     mapping_spec = EmployeesMappingSpec()
-    adapter = EmployeesCsvRecordAdapter()
-    validator = RowValidator(EmployeesSourceMapper(mapping_spec), to_employee_input, mapping_spec.required_fields)
-    record_source = [adapter.collect(row) for row in rows]
+    validator = TypedRowValidator(EmployeesSourceMapper(mapping_spec), mapping_spec.required_fields)
+    record_source = rows
     exit_code = usecase.run(
         record_source=record_source,
         row_validator=validator,

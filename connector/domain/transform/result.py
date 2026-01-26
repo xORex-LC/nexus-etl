@@ -5,19 +5,21 @@ from typing import Generic, TypeVar
 
 from connector.domain.models import RowRef, ValidationErrorItem
 from connector.domain.transform.match_key import MatchKey
+from connector.domain.transform.source_record import SourceRecord
 
 T = TypeVar("T")
 
 
 @dataclass
-class MapResult(Generic[T]):
+class TransformResult(Generic[T]):
     """
     Назначение:
-        Результат маппинга строки источника в каноническую форму.
+        Унифицированный результат transform-пайплайна для этапов collect/map/validate.
     """
 
-    row_ref: RowRef
-    row: T
+    record: SourceRecord
+    row: T | None
+    row_ref: RowRef | None
     match_key: MatchKey | None
     secret_candidates: dict[str, str] = field(default_factory=dict)
     errors: list[ValidationErrorItem] = field(default_factory=list)

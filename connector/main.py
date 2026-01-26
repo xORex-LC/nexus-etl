@@ -22,7 +22,7 @@ from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
-from connector.infra.sources.csv_reader import CsvFormatError
+from connector.infra.sources.csv_utils import CsvFormatError
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService

@@ -5,9 +5,9 @@ import re
 from typing import Iterable
 
 from connector.domain.models import ValidationErrorItem
-from connector.domain.transform.collect_result import CollectResult
+from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
-from connector.infra.sources.csv_reader import CsvFormatError, parseNull
+from connector.infra.sources.csv_utils import CsvFormatError, parseNull
 from connector.datasets.employees.field_rules import FIELD_RULES
 
 EXPECTED_COLUMNS = 14
@@ -51,14 +51,14 @@ def _to_canonical_keys(values: dict[str, object]) -> dict[str, object]:
 class NormalizedEmployeesCsvRecordSource:
     """
     Назначение/ответственность:
-        Источник CollectResult для нормализованного employees CSV.
+        Источник TransformResult для нормализованного employees CSV.
     """
 
     def __init__(self, path: str, has_header: bool):
         self.path = path
         self.has_header = has_header
 
-    def __iter__(self) -> Iterable[CollectResult]:
+    def __iter__(self) -> Iterable[TransformResult[None]]:
         with open(self.path, "r", encoding="utf-8-sig", newline="") as f:
             reader = csv.reader(f, delimiter=";")
             data_line_no = 0
@@ -84,20 +84,27 @@ class NormalizedEmployeesCsvRecordSource:
                     record_id=f"line:{csv_line_no}",
                     values=_to_canonical_keys(values),
                 )
-                yield CollectResult(record=record, errors=errors, warnings=warnings)
+                yield TransformResult(
+                    record=record,
+                    row=None,
+                    row_ref=None,
+                    match_key=None,
+                    errors=errors,
+                    warnings=warnings,
+                )
 
 
 class SourceEmployeesCsvRecordSource:
     """
     Назначение/ответственность:
-        Источник CollectResult для source-формата employees CSV.
+        Источник TransformResult для source-формата employees CSV.
     """
 
     def __init__(self, path: str, has_header: bool):
         self.path = path
         self.has_header = has_header
 
-    def __iter__(self) -> Iterable[CollectResult]:
+    def __iter__(self) -> Iterable[TransformResult[None]]:
         with open(self.path, "r", encoding="utf-8-sig", newline="") as f:
             fieldnames = None if self.has_header else SOURCE_COLUMNS
             reader = csv.DictReader(f, delimiter=",", fieldnames=fieldnames)
@@ -169,7 +176,14 @@ class SourceEmployeesCsvRecordSource:
                         }
                     ),
                 )
-                yield CollectResult(record=record, errors=[], warnings=[])
+                yield TransformResult(
+                    record=record,
+                    row=None,
+                    row_ref=None,
+                    match_key=None,
+                    errors=[],
+                    warnings=[],
+                )
 
 
 def _normalize(value: str | None) -> str | None:

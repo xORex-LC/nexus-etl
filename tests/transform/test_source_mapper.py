@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from connector.domain.models import RowRef
 from connector.domain.ports.sources import SourceMapper
-from connector.domain.transform.map_result import MapResult
+from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 
@@ -74,14 +74,19 @@ def test_no_secrets_source_mapper_keeps_secret_candidates_empty():
         vin: str
 
     class CarsSourceMapper(SourceMapper[CarRowPublic]):
-        def map(self, raw: SourceRecord) -> MapResult[CarRowPublic]:
+        def map(self, raw: SourceRecord) -> TransformResult[CarRowPublic]:
             row_ref = RowRef(
                 line_no=raw.line_no,
                 row_id=raw.record_id,
                 identity_primary=None,
                 identity_value=None,
             )
-            return MapResult(row_ref=row_ref, row=CarRowPublic(vin="VIN-1"), match_key=None)
+            return TransformResult(
+                record=raw,
+                row=CarRowPublic(vin="VIN-1"),
+                row_ref=row_ref,
+                match_key=None,
+            )
 
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     result = CarsSourceMapper().map(record)

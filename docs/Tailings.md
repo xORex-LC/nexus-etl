@@ -34,6 +34,9 @@
 32) TODO: TECHDEBT — убрать вырезание маскированного password в plan_reader после перехода на secret_fields-only.
 33) TODO: TECHDEBT — перенести построение/проверку match_key из SourceMapper на этап после transform/enrich.
 34) TODO: TECHDEBT — удалить LegacyRowSource/RowMapper (CsvRow) после полного перехода на SourceRecord.
+35) Убрать двойную истину для counts: meta.users_count/org_count vs реальные COUNT(*) — определить единый источник и инвариант обновления (транзакционно).
+36) Усилить типизацию DTO на границах (MapResult/CollectResult/SourceRecord/Normalized/Enriched) — заменить dict/Any на dataclass/TypedDict для контрактов.
+37) Версионировать миграции SQLite (registry/файлы), чтобы порядок изменений был воспроизводим и тестируем.
 
 Sink-spec leakage (where sink/normalized specificity leaks into non-dataset layers):
 - connector/infra/sources/csv_reader.py: EXPECTED_COLUMNS=14 (employees-only нормализованный CSV).

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol, Callable
+from typing import Protocol, TypeVar
 
-from ..models import EmployeeInput, RowRef, ValidationErrorItem, ValidationRowResult
+from ..models import RowRef, ValidationErrorItem, ValidationRowResult
 from .deps import DatasetValidationState, ValidationDependencies
 from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.ports.sources import SourceMapper
-from connector.domain.transform.collect_result import CollectResult
-# TODO: TECHDEBT - clean up legacy imports/structures in validation pipeline after refactor.
+from connector.domain.transform.result import TransformResult
 
-class DatasetRule(Protocol):
+T = TypeVar("T")
+
+
+class DatasetRule(Protocol[T]):
     """
     Назначение:
         Контракт для глобальных правил валидации набора строк.
@@ -18,41 +20,51 @@ class DatasetRule(Protocol):
 
     def apply(
         self,
-        employee: EmployeeInput,
+        row: T,
         result: ValidationRowResult,
         state: DatasetValidationState,
         deps: ValidationDependencies,
     ) -> None: ...
 
-class RowValidator:
+class RowValidator(Protocol[T]):
+    """
+    Назначение/ответственность:
+        Контракт строковой валидации для типизированных сущностей датасета.
+    """
+
+    def validate(self, collected: TransformResult[None]) -> tuple[T, ValidationRowResult]: ...
+    def map_only(self, collected: TransformResult[None]) -> TransformResult[T]: ...
+
+
+class TypedRowValidator:
     """
     Назначение/ответственность:
         Выполняет валидацию одной строки CSV на уровне полей (парсинг/формат).
 
     Взаимодействия:
-        - Использует SourceMapper и адаптер к legacy EmployeeInput.
+        - Использует SourceMapper для построения типизированной сущности.
         - Не выполняет глобальные проверки (уникальности, наличие org).
     """
 
     def __init__(
         self,
-        mapper: SourceMapper,
-        legacy_adapter: Callable[[Any, dict[str, str]], EmployeeInput],
+        mapper: SourceMapper[T],
         required_fields: tuple[tuple[str, str], ...] = (),
     ) -> None:
         self.mapper = mapper
-        self.legacy_adapter = legacy_adapter
         self.required_fields = required_fields
 
-    def validate(self, collected: CollectResult) -> tuple[EmployeeInput, ValidationRowResult]:
+    def validate(self, collected: TransformResult[None]) -> tuple[T, ValidationRowResult]:
         """
         Контракт:
             collected: SourceRecord + диагностика.
-            Возвращает EmployeeInput + ValidationRowResult с ошибками/варнингами полей.
+            Возвращает типизированную строку датасета + ValidationRowResult.
         """
         map_result = self.map_only(collected)
         self._apply_required_fields(map_result)
-        employee = self.legacy_adapter(map_result.row, map_result.secret_candidates)
+        if map_result.row is None:
+            raise ValueError("SourceMapper returned empty row for validation")
+        row = map_result.row
 
         match_key_value = map_result.match_key.value if map_result.match_key else ""
         match_key_complete = map_result.match_key is not None
@@ -68,23 +80,23 @@ class RowValidator:
             line_no=collected.record.line_no,
             match_key=match_key_value,
             match_key_complete=match_key_complete,
-            usr_org_tab_num=getattr(map_result.row, "usr_org_tab_num", None),
+            usr_org_tab_num=getattr(row, "usr_org_tab_num", None),
             row_ref=row_ref,
             secret_candidates=map_result.secret_candidates,
             errors=map_result.errors,
             warnings=map_result.warnings,
         )
-        return employee, result
+        return row, result
 
-    def map_only(self, collected: CollectResult):
+    def map_only(self, collected: TransformResult[None]) -> TransformResult[T]:
         """
         Назначение:
-            Вернуть чистый MapResult без legacy-структур.
+            Вернуть чистый TransformResult без legacy-структур.
         """
-        map_result = self.mapper.map(collected.record)
-        map_result.errors = [*collected.errors, *map_result.errors]
-        map_result.warnings = [*collected.warnings, *map_result.warnings]
-        return map_result
+        mapped = self.mapper.map(collected.record)
+        mapped.errors = [*collected.errors, *mapped.errors]
+        mapped.warnings = [*collected.warnings, *mapped.warnings]
+        return mapped
 
     def _apply_required_fields(self, map_result) -> None:
         for attr_name, field_name in self.required_fields:
@@ -118,13 +130,13 @@ class DatasetValidator:
         self.state = state
         self.deps = deps
 
-    def validate(self, employee: EmployeeInput, result: ValidationRowResult) -> None:
+    def validate(self, row: T, result: ValidationRowResult) -> None:
         """
         Контракт:
             - Модифицирует result.errors/result.warnings, обновляет state.
         """
         for rule in self.rules:
-            rule.apply(employee, result, self.state, self.deps)
+            rule.apply(row, result, self.state, self.deps)
 
 class ValidatorFactory:
     """
@@ -135,13 +147,11 @@ class ValidatorFactory:
     def __init__(
         self,
         deps: ValidationDependencies,
-        mapper: SourceMapper,
-        legacy_adapter: Callable[[Any, dict[str, str]], EmployeeInput],
+        mapper: SourceMapper[T],
         required_fields: tuple[tuple[str, str], ...] = (),
     ) -> None:
         self.deps = deps
         self.mapper = mapper
-        self.legacy_adapter = legacy_adapter
         self.required_fields = required_fields
 
     def create_validation_context(self) -> DatasetValidationState:
@@ -151,19 +161,19 @@ class ValidatorFactory:
         """
         return DatasetValidationState(matchkey_seen={}, usr_org_tab_seen={})
 
-    def create_row_validator(self) -> RowValidator:
+    def create_row_validator(self) -> RowValidator[T]:
         """
         Возвращает:
             RowValidator на базе SourceMapper.
         """
-        return RowValidator(self.mapper, self.legacy_adapter, self.required_fields)
+        return TypedRowValidator(self.mapper, self.required_fields)
 
     def create_dataset_validator(self, state: DatasetValidationState) -> DatasetValidator:
         """
         Возвращает:
             DatasetValidator с набором глобальных правил.
         """
-        dataset_rules: tuple[DatasetRule, ...] = (
+        dataset_rules: tuple[DatasetRule[T], ...] = (
             MatchKeyUniqueRule(),
             UsrOrgTabUniqueRule(),
             OrgExistsRule(),
