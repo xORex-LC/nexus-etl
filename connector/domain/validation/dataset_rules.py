@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.datasets.employees.models import EmployeesRowPublic
-from ..models import ValidationErrorItem, ValidationRowResult
+from ..models import DiagnosticStage, ValidationErrorItem, ValidationRowResult
 from .deps import DatasetValidationState, ValidationDependencies
 
 class MatchKeyUniqueRule:
@@ -19,13 +19,23 @@ class MatchKeyUniqueRule:
     ) -> None:
         if not result.match_key_complete:
             result.errors.append(
-                ValidationErrorItem(code="MATCH_KEY_MISSING", field="matchKey", message="match_key cannot be built")
+                ValidationErrorItem(
+                    stage=DiagnosticStage.VALIDATE,
+                    code="MATCH_KEY_MISSING",
+                    field="matchKey",
+                    message="match_key cannot be built",
+                )
             )
             return
         prev_line = state.matchkey_seen.get(result.match_key)
         if prev_line is not None:
             result.errors.append(
-                ValidationErrorItem(code="DUPLICATE_MATCHKEY", field="matchKey", message=f"duplicate of line {prev_line}")
+                ValidationErrorItem(
+                    stage=DiagnosticStage.VALIDATE,
+                    code="DUPLICATE_MATCHKEY",
+                    field="matchKey",
+                    message=f"duplicate of line {prev_line}",
+                )
             )
             return
         state.matchkey_seen[result.match_key] = result.line_no
@@ -49,7 +59,10 @@ class UsrOrgTabUniqueRule:
         if prev_line is not None:
             result.errors.append(
                 ValidationErrorItem(
-                    code="DUPLICATE_USR_ORG_TAB_NUM", field="usrOrgTabNum", message=f"duplicate of line {prev_line}"
+                    stage=DiagnosticStage.VALIDATE,
+                    code="DUPLICATE_USR_ORG_TAB_NUM",
+                    field="usrOrgTabNum",
+                    message=f"duplicate of line {prev_line}",
                 )
             )
             return
@@ -76,6 +89,9 @@ class OrgExistsRule:
         if org_exists is None:
             result.errors.append(
                 ValidationErrorItem(
-                    code="ORG_NOT_FOUND", field="organization_id", message="organization_id not found in cache"
+                    stage=DiagnosticStage.VALIDATE,
+                    code="ORG_NOT_FOUND",
+                    field="organization_id",
+                    message="organization_id not found in cache",
                 )
             )

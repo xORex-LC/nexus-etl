@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.models import Identity, ValidationRowResult, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, Identity, ValidationRowResult, ValidationErrorItem
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.planning.generic_planner import GenericPlanner
 from connector.domain.planning.protocols import PlanDecision, PlanDecisionKind
@@ -16,7 +16,7 @@ class FakePolicy:
             return PlanDecision(
                 kind=PlanDecisionKind.SKIP,
                 identity=identity,
-                warnings=[ValidationErrorItem(code="W", field=None, message="warn")],
+                warnings=[ValidationErrorItem(stage=DiagnosticStage.PLAN, code="W", field=None, message="warn")],
             )
         if validated_entity == "conflict":
             return PlanDecision(

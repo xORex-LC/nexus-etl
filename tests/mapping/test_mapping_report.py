@@ -1,5 +1,6 @@
 import logging
 
+from connector.domain.models import DiagnosticStage
 from connector.domain.validation.pipeline import TypedRowValidator
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
@@ -35,6 +36,8 @@ def _make_row(values: list[str | None], line_no: int = 1) -> TransformResult[Non
     mapped: dict[str, object] = {}
     for rule in FIELD_RULES:
         mapped[rule.name] = rule.apply(values, errors, warnings)
+    for issue in (*errors, *warnings):
+        issue.stage = DiagnosticStage.NORMALIZE
     record = SourceRecord(
         line_no=line_no,
         record_id=f"line:{line_no}",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Protocol, TypeVar
 
-from ..models import RowRef, ValidationErrorItem, ValidationRowResult
+from ..models import DiagnosticStage, RowRef, ValidationErrorItem, ValidationRowResult
 from .deps import DatasetValidationState, ValidationDependencies
 from .dataset_rules import MatchKeyUniqueRule, OrgExistsRule, UsrOrgTabUniqueRule
 from connector.domain.ports.sources import SourceMapper
@@ -107,6 +107,7 @@ class TypedRowValidator:
                     continue
                 map_result.errors.append(
                     ValidationErrorItem(
+                        stage=DiagnosticStage.VALIDATE,
                         code="REQUIRED_FIELD_MISSING",
                         field=field_name,
                         message=f"{field_name} is required",

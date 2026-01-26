@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Protocol
 
-from ..models import ValidationErrorItem
+from ..models import DiagnosticStage, ValidationErrorItem
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -63,7 +63,12 @@ class FieldRule:
         raw = row_values[self.index] if self.index < len(row_values) else None
         if self.required and raw is None:
             errors.append(
-                ValidationErrorItem(code="REQUIRED_FIELD_MISSING", field=self.name, message=f"{self.name} is required")
+                ValidationErrorItem(
+                    stage=DiagnosticStage.VALIDATE,
+                    code="REQUIRED_FIELD_MISSING",
+                    field=self.name,
+                    message=f"{self.name} is required",
+                )
             )
         if raw is None:
             return None
@@ -78,7 +83,14 @@ def _email_validator(value: Any, errors: list[ValidationErrorItem], _: list[Vali
     if value is None:
         return
     if not validate_email(str(value)):
-        errors.append(ValidationErrorItem(code="INVALID_EMAIL", field="email", message="email has invalid format"))
+        errors.append(
+            ValidationErrorItem(
+                stage=DiagnosticStage.VALIDATE,
+                code="INVALID_EMAIL",
+                field="email",
+                message="email has invalid format",
+            )
+        )
 
 def _boolean_parser(value: Any, errors: list[ValidationErrorItem], _: list[ValidationErrorItem]) -> bool | None:
     try:
@@ -86,6 +98,7 @@ def _boolean_parser(value: Any, errors: list[ValidationErrorItem], _: list[Valid
     except ValueError:
         errors.append(
             ValidationErrorItem(
+                stage=DiagnosticStage.VALIDATE,
                 code="INVALID_BOOLEAN",
                 field="isLogonDisable",
                 message="isLogonDisable must be 'true' or 'false'",
@@ -103,6 +116,7 @@ def _int_gt_zero_parser(field: str) -> Callable[[Any, list[ValidationErrorItem],
         except ValueError:
             errors.append(
                 ValidationErrorItem(
+                    stage=DiagnosticStage.VALIDATE,
                     code="INVALID_INT",
                     field=field,
                     message=f"{field} must be an integer > 0",
@@ -116,6 +130,7 @@ def _avatar_validator(value: Any, errors: list[ValidationErrorItem], _: list[Val
     if value is not None:
         errors.append(
             ValidationErrorItem(
+                stage=DiagnosticStage.VALIDATE,
                 code="INVALID_AVATAR_ID",
                 field="avatarId",
                 message="avatarId must be empty or null",

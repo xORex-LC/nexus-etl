@@ -4,12 +4,28 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Mapping
 
+class DiagnosticStage(str, Enum):
+    """
+    Назначение:
+        Источник диагностического события в пайплайне.
+    """
+
+    EXTRACT = "EXTRACT"
+    MAP = "MAP"
+    NORMALIZE = "NORMALIZE"
+    ENRICH = "ENRICH"
+    VALIDATE = "VALIDATE"
+    PLAN = "PLAN"
+    APPLY = "APPLY"
+
+
 @dataclass
 class ValidationErrorItem:
     """
     Назначение:
-        Описание ошибки/предупреждения валидации.
+        Диагностическое сообщение пайплайна (ошибка/предупреждение).
     """
+    stage: DiagnosticStage
     code: str
     field: str | None
     message: str

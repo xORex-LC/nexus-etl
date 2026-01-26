@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.models import RowRef, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
@@ -49,7 +49,12 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
             )
         except MatchKeyError:
             errors.append(
-                ValidationErrorItem(code="MATCH_KEY_MISSING", field="matchKey", message="match_key cannot be built")
+                ValidationErrorItem(
+                    stage=DiagnosticStage.MAP,
+                    code="MATCH_KEY_MISSING",
+                    field="matchKey",
+                    message="match_key cannot be built",
+                )
             )
 
         row_ref = RowRef(
