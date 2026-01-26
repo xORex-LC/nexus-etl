@@ -82,7 +82,9 @@ def test_row_validator_parses_valid_row():
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
     validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
-    entity, result = validator.validate(collected)
+    validated = validator.validate_enriched(validator.map_only(collected))
+    entity = validated.row.row if validated.row else None
+    result = validated.row.validation if validated.row else None
 
     assert result.valid
     assert entity.email == "user@example.com"
@@ -95,7 +97,8 @@ def test_row_validator_reports_missing_required():
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
     validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
-    _employee, result = validator.validate(collected)
+    validated = validator.validate_enriched(validator.map_only(collected))
+    result = validated.row.validation if validated.row else None
 
     assert not result.valid
     codes = {e.code for e in result.errors}
@@ -125,7 +128,8 @@ def test_row_validator_invalid_email():
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
     validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
-    _employee, result = validator.validate(collected)
+    validated = validator.validate_enriched(validator.map_only(collected))
+    result = validated.row.validation if validated.row else None
 
     assert not result.valid
     codes = {e.code for e in result.errors}
@@ -138,7 +142,8 @@ def test_row_validator_produces_row_ref_even_with_errors():
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
     validator = TypedRowValidator(normalizer, EmployeesSourceMapper(mapping_spec), enricher, mapping_spec.required_fields)
-    _employee, result = validator.validate(collected)
+    validated = validator.validate_enriched(validator.map_only(collected))
+    result = validated.row.validation if validated.row else None
 
     assert result.row_ref is not None
     assert result.row_ref.row_id == "line:5"

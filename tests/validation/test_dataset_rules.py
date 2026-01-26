@@ -69,12 +69,15 @@ def make_employee(values: list[str | None]):
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec())
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    entity, result = TypedRowValidator(
+    validator = TypedRowValidator(
         normalizer,
         EmployeesSourceMapper(mapping_spec),
         enricher,
         mapping_spec.required_fields,
-    ).validate(_collect(values, line_no=1))
+    )
+    validated = validator.validate_enriched(validator.map_only(_collect(values, line_no=1)))
+    entity = validated.row.row if validated.row else None
+    result = validated.row.validation if validated.row else None
     return entity, result
 
 def test_match_key_unique_rule_detects_duplicate():

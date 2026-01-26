@@ -36,7 +36,6 @@ class RowValidator(Protocol[T]):
         Контракт строковой валидации для типизированных сущностей датасета.
     """
 
-    def validate(self, collected: TransformResult[None]) -> tuple[T | None, ValidationRowResult]: ...
     def map_only(self, collected: TransformResult[None]) -> TransformResult[T]: ...
     def validate_enriched(self, map_result: TransformResult[T]) -> TransformResult[ValidationRow[T]]: ...
 
@@ -44,7 +43,7 @@ class RowValidator(Protocol[T]):
 class TypedRowValidator:
     """
     Назначение/ответственность:
-        Выполняет валидацию одной строки CSV на уровне полей (парсинг/формат).
+        Выполняет валидацию одной строки на уровне полей.
 
     Взаимодействия:
         - Использует SourceMapper для построения типизированной сущности.
@@ -62,16 +61,6 @@ class TypedRowValidator:
         self.mapper = mapper
         self.enricher = enricher
         self.required_fields = required_fields
-
-    def validate(self, collected: TransformResult[None]) -> tuple[T, ValidationRowResult]:
-        """
-        Контракт:
-            collected: SourceRecord + диагностика.
-            Возвращает типизированную строку датасета + ValidationRowResult.
-        """
-        map_result = self.map_only(collected)
-        validated = self.validate_enriched(map_result)
-        return validated.row.row, validated.row.validation
 
     def validate_enriched(self, map_result: TransformResult[T]) -> TransformResult[ValidationRow[T]]:
         """

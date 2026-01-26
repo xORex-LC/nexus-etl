@@ -24,7 +24,7 @@ class ValidateUseCase:
 
     def iter_validated(
         self,
-        record_source,
+        enriched_source,
         row_validator: RowValidator,
         dataset_validator: DatasetValidator,
     ):
@@ -32,9 +32,8 @@ class ValidateUseCase:
         Назначение:
             Итератор валидированных строк без формирования отчета.
         """
-        for collected in record_source:
-            map_result = row_validator.map_only(collected)
-            validated = row_validator.validate_enriched(map_result)
+        for enriched in enriched_source:
+            validated = row_validator.validate_enriched(enriched)
             validation_row = validated.row
             if validation_row is None:
                 yield validated
@@ -48,7 +47,7 @@ class ValidateUseCase:
 
     def run(
         self,
-        record_source,
+        enriched_source,
         row_validator: RowValidator,
         dataset_validator: DatasetValidator,
         dataset: str,
@@ -65,7 +64,7 @@ class ValidateUseCase:
         report.meta.dataset = dataset
         report.meta.report_items_limit = self.report_items_limit
 
-        for validated in self.iter_validated(record_source, row_validator, dataset_validator):
+        for validated in self.iter_validated(enriched_source, row_validator, dataset_validator):
             rows_total += 1
             validation_row: ValidationRow | None = validated.row
             validation = validation_row.validation if validation_row else None

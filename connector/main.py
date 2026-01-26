@@ -680,12 +680,20 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
             )
 
             try:
-                usecase = ValidateUseCase(
+                enrich_usecase = EnrichUseCase(
+                    report_items_limit=report_items_limit,
+                    include_enriched_items=False,
+                )
+                enriched_ok = enrich_usecase.iter_enriched_ok(
+                    record_source=record_source,
+                    row_validator=row_validator,
+                )
+                validate_usecase = ValidateUseCase(
                     report_items_limit=report_items_limit,
                     include_valid_items=False,
                 )
-                return usecase.run(
-                    record_source=record_source,
+                return validate_usecase.run(
+                    enriched_source=enriched_ok,
                     row_validator=row_validator,
                     dataset_validator=dataset_validator,
                     dataset=dataset_name,

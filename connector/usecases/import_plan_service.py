@@ -7,6 +7,7 @@ from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.usecases.ports import ImportPlanServiceProtocol
 from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
+from connector.usecases.enrich_usecase import EnrichUseCase
 from connector.usecases.validate_usecase import ValidateUseCase
 from connector.datasets.registry import get_spec
 
@@ -47,12 +48,20 @@ class ImportPlanService(ImportPlanServiceProtocol):
             csv_has_header=csv_has_header,
         )
         validators = dataset_spec.build_validators(validation_deps, enrich_deps)
+        enrich_usecase = EnrichUseCase(
+            report_items_limit=report_items_limit,
+            include_enriched_items=False,
+        )
+        enriched_ok = enrich_usecase.iter_enriched_ok(
+            record_source=record_source,
+            row_validator=validators.row_validator,
+        )
         validate_usecase = ValidateUseCase(
             report_items_limit=report_items_limit,
             include_valid_items=False,
         )
         validated_rows = validate_usecase.iter_validated(
-            record_source=record_source,
+            enriched_source=enriched_ok,
             row_validator=validators.row_validator,
             dataset_validator=validators.dataset_validator,
         )

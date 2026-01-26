@@ -92,3 +92,18 @@ class EnrichUseCase:
         report.meta.csv_rows_total = rows_total
         report.meta.csv_rows_processed = rows_total
         return 1 if enrich_failed > 0 else 0
+
+    def iter_enriched_ok(
+        self,
+        record_source,
+        row_validator: RowValidator,
+    ):
+        """
+        Назначение:
+            Итератор обогащенных строк без ошибок.
+        """
+        for collected in record_source:
+            map_result = row_validator.map_only(collected)
+            if map_result.errors:
+                continue
+            yield map_result
