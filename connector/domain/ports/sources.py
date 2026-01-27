@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Iterable, Protocol, TypeVar, Generic
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.source_record import SourceRecord
 
 T = TypeVar("T")
 
@@ -11,10 +11,10 @@ class RowSource(Protocol):
         Источник SourceRecord для transform/validate/plan.
     """
 
-    def __iter__(self) -> Iterable[TransformResult[None]]:
+    def __iter__(self) -> Iterable[SourceRecord]:
         """
         Контракт:
-            Возвращает итерируемые TransformResult с SourceRecord.
+            Возвращает итерируемые SourceRecord.
         """
         ...
 

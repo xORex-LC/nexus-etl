@@ -29,6 +29,16 @@ class TransformPipeline(Generic[T, N, D]):
         self.enricher = enricher
 
     def map_source(self, collected: TransformResult[None]) -> TransformResult[T]:
+        if collected.errors:
+            return TransformResult(
+                record=collected.record,
+                row=None,
+                row_ref=collected.row_ref,
+                match_key=collected.match_key,
+                secret_candidates=collected.secret_candidates,
+                errors=[*collected.errors],
+                warnings=[*collected.warnings],
+            )
         mapped = self.mapper.map(collected.record)
         mapped.errors = [*collected.errors, *mapped.errors]
         mapped.warnings = [*collected.warnings, *mapped.warnings]

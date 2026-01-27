@@ -4,6 +4,7 @@ import logging
 from dataclasses import asdict
 
 from connector.common.sanitize import maskSecretsInObject
+from connector.domain.transform.extractor import Extractor
 from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.models import RowRef
 
@@ -24,7 +25,7 @@ class EnrichUseCase:
 
     def run(
         self,
-        record_source,
+        row_source,
         transformer: TransformPipeline,
         dataset: str,
         logger: logging.Logger,
@@ -40,7 +41,8 @@ class EnrichUseCase:
 
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
 
-        for collected in record_source:
+        extractor = Extractor(row_source)
+        for collected in extractor.run():
             rows_total += 1
             map_result = transformer.enrich(collected)
 
@@ -95,14 +97,15 @@ class EnrichUseCase:
 
     def iter_enriched_ok(
         self,
-        record_source,
+        row_source,
         transformer: TransformPipeline,
     ):
         """
         Назначение:
             Итератор обогащенных строк без ошибок.
         """
-        for collected in record_source:
+        extractor = Extractor(row_source)
+        for collected in extractor.run():
             map_result = transformer.enrich(collected)
             if map_result.errors:
                 continue

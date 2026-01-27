@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 from typing import Iterable
 
-from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.infra.sources.csv_utils import CsvFormatError, parseNull
 
@@ -18,7 +17,7 @@ class CsvRecordSource:
         self.path = path
         self.has_header = has_header
 
-    def __iter__(self) -> Iterable[TransformResult[None]]:
+    def __iter__(self) -> Iterable[SourceRecord]:
         with open(self.path, "r", encoding="utf-8-sig", newline="") as f:
             if self.has_header:
                 reader = csv.DictReader(f, delimiter=",")
@@ -39,14 +38,7 @@ class CsvRecordSource:
                         record_id=f"line:{csv_line_no}",
                         values=values,
                     )
-                    yield TransformResult(
-                        record=record,
-                        row=None,
-                        row_ref=None,
-                        match_key=None,
-                        errors=[],
-                        warnings=[],
-                    )
+                    yield record
                 return
 
             reader = csv.reader(f, delimiter=",")
@@ -66,11 +58,4 @@ class CsvRecordSource:
                     record_id=f"line:{csv_line_no}",
                     values=values,
                 )
-                yield TransformResult(
-                    record=record,
-                    row=None,
-                    row_ref=None,
-                    match_key=None,
-                    errors=[],
-                    warnings=[],
-                )
+                yield record

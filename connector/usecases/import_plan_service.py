@@ -42,7 +42,7 @@ class ImportPlanService:
             secret_store = FileVaultSecretStore(vault_file)
         enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
         planning_deps = dataset_spec.build_planning_deps(conn, settings)
-        record_source = dataset_spec.build_record_source(
+        row_source = dataset_spec.build_record_source(
             csv_path=csv_path,
             csv_has_header=csv_has_header,
         )
@@ -55,7 +55,7 @@ class ImportPlanService:
             include_enriched_items=False,
         )
         enriched_ok = enrich_usecase.iter_enriched_ok(
-            record_source=record_source,
+            row_source=row_source,
             transformer=transformer,
         )
         validate_usecase = ValidateUseCase(
