@@ -29,19 +29,6 @@ def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None
         warnings=[],
     )
 
-class DummyOrgLookup:
-    def __init__(self, existing_ids: set[int]):
-        self.existing_ids = existing_ids
-
-    def get_by_id(self, entity: str, value: int):
-        if entity not in ("organizations", "orgs"):
-            return None
-        return {"_ouid": value} if value in self.existing_ids else None
-
-    def match(self, identity, include_deleted: bool):
-        raise NotImplementedError
-
-
 class _DummyEnrichDeps:
     identity_lookup = None
 
@@ -63,9 +50,9 @@ def make_employee(values: list[str | None], deps: ValidationDependencies):
     result = validated.row.validation if validated.row else None
     return entity, result
 
-def test_org_exists_rule_checks_lookup():
-    deps = ValidationDependencies(org_lookup=DummyOrgLookup(existing_ids={20}))
-    employee, result = make_employee(
+def test_org_id_positive_int_validation():
+    deps = ValidationDependencies()
+    _employee, result = make_employee(
         [
             "100",
             "Doe John M",
@@ -76,13 +63,13 @@ def test_org_exists_rule_checks_lookup():
             "",
             "disabled=false",
             "role=Engineer",
-            "password=secret;org_id=20;tab=TAB-100",  # exists
+            "password=secret;org_id=20;tab=TAB-100",
         ],
         deps,
     )
     assert result.valid
 
-    employee2, result2 = make_employee(
+    _employee2, result2 = make_employee(
         [
             "200",
             "Doe John M",
@@ -93,9 +80,9 @@ def test_org_exists_rule_checks_lookup():
             "",
             "disabled=false",
             "role=Engineer",
-            "password=secret;org_id=999;tab=TAB-200",  # missing
+            "password=secret;org_id=-5;tab=TAB-200",
         ],
         deps,
     )
     assert not result2.valid
-    assert any(e.code == "ORG_NOT_FOUND" for e in result2.errors)
+    assert any(e.code == "INVALID_INT" for e in result2.errors)

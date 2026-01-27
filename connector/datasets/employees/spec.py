@@ -12,7 +12,6 @@ from connector.domain.planning.employees.matcher import EmployeeMatcher
 from connector.datasets.employees.planning_policy import EmployeesPlanningPolicy
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.employees.validation_spec import EmployeesValidationSpec
-from connector.infra.cache.validation_lookups import CacheOrgLookup
 from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
@@ -34,7 +33,8 @@ class EmployeesSpec(DatasetSpec):
         self._apply_adapter = EmployeesApplyAdapter(secrets=secrets)
 
     def build_validation_deps(self, conn, settings) -> ValidationDependencies:
-        return ValidationDependencies(org_lookup=CacheOrgLookup(conn))
+        _ = (conn, settings)
+        return ValidationDependencies()
 
     def build_planning_deps(self, conn, settings) -> PlanningDependencies:
         return PlanningDependencies(identity_lookup=CacheEmployeeLookup(conn))

@@ -5,14 +5,14 @@ from dataclasses import dataclass
 from typing import Any, Callable, Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem, ValidationRowResult
-from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
+from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validated_row import ValidationRow
 from connector.domain.transform.result import TransformResult
 
 T = TypeVar("T")
 
 
-ValidationRule = Callable[[T, ValidationRowResult, ValidationDependencies, DatasetValidationState], None]
+ValidationRule = Callable[[T, ValidationRowResult, ValidationDependencies], None]
 
 
 class ValidationSpec(Generic[T]):
@@ -24,7 +24,7 @@ class ValidationSpec(Generic[T]):
     rules: tuple[ValidationRule[T], ...]
 
 
-FieldValidator = Callable[[Any, Any, ValidationDependencies, DatasetValidationState, list[ValidationErrorItem]], None]
+FieldValidator = Callable[[Any, Any, ValidationDependencies, list[ValidationErrorItem]], None]
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,6 @@ class FieldRule(Generic[T]):
         row: T,
         result: ValidationRowResult,
         deps: ValidationDependencies,
-        state: DatasetValidationState,
     ) -> None:
         value = getattr(row, self.attr, None)
         is_empty = value is None or (isinstance(value, str) and value.strip() == "")
@@ -62,7 +61,7 @@ class FieldRule(Generic[T]):
                 )
                 return
         for validator in self.validators:
-            validator(value, row, deps, state, result.errors)
+            validator(value, row, deps, result.errors)
 
 
 class Validator(Generic[T]):
@@ -74,7 +73,6 @@ class Validator(Generic[T]):
     def __init__(self, spec: ValidationSpec[T], deps: ValidationDependencies) -> None:
         self.spec = spec
         self.deps = deps
-        self.state = DatasetValidationState(matchkey_seen={}, usr_org_tab_seen={})
 
     def validate(self, enriched: TransformResult[T]) -> TransformResult[ValidationRow[T]]:
         row = enriched.row
@@ -100,7 +98,10 @@ class Validator(Generic[T]):
         )
         if row is not None and not result.errors:
             for rule in self.spec.rules:
-                rule.apply(row, result, self.deps, self.state)
+                if hasattr(rule, "apply"):
+                    rule.apply(row, result, self.deps)
+                else:
+                    rule(row, result, self.deps)
         return TransformResult(
             record=enriched.record,
             row=ValidationRow(row=row, validation=result),

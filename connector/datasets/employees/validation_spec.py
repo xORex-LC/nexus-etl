@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
-from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
+from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.row_rules import validate_email
 from connector.domain.validation.validator import FieldRule, ValidationRule, ValidationSpec
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
@@ -12,7 +12,7 @@ from connector.datasets.employees.normalized import NormalizedEmployeesRow
 
 
 FieldValidator = Callable[
-    [Any, NormalizedEmployeesRow, ValidationDependencies, DatasetValidationState, list[ValidationErrorItem]],
+    [Any, NormalizedEmployeesRow, ValidationDependencies, list[ValidationErrorItem]],
     None,
 ]
 
@@ -21,7 +21,6 @@ def _validate_email(
     value: Any,
     _: NormalizedEmployeesRow,
     __: ValidationDependencies,
-    ___: DatasetValidationState,
     errors: list[ValidationErrorItem],
 ) -> None:
     if value is None:
@@ -41,7 +40,6 @@ def _validate_avatar_id(
     value: Any,
     _: NormalizedEmployeesRow,
     __: ValidationDependencies,
-    ___: DatasetValidationState,
     errors: list[ValidationErrorItem],
 ) -> None:
     if value is not None and str(value).strip() != "":
@@ -60,7 +58,6 @@ def _validate_positive_int(field: str) -> FieldValidator:
         value: Any,
         _: NormalizedEmployeesRow,
         __: ValidationDependencies,
-        ___: DatasetValidationState,
         errors: list[ValidationErrorItem],
     ) -> None:
         if value is None:
@@ -78,27 +75,6 @@ def _validate_positive_int(field: str) -> FieldValidator:
     return _inner
 
 
-def _validate_org_exists(
-    value: Any,
-    _: NormalizedEmployeesRow,
-    deps: ValidationDependencies,
-    __: DatasetValidationState,
-    errors: list[ValidationErrorItem],
-) -> None:
-    if value is None or deps.org_lookup is None:
-        return
-    org_exists = deps.org_lookup.get_by_id("organizations", value)
-    if org_exists is None:
-        errors.append(
-            ValidationErrorItem(
-                stage=DiagnosticStage.VALIDATE,
-                code="ORG_NOT_FOUND",
-                field="organization_id",
-                message="organization_id not found in cache",
-            )
-        )
-
-
 def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:
     mapping_spec = EmployeesMappingSpec()
     rules: list[ValidationRule[NormalizedEmployeesRow]] = []
@@ -107,7 +83,7 @@ def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:
         if attr == "email":
             validators = (_validate_email,)
         elif attr == "organization_id":
-            validators = (_validate_positive_int("organization_id"), _validate_org_exists)
+            validators = (_validate_positive_int("organization_id"),)
         rules.append(
             FieldRule(
                 name=attr,
@@ -129,6 +105,28 @@ def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:
     return tuple(rules)
 
 
+def _validate_usr_org_tab_unique(
+    row: NormalizedEmployeesRow,
+    result,
+    _: ValidationDependencies,
+    seen: dict[str, int],
+) -> None:
+    value = row.usr_org_tab_num
+    if value is None:
+        return
+    if value in seen:
+        result.errors.append(
+            ValidationErrorItem(
+                stage=DiagnosticStage.VALIDATE,
+                code="USR_ORG_TAB_NOT_UNIQUE",
+                field="usr_org_tab_num",
+                message="usr_org_tab_num must be unique",
+            )
+        )
+        return
+    seen[value] = 1
+
+
 @dataclass(frozen=True)
 class EmployeesValidationSpec(ValidationSpec[NormalizedEmployeesRow]):
     """
@@ -137,3 +135,15 @@ class EmployeesValidationSpec(ValidationSpec[NormalizedEmployeesRow]):
     """
 
     rules: tuple[ValidationRule[NormalizedEmployeesRow], ...] = _build_rules()
+    _usr_org_tab_seen: dict[str, int] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "rules", (*self.rules, self._usr_org_tab_rule))
+
+    def _usr_org_tab_rule(
+        self,
+        row: NormalizedEmployeesRow,
+        result,
+        deps: ValidationDependencies,
+    ) -> None:
+        _validate_usr_org_tab_unique(row, result, deps, self._usr_org_tab_seen)
