@@ -3,7 +3,6 @@ import logging
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.pipeline import TransformPipeline
-from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
@@ -14,20 +13,12 @@ from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
 from connector.datasets.employees.source_mapper import SOURCE_COLUMNS
 
 
-def _make_row(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
+def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:
     mapped = dict(zip(SOURCE_COLUMNS, values))
-    record = SourceRecord(
+    return SourceRecord(
         line_no=line_no,
         record_id=f"line:{line_no}",
         values=mapped,
-    )
-    return TransformResult(
-        record=record,
-        row=None,
-        row_ref=None,
-        match_key=None,
-        errors=[],
-        warnings=[],
     )
 
 class _DummyEnrichDeps:
@@ -40,7 +31,7 @@ class _DummyEnrichDeps:
         return None
 
 
-def _run_mapping(rows: list[TransformResult[None]]):
+def _run_mapping(records: list[SourceRecord]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
     mapping_spec = EmployeesMappingSpec()
@@ -51,9 +42,9 @@ def _run_mapping(rows: list[TransformResult[None]]):
         normalizer,
         enricher,
     )
-    record_source = rows
+    row_source = records
     exit_code = usecase.run(
-        record_source=record_source,
+        row_source=row_source,
         transformer=transformer,
         dataset="employees",
         logger=logging.getLogger("mapping-test"),
@@ -64,7 +55,7 @@ def _run_mapping(rows: list[TransformResult[None]]):
 
 
 def test_mapping_reports_missing_match_key():
-    row = _make_row(
+    row = _make_record(
         [
             "100",
             "",
@@ -86,7 +77,7 @@ def test_mapping_reports_missing_match_key():
 
 
 def test_mapping_reports_secret_candidates():
-    row = _make_row(
+    row = _make_record(
         [
             "100",
             "Doe John M",
@@ -107,7 +98,7 @@ def test_mapping_reports_secret_candidates():
 
 
 def test_mapping_reports_mapped_ok():
-    row = _make_row(
+    row = _make_record(
         [
             "100",
             "Doe John M",

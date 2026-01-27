@@ -22,7 +22,6 @@ from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
-from connector.infra.sources.csv_utils import CsvFormatError
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
@@ -491,10 +490,6 @@ def runImportPlanCommand(
         except ValueError as exc:
             typer.echo(f"ERROR: {exc}", err=True)
             return 2
-        except (CsvFormatError, OSError) as exc:
-            logEvent(logger, logging.ERROR, runId, "plan", f"Import plan failed: {exc}")
-            typer.echo(f"ERROR: import plan failed: {exc}", err=True)
-            return 2
         except Exception as exc:
             logEvent(logger, logging.ERROR, runId, "plan", f"Import plan failed: {exc}")
             typer.echo("ERROR: import plan failed (see logs/report)", err=True)
@@ -675,41 +670,32 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
             validator = validator_bundle.validator
             report_items_limit = settings.report_items_limit
             report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
-            record_source = dataset_spec.build_record_source(
+            row_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
             )
 
-            try:
-                enrich_usecase = EnrichUseCase(
-                    report_items_limit=report_items_limit,
-                    include_enriched_items=False,
-                )
-                enriched_ok = enrich_usecase.iter_enriched_ok(
-                    record_source=record_source,
-                    transformer=transformer,
-                )
-                validate_usecase = ValidateUseCase(
-                    report_items_limit=report_items_limit,
-                    include_valid_items=False,
-                )
-                return validate_usecase.run(
-                    enriched_source=enriched_ok,
-                    validator=validator,
-                    dataset=dataset_name,
-                    logger=logger,
-                    run_id=runId,
-                    report=report,
-                    log_failure=logValidationFailure,
-                )
-            except CsvFormatError as exc:
-                logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
-                typer.echo(f"ERROR: CSV format error: {exc}", err=True)
-                return 2
-            except OSError as exc:
-                logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
-                typer.echo(f"ERROR: CSV read error: {exc}", err=True)
-                return 2
+            enrich_usecase = EnrichUseCase(
+                report_items_limit=report_items_limit,
+                include_enriched_items=False,
+            )
+            enriched_ok = enrich_usecase.iter_enriched_ok(
+                row_source=row_source,
+                transformer=transformer,
+            )
+            validate_usecase = ValidateUseCase(
+                report_items_limit=report_items_limit,
+                include_valid_items=False,
+            )
+            return validate_usecase.run(
+                enriched_source=enriched_ok,
+                validator=validator,
+                dataset=dataset_name,
+                logger=logger,
+                run_id=runId,
+                report=report,
+                log_failure=logValidationFailure,
+            )
         finally:
             conn.close()
 
@@ -759,7 +745,7 @@ def runMappingCommand(
             transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
             transformer = transform_bundle.build_pipeline()
 
-            record_source = dataset_spec.build_record_source(
+            row_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
             )
@@ -768,21 +754,13 @@ def runMappingCommand(
                 include_mapped_items=include_mapped_items,
             )
             return usecase.run(
-                record_source=record_source,
+                row_source=row_source,
                 transformer=transformer,
                 dataset=dataset_name,
                 logger=logger,
                 run_id=runId,
                 report=report,
             )
-        except CsvFormatError as exc:
-            logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
-            typer.echo(f"ERROR: CSV format error: {exc}", err=True)
-            return 2
-        except OSError as exc:
-            logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
-            typer.echo(f"ERROR: CSV read error: {exc}", err=True)
-            return 2
         finally:
             conn.close()
 
@@ -832,7 +810,7 @@ def runNormalizeCommand(
             transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
             transformer = transform_bundle.build_pipeline()
 
-            record_source = dataset_spec.build_record_source(
+            row_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
             )
@@ -841,21 +819,13 @@ def runNormalizeCommand(
                 include_normalized_items=include_normalized_items,
             )
             return usecase.run(
-                record_source=record_source,
+                row_source=row_source,
                 transformer=transformer,
                 dataset=dataset_name,
                 logger=logger,
                 run_id=runId,
                 report=report,
             )
-        except CsvFormatError as exc:
-            logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
-            typer.echo(f"ERROR: CSV format error: {exc}", err=True)
-            return 2
-        except OSError as exc:
-            logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
-            typer.echo(f"ERROR: CSV read error: {exc}", err=True)
-            return 2
         finally:
             conn.close()
 
@@ -908,7 +878,7 @@ def runEnrichCommand(
             transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
             transformer = transform_bundle.build_pipeline()
 
-            record_source = dataset_spec.build_record_source(
+            row_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
             )
@@ -917,21 +887,13 @@ def runEnrichCommand(
                 include_enriched_items=include_enriched_items,
             )
             return usecase.run(
-                record_source=record_source,
+                row_source=row_source,
                 transformer=transformer,
                 dataset=dataset_name,
                 logger=logger,
                 run_id=runId,
                 report=report,
             )
-        except CsvFormatError as exc:
-            logEvent(logger, logging.ERROR, runId, "csv", f"CSV format error: {exc}")
-            typer.echo(f"ERROR: CSV format error: {exc}", err=True)
-            return 2
-        except OSError as exc:
-            logEvent(logger, logging.ERROR, runId, "csv", f"CSV read error: {exc}")
-            typer.echo(f"ERROR: CSV read error: {exc}", err=True)
-            return 2
         finally:
             conn.close()
 

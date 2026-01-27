@@ -12,7 +12,7 @@ from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.pipeline import TransformPipeline
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.source_record import SourceRecord
 
 @dataclass
 class TransformBundle:
@@ -79,7 +79,7 @@ class DatasetSpec(Protocol):
         self,
         csv_path: str,
         csv_has_header: bool,
-    ) -> Iterable[TransformResult[None]]: ...
+    ) -> Iterable[SourceRecord]: ...
     def build_planning_policy(self, include_deleted: bool, deps: PlanningDependencies) -> PlanningPolicyProtocol: ...
     def get_report_adapter(self) -> ReportAdapter: ...
     def get_apply_adapter(self) -> ApplyAdapter: ...
