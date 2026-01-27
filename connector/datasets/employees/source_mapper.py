@@ -1,12 +1,28 @@
 from __future__ import annotations
 
-from connector.domain.models import ValidationErrorItem
+from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
+from typing import Mapping
 import re
 from connector.datasets.employees.models import EmployeesRowPublic
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
+
+SOURCE_COLUMNS = [
+    "raw_id",
+    "full_name",
+    "login",
+    "email_or_phone",
+    "contacts",
+    "org",
+    "manager",
+    "flags",
+    "employment",
+    "extra",
+]
+
+SOURCE_INDEX_SCHEMA = {name: idx for idx, name in enumerate(SOURCE_COLUMNS)}
 
 
 class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
@@ -23,15 +39,15 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
         warnings: list[ValidationErrorItem] = []
 
         raw = record.values
-        raw_id = _normalize(raw.get("raw_id"))
-        full_name = _normalize(raw.get("full_name"))
-        login = _normalize(raw.get("login"))
-        email_or_phone = _normalize(raw.get("email_or_phone"))
-        contacts = _normalize(raw.get("contacts"))
-        manager = _normalize(raw.get("manager"))
-        flags = _normalize(raw.get("flags"))
-        employment = _normalize(raw.get("employment"))
-        extra = _normalize(raw.get("extra"))
+        raw_id = _normalize(_read_source_value(raw, "raw_id", errors))
+        full_name = _normalize(_read_source_value(raw, "full_name", errors))
+        login = _normalize(_read_source_value(raw, "login", errors))
+        email_or_phone = _normalize(_read_source_value(raw, "email_or_phone", errors))
+        contacts = _normalize(_read_source_value(raw, "contacts", errors))
+        manager = _normalize(_read_source_value(raw, "manager", errors))
+        flags = _normalize(_read_source_value(raw, "flags", errors))
+        employment = _normalize(_read_source_value(raw, "employment", errors))
+        extra = _normalize(_read_source_value(raw, "extra", errors))
 
         last_name, first_name, middle_name = _split_full_name(full_name)
         email, phone = _pick_email_phone(email_or_phone, contacts)
@@ -40,25 +56,27 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
         position = _parse_role(employment)
         extra_pairs = _parse_kv_pairs(extra)
 
-        row = EmployeesRowPublic(
-            email=email,
-            last_name=last_name,
-            first_name=first_name,
-            middle_name=middle_name,
-            is_logon_disable=disabled,
-            user_name=login,
-            phone=phone,
-            password=extra_pairs.get("password"),
-            personnel_number=raw_id,
-            manager_id=manager_id,
-            organization_id=extra_pairs.get("org_id"),
-            position=position,
-            avatar_id=None,
-            usr_org_tab_num=extra_pairs.get("tab"),
-            resource_id=None,
-        )
-
-        secret_candidates = self.spec.collect_secret_candidates(row)
+        row = None
+        secret_candidates = {}
+        if not errors:
+            row = EmployeesRowPublic(
+                email=email,
+                last_name=last_name,
+                first_name=first_name,
+                middle_name=middle_name,
+                is_logon_disable=disabled,
+                user_name=login,
+                phone=phone,
+                password=extra_pairs.get("password"),
+                personnel_number=raw_id,
+                manager_id=manager_id,
+                organization_id=extra_pairs.get("org_id"),
+                position=position,
+                avatar_id=None,
+                usr_org_tab_num=extra_pairs.get("tab"),
+                resource_id=None,
+            )
+            secret_candidates = self.spec.collect_secret_candidates(row)
 
         return TransformResult(
             record=record,
@@ -176,4 +194,27 @@ def _parse_role(employment: str | None) -> str | None:
     match = re.search(r"role\s*[:=]\s*([^;]+)", employment, re.IGNORECASE)
     if match:
         return _normalize(match.group(1))
+    return None
+
+
+def _read_source_value(raw: Mapping[str, str | None], field: str, errors: list[ValidationErrorItem]) -> str | None:
+    """
+    Назначение:
+        Прочитать значение из SourceRecord по имени поля или по col_* схеме.
+    """
+    if field in raw:
+        return raw.get(field)
+    index = SOURCE_INDEX_SCHEMA.get(field)
+    if index is not None:
+        alt_key = f"col_{index}"
+        if alt_key in raw:
+            return raw.get(alt_key)
+    errors.append(
+        ValidationErrorItem(
+            stage=DiagnosticStage.MAP,
+            code="missing_source_column",
+            field=field,
+            message=f"Missing source column '{field}'",
+        )
+    )
     return None

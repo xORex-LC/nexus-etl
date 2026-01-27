@@ -7,8 +7,6 @@
 5) Проверить необходимость runtime-обёрток plan_runtime (ResolvedPlan/ResolvedPlanItem) после фикса meta.dataset как единственного источника.
 6) Убрать infra-утечку retries_used в CacheRefreshUseCase: добавить метод в TargetPagedReaderProtocol или прокинуть значение через порт, когда будем делать полноценный рефактор cache-слоя.
 7) Убрать legacy-утилиты infra/cache/legacy_queries.py после ввода общего cache↔dataset lookup-порта (сейчас используется CacheEmployeeLookup/findUsersByMatchKey).
-8) Добавить тесты на реальный HTTP-стек (AnkeyRequestExecutor + AnkeyApiClient), чтобы ловить регрессии по параметрам/таймаутам/маппингу ошибок.
-9) Сделать CSV-источник универсальным (убрать жёсткую привязку к employees-схеме в extract-слое).
 10) Убрать dataset-импорты из domain validation (employees projector в домене) — вынести в DatasetSpec.
 11) Разделить правила валидации на generic и dataset-специфичные (employees-правила в datasets/*).
 12) Привести validate к usecase-архитектуре через DatasetSpec (как plan/apply), убрать employees-only wiring в main.py.

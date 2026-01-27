@@ -11,7 +11,7 @@ from connector.infra.artifacts.report_writer import createEmptyReport
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
-from connector.datasets.employees.record_sources import SOURCE_COLUMNS
+from connector.datasets.employees.source_mapper import SOURCE_COLUMNS
 
 
 def _make_row(values: list[str | None], line_no: int = 1) -> TransformResult[None]:

@@ -9,7 +9,7 @@ from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
-from connector.datasets.employees.record_sources import SOURCE_COLUMNS
+from connector.datasets.employees.source_mapper import SOURCE_COLUMNS
 from connector.datasets.employees.validation_spec import EmployeesValidationSpec
 
 
