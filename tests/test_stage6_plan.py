@@ -6,8 +6,8 @@ from typer.testing import CliRunner
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.handlers.registry import CacheHandlerRegistry
-from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
-from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
+from connector.datasets.cache_registry import list_cache_specs
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.repository import SqliteCacheRepository
 from connector.main import app
@@ -53,8 +53,8 @@ def make_row(
 def _build_repo(conn) -> SqliteCacheRepository:
     engine = SqliteEngine(conn)
     registry = CacheHandlerRegistry()
-    registry.register(EmployeesCacheHandler())
-    registry.register(OrganizationsCacheHandler())
+    for spec in list_cache_specs():
+        registry.register(GenericCacheHandler(spec))
     ensure_cache_ready(engine, registry)
     return SqliteCacheRepository(engine, registry)
 

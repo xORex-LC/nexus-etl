@@ -14,8 +14,7 @@ from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.repository import SqliteCacheRepository
 from connector.infra.cache.handlers.registry import CacheHandlerRegistry
-from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
-from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
 from connector.usecases.cache_command_service import CacheCommandService
@@ -37,7 +36,7 @@ from connector.common.run_id import generate_run_id
 from connector.domain.validation.validator import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.registry import get_spec
-from connector.datasets.cache_registry import list_cache_sync_adapters
+from connector.datasets.cache_registry import list_cache_sync_adapters, list_cache_specs
 from connector.infra.secrets import (
     NullSecretProvider,
     PromptSecretProvider,
@@ -67,6 +66,12 @@ def ensureDir(path: str) -> None:
         - Path(path).mkdir(parents=True, exist_ok=True)
     """
     Path(path).mkdir(parents=True, exist_ok=True)
+
+def build_cache_registry(cache_specs) -> CacheHandlerRegistry:
+    registry = CacheHandlerRegistry()
+    for spec in cache_specs:
+        registry.register(GenericCacheHandler(spec))
+    return registry
 
 def requireCsv(csvPath: str | None) -> None:
     """
@@ -289,9 +294,7 @@ def runCacheRefreshCommand(
             client.resetRetryAttempts()
 
             engine = SqliteEngine(conn)
-            handler_registry = CacheHandlerRegistry()
-            handler_registry.register(EmployeesCacheHandler())
-            handler_registry.register(OrganizationsCacheHandler())
+            handler_registry = build_cache_registry(list_cache_specs())
             ensure_cache_ready(engine, handler_registry)
 
             cache_repo = SqliteCacheRepository(engine, handler_registry)
@@ -350,9 +353,7 @@ def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> Non
 
         try:
             engine = SqliteEngine(conn)
-            handler_registry = CacheHandlerRegistry()
-            handler_registry.register(EmployeesCacheHandler())
-            handler_registry.register(OrganizationsCacheHandler())
+            handler_registry = build_cache_registry(list_cache_specs())
             ensure_cache_ready(engine, handler_registry)
 
             cache_repo = SqliteCacheRepository(engine, handler_registry)
@@ -404,9 +405,7 @@ def runCacheClearCommand(ctx: typer.Context, dataset: str | None = None) -> None
 
         try:
             engine = SqliteEngine(conn)
-            handler_registry = CacheHandlerRegistry()
-            handler_registry.register(EmployeesCacheHandler())
-            handler_registry.register(OrganizationsCacheHandler())
+            handler_registry = build_cache_registry(list_cache_specs())
             ensure_cache_ready(engine, handler_registry)
 
             cache_repo = SqliteCacheRepository(engine, handler_registry)
@@ -466,9 +465,7 @@ def runImportPlanCommand(
 
         try:
             engine = SqliteEngine(conn)
-            handler_registry = CacheHandlerRegistry()
-            handler_registry.register(EmployeesCacheHandler())
-            handler_registry.register(OrganizationsCacheHandler())
+            handler_registry = build_cache_registry(list_cache_specs())
             ensure_cache_ready(engine, handler_registry)
 
             service = ImportPlanService()
@@ -657,9 +654,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
             return 2
         try:
             engine = SqliteEngine(conn)
-            handler_registry = CacheHandlerRegistry()
-            handler_registry.register(EmployeesCacheHandler())
-            handler_registry.register(OrganizationsCacheHandler())
+            handler_registry = build_cache_registry(dataset_spec.build_cache_specs())
             ensure_cache_ready(engine, handler_registry)
 
             deps = dataset_spec.build_validation_deps(conn, settings)
@@ -736,9 +731,7 @@ def runMappingCommand(
             return 2
         try:
             engine = SqliteEngine(conn)
-            handler_registry = CacheHandlerRegistry()
-            handler_registry.register(EmployeesCacheHandler())
-            handler_registry.register(OrganizationsCacheHandler())
+            handler_registry = build_cache_registry(dataset_spec.build_cache_specs())
             ensure_cache_ready(engine, handler_registry)
 
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
@@ -801,9 +794,7 @@ def runNormalizeCommand(
             return 2
         try:
             engine = SqliteEngine(conn)
-            handler_registry = CacheHandlerRegistry()
-            handler_registry.register(EmployeesCacheHandler())
-            handler_registry.register(OrganizationsCacheHandler())
+            handler_registry = build_cache_registry(dataset_spec.build_cache_specs())
             ensure_cache_ready(engine, handler_registry)
 
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
@@ -868,9 +859,7 @@ def runEnrichCommand(
             return 2
         try:
             engine = SqliteEngine(conn)
-            handler_registry = CacheHandlerRegistry()
-            handler_registry.register(EmployeesCacheHandler())
-            handler_registry.register(OrganizationsCacheHandler())
+            handler_registry = build_cache_registry(dataset_spec.build_cache_specs())
             ensure_cache_ready(engine, handler_registry)
 
             secret_store = FileVaultSecretStore(vaultFile) if vaultFile else None

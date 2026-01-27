@@ -22,6 +22,9 @@ from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.validator import Validator
 from connector.infra.sources.csv_reader import CsvRecordSource
+from connector.datasets.employees.cache_spec import employees_cache_spec
+from connector.datasets.organizations.cache_spec import organizations_cache_spec
+from connector.infra.cache.validation_lookups import CacheOrgLookup
 
 class EmployeesSpec(DatasetSpec):
     """
@@ -33,8 +36,8 @@ class EmployeesSpec(DatasetSpec):
         self._apply_adapter = EmployeesApplyAdapter(secrets=secrets)
 
     def build_validation_deps(self, conn, settings) -> ValidationDependencies:
-        _ = (conn, settings)
-        return ValidationDependencies()
+        _ = settings
+        return ValidationDependencies(org_lookup=CacheOrgLookup(conn))
 
     def build_planning_deps(self, conn, settings) -> PlanningDependencies:
         return PlanningDependencies(identity_lookup=CacheEmployeeLookup(conn))
@@ -59,6 +62,9 @@ class EmployeesSpec(DatasetSpec):
     def build_validator(self, deps: ValidationDependencies) -> ValidationBundle:
         validator = Validator(EmployeesValidationSpec(), deps)
         return ValidationBundle(validator=validator)
+
+    def build_cache_specs(self) -> list:
+        return [organizations_cache_spec, employees_cache_spec]
 
     def build_record_source(
         self,

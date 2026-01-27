@@ -13,6 +13,7 @@ from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.transform.source_record import SourceRecord
+from connector.infra.cache.cache_spec import CacheSpec
 
 @dataclass
 class TransformBundle:
@@ -75,6 +76,7 @@ class DatasetSpec(Protocol):
     def build_enrich_deps(self, conn, settings, secret_store=None): ...
     def build_transformers(self, deps: ValidationDependencies, enrich_deps) -> TransformBundle: ...
     def build_validator(self, deps: ValidationDependencies) -> ValidationBundle: ...
+    def build_cache_specs(self) -> list[CacheSpec]: ...
     def build_record_source(
         self,
         csv_path: str,

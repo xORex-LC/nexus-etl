@@ -83,7 +83,7 @@ def _migrate_to_v2(engine: SqliteEngine) -> None:
     """
     if _table_exists(engine, "users"):
         engine.execute("ALTER TABLE users RENAME TO users_v1_backup")
-    # Users schema будет создан handlers/employees_handler.ensure_schema()
+    # Users schema будет создан через CacheSpec/GenericCacheHandler
     engine.execute("DROP TABLE IF EXISTS users_v1_backup")
     engine.execute(
         """

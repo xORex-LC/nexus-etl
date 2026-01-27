@@ -7,8 +7,8 @@ import httpx
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.handlers.registry import CacheHandlerRegistry
-from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
-from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
+from connector.datasets.cache_registry import list_cache_specs
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.repository import SqliteCacheRepository
 from connector.domain.ports.cache_repository import UpsertResult
@@ -72,8 +72,8 @@ def test_cache_schema_created(tmp_path: Path):
     try:
         engine = SqliteEngine(conn)
         registry = CacheHandlerRegistry()
-        registry.register(EmployeesCacheHandler())
-        registry.register(OrganizationsCacheHandler())
+        for spec in list_cache_specs():
+            registry.register(GenericCacheHandler(spec))
         ensure_cache_ready(engine, registry)
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"meta", "users", "organizations"}.issubset(tables)
@@ -92,8 +92,8 @@ def test_cache_upsert_user(tmp_path: Path):
     try:
         engine = SqliteEngine(conn)
         registry = CacheHandlerRegistry()
-        registry.register(EmployeesCacheHandler())
-        registry.register(OrganizationsCacheHandler())
+        for spec in list_cache_specs():
+            registry.register(GenericCacheHandler(spec))
         ensure_cache_ready(engine, registry)
         repo = SqliteCacheRepository(engine, registry)
         user = {
@@ -190,8 +190,8 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
     try:
         engine = SqliteEngine(conn)
         registry = CacheHandlerRegistry()
-        registry.register(EmployeesCacheHandler())
-        registry.register(OrganizationsCacheHandler())
+        for spec in list_cache_specs():
+            registry.register(GenericCacheHandler(spec))
         repo = SqliteCacheRepository(engine, registry)
         users_count = repo.count("employees")
         org_count = repo.count("organizations")
@@ -263,8 +263,8 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
     try:
         engine = SqliteEngine(conn)
         registry = CacheHandlerRegistry()
-        registry.register(EmployeesCacheHandler())
-        registry.register(OrganizationsCacheHandler())
+        for spec in list_cache_specs():
+            registry.register(GenericCacheHandler(spec))
         repo = SqliteCacheRepository(engine, registry)
         users_count = repo.count("employees")
         org_count = repo.count("organizations")
