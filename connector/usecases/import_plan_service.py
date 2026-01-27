@@ -4,14 +4,13 @@ import logging
 
 from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
-from connector.usecases.ports import ImportPlanServiceProtocol
 from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
 from connector.usecases.enrich_usecase import EnrichUseCase
 from connector.usecases.validate_usecase import ValidateUseCase
 from connector.datasets.registry import get_spec
 
-class ImportPlanService(ImportPlanServiceProtocol):
+class ImportPlanService:
     """
     Оркестратор построения плана импорта.
     """

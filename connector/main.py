@@ -31,7 +31,6 @@ from connector.usecases.mapping_usecase import MappingUseCase
 from connector.usecases.normalize_usecase import NormalizeUseCase
 from connector.usecases.validate_usecase import ValidateUseCase
 from connector.infra.artifacts.plan_reader import readPlanFile
-from connector.usecases.ports import CacheCommandServiceProtocol, ImportPlanServiceProtocol
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.common.sanitize import maskSecret
 from connector.common.time import getDurationMs
@@ -303,7 +302,7 @@ def runCacheRefreshCommand(
             reader = AnkeyTargetPagedReader(client)
             adapters = list_cache_sync_adapters()
             cache_refresh = CacheRefreshUseCase(reader, cache_repo, adapters)
-            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo, cache_refresh)
+            service = CacheCommandService(cache_repo, cache_refresh)
 
             return service.refresh(
                 page_size=pageSize or settings.page_size,
@@ -361,7 +360,7 @@ def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> Non
             if dataset is not None and dataset not in cache_repo.list_datasets():
                 typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
                 return 2
-            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo)
+            service = CacheCommandService(cache_repo)
             code, status = service.status(logger, report, runId, dataset=dataset)
             if code != 0:
                 typer.echo("ERROR: cache status failed (see logs/report)", err=True)
@@ -416,7 +415,7 @@ def runCacheClearCommand(ctx: typer.Context, dataset: str | None = None) -> None
                 typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
                 return 2
             cache_clear = CacheClearUseCase(cache_repo)
-            service: CacheCommandServiceProtocol = CacheCommandService(cache_repo, cache_clear=cache_clear)
+            service = CacheCommandService(cache_repo, cache_clear=cache_clear)
             code, _cleared = service.clear(logger, report, runId, dataset=dataset)
             if code != 0:
                 typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
@@ -473,7 +472,7 @@ def runImportPlanCommand(
             handler_registry.register(OrganizationsCacheHandler())
             ensure_cache_ready(engine, handler_registry)
 
-            service: ImportPlanServiceProtocol = ImportPlanService()
+            service = ImportPlanService()
             return service.run(
                 conn=conn,
                 csv_path=csvPath or "",

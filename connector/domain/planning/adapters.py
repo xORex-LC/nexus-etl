@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from connector.domain.models import Identity, MatchResult, MatchStatus
-from connector.infra.cache.legacy_queries import findUsersByMatchKey
-from .protocols import IdentityLookup
+from connector.domain.ports.lookups import LookupProtocol
+from connector.infra.cache import legacy_queries
 
 
-class CacheEmployeeLookup(IdentityLookup):
+class CacheEmployeeLookup(LookupProtocol):
     """
     Назначение/ответственность:
-        Адаптер порта IdentityLookup, использующий локальный кэш/БД.
+        Адаптер LookupProtocol, использующий локальный кэш/БД.
     Взаимодействия:
         Делегирует поиск в findUsersByMatchKey.
     Ограничения:
@@ -36,7 +36,7 @@ class CacheEmployeeLookup(IdentityLookup):
         if identity.primary != "match_key":
             raise ValueError(f"Unsupported identity primary for employees: {identity.primary}")
         key_value = identity.values.get("match_key", "")
-        candidates = findUsersByMatchKey(self.conn, key_value)
+        candidates = legacy_queries.findUsersByMatchKey(self.conn, key_value)
         if not include_deleted:
             candidates = [c for c in candidates if not _is_deleted(c)]
 
@@ -45,6 +45,15 @@ class CacheEmployeeLookup(IdentityLookup):
         if len(candidates) > 1:
             return MatchResult(status=MatchStatus.CONFLICT, candidate=None, candidates=candidates)
         return MatchResult(status=MatchStatus.MATCHED, candidate=candidates[0], candidates=candidates)
+
+    def get_by_id(self, entity: str, value: str):
+        """
+        Назначение:
+            Унифицированный get_by_id (поддержка users/employees).
+        """
+        if entity not in ("users", "employees"):
+            return None
+        return legacy_queries.findUserById(self.conn, str(value))
 
 
 def _is_deleted(user_row) -> bool:

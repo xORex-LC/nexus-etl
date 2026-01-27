@@ -87,7 +87,7 @@ def _validate_org_exists(
 ) -> None:
     if value is None or deps.org_lookup is None:
         return
-    org_exists = deps.org_lookup.get_org_by_id(value)
+    org_exists = deps.org_lookup.get_by_id("organizations", value)
     if org_exists is None:
         errors.append(
             ValidationErrorItem(

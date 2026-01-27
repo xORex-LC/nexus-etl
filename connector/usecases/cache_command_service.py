@@ -5,11 +5,10 @@ import logging
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_status_usecase import CacheStatusUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
-from connector.usecases.ports import CacheCommandServiceProtocol
 from connector.infra.logging.setup import logEvent
 
 
-class CacheCommandService(CacheCommandServiceProtocol):
+class CacheCommandService:
     """
     Оркестратор cache-команд (refresh/status/clear).
     """

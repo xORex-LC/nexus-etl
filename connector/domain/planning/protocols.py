@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
-from connector.domain.models import Identity, MatchResult, ValidationRowResult, ValidationErrorItem
+from connector.domain.models import Identity, ValidationRowResult, ValidationErrorItem
 
 
 class PlanDecisionKind(str, Enum):
@@ -58,29 +58,5 @@ class PlanningPolicyProtocol(Protocol):
             - Выход: PlanDecision (create/update/skip/conflict).
         Ошибки/исключения:
             Бросает исключения только для фатальных/некорректных входов.
-        """
-        ...
-
-class IdentityLookup(Protocol):
-    """
-    Назначение/ответственность:
-        Порт для поиска сущности по identity, чтобы планировщик не зависел от конкретного хранилища.
-    Взаимодействия:
-        Вызывается планировщиком; реализации обращаются к кэшу/БД/API.
-    Ограничения:
-        Синхронный вызов, без внутреннего кеширования.
-    """
-
-    def match(self, identity: Identity, include_deleted: bool) -> MatchResult:
-        """
-        Назначение:
-            Найти кандидатов по primary identity с учётом удалённых пользователей.
-        Контракт (вход/выход):
-            - Вход: identity: Identity, include_deleted: bool — учитывать ли удалённых.
-            - Выход: MatchResult (status not_found/found/conflict и кандидат).
-        Ошибки/исключения:
-            Реализация может пробрасывать ошибки транспорта/БД.
-        Алгоритм:
-            Определяется реализацией порта.
         """
         ...

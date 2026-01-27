@@ -33,8 +33,13 @@ class DummyOrgLookup:
     def __init__(self, existing_ids: set[int]):
         self.existing_ids = existing_ids
 
-    def get_org_by_id(self, ouid: int):
-        return {"_ouid": ouid} if ouid in self.existing_ids else None
+    def get_by_id(self, entity: str, value: int):
+        if entity not in ("organizations", "orgs"):
+            return None
+        return {"_ouid": value} if value in self.existing_ids else None
+
+    def match(self, identity, include_deleted: bool):
+        raise NotImplementedError
 
 
 class _DummyEnrichDeps:

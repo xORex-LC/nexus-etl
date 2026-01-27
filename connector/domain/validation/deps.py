@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from connector.domain.ports.lookups import IdentityLookupProtocol, OrgLookupProtocol, UserLookupProtocol
+from connector.domain.ports.lookups import LookupProtocol
 
 @dataclass
 class ValidationDependencies:
@@ -14,12 +14,12 @@ class ValidationDependencies:
 
     Инварианты:
         - Все поля могут быть None, если конкретная проверка не нужна.
-        - Объекты реализуют Protocol из protocols_lookup.py.
+        - Объекты реализуют LookupProtocol.
     """
 
-    org_lookup: OrgLookupProtocol | None = None
-    user_lookup: UserLookupProtocol | None = None
-    matchkey_lookup: IdentityLookupProtocol | None = None
+    org_lookup: LookupProtocol | None = None
+    user_lookup: LookupProtocol | None = None
+    identity_lookup: LookupProtocol | None = None
 
 @dataclass
 class DatasetValidationState:

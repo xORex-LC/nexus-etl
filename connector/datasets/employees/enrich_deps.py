@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from connector.domain.ports.lookups import IdentityLookupProtocol
+from connector.domain.ports.lookups import LookupProtocol
 from connector.domain.ports.secrets import SecretStoreProtocol
 from connector.infra.cache import legacy_queries
 
@@ -16,7 +16,7 @@ class EmployeesEnrichDependencies:
     """
 
     conn: Any
-    identity_lookup: IdentityLookupProtocol | None
+    identity_lookup: LookupProtocol | None
     secret_store: SecretStoreProtocol | None = None
 
     def find_user_by_id(self, resource_id: str) -> dict[str, Any] | None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, is_dataclass
-from typing import Any, Callable, Generic, Mapping, Protocol, TypeVar
+from typing import Any, Callable, Generic, Mapping, TypeVar
 
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.transform.result import TransformResult
@@ -47,7 +47,7 @@ class NormalizerRule:
         return parsed
 
 
-class NormalizerSpec(Protocol, Generic[T]):
+class NormalizerSpec(Generic[T]):
     """
     Назначение:
         Контракт набора правил нормализации для датасета.

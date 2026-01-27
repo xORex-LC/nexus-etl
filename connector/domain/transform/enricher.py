@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.ports.secrets import SecretStoreProtocol
@@ -11,7 +11,7 @@ T = TypeVar("T")
 D = TypeVar("D")
 
 
-class EnrichRule(Protocol, Generic[T, D]):
+class EnrichRule(Generic[T, D]):
     """
     Назначение:
         Контракт правила обогащения.
@@ -25,7 +25,8 @@ class EnrichRule(Protocol, Generic[T, D]):
         deps: D,
         errors: list[ValidationErrorItem],
         warnings: list[ValidationErrorItem],
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)

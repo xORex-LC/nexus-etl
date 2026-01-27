@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.planning.protocols import IdentityLookup
+from connector.domain.ports.lookups import LookupProtocol
 
 
 @dataclass
@@ -15,4 +15,4 @@ class PlanningDependencies:
         - Для employees используется identity_lookup, для других датасетов могут появиться свои поля.
     """
 
-    identity_lookup: IdentityLookup | None = None
+    identity_lookup: LookupProtocol | None = None

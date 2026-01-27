@@ -18,8 +18,7 @@ class RowSource(Protocol):
         """
         ...
 
-# TODO: legacy
-class SourceMapper(Protocol, Generic[T]):
+class SourceMapper(Generic[T]):
     """
     Назначение/ответственность:
         Маппер источника в каноническую форму для датасета.
@@ -31,4 +30,4 @@ class SourceMapper(Protocol, Generic[T]):
             Вход: SourceRecord.
             Выход: TransformResult с row_ref/row/match_key.
         """
-        ...
+        raise NotImplementedError

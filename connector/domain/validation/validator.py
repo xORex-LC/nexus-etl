@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, Protocol, TypeVar
+from typing import Any, Callable, Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem, ValidationRowResult
 from connector.domain.validation.deps import DatasetValidationState, ValidationDependencies
@@ -12,24 +12,10 @@ from connector.domain.transform.result import TransformResult
 T = TypeVar("T")
 
 
-class ValidationRule(Protocol[T]):
-    """
-    Назначение:
-        Контракт правила валидации для строки конкретного датасета.
-    """
-
-    name: str
-
-    def apply(
-        self,
-        row: T,
-        result: ValidationRowResult,
-        deps: ValidationDependencies,
-        state: DatasetValidationState,
-    ) -> None: ...
+ValidationRule = Callable[[T, ValidationRowResult, ValidationDependencies, DatasetValidationState], None]
 
 
-class ValidationSpec(Protocol[T]):
+class ValidationSpec(Generic[T]):
     """
     Назначение:
         Контракт набора правил валидации для датасета.
