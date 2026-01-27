@@ -84,7 +84,7 @@ def test_row_validator_reports_missing_required():
 
     assert not result.valid
     codes = {e.code for e in result.errors}
-    assert "REQUIRED_FIELD_MISSING" in codes
+    assert "MATCH_KEY_MISSING" in codes
 
 def test_row_validator_invalid_email():
     collected = _collect(
@@ -92,7 +92,7 @@ def test_row_validator_invalid_email():
             "100",
             "Doe John M",
             "jdoe",
-            "invalid_mail",
+            "john.doe@example",
             "+111111",
             "Org=Engineering",
             "",

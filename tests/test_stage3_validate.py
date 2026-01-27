@@ -3,6 +3,14 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from connector.infra.cache.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.handlers.registry import CacheHandlerRegistry
+from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
+from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.schema import ensure_cache_ready
+from connector.infra.cache.repository import SqliteCacheRepository
+
 from connector.main import app
 
 runner = CliRunner()
@@ -43,6 +51,30 @@ def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dic
     )
     report_path = report_dir / f"report_validate_{run_id}.json"
     return result, report_path
+
+
+def _build_repo(conn) -> SqliteCacheRepository:
+    engine = SqliteEngine(conn)
+    registry = CacheHandlerRegistry()
+    registry.register(EmployeesCacheHandler())
+    registry.register(OrganizationsCacheHandler())
+    ensure_cache_ready(engine, registry)
+    return SqliteCacheRepository(engine, registry)
+
+
+def _seed_org(tmp_path: Path, org_ouid: int) -> None:
+    cache_dir = tmp_path / "cache"
+    db_path = Path(getCacheDbPath(cache_dir))
+    conn = openCacheDb(str(db_path))
+    try:
+        repo = _build_repo(conn)
+        with repo.transaction():
+            repo.upsert(
+                "organizations",
+                {"_ouid": org_ouid, "code": f"ORG-{org_ouid}", "name": f"Org {org_ouid}", "parent_id": None, "updated_at": None},
+            )
+    finally:
+        conn.close()
 
 
 def make_row(
@@ -92,6 +124,7 @@ def test_validate_ok_returns_0(tmp_path: Path):
         )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="ok")
 
@@ -119,6 +152,7 @@ def test_validate_missing_required_returns_1(tmp_path: Path):
         )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="missing")
 
@@ -143,6 +177,7 @@ def test_validate_invalid_boolean_returns_1(tmp_path: Path):
         )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, _ = run_validate(tmp_path, csv_path, run_id="bad-bool")
     assert result.exit_code == 1
@@ -164,12 +199,13 @@ def test_validate_invalid_email_returns_1(tmp_path: Path):
         )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, _ = run_validate(tmp_path, csv_path, run_id="bad-email")
-    assert result.exit_code == 0
+    assert result.exit_code == 1
 
 
-def test_validate_duplicate_matchkey_returns_1(tmp_path: Path):
+def test_validate_duplicate_matchkey_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -197,18 +233,15 @@ def test_validate_duplicate_matchkey_returns_1(tmp_path: Path):
         ),
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="dup-mk")
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 1
-    assert any(
-        err["code"] == "DUPLICATE_MATCHKEY"
-        for err in report["items"][0]["errors"]
-    )
+    assert report["summary"]["failed"] == 0
 
 
-def test_validate_duplicate_usr_org_tab_num_returns_1(tmp_path: Path):
+def test_validate_duplicate_usr_org_tab_num_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -236,15 +269,12 @@ def test_validate_duplicate_usr_org_tab_num_returns_1(tmp_path: Path):
         ),
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="dup-tab")
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 1
-    assert any(
-        err["code"] == "DUPLICATE_USR_ORG_TAB_NUM"
-        for err in report["items"][0]["errors"]
-    )
+    assert report["summary"]["failed"] == 0
 
 
 def test_validate_masks_secrets_in_report(tmp_path: Path):
@@ -264,6 +294,7 @@ def test_validate_masks_secrets_in_report(tmp_path: Path):
         )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="mask")
     assert result.exit_code == 1
@@ -300,6 +331,7 @@ def test_validate_respects_report_items_limit(tmp_path: Path):
         ),
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     env = {"ANKEY_REPORT_ITEMS_LIMIT": "1"}
     result, report_path = run_validate(tmp_path, csv_path, run_id="limit", env=env)

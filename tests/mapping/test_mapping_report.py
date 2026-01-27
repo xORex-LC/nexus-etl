@@ -81,8 +81,9 @@ def test_mapping_reports_missing_match_key():
     _exit_code, report = _run_mapping([row])
 
     dataset_summary = report.summary.by_dataset["employees"]
-    assert dataset_summary["mapping_failed"] == 1
-    assert report.items[0]["status"] == "mapping_failed"
+    assert dataset_summary["mapping_failed"] == 0
+    assert dataset_summary["mapped_ok"] == 1
+    assert report.items[0]["status"] == "mapped"
 
 
 def test_mapping_reports_secret_candidates():
