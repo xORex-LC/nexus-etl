@@ -6,6 +6,7 @@ from connector.domain.models import DiagnosticStage, Identity, ValidationRowResu
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.planning.generic_planner import GenericPlanner
 from connector.domain.planning.protocols import PlanDecision, PlanDecisionKind
+from connector.domain.reporting.collector import ReportCollector
 
 
 @dataclass
@@ -44,12 +45,14 @@ def _make_validation(line_no: int) -> ValidationRowResult:
 
 
 def test_generic_planner_creates_plan_item():
+    report = ReportCollector(run_id="r", command="plan-test")
     builder = PlanBuilder(
         include_skipped_in_report=True,
         report_items_limit=10,
         identity_label="match_key",
         conflict_code="CONFLICT",
         conflict_field="match_key",
+        report=report,
     )
     planner = GenericPlanner(policy=FakePolicy(), builder=builder)
     planner.plan_validated_row("create", _make_validation(1), warnings=[])
@@ -59,27 +62,31 @@ def test_generic_planner_creates_plan_item():
 
 
 def test_generic_planner_skip_adds_report_item():
+    report = ReportCollector(run_id="r", command="plan-test")
     builder = PlanBuilder(
         include_skipped_in_report=True,
         report_items_limit=10,
         identity_label="match_key",
         conflict_code="CONFLICT",
         conflict_field="match_key",
+        report=report,
     )
     planner = GenericPlanner(policy=FakePolicy(), builder=builder)
     planner.plan_validated_row("skip", _make_validation(2), warnings=[])
-    result = builder.build()
-    assert result.report_items[0]["status"] == "skipped"
-    assert result.report_items[0]["warnings"]
+    builder.build()
+    assert report.items[0].status == "SKIPPED"
+    assert report.items[0].diagnostics
 
 
 def test_generic_planner_conflict_marks_failed():
+    report = ReportCollector(run_id="r", command="plan-test")
     builder = PlanBuilder(
         include_skipped_in_report=True,
         report_items_limit=10,
         identity_label="match_key",
         conflict_code="CONFLICT",
         conflict_field="match_key",
+        report=report,
     )
     planner = GenericPlanner(policy=FakePolicy(), builder=builder)
     planner.plan_validated_row("conflict", _make_validation(3), warnings=[])

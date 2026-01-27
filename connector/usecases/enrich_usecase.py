@@ -5,6 +5,7 @@ from dataclasses import asdict
 
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.transform.pipeline import TransformPipeline
+from connector.domain.models import RowRef
 
 
 class EnrichUseCase:
@@ -37,15 +38,14 @@ class EnrichUseCase:
         vault_candidates_rows = 0
         vault_candidates_fields_total = 0
 
-        report.meta.dataset = dataset
-        report.meta.report_items_limit = self.report_items_limit
+        report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
 
         for collected in record_source:
             rows_total += 1
             map_result = transformer.enrich(collected)
 
             has_errors = len(map_result.errors) > 0
-            status = "enriched" if not has_errors else "enrich_failed"
+            status = "FAILED" if has_errors else "OK"
             if has_errors:
                 enrich_failed += 1
             else:
@@ -59,38 +59,38 @@ class EnrichUseCase:
                 vault_candidates_rows += 1
                 vault_candidates_fields_total += len(secret_fields)
 
-            should_store = status == "enrich_failed" or self.include_enriched_items
-            if should_store and len(report.items) < self.report_items_limit:
-                row_ref = map_result.row_ref
-                fallback_line_no = collected.record.line_no
-                row_payload = asdict(map_result.row) if map_result.row is not None else None
-                item = {
-                    "row_id": row_ref.row_id if row_ref else f"line:{fallback_line_no}",
-                    "line_no": row_ref.line_no if row_ref else fallback_line_no,
+            should_store = status == "FAILED" or self.include_enriched_items
+            row_ref = map_result.row_ref or RowRef(
+                line_no=collected.record.line_no,
+                row_id=collected.record.record_id,
+                identity_primary=None,
+                identity_value=None,
+            )
+            row_payload = asdict(map_result.row) if should_store and map_result.row is not None else None
+            report.add_item(
+                status=status,
+                row_ref=row_ref,
+                payload=maskSecretsInObject(row_payload) if row_payload else None,
+                errors=map_result.errors,
+                warnings=map_result.warnings,
+                meta={
                     "match_key": map_result.match_key.value if map_result.match_key else None,
-                    "status": status,
-                    "row": row_payload,
-                    "errors": [e.__dict__ for e in map_result.errors],
-                    "warnings": [w.__dict__ for w in map_result.warnings],
                     "secret_candidate_fields": secret_fields,
-                }
-                report.items.append(maskSecretsInObject(item))
-            elif should_store:
-                report.meta.items_truncated = True
+                },
+                store=should_store,
+            )
 
-        report.summary.failed = enrich_failed
-        report.summary.warnings = warnings_rows
-        report.summary.by_dataset = report.summary.by_dataset or {}
-        report.summary.by_dataset[dataset] = {
-            "rows_total": rows_total,
-            "enriched_ok": enriched_ok,
-            "enrich_failed": enrich_failed,
-            "warnings_rows": warnings_rows,
-            "vault_candidates_rows": vault_candidates_rows,
-            "vault_candidates_fields_total": vault_candidates_fields_total,
-        }
-        report.meta.csv_rows_total = rows_total
-        report.meta.csv_rows_processed = rows_total
+        report.set_context(
+            "enrich",
+            {
+                "rows_total": rows_total,
+                "enriched_ok": enriched_ok,
+                "enrich_failed": enrich_failed,
+                "warnings_rows": warnings_rows,
+                "vault_candidates_rows": vault_candidates_rows,
+                "vault_candidates_fields_total": vault_candidates_fields_total,
+            },
+        )
         return 1 if enrich_failed > 0 else 0
 
     def iter_enriched_ok(

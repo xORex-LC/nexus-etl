@@ -188,7 +188,8 @@ def runWithReport(
     )
 
     report = createEmptyReport(runId=runId, command=commandName, configSources=sources)
-    report.meta.csv_path = csvPath
+    if csvPath:
+        report.set_context("input", {"csv_path": Path(csvPath).name})
 
     originalStdout = sys.stdout
     originalStderr = sys.stderr
@@ -266,7 +267,7 @@ def runCacheRefreshCommand(
             logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
             typer.echo("ERROR: missing API settings (see logs/report)", err=True)
             return 2
-        report.meta.report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
+        report.set_meta(items_limit=reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit)
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -462,9 +463,8 @@ def runImportPlanCommand(
         )
         dataset_name = dataset if dataset is not None else settings.dataset_name
         csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-        report.meta.report_items_limit = report_items_limit
-        report.meta.report_include_skipped = report_include_skipped
-        report.meta.dataset = dataset_name
+        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
+        report.set_context("plan_options", {"include_skipped": report_include_skipped})
 
         try:
             engine = SqliteEngine(conn)
@@ -552,18 +552,20 @@ def runImportApplyCommand(
         dataset_name = plan.meta.dataset
 
         baseUrl = f"https://{settings.host}:{settings.port}"
-        report.meta.api_base_url = baseUrl
-        report.meta.csv_path = None
-        report.meta.plan_path = planPath or plan.meta.plan_path
-        report.meta.include_deleted = plan.meta.include_deleted
-        report.meta.dataset = dataset_name
-        report.meta.stop_on_first_error = stop_on_first_error
-        report.meta.max_actions = max_actions
-        report.meta.dry_run = dry_run
-        report.meta.resource_exists_retries = resource_exists_retries
-        report.meta.retries = settings.retries
-        report.meta.retry_backoff_seconds = settings.retry_backoff_seconds
-        report.meta.report_items_limit = report_items_limit
+        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
+        report.set_context(
+            "apply",
+            {
+                "plan_path": planPath or plan.meta.plan_path,
+                "include_deleted": plan.meta.include_deleted,
+                "stop_on_first_error": stop_on_first_error,
+                "max_actions": max_actions,
+                "dry_run": dry_run,
+                "resource_exists_retries": resource_exists_retries,
+                "retries": settings.retries,
+                "retry_backoff_seconds": settings.retry_backoff_seconds,
+            },
+        )
 
         report.summary.planned_create = plan.summary.planned_create if plan.summary else 0
         report.summary.planned_update = plan.summary.planned_update if plan.summary else 0
@@ -596,7 +598,7 @@ def runImportApplyCommand(
             resource_exists_retries=resource_exists_retries,
         )
         if hasattr(client, "getRetryAttempts"):
-            report.meta.retries_used = client.getRetryAttempts()
+            report.set_context("apply_runtime", {"retries_used": client.getRetryAttempts()})
         return exit_code
 
     runWithReport(
@@ -629,7 +631,7 @@ def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
             client.getJson("/ankey/managed/user", {"page": 1, "rows": 1, "_queryFilter": "true"})
             latency_ms = int((time.monotonic() - start) * 1000)
             logEvent(logger, logging.INFO, runId, "api", f"api ok base_url={baseUrl} latency_ms={latency_ms}")
-            report.meta.api_base_url = baseUrl
+            report.set_context("apply_target", {"target_type": "http"})
             return 0
         except ApiError as exc:
             logEvent(logger, logging.ERROR, runId, "api", f"API check failed: {exc}")
@@ -673,8 +675,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
             validator_bundle = dataset_spec.build_validator(deps)
             validator = validator_bundle.validator
             report_items_limit = settings.report_items_limit
-            report.meta.report_items_limit = report_items_limit
-            report.meta.dataset = dataset_name
+            report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
             record_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
                 csv_has_header=csv_has_header,
@@ -740,8 +741,7 @@ def runMappingCommand(
     def execute(logger, report) -> int:
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
-        report.meta.report_items_limit = report_items_limit
-        report.meta.dataset = dataset_name
+        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
 
         try:
             conn = openCacheDb(getCacheDbPath(settings.cache_dir))
@@ -814,8 +814,7 @@ def runNormalizeCommand(
     def execute(logger, report) -> int:
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
-        report.meta.report_items_limit = report_items_limit
-        report.meta.dataset = dataset_name
+        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
 
         try:
             conn = openCacheDb(getCacheDbPath(settings.cache_dir))
@@ -890,8 +889,7 @@ def runEnrichCommand(
     def execute(logger, report) -> int:
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
-        report.meta.report_items_limit = report_items_limit
-        report.meta.dataset = dataset_name
+        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
 
         try:
             conn = openCacheDb(getCacheDbPath(settings.cache_dir))

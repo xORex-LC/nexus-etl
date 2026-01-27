@@ -2,45 +2,15 @@ from __future__ import annotations
 
 import logging
 import time
+import hashlib
 from typing import Any
 
 from connector.common.time import getNowIso
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
+from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol, UpsertResult
 from connector.domain.ports.target_read import TargetPagedReaderProtocol
 from connector.infra.logging.setup import logEvent
-
-
-def _append_item(report, dataset: str, key: str, status: str, error: str | None = None) -> dict:
-    item = {
-        "dataset": dataset,
-        "key": key,
-        "status": status,
-        "errors": [] if error is None else [{"code": "CACHE_ERROR", "field": None, "message": error}],
-        "warnings": [],
-    }
-    report.items.append(item)
-    return item
-
-
-def _append_item_limited(
-    report,
-    dataset: str,
-    key: str,
-    status: str,
-    error: str | None,
-    report_items_limit: int,
-) -> None:
-    # Always keep failed/skipped until limit; success не сохраняем.
-    if status not in ("failed", "skipped"):
-        return
-    if len(report.items) >= report_items_limit:
-        try:
-            report.meta.items_truncated = True
-        except Exception:
-            pass
-        return
-    _append_item(report, dataset, key, status, error)
 
 
 class CacheRefreshUseCase:
@@ -135,13 +105,17 @@ class CacheRefreshUseCase:
                                         pass
                                     else:
                                         stats["skipped"] += 1
-                                        _append_item_limited(
-                                            report,
-                                            adapter.dataset,
-                                            key,
-                                            "skipped",
-                                            None,
-                                            report_items_limit,
+                                        report.add_item(
+                                            status="SKIPPED",
+                                            row_ref=None,
+                                            payload=None,
+                                            errors=[],
+                                            warnings=[],
+                                            meta={
+                                                "dataset": adapter.dataset,
+                                                "key": key,
+                                            },
+                                            store=True,
                                         )
                                         continue
 
@@ -151,23 +125,40 @@ class CacheRefreshUseCase:
                                     stats["inserted"] += 1
                                 else:
                                     stats["updated"] += 1
-                                _append_item_limited(
-                                    report,
-                                    adapter.dataset,
-                                    key,
-                                    result.value,
-                                    None,
-                                    report_items_limit,
+                                report.add_item(
+                                    status="OK",
+                                    row_ref=None,
+                                    payload=None,
+                                    errors=[],
+                                    warnings=[],
+                                    meta={
+                                        "dataset": adapter.dataset,
+                                        "key": key,
+                                        "result": result.value,
+                                    },
+                                    store=False,
                                 )
                             except Exception as exc:
                                 stats["failed"] += 1
                                 logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to upsert {key}: {exc}")
-                                _append_item(
-                                    report,
-                                    adapter.dataset,
-                                    key,
-                                    "failed",
-                                    str(exc),
+                                report.add_item(
+                                    status="FAILED",
+                                    row_ref=None,
+                                    payload=None,
+                                    errors=[
+                                        ValidationErrorItem(
+                                            stage=DiagnosticStage.CACHE,
+                                            code="CACHE_ERROR",
+                                            field=None,
+                                            message=str(exc),
+                                        )
+                                    ],
+                                    warnings=[],
+                                    meta={
+                                        "dataset": adapter.dataset,
+                                        "key": key,
+                                    },
+                                    store=True,
                                 )
 
                 now_iso = getNowIso()
@@ -195,26 +186,30 @@ class CacheRefreshUseCase:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
             raise
 
-        report.meta.api_base_url = api_base_url
-        report.meta.page_size = page_size
-        report.meta.max_pages = max_pages
-        report.meta.retries = retries
-        report.meta.retry_backoff_seconds = retry_backoff_seconds
-        report.meta.include_deleted = include_deleted
-
         retries_used = 0
         if hasattr(self.target_reader, "client") and hasattr(self.target_reader.client, "getRetryAttempts"):
             retries_used = self.target_reader.client.getRetryAttempts() or 0
-        report.meta.retries_used = retries_used
-
         totals = _sum_stats(stats_by_dataset)
-        report.summary.created = totals["inserted"]
-        report.summary.updated = totals["updated"]
-        report.summary.failed = totals["failed"]
-        report.summary.error_stats = error_stats
-        report.summary.skipped = totals["skipped"]
-        report.summary.retries_total = retries_used
-        report.summary.by_dataset = stats_by_dataset
+        target_id = None
+        if api_base_url:
+            target_id = hashlib.sha256(api_base_url.encode("utf-8")).hexdigest()
+
+        report.set_context(
+            "cache_refresh",
+            {
+                "target_id": target_id,
+                "target_type": "http" if api_base_url else None,
+                "page_size": page_size,
+                "max_pages": max_pages,
+                "retries": retries,
+                "retry_backoff_seconds": retry_backoff_seconds,
+                "include_deleted": include_deleted,
+                "retries_used": retries_used,
+                "by_dataset": stats_by_dataset,
+                "total": totals,
+                "error_stats": error_stats,
+            },
+        )
 
         duration_ms = int((time.monotonic() - start_monotonic) * 1000)
         logEvent(

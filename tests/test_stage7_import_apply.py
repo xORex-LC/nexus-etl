@@ -11,6 +11,7 @@ from connector.domain.error_codes import ErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
 from connector.domain.mappers.user_payload import buildUserUpsertPayload
 from connector.domain.planning.plan_builder import PlanBuilder
+from connector.domain.reporting.collector import ReportCollector
 from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
 from connector.main import app
 from connector.infra.http.ankey_client import ApiError
@@ -217,9 +218,7 @@ def test_import_apply_stop_on_first_error():
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     logger = logging.getLogger("test")
     logger.addHandler(logging.NullHandler())
-    report = type(
-        "R", (), {"items": [], "summary": type("S", (), {"created": 0, "updated": 0, "skipped": 0, "failed": 0})()}
-    )
+    report = ReportCollector(run_id="r", command="import-apply")
     code = service.applyPlan(
         plan=plan,
         logger=logger,
@@ -232,7 +231,7 @@ def test_import_apply_stop_on_first_error():
         resource_exists_retries=0,
     )
     assert code == 1
-    assert report.summary.failed == 1
+    assert report.build().summary.ops.get("apply_failed", {}).get("failed") == 1
 
 def test_import_apply_max_actions_limits_requests():
     items = [
@@ -294,9 +293,7 @@ def test_import_apply_max_actions_limits_requests():
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     logger = logging.getLogger("test2")
     logger.addHandler(logging.NullHandler())
-    report = type(
-        "R", (), {"items": [], "summary": type("S", (), {"created": 0, "updated": 0, "skipped": 0, "failed": 0})()}
-    )
+    report = ReportCollector(run_id="r", command="import-apply")
     service.applyPlan(
         plan=plan,
         logger=logger,
@@ -349,9 +346,7 @@ def test_import_apply_resource_exists_retries():
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     logger = logging.getLogger("test3")
     logger.addHandler(logging.NullHandler())
-    report = type(
-        "R", (), {"items": [], "summary": type("S", (), {"created": 0, "updated": 0, "skipped": 0, "failed": 0})()}
-    )
+    report = ReportCollector(run_id="r", command="import-apply")
     code = service.applyPlan(
         plan=plan,
         logger=logger,
@@ -364,7 +359,7 @@ def test_import_apply_resource_exists_retries():
         resource_exists_retries=1,
     )
     assert code == 0
-    assert report.summary.created == 1
+    assert report.build().summary.ops.get("create", {}).get("ok") == 1
     assert len(executor.calls) == 2
 
 def test_import_apply_requires_csv_or_plan(tmp_path: Path):
@@ -494,12 +489,14 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
 
 
 def test_plan_builder_does_not_emit_dataset_in_items():
+    report = ReportCollector(run_id="r", command="plan-test")
     builder = PlanBuilder(
         include_skipped_in_report=False,
         report_items_limit=10,
         identity_label="match_key",
         conflict_code="conflict",
         conflict_field="match_key",
+        report=report,
     )
     builder.add_plan_item(
         PlanItem(
@@ -552,9 +549,7 @@ def test_apply_report_items_include_dataset():
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     logger = logging.getLogger("test-report-dataset")
     logger.addHandler(logging.NullHandler())
-    report = type(
-        "R", (), {"items": [], "summary": type("S", (), {"created": 0, "updated": 0, "skipped": 0, "failed": 0})()}
-    )
+    report = ReportCollector(run_id="r", command="import-apply")
     code = service.applyPlan(
         plan=plan,
         logger=logger,
@@ -567,5 +562,6 @@ def test_apply_report_items_include_dataset():
         resource_exists_retries=0,
     )
     assert code == 1
-    assert report.items
-    assert report.items[0]["dataset"] == dataset
+    built = report.build()
+    assert built.meta.dataset == dataset
+    assert built.items

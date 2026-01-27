@@ -205,9 +205,9 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
 
     report_path = report_dir / "report_cache-refresh_api-refresh.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 0
-    assert report["summary"]["by_dataset"]["employees"]["pages"] == 2
-    assert report["summary"]["by_dataset"]["organizations"]["pages"] == 1
+    assert report["summary"]["rows_blocked"] == 0
+    assert report["context"]["cache_refresh"]["by_dataset"]["employees"]["pages"] == 2
+    assert report["context"]["cache_refresh"]["by_dataset"]["organizations"]["pages"] == 1
 
 
 def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):
@@ -292,7 +292,7 @@ def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):
     assert result.exit_code == 0
     report_path = tmp_path / "reports" / "report_cache-refresh_skip-del.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["skipped"] == 2
+    assert report["context"]["cache_refresh"]["total"]["skipped"] == 2
 
 
 def test_retry_on_500_then_ok(monkeypatch, tmp_path: Path):

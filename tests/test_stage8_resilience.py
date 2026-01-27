@@ -8,6 +8,7 @@ from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.domain.error_codes import ErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
+from connector.domain.reporting.collector import ReportCollector
 from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
 
 runner = CliRunner()
@@ -147,19 +148,7 @@ def test_import_apply_error_stats():
             )
         ],
     )
-    report = type(
-        "R",
-        (),
-        {
-            "items": [],
-            "summary": type(
-                "S",
-                (),
-                {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "error_stats": {}, "retries_total": 0},
-            )(),
-            "meta": type("M", (), {"items_truncated": False})(),
-        },
-    )
+    report = ReportCollector(run_id="r", command="import-apply")
     import logging
 
     logger = logging.getLogger("dummy")
@@ -181,4 +170,4 @@ def test_import_apply_error_stats():
         resource_exists_retries=0,
     )
     assert code == 1
-    assert report.summary.error_stats.get("HTTP_ERROR") == 1
+    assert report.build().context["apply"]["error_stats"].get("HTTP_ERROR") == 1

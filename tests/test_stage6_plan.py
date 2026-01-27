@@ -148,8 +148,8 @@ def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["summary"]["failed"] == 0
-    assert report["meta"]["plan_file"] is not None
+    assert report["summary"]["rows_blocked"] == 0
+    assert report["context"]["plan"]["plan_file"] is not None
 
 def test_plan_create_when_not_found(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -183,8 +183,8 @@ def test_plan_create_when_not_found(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["summary"]["planned_create"] == 1
-    assert report["summary"]["failed"] == 0
+    assert report["context"]["plan"]["planned_create"] == 1
+    assert report["summary"]["rows_blocked"] == 0
 
 def test_plan_update_when_found_and_diff(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -219,8 +219,8 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["summary"]["planned_update"] == 1
-    assert report["summary"]["failed"] == 0
+    assert report["context"]["plan"]["planned_update"] == 1
+    assert report["summary"]["rows_blocked"] == 0
 
 def test_plan_skip_when_no_diff(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -255,8 +255,8 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["summary"]["planned_update"] == 0
-    assert report["summary"]["skipped"] == 1
+    assert report["context"]["plan"]["planned_update"] == 0
+    assert report["context"]["plan"]["skipped"] == 1
 
 def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -299,7 +299,7 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
     assert exit_code == 1
-    assert report["summary"]["failed"] == 1
+    assert report["summary"]["rows_blocked"] == 1
 
 def test_plan_error_when_org_missing(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -333,4 +333,4 @@ def test_plan_error_when_org_missing(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
     assert exit_code == 1
-    assert report["summary"]["failed"] == 1
+    assert report["summary"]["rows_blocked"] == 1

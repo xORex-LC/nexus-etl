@@ -202,8 +202,9 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
     assert org_count == 1
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["created"] == 2  # 1 user + 1 org
-    assert report["summary"]["failed"] == 0
+    total = report["context"]["cache_refresh"]["total"]
+    assert total["inserted"] == 2  # 1 user + 1 org
+    assert report["summary"]["rows_blocked"] == 0
 
 def test_cache_status_ok(monkeypatch, tmp_path: Path):
     refresh_result, cache_dir, _, _ = run_cache_refresh(tmp_path, run_id="refresh-for-status", monkeypatch=monkeypatch)

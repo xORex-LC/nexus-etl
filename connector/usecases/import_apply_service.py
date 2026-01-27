@@ -11,6 +11,7 @@ from connector.domain.ports.execution import ExecutionResult, RequestExecutorPro
 from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.domain.exceptions import MissingRequiredSecretError
 from connector.common.sanitize import maskSecretsInObject
+from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem
 
 class ImportApplyService:
     """
@@ -26,24 +27,6 @@ class ImportApplyService:
         self.executor = executor
         self.secrets = secrets
         self.spec_resolver = spec_resolver
-
-    def _append_item(self, report, item: dict[str, Any], status: str, dataset: str) -> None:
-        safe_item = maskSecretsInObject({**item, "dataset": dataset})
-        report.items.append(
-            {
-                "row_id": safe_item.get("row_id"),
-                "op": safe_item.get("op"),
-                "dataset": dataset,
-                "resource_id": safe_item.get("resource_id"),
-                "status": status,
-                "errors": safe_item.get("errors", []),
-                "changes": safe_item.get("changes", {}),
-                "desired_state": safe_item.get("desired_state", {}),
-                "status_code": safe_item.get("status_code"),
-                "api_response": safe_item.get("api_response"),
-                "error_details": safe_item.get("error_details"),
-            }
-        )
 
     def applyPlan(
         self,
@@ -69,16 +52,10 @@ class ImportApplyService:
         dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
         apply_adapter = dataset_spec.get_apply_adapter()
 
-        def should_append(status: str) -> bool:
-            if status not in ("failed", "skipped"):
-                return False
-            if len(report.items) >= report_items_limit:
-                try:
-                    report.meta.items_truncated = True
-                except Exception:
-                    pass
-                return False
-            return True
+        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
+
+        def should_store(status: str) -> bool:
+            return status in ("FAILED", "SKIPPED")
 
         for raw in plan.items:
             # План однородный: dataset берём строго из meta.
@@ -91,8 +68,22 @@ class ImportApplyService:
             actions_count += 1
             if not item.resource_id:
                 failed += 1
-                if should_append("failed"):
-                    self._append_item(report, item.__dict__, "failed", item_dataset)
+                if should_store("FAILED"):
+                    report.add_item(
+                        status="FAILED",
+                        row_ref=self._build_row_ref(item),
+                        payload=None,
+                        errors=[
+                            ValidationErrorItem(
+                                stage=DiagnosticStage.APPLY,
+                                code="RESOURCE_ID_MISSING",
+                                field="resource_id",
+                                message="resource_id is required",
+                            )
+                        ],
+                        warnings=[],
+                        meta=maskSecretsInObject(self._build_meta(item, None, None, None)),
+                    )
                 if stop_on_first_error:
                     break
                 continue
@@ -112,13 +103,18 @@ class ImportApplyService:
                         exec_result = self.executor.execute(request_spec)
 
                     if exec_result.ok:
-                        result_item = current_item.__dict__.copy()
-                        result_item["status_code"] = exec_result.status_code
-                        result_item["api_response"] = exec_result.response_json
-                        result_item["error_details"] = exec_result.error_details
-                        status = action or "applied"
-                        if should_append(status):
-                            self._append_item(report, result_item, status, item_dataset)
+                        status = "OK"
+                        if should_store(status):
+                            report.add_item(
+                                status=status,
+                                row_ref=self._build_row_ref(current_item),
+                                payload=maskSecretsInObject(self._build_payload(current_item)),
+                                errors=[],
+                                warnings=[],
+                                meta=maskSecretsInObject(
+                                    self._build_meta(current_item, exec_result.status_code, exec_result.response_json, exec_result.error_details)
+                                ),
+                            )
                         if action == "create":
                             created += 1
                         elif action == "update":
@@ -135,54 +131,117 @@ class ImportApplyService:
 
                     failed += 1
                     code = exec_result.error_code.name if exec_result.error_code else "API_ERROR"
-                    err = {"code": code, "field": None, "message": exec_result.error_message or "request failed"}
                     error_stats[code] = error_stats.get(code, 0) + 1
-                    result_item = current_item.__dict__.copy()
-                    result_item["errors"] = list(result_item.get("errors", [])) + [err]
-                    result_item["status_code"] = exec_result.status_code
-                    result_item["api_response"] = exec_result.response_json
-                    result_item["error_details"] = exec_result.error_details
-                    if should_append("failed"):
-                        self._append_item(report, result_item, "failed", item_dataset)
+                    if should_store("FAILED"):
+                        report.add_item(
+                            status="FAILED",
+                            row_ref=self._build_row_ref(current_item),
+                            payload=maskSecretsInObject(self._build_payload(current_item)),
+                            errors=[
+                                ValidationErrorItem(
+                                    stage=DiagnosticStage.APPLY,
+                                    code=code,
+                                    field=None,
+                                    message=exec_result.error_message or "request failed",
+                                )
+                            ],
+                            warnings=[],
+                            meta=maskSecretsInObject(
+                                self._build_meta(current_item, exec_result.status_code, exec_result.response_json, exec_result.error_details)
+                            ),
+                        )
                     if code in ("UNAUTHORIZED", "FORBIDDEN"):
                         fatal_error = True
-                    logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {err['message']}")
+                    logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exec_result.error_message}")
                     break
                 except MissingRequiredSecretError as exc:
                     failed += 1
                     err_code = exc.code.value
-                    err = {"code": err_code, "field": exc.field, "message": str(exc)}
                     error_stats[err_code] = error_stats.get(err_code, 0) + 1
-                    result_item = current_item.__dict__.copy()
-                    result_item["errors"] = list(result_item.get("errors", [])) + [err]
-                    if should_append("failed"):
-                        self._append_item(report, result_item, "failed", item_dataset)
+                    if should_store("FAILED"):
+                        report.add_item(
+                            status="FAILED",
+                            row_ref=self._build_row_ref(current_item),
+                            payload=maskSecretsInObject(self._build_payload(current_item)),
+                            errors=[
+                                ValidationErrorItem(
+                                    stage=DiagnosticStage.APPLY,
+                                    code=err_code,
+                                    field=exc.field,
+                                    message=str(exc),
+                                )
+                            ],
+                            warnings=[],
+                            meta=maskSecretsInObject(self._build_meta(current_item, None, None, None)),
+                        )
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
                     break
                 except Exception as exc:
                     failed += 1
                     err_code = "UNEXPECTED_ERROR"
-                    err = {"code": err_code, "field": None, "message": str(exc)}
                     error_stats[err_code] = error_stats.get(err_code, 0) + 1
-                    result_item = current_item.__dict__.copy()
-                    result_item["errors"] = list(result_item.get("errors", [])) + [err]
-                    if should_append("failed"):
-                        self._append_item(report, result_item, "failed", item_dataset)
+                    if should_store("FAILED"):
+                        report.add_item(
+                            status="FAILED",
+                            row_ref=self._build_row_ref(current_item),
+                            payload=maskSecretsInObject(self._build_payload(current_item)),
+                            errors=[
+                                ValidationErrorItem(
+                                    stage=DiagnosticStage.APPLY,
+                                    code=err_code,
+                                    field=None,
+                                    message=str(exc),
+                                )
+                            ],
+                            warnings=[],
+                            meta=maskSecretsInObject(self._build_meta(current_item, None, None, None)),
+                        )
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
                     break
 
             if stop_on_first_error and failed:
                 break
 
-        report.summary.created = created
-        report.summary.updated = updated
-        report.summary.skipped = skipped
-        report.summary.failed = failed
-        report.summary.error_stats = error_stats
         retries_total = 0
         if hasattr(self.executor, "client") and hasattr(self.executor.client, "getRetryAttempts"):
             retries_total = self.executor.client.getRetryAttempts() or 0
-        report.summary.retries_total = retries_total
+        report.add_op("create", ok=created)
+        report.add_op("update", ok=updated)
+        report.add_op("skip", count=skipped)
+        report.add_op("apply_failed", failed=failed)
+        report.set_context(
+            "apply",
+            {
+                "retries_total": retries_total,
+                "error_stats": error_stats,
+            },
+        )
         if fatal_error:
             return 2
         return 1 if failed > 0 else 0
+
+    @staticmethod
+    def _build_row_ref(item) -> RowRef:
+        row_id = getattr(item, "row_id", None) or getattr(item, "id", None) or "row:unknown"
+        return RowRef(
+            line_no=0,
+            row_id=str(row_id),
+            identity_primary=None,
+            identity_value=None,
+        )
+
+    @staticmethod
+    def _build_payload(item) -> dict[str, Any]:
+        return item.__dict__.copy()
+
+    @staticmethod
+    def _build_meta(item, status_code, api_response, error_details) -> dict[str, Any]:
+        return {
+            "op": getattr(item, "op", None),
+            "resource_id": getattr(item, "resource_id", None),
+            "changes": getattr(item, "changes", {}),
+            "desired_state": getattr(item, "desired_state", {}),
+            "status_code": status_code,
+            "api_response": api_response,
+            "error_details": error_details,
+        }

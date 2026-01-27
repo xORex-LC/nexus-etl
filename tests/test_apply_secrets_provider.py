@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
+from connector.domain.reporting.collector import ReportCollector
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.infra.secrets.dict_provider import DictSecretProvider
 from connector.infra.secrets.null_provider import NullSecretProvider
@@ -36,11 +37,7 @@ def make_plan(op: str, desired_state: dict, secret_fields: list[str] | None = No
 
 
 def make_report():
-    return SimpleNamespace(
-        meta=SimpleNamespace(items_truncated=False, plan_file=None),
-        summary=SimpleNamespace(created=0, updated=0, skipped=0, failed=0, error_stats={}),
-        items=[],
-    )
+    return ReportCollector(run_id="r", command="import-apply")
 
 
 class DummyLogger:
@@ -115,8 +112,8 @@ def test_apply_create_fails_when_secret_missing():
     assert code == 1
     assert executor.calls == 0
     assert report.items, "должна быть записана ошибка"
-    err = report.items[0]["errors"][0]
-    assert err["code"] == ErrorCode.SECRET_REQUIRED.value
+    diag = report.items[0].diagnostics[0]
+    assert diag.code == ErrorCode.SECRET_REQUIRED.value
 
 
 class CountingProvider(NullSecretProvider):

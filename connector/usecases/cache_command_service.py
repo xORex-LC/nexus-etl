@@ -42,6 +42,7 @@ class CacheCommandService(CacheCommandServiceProtocol):
     ) -> int:
         if self.cache_refresh is None:
             raise ValueError("Cache refresh usecase is not configured")
+        report.set_meta(dataset=dataset, items_limit=report_items_limit)
         summary = self.cache_refresh.refresh(
             page_size=page_size,
             max_pages=max_pages,
@@ -57,17 +58,15 @@ class CacheCommandService(CacheCommandServiceProtocol):
         )
 
         total = summary.get("total", {})
-        report.summary.created = int(total.get("inserted", 0))
-        report.summary.updated = int(total.get("updated", 0))
-        report.summary.failed = int(total.get("failed", 0))
-        report.summary.skipped = int(total.get("skipped", 0))
-        report.summary.by_dataset = summary.get("by_dataset", {})
-        return 0 if report.summary.failed == 0 else 1
+        failed = int(total.get("failed", 0))
+        report.add_op("cache_refresh", ok=int(total.get("inserted", 0)) + int(total.get("updated", 0)), failed=failed, count=sum(total.values()))
+        return 0 if failed == 0 else 1
 
     def status(self, logger, report, run_id: str, dataset: str | None = None) -> tuple[int, dict]:
         try:
             status = self.cache_status.status(dataset=dataset)
-            report.items.append({"status": status})
+            report.set_meta(dataset=dataset)
+            report.set_context("cache_status", {"status": status})
             return 0, status
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache status failed: {exc}")
@@ -85,10 +84,8 @@ class CacheCommandService(CacheCommandServiceProtocol):
                 "cache",
                 f"cache clear: {cleared}",
             )
-            report.items.append({"cleared": cleared})
-            report.summary.failed = 0
-            report.summary.created = 0
-            report.summary.updated = 0
+            report.set_meta(dataset=dataset)
+            report.set_context("cache_clear", {"cleared": cleared})
             return 0, cleared
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache clear failed: {exc}")

@@ -17,6 +17,7 @@ class DiagnosticStage(str, Enum):
     VALIDATE = "VALIDATE"
     PLAN = "PLAN"
     APPLY = "APPLY"
+    CACHE = "CACHE"
 
 
 @dataclass

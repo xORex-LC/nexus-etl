@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.domain.planning.plan_models import Operation, PlanItem, PlanSummary
-from connector.domain.models import ValidationRowResult
+from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem, ValidationRowResult
+from connector.domain.reporting.collector import ReportCollector
 
 @dataclass
 class PlanBuildResult:
@@ -15,8 +16,6 @@ class PlanBuildResult:
 
     items: list[dict[str, Any]]
     summary: PlanSummary
-    report_items: list[dict[str, Any]]
-    items_truncated: bool
 
     def summary_as_dict(self) -> dict[str, Any]:
         """
@@ -48,6 +47,7 @@ class PlanBuilder:
         identity_label: str,
         conflict_code: str,
         conflict_field: str,
+        report: ReportCollector,
     ) -> None:
         self.include_skipped_in_report = include_skipped_in_report
         self.report_items_limit = report_items_limit
@@ -56,8 +56,7 @@ class PlanBuilder:
         self.conflict_field = conflict_field
 
         self.plan_items: list[dict[str, Any]] = []
-        self.report_items: list[dict[str, Any]] = []
-        self.items_truncated: bool = False
+        self.report = report
 
         self.rows_total = 0
         self.valid_rows = 0
@@ -66,88 +65,119 @@ class PlanBuilder:
         self.planned_update = 0
         self.skipped_rows = 0
 
-    def _can_store_report(self, status: str) -> bool:
-        if status == "skipped" and not self.include_skipped_in_report:
+    def _should_store(self, status: str) -> bool:
+        if status == "SKIPPED" and not self.include_skipped_in_report:
             return False
-        if len(self.report_items) >= self.report_items_limit:
-            self.items_truncated = True
-            return False
-        return True
+        return status in ("FAILED", "SKIPPED")
 
     def add_invalid(self, result: ValidationRowResult, errors: list[Any], warnings: list[Any]) -> None:
         """
         Назначение:
             Учесть невалидную строку и, при необходимости, добавить её в отчёт.
         """
+        self.rows_total += 1
         self.failed_rows += 1
-        if self._can_store_report("failed"):
-            row_ref = result.row_ref
-            identity_value = row_ref.identity_value if row_ref else None
-            row_id = row_ref.row_id if row_ref else f"line:{result.line_no}"
-            self.report_items.append(
-                {
-                    "row_id": row_id,
-                    "line_no": result.line_no,
-                    "status": "invalid",
-                    self.identity_label: identity_value,
-                    "errors": [e.__dict__ for e in errors],
-                    "warnings": [w.__dict__ for w in warnings],
-                }
-            )
+        row_ref = result.row_ref or RowRef(
+            line_no=result.line_no,
+            row_id=f"line:{result.line_no}",
+            identity_primary=self.identity_label,
+            identity_value=None,
+        )
+        self.report.add_item(
+            status="FAILED",
+            row_ref=row_ref,
+            payload=None,
+            errors=errors,
+            warnings=warnings,
+            meta={"identity_label": self.identity_label},
+            store=self._should_store("FAILED"),
+        )
 
     def add_conflict(self, line_no: int, identity_value: str, warnings: list[Any]) -> None:
         """
         Назначение:
             Учесть конфликт сопоставления.
         """
+        self.rows_total += 1
         self.failed_rows += 1
-        if self._can_store_report("failed"):
-            self.report_items.append(
-                {
-                    "row_id": f"line:{line_no}",
-                    "line_no": line_no,
-                    "status": "invalid",
-                    self.identity_label: identity_value,
-                    "errors": [
-                        {"code": self.conflict_code, "field": self.conflict_field, "message": "multiple candidates found"}
-                    ],
-                    "warnings": [w.__dict__ for w in warnings],
-                }
-            )
+        row_ref = RowRef(
+            line_no=line_no,
+            row_id=f"line:{line_no}",
+            identity_primary=self.identity_label,
+            identity_value=identity_value,
+        )
+        conflict_error = ValidationErrorItem(
+            stage=DiagnosticStage.PLAN,
+            code=self.conflict_code,
+            field=self.conflict_field,
+            message="multiple candidates found",
+        )
+        self.report.add_item(
+            status="FAILED",
+            row_ref=row_ref,
+            payload=None,
+            errors=[conflict_error],
+            warnings=warnings,
+            meta={"identity_label": self.identity_label},
+            store=self._should_store("FAILED"),
+        )
 
     def add_skip(self, line_no: int, identity_value: str, warnings: list[Any]) -> None:
         """
         Назначение:
             Учесть строку без изменений (skip).
         """
+        self.rows_total += 1
+        self.valid_rows += 1
         self.skipped_rows += 1
-        if self._can_store_report("skipped"):
-            self.report_items.append(
-                {
-                    "row_id": f"line:{line_no}",
-                    "line_no": line_no,
-                    "status": "skipped",
-                    self.identity_label: identity_value,
-                    "warnings": [w.__dict__ for w in warnings],
-                }
-            )
+        row_ref = RowRef(
+            line_no=line_no,
+            row_id=f"line:{line_no}",
+            identity_primary=self.identity_label,
+            identity_value=identity_value,
+        )
+        self.report.add_item(
+            status="SKIPPED",
+            row_ref=row_ref,
+            payload=None,
+            errors=[],
+            warnings=warnings,
+            meta={"identity_label": self.identity_label},
+            store=self._should_store("SKIPPED"),
+        )
 
     def add_plan_item(self, plan_item: PlanItem) -> None:
         """
         Назначение:
             Добавить create/update операцию в план и summary.
         """
+        self.rows_total += 1
+        self.valid_rows += 1
         if plan_item.op == Operation.CREATE:
             self.planned_create += 1
         elif plan_item.op == Operation.UPDATE:
             self.planned_update += 1
         self.plan_items.append(self._serialize_plan_item(plan_item))
-
-    def inc_rows_total(self) -> None:
-        self.rows_total += 1
-
-    def inc_valid_rows(self) -> None:
-        self.valid_rows += 1
+        self.report.add_item(
+            status="OK",
+            row_ref=RowRef(
+                line_no=plan_item.line_no,
+                row_id=plan_item.row_id,
+                identity_primary=self.identity_label,
+                identity_value=None,
+            ),
+            payload=None,
+            errors=[],
+            warnings=[],
+            meta={
+                "op": plan_item.op,
+                "resource_id": plan_item.resource_id,
+                "changes": plan_item.changes,
+                "desired_state": plan_item.desired_state,
+                "source_ref": plan_item.source_ref,
+            },
+            store=False,
+        )
 
     def build(self) -> PlanBuildResult:
         """
@@ -165,8 +195,6 @@ class PlanBuilder:
         return PlanBuildResult(
             items=self.plan_items,
             summary=summary,
-            report_items=self.report_items,
-            items_truncated=self.items_truncated,
         )
 
     def _serialize_plan_item(self, plan_item: PlanItem) -> dict[str, Any]:

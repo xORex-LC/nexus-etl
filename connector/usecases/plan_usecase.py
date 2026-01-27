@@ -41,6 +41,7 @@ class PlanUseCase:
         logger: logging.Logger,
         run_id: str,
         planning_deps,
+        report,
     ) -> PlanBuildResult:
         """
         Контракт (вход/выход):
@@ -61,6 +62,7 @@ class PlanUseCase:
             identity_label=report_adapter.identity_label,
             conflict_code=report_adapter.conflict_code,
             conflict_field=report_adapter.conflict_field,
+            report=report,
         )
 
         planning_policy = dataset_spec.build_planning_policy(
@@ -69,7 +71,6 @@ class PlanUseCase:
         planner = GenericPlanner(policy=planning_policy, builder=builder)
 
         for validated in validated_row_source:
-            builder.inc_rows_total()
             validation_row = validated.row
             validation = validation_row.validation
             errors = list(validation.errors)
@@ -88,7 +89,6 @@ class PlanUseCase:
                 )
                 continue
 
-            builder.inc_valid_rows()
             planner.plan_validated_row(validation_row.row, validation, warnings)
 
         return builder.build()

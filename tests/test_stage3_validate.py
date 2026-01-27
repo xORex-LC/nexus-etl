@@ -131,9 +131,8 @@ def test_validate_ok_returns_0(tmp_path: Path):
     assert result.exit_code == 0
     assert report_path.exists()
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 0
-    assert report["meta"]["csv_rows_total"] == 1
-    assert report["meta"]["csv_rows_processed"] == 1
+    assert report["summary"]["rows_blocked"] == 0
+    assert report["summary"]["rows_total"] == 1
 
 
 def test_validate_missing_required_returns_1(tmp_path: Path):
@@ -158,7 +157,7 @@ def test_validate_missing_required_returns_1(tmp_path: Path):
 
     assert result.exit_code == 1
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 1
+    assert report["summary"]["rows_blocked"] == 1
 
 
 def test_validate_invalid_boolean_returns_1(tmp_path: Path):
@@ -238,7 +237,7 @@ def test_validate_duplicate_matchkey_returns_0(tmp_path: Path):
     result, report_path = run_validate(tmp_path, csv_path, run_id="dup-mk")
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 0
+    assert report["summary"]["rows_blocked"] == 0
 
 
 def test_validate_duplicate_usr_org_tab_num_returns_0(tmp_path: Path):
@@ -274,7 +273,7 @@ def test_validate_duplicate_usr_org_tab_num_returns_0(tmp_path: Path):
     result, report_path = run_validate(tmp_path, csv_path, run_id="dup-tab")
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 0
+    assert report["summary"]["rows_blocked"] == 0
 
 
 def test_validate_masks_secrets_in_report(tmp_path: Path):
@@ -299,7 +298,7 @@ def test_validate_masks_secrets_in_report(tmp_path: Path):
     result, report_path = run_validate(tmp_path, csv_path, run_id="mask")
     assert result.exit_code == 1
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["items"][0]["row"]["password"] == "***"
+    assert report["items"][0]["payload"]["password"] == "***"
 
 
 def test_validate_respects_report_items_limit(tmp_path: Path):

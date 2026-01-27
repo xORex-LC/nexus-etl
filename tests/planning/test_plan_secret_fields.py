@@ -6,15 +6,18 @@ from pathlib import Path
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.planning.plan_models import PlanItem
 from connector.infra.artifacts.plan_reader import readPlanFile
+from connector.domain.reporting.collector import ReportCollector
 
 
 def test_plan_builder_serializes_secret_fields():
+    report = ReportCollector(run_id="r", command="plan-test")
     builder = PlanBuilder(
         include_skipped_in_report=False,
         report_items_limit=10,
         identity_label="match_key",
         conflict_code="conflict",
         conflict_field="match_key",
+        report=report,
     )
     builder.add_plan_item(
         PlanItem(

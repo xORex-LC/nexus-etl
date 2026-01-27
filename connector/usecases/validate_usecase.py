@@ -6,6 +6,7 @@ from dataclasses import asdict
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.validation.validator import Validator
 from connector.domain.validation.validated_row import ValidationRow
+from connector.domain.models import RowRef
 
 
 class ValidateUseCase:
@@ -58,8 +59,7 @@ class ValidateUseCase:
         failed_rows = 0
         warning_rows = 0
 
-        report.meta.dataset = dataset
-        report.meta.report_items_limit = self.report_items_limit
+        report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
 
         for validated in self.iter_validated(enriched_source, validator):
             rows_total += 1
@@ -68,7 +68,7 @@ class ValidateUseCase:
             errors = validation.errors if validation else validated.errors
             warnings = validation.warnings if validation else validated.warnings
 
-            status = "valid" if not errors else "invalid"
+            status = "FAILED" if errors else "OK"
             if errors:
                 failed_rows += 1
             else:
@@ -76,23 +76,25 @@ class ValidateUseCase:
             if warnings:
                 warning_rows += 1
 
-            should_store = status == "invalid" or self.include_valid_items
-            if should_store and len(report.items) < self.report_items_limit:
-                row_ref = validation.row_ref if validation else None
-                fallback_line_no = validated.record.line_no
-                row_payload = asdict(validation_row.row) if validation_row and validation_row.row is not None else None
-                item = {
-                    "row_id": row_ref.row_id if row_ref else f"line:{fallback_line_no}",
-                    "line_no": row_ref.line_no if row_ref else fallback_line_no,
-                    "match_key": validation.match_key if validation else None,
-                    "status": status,
-                    "row": row_payload,
-                    "errors": [e.__dict__ for e in errors],
-                    "warnings": [w.__dict__ for w in warnings],
-                }
-                report.items.append(maskSecretsInObject(item))
-            elif should_store:
-                report.meta.items_truncated = True
+            should_store = status == "FAILED" or self.include_valid_items
+            row_ref = validation.row_ref if validation else None
+            if row_ref is None:
+                row_ref = RowRef(
+                    line_no=validated.record.line_no,
+                    row_id=validated.record.record_id,
+                    identity_primary=None,
+                    identity_value=None,
+                )
+            row_payload = asdict(validation_row.row) if should_store and validation_row and validation_row.row is not None else None
+            report.add_item(
+                status=status,
+                row_ref=row_ref,
+                payload=maskSecretsInObject(row_payload) if row_payload else None,
+                errors=errors,
+                warnings=warnings,
+                meta={"match_key": validation.match_key if validation else None},
+                store=should_store,
+            )
 
             if errors:
                 log_failure(
@@ -105,16 +107,13 @@ class ValidateUseCase:
                     warnings=warnings,
                 )
 
-        report.meta.csv_rows_total = rows_total
-        report.meta.csv_rows_processed = rows_total
-        report.summary.failed = failed_rows
-        report.summary.warnings = warning_rows
-        report.summary.skipped = 0
-        report.summary.by_dataset = report.summary.by_dataset or {}
-        report.summary.by_dataset[dataset] = {
-            "rows_total": rows_total,
-            "valid_rows": valid_rows,
-            "failed_rows": failed_rows,
-            "warnings_rows": warning_rows,
-        }
+        report.set_context(
+            "validate",
+            {
+                "rows_total": rows_total,
+                "valid_rows": valid_rows,
+                "failed_rows": failed_rows,
+                "warnings_rows": warning_rows,
+            },
+        )
         return 1 if failed_rows > 0 else 0

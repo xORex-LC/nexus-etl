@@ -79,6 +79,7 @@ class ImportPlanService(ImportPlanServiceProtocol):
             logger=logger,
             run_id=run_id,
             planning_deps=planning_deps,
+            report=report,
         )
         plan_meta = {
             "csv_path": csv_path,
@@ -95,16 +96,22 @@ class ImportPlanService(ImportPlanServiceProtocol):
         )
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
 
-        report.meta.plan_file = plan_path
-        report.meta.include_deleted = include_deleted
-        report.meta.csv_rows_total = plan_result.summary.rows_total
-        report.meta.csv_rows_processed = plan_result.summary.rows_total
-        report.summary.planned_create = plan_result.summary.planned_create
-        report.summary.planned_update = plan_result.summary.planned_update
-        report.summary.skipped = plan_result.summary.skipped
-        report.summary.failed = plan_result.summary.failed_rows
-        if plan_result.items_truncated:
-            report.meta.items_truncated = True
-        report.items = plan_result.report_items
+        report.set_meta(dataset=dataset, items_limit=report_items_limit)
+        report.set_context(
+            "plan",
+            {
+                "plan_file": plan_path,
+                "include_deleted": include_deleted,
+                "rows_total": plan_result.summary.rows_total,
+                "valid_rows": plan_result.summary.valid_rows,
+                "failed_rows": plan_result.summary.failed_rows,
+                "planned_create": plan_result.summary.planned_create,
+                "planned_update": plan_result.summary.planned_update,
+                "skipped": plan_result.summary.skipped,
+            },
+        )
+        report.add_op("create", count=plan_result.summary.planned_create)
+        report.add_op("update", count=plan_result.summary.planned_update)
+        report.add_op("skip", count=plan_result.summary.skipped)
 
         return 1 if plan_result.summary.failed_rows > 0 else 0

@@ -80,10 +80,9 @@ def test_mapping_reports_missing_match_key():
     )
     _exit_code, report = _run_mapping([row])
 
-    dataset_summary = report.summary.by_dataset["employees"]
-    assert dataset_summary["mapping_failed"] == 0
-    assert dataset_summary["mapped_ok"] == 1
-    assert report.items[0]["status"] == "mapped"
+    assert report.summary.rows_blocked == 0
+    assert report.summary.rows_passed == 1
+    assert report.items[0].status == "OK"
 
 
 def test_mapping_reports_secret_candidates():
@@ -103,8 +102,8 @@ def test_mapping_reports_secret_candidates():
     )
     _exit_code, report = _run_mapping([row])
 
-    assert report.items[0]["status"] == "mapped"
-    assert report.items[0]["secret_candidate_fields"] == ["password"]
+    assert report.items[0].status == "OK"
+    assert report.items[0].meta["secret_candidate_fields"] == ["password"]
 
 
 def test_mapping_reports_mapped_ok():
@@ -124,6 +123,5 @@ def test_mapping_reports_mapped_ok():
     )
     _exit_code, report = _run_mapping([row])
 
-    dataset_summary = report.summary.by_dataset["employees"]
-    assert dataset_summary["mapped_ok"] == 1
-    assert dataset_summary["mapping_failed"] == 0
+    assert report.summary.rows_passed == 1
+    assert report.summary.rows_blocked == 0
