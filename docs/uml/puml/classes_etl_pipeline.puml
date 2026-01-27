@@ -1,0 +1,838 @@
+@startuml classes_etl_pipeline
+set namespaceSeparator none
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam class<<apply>> {
+  BackgroundColor #cfe8ff
+  BorderColor #1e40af
+}
+skinparam class<<plan>> {
+  BackgroundColor #dcd4ff
+  BorderColor #5b21b6
+}
+skinparam class<<validate>> {
+  BackgroundColor #ffd9b3
+  BorderColor #c2410c
+}
+skinparam class<<cache>> {
+  BackgroundColor #cdebd1
+  BorderColor #166534
+}
+skinparam class<<http>> {
+  BackgroundColor #f8c8dc
+  BorderColor #9d174d
+}
+skinparam class<<artifacts>> {
+  BackgroundColor #e6d6ff
+  BorderColor #6d28d9
+}
+skinparam class<<config>> {
+  BackgroundColor #e5e7eb
+  BorderColor #374151
+}
+skinparam class<<secrets>> {
+  BackgroundColor #c8f3f0
+  BorderColor #0f766e
+}
+skinparam backgroundColor white
+skinparam package<<usecases>> {
+  BackgroundColor #e7f0fb
+  BorderColor #b6c7de
+}
+skinparam package<<domain>> {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+skinparam package<<ports>> {
+  BackgroundColor #e6f5ec
+  BorderColor #b9d7c5
+}
+skinparam package<<datasets>> {
+  BackgroundColor #efe6f7
+  BorderColor #cbb8de
+}
+skinparam package<<infra>> {
+  BackgroundColor #f6e5eb
+  BorderColor #d7b7c4
+}
+skinparam package<<config>> {
+  BackgroundColor #eceff2
+  BorderColor #c1c8d0
+}
+skinparam package<<common>> {
+  BackgroundColor #e3f2f5
+  BorderColor #b7cfd5
+}
+
+package "Use Cases" <<usecases>> {
+class "CacheClearUseCase" as connector.usecases.cache_clear_usecase.CacheClearUseCase <<cache>> {
+  cache_repo
+  clear(dataset: str | None) -> dict[str, int]
+}
+class "CacheCommandService" as connector.usecases.cache_command_service.CacheCommandService <<cache>> {
+  cache_clear : CacheClearUseCase | None
+  cache_refresh : CacheRefreshUseCase | None
+  cache_repo
+  cache_status
+  clear(logger, report, run_id: str, dataset: str | None) -> tuple[int, dict]
+  refresh(page_size: int, max_pages: int, logger, report, run_id: str, include_deleted: bool, report_items_limit: int, api_base_url: str | None, retries: int | None, retry_backoff_seconds: float | None, dataset: str | None) -> int
+  status(logger, report, run_id: str, dataset: str | None) -> tuple[int, dict]
+}
+class "CacheRefreshUseCase" as connector.usecases.cache_refresh_service.CacheRefreshUseCase <<cache>> {
+  adapters : list[CacheSyncAdapterProtocol]
+  cache_repo
+  target_reader
+  refresh(page_size: int, max_pages: int | None, logger, report, run_id: str, include_deleted: bool, report_items_limit: int, api_base_url: str | None, retries: int | None, retry_backoff_seconds: float | None, dataset: str | None) -> dict[str, Any]
+}
+class "CacheStatusUseCase" as connector.usecases.cache_status_usecase.CacheStatusUseCase <<cache>> {
+  cache_repo
+  status(dataset: str | None) -> dict
+}
+class "ImportApplyService" as connector.usecases.import_apply_service.ImportApplyService <<apply>> {
+  executor
+  secrets : SecretProviderProtocol | None
+  spec_resolver : Callable[..., DatasetSpec]
+  applyPlan(plan: Plan, logger, report, run_id: str, stop_on_first_error: bool, max_actions: int | None, dry_run: bool, report_items_limit: int, resource_exists_retries: int) -> int
+}
+class "ImportPlanService" as connector.usecases.import_plan_service.ImportPlanService <<plan>> {
+  run(conn, csv_path: str, csv_has_header: bool, include_deleted: bool, dataset: str, logger, run_id: str, report, report_items_limit: int, include_skipped_in_report: bool, report_dir: str, settings) -> int
+}
+class "PlanUseCase" as connector.usecases.plan_usecase.PlanUseCase <<plan>> {
+  include_skipped_in_report : bool
+  report_items_limit : int
+  run(row_source, dataset_spec: DatasetSpec, include_deleted: bool, logger: logging.Logger, run_id: str, validation_deps, planning_deps) -> PlanBuildResult
+}
+}
+
+package "Domain" <<domain>> {
+class "CacheEmployeeLookup" as connector.domain.planning.adapters.CacheEmployeeLookup <<plan>> {
+  conn
+  match(identity: Identity, include_deleted: bool) -> MatchResult
+}
+class "CsvRow" as connector.domain.models.CsvRow <<validate>> {
+  data_line_no : int
+  file_line_no : int
+  values : list[str | None]
+}
+class "SourceRecord" as connector.domain.transform.source_record.SourceRecord <<validate>> {
+  line_no : int
+  record_id : str
+  values : Mapping[str, Any]
+}
+class "DatasetRule" as connector.domain.validation.pipeline.DatasetRule <<validate>> {
+  apply(employee: EmployeeInput, result: ValidationRowResult, state: DatasetValidationState, deps: ValidationDependencies) -> None
+}
+class "DatasetValidationState" as connector.domain.validation.deps.DatasetValidationState <<validate>> {
+  matchkey_seen : dict[str, int]
+  usr_org_tab_seen : dict[str, int]
+}
+class "DatasetValidator" as connector.domain.validation.pipeline.DatasetValidator <<validate>> {
+  deps
+  rules : tuple[DatasetRule, ...]
+  state
+  validate(employee: EmployeeInput, result: ValidationRowResult) -> None
+}
+class "EmployeeInput" as connector.domain.models.EmployeeInput {
+  avatar_id : str | None
+  email : str | None
+  first_name : str | None
+  is_logon_disable : bool | None
+  last_name : str | None
+  manager_id : int | None
+  middle_name : str | None
+  organization_id : int | None
+  password : str | None
+  personnel_number : str | None
+  phone : str | None
+  position : str | None
+  user_name : str | None
+  usr_org_tab_num : str | None
+}
+class "ErrorCode" as connector.domain.error_codes.ErrorCode {
+  name
+  from_status(status_code: int | None) -> 'ErrorCode'
+}
+class "FieldRule" as connector.domain.validation.row_rules.FieldRule <<validate>> {
+  index : int
+  name : str
+  parser : Optional[Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], Any]]
+  required : bool
+  validators : tuple[Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], None], ...]
+  apply(row_values: list[Any], errors: list[ValidationErrorItem], warnings: list[ValidationErrorItem]) -> Any
+}
+class "GenericPlanner" as connector.domain.planning.generic_planner.GenericPlanner <<plan>> {
+  plan_validated_row(validated_entity, validation: ValidationRowResult, warnings: list) -> None
+}
+class "Identity" as connector.domain.models.Identity <<plan>> {
+  primary : str
+  primary_value : str
+  values : Mapping[str, str]
+}
+class "MatchKeyUniqueRule" as connector.domain.validation.dataset_rules.MatchKeyUniqueRule <<validate>> {
+  apply(employee: EmployeeInput, result: ValidationRowResult, state: DatasetValidationState, deps: ValidationDependencies) -> None
+}
+class "MatchResult" as connector.domain.models.MatchResult <<plan>> {
+  candidate : dict | None
+  candidates : list[dict]
+  status
+}
+class "MatchStatus" as connector.domain.models.MatchStatus <<plan>> {
+  name
+}
+class "MatchKey" as connector.domain.transform.match_key.MatchKey <<validate>> {
+  value : str
+}
+class "MapResult" as connector.domain.transform.map_result.MapResult <<validate>> {
+  row_ref : RowRef
+  row
+  match_key : MatchKey | None
+  secret_candidates : dict[str, str]
+  errors : list[ValidationErrorItem]
+  warnings : list[ValidationErrorItem]
+}
+class "CollectResult" as connector.domain.transform.collect_result.CollectResult <<validate>> {
+  record : SourceRecord
+  errors : list[ValidationErrorItem]
+  warnings : list[ValidationErrorItem]
+}
+class "<color:red>MissingRequiredSecretError</color>" as connector.domain.exceptions.MissingRequiredSecretError <<secrets>> {
+  code : ErrorCode
+  dataset : str
+  field : str
+  line_no : int | None
+  resource_id : str | None
+  row_id : str | None
+}
+class "Operation" as connector.domain.planning.plan_models.Operation {
+  CREATE : str
+  UPDATE : str
+}
+class "OrgExistsRule" as connector.domain.validation.dataset_rules.OrgExistsRule <<validate>> {
+  apply(employee: EmployeeInput, result: ValidationRowResult, state: DatasetValidationState, deps: ValidationDependencies) -> None
+}
+class "Plan" as connector.domain.planning.plan_models.Plan <<plan>> {
+  items : list[PlanItem]
+  meta
+  summary
+}
+class "PlanBuildResult" as connector.domain.planning.plan_builder.PlanBuildResult <<plan>> {
+  items : list[dict[str, Any]]
+  items_truncated : bool
+  report_items : list[dict[str, Any]]
+  summary
+  summary_as_dict() -> dict[str, Any]
+}
+class "PlanBuilder" as connector.domain.planning.plan_builder.PlanBuilder <<plan>> {
+  conflict_code : str
+  conflict_field : str
+  failed_rows : int
+  identity_label : str
+  include_skipped_in_report : bool
+  items_truncated : bool
+  plan_items : list[dict[str, Any]]
+  planned_create : int
+  planned_update : int
+  report_items : list[dict[str, Any]]
+  report_items_limit : int
+  rows_total : int
+  skipped_rows : int
+  valid_rows : int
+  add_conflict(line_no: int, identity_value: str, warnings: list[Any]) -> None
+  add_invalid(result: ValidationRowResult, errors: list[Any], warnings: list[Any]) -> None
+  add_plan_item(plan_item: PlanItem) -> None
+  add_skip(line_no: int, identity_value: str, warnings: list[Any]) -> None
+  build() -> PlanBuildResult
+  inc_rows_total() -> None
+  inc_valid_rows() -> None
+}
+class "PlanItem" as connector.domain.planning.plan_models.PlanItem <<plan>> {
+  changes : dict[str, Any]
+  desired_state : dict[str, Any]
+  line_no : int | None
+  op : str
+  resource_id : str
+  row_id : str
+  source_ref : dict[str, Any] | None
+}
+class "PlanMeta" as connector.domain.planning.plan_models.PlanMeta <<plan>> {
+  csv_path : str | None
+  dataset : str | None
+  generated_at : str | None
+  include_deleted : bool | None
+  plan_path : str | None
+  run_id : str | None
+}
+class "PlanSummary" as connector.domain.planning.plan_models.PlanSummary <<plan>> {
+  failed_rows : int
+  planned_create : int
+  planned_update : int
+  rows_total : int
+  skipped : int
+  valid_rows : int
+}
+class "PlanningDependencies" as connector.domain.planning.deps.PlanningDependencies {
+  identity_lookup : IdentityLookup | None
+}
+class "RowRef" as connector.domain.models.RowRef <<validate>> {
+  identity_primary : str | None
+  identity_value : str | None
+  line_no : int
+  row_id : str
+}
+class "RowRule" as connector.domain.validation.row_rules.RowRule <<validate>> {
+  name : str
+  apply(row_values: list[Any], errors: list[ValidationErrorItem], warnings: list[ValidationErrorItem]) -> Any
+}
+class "RowValidator" as connector.domain.validation.pipeline.RowValidator <<validate>> {
+  mapper : SourceMapper
+  legacy_adapter
+  validate(collected: CollectResult) -> tuple[EmployeeInput, ValidationRowResult]
+}
+class "UsrOrgTabUniqueRule" as connector.domain.validation.dataset_rules.UsrOrgTabUniqueRule <<validate>> {
+  apply(employee: EmployeeInput, result: ValidationRowResult, state: DatasetValidationState, deps: ValidationDependencies) -> None
+}
+class "ValidationDependencies" as connector.domain.validation.deps.ValidationDependencies <<validate>> {
+  matchkey_lookup : IdentityLookupProtocol | None
+  org_lookup : OrgLookupProtocol | None
+  user_lookup : UserLookupProtocol | None
+}
+class "ValidationErrorItem" as connector.domain.models.ValidationErrorItem <<validate>> {
+  code : str
+  field : str | None
+  message : str
+}
+class "ValidationRowResult" as connector.domain.models.ValidationRowResult <<validate>> {
+  errors : list[ValidationErrorItem]
+  line_no : int
+  match_key : str
+  match_key_complete : bool
+  row_ref : 'RowRef' | None
+  usr_org_tab_num : str | None
+  valid : bool
+  warnings : list[ValidationErrorItem]
+}
+class "ValidatorFactory" as connector.domain.validation.pipeline.ValidatorFactory <<validate>> {
+  deps
+  create_dataset_validator(state: DatasetValidationState) -> DatasetValidator
+  create_row_validator() -> RowValidator
+  create_validation_context() -> DatasetValidationState
+}
+class "EmployeeMatcher" as connector.domain.planning.employees.matcher.EmployeeMatcher <<plan>> {
+  match(identity: Identity) -> MatchResult
+}
+class "EmployeeDiffer" as connector.domain.planning.employees.differ.EmployeeDiffer <<plan>> {
+  calculate_changes(existing: dict[str, Any] | None, desired: dict[str, Any]) -> dict[str, Any]
+}
+class "DecisionOutcome" as connector.domain.planning.employees.decision.DecisionOutcome <<plan>> {
+  name
+}
+class "EmployeeDecisionPolicy" as connector.domain.planning.employees.decision.EmployeeDecisionPolicy <<plan>> {
+  decide(match_result: MatchResult, changes: dict[str, Any], desired_state: dict[str, Any]) -> tuple[DecisionOutcome, str | None]
+}
+}
+
+package "Ports" <<ports>> {
+class "CacheCommandServiceProtocol" as connector.usecases.ports.CacheCommandServiceProtocol <<cache>> {
+  clear(logger, report, run_id: str, dataset: str | None) -> tuple[int, dict]
+  refresh(page_size: int, max_pages: int, logger, report, run_id: str, include_deleted: bool, report_items_limit: int, api_base_url: str | None, retries: int | None, retry_backoff_seconds: float | None, dataset: str | None) -> int
+  status(logger, report, run_id: str, dataset: str | None) -> tuple[int, dict]
+}
+class "CacheMeta" as connector.domain.ports.cache_repository.CacheMeta <<cache>> {
+  values : dict[str, str | None]
+}
+class "CacheRepositoryProtocol" as connector.domain.ports.cache_repository.CacheRepositoryProtocol <<cache>> {
+  clear(dataset: str) -> None
+  count(dataset: str) -> int
+  count_by_table(dataset: str) -> dict[str, int]
+  get_meta(dataset: str | None) -> CacheMeta
+  list_datasets() -> list[str]
+  reset_meta(dataset: str) -> None
+  set_meta(dataset: str | None, key: str, value: str | None) -> None
+  transaction() -> ContextManager[None]
+  upsert(dataset: str, write_model: dict) -> UpsertResult
+}
+class "ExecutionResult" as connector.domain.ports.execution.ExecutionResult <<apply>> {
+  error_code : ErrorCode | None
+  error_details : dict[str, Any] | None
+  error_message : str | None
+  error_reason : str | None
+  ok : bool
+  response_json : Any | None
+  status_code : int | None
+}
+class "IdentityLookup" as connector.domain.planning.protocols.IdentityLookup <<cache>> {
+  match(identity: Identity, include_deleted: bool) -> MatchResult
+}
+class "IdentityLookupProtocol" as connector.domain.ports.lookups.IdentityLookupProtocol <<cache>> {
+  match(identity: Identity, include_deleted: bool) -> MatchResult
+}
+class "ImportPlanServiceProtocol" as connector.usecases.ports.ImportPlanServiceProtocol {
+  run(conn, csv_path: str, csv_has_header: bool, include_deleted: bool, dataset: str, logger, run_id: str, report, report_items_limit: int, include_skipped_in_report: bool, report_dir: str, settings) -> int
+}
+class "OrgLookupProtocol" as connector.domain.ports.lookups.OrgLookupProtocol <<cache>> {
+  get_org_by_id(ouid: int) -> dict[str, Any] | None
+}
+class "PlanDecision" as connector.domain.planning.protocols.PlanDecision <<plan>> {
+  changes : dict[str, Any] | None
+  desired_state : dict[str, Any] | None
+  identity
+  kind
+  message : str | None
+  reason_code : str | None
+  resource_id : str | None
+  source_ref : dict[str, Any] | None
+  warnings : list[ValidationErrorItem]
+}
+class "PlanDecisionKind" as connector.domain.planning.protocols.PlanDecisionKind <<plan>> {
+  name
+}
+class "PlanningPolicyProtocol" as connector.domain.planning.protocols.PlanningPolicyProtocol <<plan>> {
+  decide(validated_entity: Any, validation: ValidationRowResult) -> PlanDecision
+}
+class "RequestExecutorProtocol" as connector.domain.ports.execution.RequestExecutorProtocol <<apply>> {
+  execute(spec: RequestSpec) -> ExecutionResult
+}
+class "RequestSpec" as connector.domain.ports.execution.RequestSpec <<apply>> {
+  expected_statuses : Sequence[int]
+  headers : dict[str, str] | None
+  method : str
+  path : str
+  payload : Any | None
+  query : dict[str, Any] | None
+  delete(path: str) -> 'RequestSpec'
+  is_expected(status_code: int | None) -> bool
+  patch(path: str, payload: Any | None) -> 'RequestSpec'
+  post(path: str, payload: Any | None) -> 'RequestSpec'
+  put(path: str, payload: Any | None) -> 'RequestSpec'
+}
+class "RowMapper" as connector.domain.ports.sources.RowMapper {
+  map(raw: dict) -> CsvRow
+}
+class "LegacyRowSource" as connector.domain.ports.sources.LegacyRowSource {
+}
+class "SourceMapper" as connector.domain.ports.sources.SourceMapper <<validate>> {
+  map(raw: SourceRecord) -> MapResult
+}
+class "RowSource" as connector.domain.ports.sources.RowSource {
+}
+class "SecretProviderProtocol" as connector.domain.ports.secrets.SecretProviderProtocol <<secrets>> {
+  get_secret() -> str | None
+}
+class "TargetPageResult" as connector.domain.ports.target_read.TargetPageResult <<http>> {
+  error_code : ErrorCode | None
+  error_details : dict[str, Any] | None
+  error_message : str | None
+  items : list[dict[str, Any]] | None
+  ok : bool
+  page : int
+}
+class "TargetPagedReaderProtocol" as connector.domain.ports.target_read.TargetPagedReaderProtocol <<http>> {
+  iter_pages(path: str, page_size: int, max_pages: int | None, params: dict[str, Any] | None) -> Iterable[TargetPageResult]
+}
+class "UpsertResult" as connector.domain.ports.cache_repository.UpsertResult <<cache>> {
+  name
+}
+class "UserLookupProtocol" as connector.domain.ports.lookups.UserLookupProtocol <<cache>> {
+  get_user_by_id(user_id: int) -> dict[str, Any] | None
+}
+}
+
+package "Datasets" <<datasets>> {
+class "ApplyAdapter" as connector.datasets.spec.ApplyAdapter <<apply>> {
+  on_failed_request(item, result: ExecutionResult, retries_left: int)
+  to_request(item) -> RequestSpec
+}
+class "CacheSyncAdapterProtocol" as connector.datasets.cache_sync.CacheSyncAdapterProtocol <<cache>> {
+  dataset : str
+  list_path : str
+  report_entity : str
+  get_item_key(raw_item: dict[str, Any]) -> str
+  is_deleted(raw_item: dict[str, Any]) -> bool
+  map_target_to_cache(raw_item: dict[str, Any]) -> dict[str, Any]
+}
+class "DatasetSpec" as connector.datasets.spec.DatasetSpec {
+  build_planning_deps(conn, settings) -> PlanningDependencies
+  build_planning_policy(include_deleted: bool, deps: PlanningDependencies) -> PlanningPolicyProtocol
+  build_record_adapter() -> RecordAdapterProtocol
+  build_record_source(csv_path: str, csv_has_header: bool, source_format: str | None) -> Iterable[CollectResult]
+  build_validation_deps(conn, settings) -> ValidationDependencies
+  build_validators(deps: ValidationDependencies) -> ValidatorBundle
+  get_apply_adapter() -> ApplyAdapter
+  get_report_adapter() -> ReportAdapter
+}
+class "OrganizationsCacheSyncAdapter" as connector.datasets.organizations.cache_sync_adapter.OrganizationsCacheSyncAdapter <<cache>> {
+  dataset : str
+  list_path : str
+  report_entity : str
+  get_item_key(raw_item: dict[str, Any]) -> str
+  is_deleted(raw_item: dict[str, Any]) -> bool
+  map_target_to_cache(raw_item: dict[str, Any]) -> dict[str, Any]
+}
+class "ReportAdapter" as connector.datasets.spec.ReportAdapter {
+  conflict_code : str
+  conflict_field : str
+  identity_label : str
+}
+class "ValidatorBundle" as connector.datasets.spec.ValidatorBundle <<validate>> {
+  dataset_validator
+  row_validator
+  state
+}
+class "ValidatorRegistry" as connector.datasets.validation.registry.ValidatorRegistry <<validate>> {
+  deps
+  factory
+  create_dataset_validator(state: DatasetValidationState) -> DatasetValidator
+  create_row_validator() -> RowValidator
+  create_state() -> DatasetValidationState
+}
+class "EmployeesSpec" as connector.datasets.employees.spec.EmployeesSpec {
+  build_record_adapter() -> RecordAdapterProtocol
+  build_record_source(csv_path: str, csv_has_header: bool, source_format: str | None) -> Iterable[CollectResult]
+  build_planning_deps(conn, settings) -> PlanningDependencies
+  build_planning_policy(include_deleted: bool, deps: PlanningDependencies) -> PlanningPolicyProtocol
+  build_validation_deps(conn, settings) -> ValidationDependencies
+  build_validators(deps: ValidationDependencies) -> ValidatorBundle
+  get_apply_adapter() -> ApplyAdapter
+  get_report_adapter() -> ReportAdapter
+}
+class "EmployeesApplyAdapter" as connector.datasets.employees.apply_adapter.EmployeesApplyAdapter <<apply>> {
+  dataset : str
+  secrets : SecretProviderProtocol | None
+  on_failed_request(item: PlanItem, result: ExecutionResult, retries_left: int) -> PlanItem | None
+  to_request(item: PlanItem) -> RequestSpec
+}
+class "EmployeesProjector" as connector.datasets.employees.projector.EmployeesProjector {
+  to_desired_state(validated_entity) -> dict
+  to_identity(validated_entity, validation) -> Identity
+  to_source_ref(identity: Identity) -> dict
+}
+class "EmployeesPlanningPolicy" as connector.datasets.employees.planning_policy.EmployeesPlanningPolicy <<plan>> {
+  decide(validated_entity, validation: ValidationRowResult) -> PlanDecision
+}
+class "EmployeesRowPublic" as connector.datasets.employees.models.EmployeesRowPublic {
+  avatar_id : str | None
+  email : str | None
+  first_name : str | None
+  is_logon_disable : bool | None
+  last_name : str | None
+  manager_id : int | None
+  middle_name : str | None
+  organization_id : int | None
+  personnel_number : str | None
+  phone : str | None
+  position : str | None
+  user_name : str | None
+  usr_org_tab_num : str | None
+}
+class "EmployeesMappingSpec" as connector.datasets.employees.mapping_spec.EmployeesMappingSpec <<validate>> {
+  match_key_fields : tuple[str, ...]
+  required_fields : tuple[tuple[str, str], ...]
+  secret_fields : tuple[str, ...]
+  collect_secret_candidates(values: Mapping[str, Any]) -> dict[str, str]
+  get_match_key_parts(row: EmployeesRowPublic) -> list[str | None]
+}
+class "EmployeesSourceMapper" as connector.datasets.employees.source_mapper.EmployeesSourceMapper <<validate>> {
+  map(raw: SourceRecord) -> MapResult
+}
+class "EmployeesCsvRecordAdapter" as connector.datasets.employees.csv_record_adapter.EmployeesCsvRecordAdapter <<validate>> {
+  collect(csv_row: CsvRow) -> CollectResult
+}
+class "NormalizedEmployeesCsvRecordSource" as connector.datasets.employees.record_sources.NormalizedEmployeesCsvRecordSource <<validate>> {
+}
+class "SourceEmployeesCsvRecordSource" as connector.datasets.employees.record_sources.SourceEmployeesCsvRecordSource <<validate>> {
+}
+class "EmployeesCacheSyncAdapter" as connector.datasets.employees.cache_sync_adapter.EmployeesCacheSyncAdapter <<cache>> {
+  dataset : str
+  list_path : str
+  report_entity : str
+  get_item_key(raw_item: dict[str, Any]) -> str
+  is_deleted(raw_item: dict[str, Any]) -> bool
+  map_target_to_cache(raw_item: dict[str, Any]) -> dict[str, Any]
+}
+}
+
+package "Infrastructure" <<infra>> {
+class "AnkeyApiClient" as connector.infra.http.ankey_client.AnkeyApiClient <<http>> {
+  baseUrl
+  client : Client
+  password : str
+  retries : int
+  retryBackoffSeconds : float
+  retry_attempts : int
+  username : str
+  getJson(path: str, params: dict[str, Any] | None) -> Any
+  getPagedItems(path: str, pageSize: int, maxPages: int | None) -> Iterator[tuple[int, list[Any]]]
+  getRetryAttempts() -> int
+  requestAny(method: str, path: str, params: dict[str, Any] | None, jsonBody: Any | None, headers: dict[str, str] | None) -> tuple[int, Any | None, str | None]
+  requestJson(method: str, path: str, params: dict[str, Any] | None, jsonBody: Any | None) -> tuple[int, Any]
+  resetRetryAttempts() -> None
+}
+class "AnkeyRequestExecutor" as connector.infra.http.request_executor.AnkeyRequestExecutor <<apply>> {
+  client
+  execute(spec: RequestSpec) -> ExecutionResult
+}
+class "AnkeyTargetPagedReader" as connector.infra.target.ankey_gateway.AnkeyTargetPagedReader <<http>> {
+  client
+  iter_pages(path: str, page_size: int, max_pages: int | None, params: dict[str, Any] | None) -> Iterable[TargetPageResult]
+}
+class "<color:red>ApiError</color>" as connector.infra.http.ankey_client.ApiError <<http>> {
+  body_snippet : str | None
+  status_code : int | None
+}
+class "CacheDatasetHandler" as connector.infra.cache.handlers.base.CacheDatasetHandler <<cache>> {
+  dataset : str
+  table_names : tuple[str, ...]
+  clear(engine: SqliteEngine) -> None
+  count_by_table(engine: SqliteEngine) -> dict[str, int]
+  count_total(engine: SqliteEngine) -> int
+  ensure_schema(engine: SqliteEngine) -> None
+  upsert(engine: SqliteEngine, write_model: dict) -> UpsertResult
+}
+class "CacheHandlerRegistry" as connector.infra.cache.handlers.registry.CacheHandlerRegistry <<cache>> {
+  get(dataset: str) -> CacheDatasetHandler
+  list() -> list[CacheDatasetHandler]
+  register(handler: CacheDatasetHandler) -> None
+}
+class "CacheOrgLookup" as connector.infra.cache.validation_lookups.CacheOrgLookup <<cache>> {
+  conn
+  get_org_by_id(ouid: int)
+}
+class "CompositeSecretProvider" as connector.infra.secrets.composite_provider.CompositeSecretProvider <<secrets>> {
+  get_secret() -> str | None
+}
+class "<color:red>CsvFormatError</color>" as connector.infra.sources.csv_reader.CsvFormatError {
+}
+class "CsvRowSource" as connector.infra.sources.csv_reader.CsvRowSource {
+  has_header : bool
+  path : str
+}
+class "DictSecretProvider" as connector.infra.secrets.dict_provider.DictSecretProvider <<secrets>> {
+  get_secret() -> str | None
+  set_secret(dataset: str, field: str, value: str, row_id: str | None, line_no: int | None)
+}
+class "EmployeesCacheHandler" as connector.infra.cache.handlers.employees_handler.EmployeesCacheHandler <<cache>> {
+  dataset : str
+  table_names : tuple
+  clear(engine: SqliteEngine) -> None
+  count_by_table(engine: SqliteEngine) -> dict[str, int]
+  count_total(engine: SqliteEngine) -> int
+  ensure_schema(engine: SqliteEngine) -> None
+  upsert(engine: SqliteEngine, write_model: dict) -> UpsertResult
+}
+class "EnsureFieldsFilter" as connector.infra.logging.setup.EnsureFieldsFilter {
+  defaultComponent : str
+  runId : str
+  filter(record: logging.LogRecord) -> bool
+}
+class "NullSecretProvider" as connector.infra.secrets.null_provider.NullSecretProvider <<secrets>> {
+  get_secret() -> str | None
+}
+class "OrganizationsCacheHandler" as connector.infra.cache.handlers.organizations_handler.OrganizationsCacheHandler <<cache>> {
+  dataset : str
+  table_names : tuple
+  clear(engine: SqliteEngine) -> None
+  count_by_table(engine: SqliteEngine) -> dict[str, int]
+  count_total(engine: SqliteEngine) -> int
+  ensure_schema(engine: SqliteEngine) -> None
+  upsert(engine: SqliteEngine, write_model: dict) -> UpsertResult
+}
+class "PromptSecretProvider" as connector.infra.secrets.prompt_provider.PromptSecretProvider <<secrets>> {
+  get_secret() -> str | None
+}
+class "Report" as connector.infra.artifacts.report_writer.Report <<artifacts>> {
+  items : list[dict]
+  meta
+  summary
+}
+class "ReportMeta" as connector.infra.artifacts.report_writer.ReportMeta <<artifacts>> {
+  api_base_url : str | None
+  cache_dir : str | None
+  command : str
+  config_sources : list[str]
+  csv_path : str | None
+  csv_rows_processed : int | None
+  csv_rows_total : int | None
+  dataset : str | None
+  dry_run : bool | None
+  duration_ms : int | None
+  finished_at : str | None
+  include_deleted : bool | None
+  items_truncated : bool
+  log_file : str | None
+  max_actions : int | None
+  max_pages : int | None
+  page_size : int | None
+  plan_file : str | None
+  plan_path : str | None
+  report_dir : str | None
+  report_include_skipped : bool | None
+  report_items_limit : int | None
+  resource_exists_retries : int | None
+  retries : int | None
+  retries_used : int | None
+  retry_backoff_seconds : float | None
+  run_id : str
+  started_at : str
+  stop_on_first_error : bool | None
+  timeout_seconds : float | None
+}
+class "ReportSummary" as connector.infra.artifacts.report_writer.ReportSummary <<artifacts>> {
+  by_dataset : dict[str, dict[str, int]]
+  created : int
+  error_stats : dict[str, int]
+  failed : int
+  planned_create : int
+  planned_update : int
+  retries_total : int
+  skipped : int
+  updated : int
+  warnings : int
+}
+class "SqliteCacheRepository" as connector.infra.cache.repository.SqliteCacheRepository <<cache>> {
+  engine
+  registry
+  clear(dataset: str) -> None
+  count(dataset: str) -> int
+  count_by_table(dataset: str) -> dict[str, int]
+  get_meta(dataset: str | None) -> CacheMeta
+  list_datasets() -> list[str]
+  reset_meta(dataset: str) -> None
+  set_meta(dataset: str | None, key: str, value: str | None) -> None
+  transaction() -> Iterator[None]
+  upsert(dataset: str, write_model: dict) -> UpsertResult
+}
+class "SqliteEngine" as connector.infra.cache.sqlite_engine.SqliteEngine <<cache>> {
+  conn
+  execute(sql: str, params: tuple | dict | None) -> sqlite3.Cursor
+  executemany(sql: str, seq_of_params: list[tuple] | list[dict]) -> sqlite3.Cursor
+  fetchall(sql: str, params: tuple | dict | None) -> list[sqlite3.Row]
+  fetchone(sql: str, params: tuple | dict | None) -> sqlite3.Row | None
+  transaction() -> Iterator[None]
+}
+class "StdStreamToLogger" as connector.infra.logging.setup.StdStreamToLogger {
+  buffer : str
+  component : str
+  level : int
+  logger : Logger
+  runId : str
+  flush() -> None
+  write(s: str) -> int
+}
+class "TeeStream" as connector.infra.logging.setup.TeeStream {
+  primary
+  secondary
+  flush() -> None
+  write(s: str) -> int
+}
+}
+
+package "Config" <<config>> {
+class "LoadedSettings" as connector.config.config.LoadedSettings <<config>> {
+  settings
+  sources_used : list[str]
+}
+class "Settings" as connector.config.config.Settings <<config>> {
+  api_password : str | None
+  api_username : str | None
+  ca_file : str | None
+  cache_dir : str
+  csv_has_header : bool
+  dataset_name : str
+  dry_run : bool
+  host : str | None
+  include_deleted : bool
+  log_dir : str
+  log_json : bool
+  log_level : str
+  max_actions : int | None
+  max_pages : int | None
+  page_size : int
+  port : int | None
+  report_dir : str
+  report_format : str
+  report_include_skipped : bool
+  report_items_limit : int
+  resource_exists_retries : int
+  retries : int
+  retry_backoff_seconds : float
+  stop_on_first_error : bool
+  timeout_seconds : float
+  tls_skip_verify : bool
+}
+}
+
+package "Common" <<common>> {
+class "<color:red>AppError</color>" as connector.errors.AppError {
+  category : str
+  code : str
+  details : Dict[str, Any]
+  message : str
+  retryable : bool
+  to_dict() -> Dict[str, Any]
+}
+}
+
+connector.datasets.organizations.cache_sync_adapter.OrganizationsCacheSyncAdapter --|> connector.datasets.cache_sync.CacheSyncAdapterProtocol
+connector.domain.planning.adapters.CacheEmployeeLookup --|> connector.domain.planning.protocols.IdentityLookup
+connector.infra.cache.handlers.employees_handler.EmployeesCacheHandler --|> connector.infra.cache.handlers.base.CacheDatasetHandler
+connector.infra.cache.handlers.organizations_handler.OrganizationsCacheHandler --|> connector.infra.cache.handlers.base.CacheDatasetHandler
+connector.infra.cache.repository.SqliteCacheRepository --|> connector.domain.ports.cache_repository.CacheRepositoryProtocol
+connector.infra.cache.validation_lookups.CacheOrgLookup --|> connector.domain.ports.lookups.OrgLookupProtocol
+connector.infra.http.ankey_client.ApiError --|> connector.errors.AppError
+connector.infra.http.request_executor.AnkeyRequestExecutor --|> connector.domain.ports.execution.RequestExecutorProtocol
+connector.infra.secrets.composite_provider.CompositeSecretProvider --|> connector.domain.ports.secrets.SecretProviderProtocol
+connector.infra.secrets.dict_provider.DictSecretProvider --|> connector.domain.ports.secrets.SecretProviderProtocol
+connector.infra.secrets.null_provider.NullSecretProvider --|> connector.domain.ports.secrets.SecretProviderProtocol
+connector.infra.secrets.prompt_provider.PromptSecretProvider --|> connector.domain.ports.secrets.SecretProviderProtocol
+connector.infra.sources.csv_reader.CsvRowSource --|> connector.domain.ports.sources.LegacyRowSource
+connector.infra.target.ankey_gateway.AnkeyTargetPagedReader --|> connector.domain.ports.target_read.TargetPagedReaderProtocol
+connector.usecases.cache_command_service.CacheCommandService --|> connector.usecases.ports.CacheCommandServiceProtocol
+connector.usecases.import_plan_service.ImportPlanService --|> connector.usecases.ports.ImportPlanServiceProtocol
+connector.config.config.LoadedSettings --> connector.config.config.Settings : settings
+connector.domain.planning.protocols.PlanDecision --> connector.domain.models.Identity : identity
+connector.domain.models.MatchResult --> connector.domain.models.MatchStatus : status
+connector.domain.planning.plan_models.Plan --> connector.domain.planning.plan_models.PlanMeta : meta
+connector.domain.planning.plan_builder.PlanBuildResult --> connector.domain.planning.plan_models.PlanSummary : summary
+connector.domain.planning.plan_models.Plan --> connector.domain.planning.plan_models.PlanSummary : summary
+connector.domain.planning.protocols.PlanDecision --> connector.domain.planning.protocols.PlanDecisionKind : kind
+connector.datasets.spec.ValidatorBundle --> connector.domain.validation.deps.DatasetValidationState : state
+connector.datasets.spec.ValidatorBundle --> connector.domain.validation.pipeline.DatasetValidator : dataset_validator
+connector.datasets.spec.ValidatorBundle --> connector.domain.validation.pipeline.RowValidator : row_validator
+connector.infra.artifacts.report_writer.Report --> connector.infra.artifacts.report_writer.ReportMeta : meta
+connector.infra.artifacts.report_writer.Report --> connector.infra.artifacts.report_writer.ReportSummary : summary
+connector.usecases.cache_command_service.CacheCommandService --> connector.usecases.cache_status_usecase.CacheStatusUseCase : cache_status
+connector.domain.validation.pipeline.ValidatorFactory --* connector.datasets.validation.registry.ValidatorRegistry : factory
+connector.datasets.cache_sync.CacheSyncAdapterProtocol --o connector.usecases.cache_refresh_service.CacheRefreshUseCase : adapters
+connector.datasets.spec.DatasetSpec --o connector.usecases.import_apply_service.ImportApplyService : spec_resolver
+connector.domain.ports.sources.SourceMapper ..> connector.domain.transform.map_result.MapResult : map
+connector.domain.transform.collect_result.CollectResult --> connector.domain.transform.source_record.SourceRecord : record
+connector.domain.validation.pipeline.RowValidator --> connector.domain.ports.sources.SourceMapper : mapper
+connector.domain.transform.map_result.MapResult --> connector.domain.models.RowRef : row_ref
+connector.domain.transform.map_result.MapResult --> connector.domain.transform.match_key.MatchKey : match_key
+connector.datasets.employees.source_mapper.EmployeesSourceMapper --|> connector.domain.ports.sources.SourceMapper
+connector.datasets.employees.source_mapper.EmployeesSourceMapper --> connector.datasets.employees.models.EmployeesRowPublic : maps
+connector.domain.ports.cache_repository.CacheRepositoryProtocol --o connector.usecases.cache_clear_usecase.CacheClearUseCase : cache_repo
+connector.domain.ports.cache_repository.CacheRepositoryProtocol --o connector.usecases.cache_refresh_service.CacheRefreshUseCase : cache_repo
+connector.domain.ports.cache_repository.CacheRepositoryProtocol --o connector.usecases.cache_status_usecase.CacheStatusUseCase : cache_repo
+connector.domain.ports.execution.RequestExecutorProtocol --o connector.usecases.import_apply_service.ImportApplyService : executor
+connector.domain.ports.target_read.TargetPagedReaderProtocol --o connector.usecases.cache_refresh_service.CacheRefreshUseCase : target_reader
+connector.domain.validation.deps.DatasetValidationState --o connector.domain.validation.pipeline.DatasetValidator : state
+connector.domain.validation.deps.ValidationDependencies --o connector.datasets.validation.registry.ValidatorRegistry : deps
+connector.domain.validation.deps.ValidationDependencies --o connector.domain.validation.pipeline.DatasetValidator : deps
+connector.domain.validation.deps.ValidationDependencies --o connector.domain.validation.pipeline.ValidatorFactory : deps
+connector.domain.validation.pipeline.DatasetRule --o connector.domain.validation.pipeline.DatasetValidator : rules
+connector.domain.validation.row_rules.RowRule --o connector.domain.validation.pipeline.RowValidator : rules
+connector.infra.cache.handlers.registry.CacheHandlerRegistry --o connector.infra.cache.repository.SqliteCacheRepository : registry
+connector.infra.cache.sqlite_engine.SqliteEngine --o connector.infra.cache.repository.SqliteCacheRepository : engine
+connector.infra.http.ankey_client.AnkeyApiClient --o connector.infra.http.request_executor.AnkeyRequestExecutor : client
+connector.infra.http.ankey_client.AnkeyApiClient --o connector.infra.target.ankey_gateway.AnkeyTargetPagedReader : client
+connector.datasets.employees.spec.EmployeesSpec --|> connector.datasets.spec.DatasetSpec
+connector.datasets.employees.apply_adapter.EmployeesApplyAdapter --|> connector.datasets.spec.ApplyAdapter
+connector.datasets.employees.planning_policy.EmployeesPlanningPolicy --|> connector.domain.planning.protocols.PlanningPolicyProtocol
+connector.datasets.employees.cache_sync_adapter.EmployeesCacheSyncAdapter --|> connector.datasets.cache_sync.CacheSyncAdapterProtocol
+connector.domain.planning.employees.matcher.EmployeeMatcher --> connector.domain.planning.protocols.IdentityLookup : lookup
+connector.datasets.employees.planning_policy.EmployeesPlanningPolicy --> connector.datasets.employees.projector.EmployeesProjector : projector
+connector.datasets.employees.planning_policy.EmployeesPlanningPolicy --> connector.domain.planning.employees.matcher.EmployeeMatcher : matcher
+connector.datasets.employees.planning_policy.EmployeesPlanningPolicy --> connector.domain.planning.employees.differ.EmployeeDiffer : differ
+connector.datasets.employees.planning_policy.EmployeesPlanningPolicy --> connector.domain.planning.employees.decision.EmployeeDecisionPolicy : decision
+@enduml

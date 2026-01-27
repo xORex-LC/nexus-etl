@@ -1,0 +1,30 @@
+host: "10.10.10.10"
+port: 473
+api_username: "Username"
+api_password: "Password"
+
+cache_dir: "./cache"
+log_dir: "./logs"
+report_dir: "./reports"
+
+tls_skip_verify: true
+ca_file: null
+
+log_level: "DEBUG"
+log_json: false
+report_format: "json"
+
+page_size: 200
+max_pages: null
+timeout_seconds: 20.0
+retries: 3
+retry_backoff_seconds: 0.5
+include_deleted: false
+dataset_name: employees
+report_items_limit: 20
+report_include_skipped: true
+resource_exists_retries: 3
+csv_has_header: false
+stop_on_first_error: false
+max_actions: null
+dry_run: false

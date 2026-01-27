@@ -1,0 +1,11 @@
+raw_id,full_name,login,email_or_phone,contacts,org,manager,flags,employment,extra
+u-001,"Doe, John M.",jdoe,"john.doe@example.com",",+1-202-555-0100|john.alt@example.net",Org:Engineering>Platform,manager: 42,"disabled=false; 2fa=on",hired:2021-01-15;role=Engineer,"badge=E-100;room=3-21"
+U-002,"Ivanov Ivan",ivanov,"+7 (999) 111-22-33","email=ivanov@corp.local;phone=+7-999-111-22-33",Dept=R&D/QA,manager_id=001,"disabled=no",start=15/02/2022;role=QA,"tab=TAB-200"
+003,"Smith; Jane",,"jane.smith@example.com",",+1 202 555 0145",OU=Sales>EMEA,manager: none,"disabled=0",start=2020.05.01;role=Sales,"org_id=30; tab=TAB-300"
+004,"Chen Wei",cwei,"cwei@example.com",",",Org=IT,"manager=10","disabled=true",start=2019-12-31;role=Admin,"password=Temp#123"
+5,"O'Neil Pat",poneil,"poneil@example.com",",+1-202-555-0188",Org=Finance,"manager=abc","disabled=false",start=2023-07-01;role=Analyst,"org_id=bad; tab=TAB-500"
+006,"",nouser,"nouser@example.com",",+1-202-555-0199",Org=HR,"manager=11","disabled=false",start=2022-03-10;role=HR,"tab=TAB-600"
+007,"Lee Sun",slee,"slee_at_example.com","phone=2025550123",Org=Operations,"manager=12","disabled=false",start=2021-09-09;role=Ops,"org_id=20"
+008,"Garcia Maria",mgarcia,"maria@example.com",",+34 600 123 456",Org=Support>Tier2,"manager=13","disabled=no",start=2021-12-01;role=Support,"tab=TAB-800"
+009,"Khan Ali",akhan,"",",+92-300-1234567",Org=Security,"manager=14","disabled=false",start=2020-01-01;role=Sec,"org_id=40; tab=TAB-900"
+010,"Petrov Petr",ppetrov,"petrov@example.com",",+7-999-222-33-44",Org=IT>DevOps,"manager=15","disabled=false",start=2018-11-11;role=DevOps,"org_id=10; tab=TAB-1000"

@@ -3,24 +3,31 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from connector.cli import app
+from connector.infra.cache.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.handlers.registry import CacheHandlerRegistry
+from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
+from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.schema import ensure_cache_ready
+from connector.infra.cache.repository import SqliteCacheRepository
+
+from connector.main import app
 
 runner = CliRunner()
 
-HEADER = (
-    "email;lastName;firstName;middleName;isLogonDisable;userName;phone;password;"
-    "personnelNumber;managerId;organization_id;position;avatarId;usrOrgTabNum"
-)
+HEADER = "raw_id,full_name,login,email_or_phone,contacts,org,manager,flags,employment,extra"
+
 
 def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) -> None:
     lines = []
     if include_header:
         lines.append(HEADER)
     for row in rows:
-        lines.append(";".join(row))
+        lines.append(",".join(row))
     path.write_text("\n".join(lines), encoding="utf-8")
 
-def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1"):
+
+def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[str, str] | None = None):
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
@@ -40,236 +47,293 @@ def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1"):
             str(csv_path),
             "--csv-has-header",
         ],
+        env=env,
     )
     report_path = report_dir / f"report_validate_{run_id}.json"
     return result, report_path
 
+
+def _build_repo(conn) -> SqliteCacheRepository:
+    engine = SqliteEngine(conn)
+    registry = CacheHandlerRegistry()
+    registry.register(EmployeesCacheHandler())
+    registry.register(OrganizationsCacheHandler())
+    ensure_cache_ready(engine, registry)
+    return SqliteCacheRepository(engine, registry)
+
+
+def _seed_org(tmp_path: Path, org_ouid: int) -> None:
+    cache_dir = tmp_path / "cache"
+    db_path = Path(getCacheDbPath(cache_dir))
+    conn = openCacheDb(str(db_path))
+    try:
+        repo = _build_repo(conn)
+        with repo.transaction():
+            repo.upsert(
+                "organizations",
+                {"_ouid": org_ouid, "code": f"ORG-{org_ouid}", "name": f"Org {org_ouid}", "parent_id": None, "updated_at": None},
+            )
+    finally:
+        conn.close()
+
+
+def make_row(
+    *,
+    raw_id: str,
+    full_name: str,
+    login: str,
+    email_or_phone: str,
+    contacts: str,
+    flags: str,
+    role: str,
+    org_id: str,
+    tab: str,
+    password: str = "SECRET1",
+    org: str = "Org=Engineering",
+    manager: str = "",
+) -> list[str]:
+    extra = f"password={password};org_id={org_id};tab={tab}"
+    employment = f"role={role}"
+    return [
+        raw_id,
+        full_name,
+        login,
+        email_or_phone,
+        contacts,
+        org,
+        manager,
+        flags,
+        employment,
+        extra,
+    ]
+
+
 def test_validate_ok_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
-        [
-            "john.doe@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe",
-            "+123456",
-            "SECRET1",
-            "1001",
-            "",
-            "10",
-            "Engineer",
-            "",
-            "5001",
-        ]
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe",
+            email_or_phone="john.doe@example.com",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+        )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="ok")
 
     assert result.exit_code == 0
     assert report_path.exists()
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 0
-    assert report["meta"]["csv_rows_total"] == 1
-    assert report["meta"]["csv_rows_processed"] == 1
+    assert report["summary"]["rows_blocked"] == 0
+    assert report["summary"]["rows_total"] == 1
+
 
 def test_validate_missing_required_returns_1(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
-        [
-            "",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe",
-            "+123456",
-            "SECRET1",
-            "1001",
-            "",
-            "10",
-            "Engineer",
-            "",
-            "5001",
-        ]
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe",
+            email_or_phone="",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+        )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="missing")
 
     assert result.exit_code == 1
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 1
+    assert report["summary"]["rows_blocked"] == 1
+
 
 def test_validate_invalid_boolean_returns_1(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
-        [
-            "john.doe@example.com",
-            "Doe",
-            "John",
-            "M",
-            "yes",
-            "jdoe",
-            "+123456",
-            "SECRET1",
-            "1001",
-            "",
-            "10",
-            "Engineer",
-            "",
-            "5001",
-        ]
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe",
+            email_or_phone="john.doe@example.com",
+            contacts="+123456",
+            flags="disabled=maybe",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+        )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, _ = run_validate(tmp_path, csv_path, run_id="bad-bool")
     assert result.exit_code == 1
 
+
 def test_validate_invalid_email_returns_1(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
-        [
-            "john.doe@example",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe",
-            "+123456",
-            "SECRET1",
-            "1001",
-            "",
-            "10",
-            "Engineer",
-            "",
-            "5001",
-        ]
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe",
+            email_or_phone="john.doe@example",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+        )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, _ = run_validate(tmp_path, csv_path, run_id="bad-email")
     assert result.exit_code == 1
 
-def test_validate_duplicate_matchkey_returns_1(tmp_path: Path):
+
+def test_validate_duplicate_matchkey_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
-        [
-            "john.doe@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe",
-            "+123456",
-            "SECRET1",
-            "1001",
-            "",
-            "10",
-            "Engineer",
-            "",
-            "5001",
-        ],
-        [
-            "john.doe2@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe2",
-            "+123456",
-            "SECRET2",
-            "1001",
-            "",
-            "10",
-            "Engineer",
-            "",
-            "5002",
-        ],
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe",
+            email_or_phone="john.doe@example.com",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+        ),
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe2",
+            email_or_phone="john.doe2@example.com",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5002",
+            password="SECRET2",
+        ),
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="dup-mk")
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 1
-    assert any(
-        err["code"] == "DUPLICATE_MATCHKEY"
-        for err in report["items"][1]["errors"]
-    )
+    assert report["summary"]["rows_blocked"] == 0
 
-def test_validate_duplicate_usr_org_tab_num_returns_1(tmp_path: Path):
+
+def test_validate_duplicate_usr_org_tab_num_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
-        [
-            "john.doe@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe",
-            "+123456",
-            "SECRET1",
-            "1001",
-            "",
-            "10",
-            "Engineer",
-            "",
-            "5001",
-        ],
-        [
-            "jane.doe@example.com",
-            "Doe",
-            "Jane",
-            "K",
-            "false",
-            "jdoe2",
-            "+123456",
-            "SECRET2",
-            "1002",
-            "",
-            "10",
-            "Engineer",
-            "",
-            "5001",
-        ],
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe",
+            email_or_phone="john.doe@example.com",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+        ),
+        make_row(
+            raw_id="1002",
+            full_name="Doe John M",
+            login="jdoe2",
+            email_or_phone="john.doe2@example.com",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+            password="SECRET2",
+        ),
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="dup-tab")
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert any(
-        err["code"] == "DUPLICATE_USR_ORG_TAB_NUM"
-        for err in report["items"][1]["errors"]
-    )
+    assert report["summary"]["rows_blocked"] == 0
 
-def test_validate_masks_password_in_report(tmp_path: Path):
+
+def test_validate_masks_secrets_in_report(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
-    password = "SUPER_SECRET_PASSWORD"
     rows = [
-        [
-            "john.doe@example.com",
-            "Doe",
-            "John",
-            "M",
-            "false",
-            "jdoe",
-            "+123456",
-            password,
-            "1001",
-            "",
-            "10",
-            "Engineer",
-            "",
-            "5001",
-        ]
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe",
+            email_or_phone="",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+            password="SECRET1",
+        )
     ]
     write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="mask")
-    assert result.exit_code == 0
-    report_text = report_path.read_text(encoding="utf-8")
-    assert password not in report_text
+    assert result.exit_code == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["items"][0]["payload"]["password"] == "***"
+
+
+def test_validate_respects_report_items_limit(tmp_path: Path):
+    csv_path = tmp_path / "employees.csv"
+    rows = [
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe",
+            email_or_phone="",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+        )
+        ,
+        make_row(
+            raw_id="1002",
+            full_name="Doe John M",
+            login="jdoe2",
+            email_or_phone="",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5002",
+            password="SECRET2",
+        ),
+    ]
+    write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10)
+
+    env = {"ANKEY_REPORT_ITEMS_LIMIT": "1"}
+    result, report_path = run_validate(tmp_path, csv_path, run_id="limit", env=env)
+    assert result.exit_code == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["meta"]["items_truncated"] is True

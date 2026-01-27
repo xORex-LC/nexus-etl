@@ -5,9 +5,13 @@ from typing import Callable
 import httpx
 from typer.testing import CliRunner
 
-from connector.cacheDb import getCacheDbPath, openCacheDb
-from connector.cacheRepo import getCounts
-from connector.cli import app
+from connector.infra.cache.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.handlers.registry import CacheHandlerRegistry
+from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
+from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.repository import SqliteCacheRepository
+from connector.main import app
 
 runner = CliRunner()
 
@@ -17,16 +21,14 @@ def make_transport(responder: Callable[[httpx.Request], httpx.Response]) -> http
 
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
-    import connector.cli as cli_module
-    import connector.cacheService as cache_service_module
-    from connector.ankeyApiClient import AnkeyApiClient
+    import connector.main as cli_module
+    from connector.infra.http.ankey_client import AnkeyApiClient
 
     def factory(*args, **kwargs):
         kwargs["transport"] = transport
         return AnkeyApiClient(*args, **kwargs)
 
     monkeypatch.setattr(cli_module, "AnkeyApiClient", factory)
-    monkeypatch.setattr(cache_service_module, "AnkeyApiClient", factory)
 
 
 def test_check_api_ok(monkeypatch, tmp_path: Path):
@@ -189,7 +191,13 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        users_count, org_count = getCounts(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        repo = SqliteCacheRepository(engine, registry)
+        users_count = repo.count("employees")
+        org_count = repo.count("organizations")
     finally:
         conn.close()
     assert users_count == 2
@@ -197,9 +205,9 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
 
     report_path = report_dir / "report_cache-refresh_api-refresh.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["failed"] == 0
-    assert report["meta"]["pages_users"] == 2
-    assert report["meta"]["pages_orgs"] == 1
+    assert report["summary"]["rows_blocked"] == 0
+    assert report["context"]["cache_refresh"]["by_dataset"]["employees"]["pages"] == 2
+    assert report["context"]["cache_refresh"]["by_dataset"]["organizations"]["pages"] == 1
 
 
 def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):
@@ -284,7 +292,7 @@ def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):
     assert result.exit_code == 0
     report_path = tmp_path / "reports" / "report_cache-refresh_skip-del.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["skipped"] == 2
+    assert report["context"]["cache_refresh"]["total"]["skipped"] == 2
 
 
 def test_retry_on_500_then_ok(monkeypatch, tmp_path: Path):

@@ -9,6 +9,8 @@ build/
 .cache/
 logs/
 reports/
-cache/
+/cache/
 config.yml
 .vscode
+.VSCode*
+.coverage

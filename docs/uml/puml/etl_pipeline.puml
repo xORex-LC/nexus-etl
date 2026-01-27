@@ -1,0 +1,127 @@
+@startuml
+' =========================================================
+' Component / Layered view (Clean / Hexagonal)
+' =========================================================
+
+top to bottom direction
+
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam ArrowThickness 1
+skinparam nodesep 45
+skinparam ranksep 35
+skinparam interfaceFontSize 14
+skinparam interfaceFontStyle bold
+skinparam interfacePadding 8
+skinparam componentBackgroundColor #FEFECE
+skinparam componentBorderColor #A80036
+skinparam interfaceBackgroundColor #FEFECE
+skinparam interfaceBorderColor #A80036
+
+
+package "Delivery / Orchestration" {
+[CLI Command\nImport/Validate/Apply]
+[Pipeline Orchestrator]
+}
+
+
+package "Use Cases (Application Core)" {
+[ExtractUseCase]
+[TransformUseCase]
+[ValidateUseCase]
+[PrepareForSinkUseCase\n(Normalize + Enrich)]
+[PlanUseCase]
+[ApplyUseCase]
+}
+
+
+package "Domain (Dataset-centric)" {
+[DatasetSpec]
+[CanonicalRow]
+[ValidationRule]
+[NormalizationRule]
+[EnrichmentRule]
+[SyncPolicy]
+}
+
+
+package "Ports (Interfaces)" {
+interface RowSourcePort
+interface SourceMapperPort
+interface CachePort
+interface SinkWriterPort
+interface ArtifactWriterPort
+RowSourcePort -[hidden]-> SourceMapperPort
+SourceMapperPort -[hidden]-> CachePort
+CachePort -[hidden]-> SinkWriterPort
+SinkWriterPort -[hidden]-> ArtifactWriterPort
+}
+
+
+package "Infrastructure (Adapters)" {
+[CSVRowSource]
+[HTTPRowSource]
+[SourceMapper:CSV]
+[SourceMapper:HTTP]
+[LocalCacheAdapter]
+[AnkeyIDMSinkAdapter]
+[PlanFileWriter]
+[ReportWriter]
+}
+
+
+' ---- Orchestration flow ----
+[CLI Command\nImport/Validate/Apply] -down-> [Pipeline Orchestrator]
+[Pipeline Orchestrator] -down-> [ExtractUseCase]
+[Pipeline Orchestrator] -down-> [TransformUseCase]
+[Pipeline Orchestrator] -down-> [PlanUseCase]
+[Pipeline Orchestrator] -down-> [ApplyUseCase]
+
+
+' ---- Extract ----
+[ExtractUseCase] -right-> RowSourcePort
+[CSVRowSource] -up-|> RowSourcePort
+[HTTPRowSource] -up-|> RowSourcePort
+
+
+' ---- Transform (map + validate + prepare) ----
+[TransformUseCase] -right-> SourceMapperPort
+[SourceMapper:CSV] -up-|> SourceMapperPort
+[SourceMapper:HTTP] -up-|> SourceMapperPort
+
+
+[TransformUseCase] -down-> [ValidateUseCase]
+[ValidateUseCase] -down-> [ValidationRule]
+[ValidationRule] -down-> [DatasetSpec]
+
+
+[TransformUseCase] -down-> [PrepareForSinkUseCase\n(Normalize + Enrich)]
+[PrepareForSinkUseCase\n(Normalize + Enrich)] -down-> [NormalizationRule]
+[PrepareForSinkUseCase\n(Normalize + Enrich)] -down-> [EnrichmentRule]
+[EnrichmentRule] -right-> CachePort
+[LocalCacheAdapter] -up-|> CachePort
+
+
+' ---- Canonical Model ----
+[SourceMapper:CSV] -down-> [CanonicalRow]
+[SourceMapper:HTTP] -down-> [CanonicalRow]
+[CanonicalRow] -up-> [ValidateUseCase]
+[CanonicalRow] -up-> [PrepareForSinkUseCase\n(Normalize + Enrich)]
+
+
+' ---- Planning ----
+[PlanUseCase] -down-> [SyncPolicy]
+[PlanUseCase] -down-> [DatasetSpec]
+[PlanUseCase] -right-> ArtifactWriterPort
+[PlanFileWriter] -up-|> ArtifactWriterPort
+[ReportWriter] -up-|> ArtifactWriterPort
+
+
+' ---- Apply / Load ----
+[ApplyUseCase] -right-> SinkWriterPort
+[AnkeyIDMSinkAdapter] -up-|> SinkWriterPort
+
+
+@enduml

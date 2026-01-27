@@ -1,0 +1,218 @@
+@startuml functional_usecase
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam linetype ortho
+skinparam nodesep 35
+skinparam ranksep 25
+
+actor "Operator/CI" as op
+actor "Developer/Integrator" as dev
+
+rectangle "ETL Connector (dataset-agnostic)" as SYS {
+
+  ' ======= TOP-LEVEL =======
+  package "Top-level Operations" as TOP {
+    usecase "Validate Dataset" as UC_VALIDATE
+    usecase "Plan Import" as UC_PLAN
+    usecase "Apply Plan" as UC_APPLY
+    usecase "Refresh Cache" as UC_CACHE_REFRESH
+    usecase "Cache Status" as UC_CACHE_STATUS
+    usecase "Cache Clear" as UC_CACHE_CLEAR
+    usecase "Check API" as UC_CHECK_API
+  }
+
+  ' ======= CLI MANAGED TRANSFORM OPS (your requirement) =======
+  package "CLI Transform Ops" as CLI_T {
+    usecase "Normalize Only\n(CLI)" as UC_NORM_ONLY
+    usecase "Enrich Only\n(CLI)" as UC_ENRICH_ONLY
+    usecase "Map Only\n(CLI)" as UC_MAP_ONLY
+    usecase "Prepare For Sink\n(CLI)\n(Norm+Validate+Enrich+Map)" as UC_PREPARE
+  }
+
+  ' ======= SHARED SUB-SCENARIOS =======
+  package "Shared Sub-Scenarios" as SHARED {
+    usecase "Load Settings\n+ Configure Logging" as UC_BOOT
+    usecase "Resolve DatasetSpec" as UC_SPEC
+    usecase "Init Run Context\n(run_id, clock)" as UC_CTX
+    usecase "Open Report Writer" as UC_OPEN_REPORT
+    usecase "Finalize Report\n+ Exit Code" as UC_FINALIZE
+
+    usecase "Read Source Rows" as UC_READ_SOURCE
+    usecase "Decode Row\n(format->RawRow)" as UC_DECODE
+    usecase "Normalize Row\n(Raw->Canonical)" as UC_NORMALIZE
+    usecase "Validate Row Rules" as UC_VAL_ROW
+    usecase "Validate Dataset Rules\n(cross-row)" as UC_VAL_DATASET
+    usecase "Enrich Row\n(lookups+defaults+secrets)" as UC_ENRICH
+    usecase "Map To Sink Request" as UC_MAP
+
+    usecase "Read Plan Artifact" as UC_READ_PLAN
+    usecase "Write Plan Artifact" as UC_WRITE_PLAN
+    usecase "Compute Match Key" as UC_MATCHKEY
+    usecase "Lookup Existing\n(cache/target)" as UC_LOOKUP
+    usecase "Decide Operation\n(SyncPolicy)" as UC_POLICY
+    usecase "Execute Sink Request" as UC_EXEC
+    usecase "Retry Policy\n(backoff/conflict)" as UC_RETRY
+    usecase "Update Local Cache\n(upsert+meta)" as UC_CACHE_UPDATE
+
+    usecase "Handle Failure\n(classify/stop/continue)" as UC_FAILURE
+  }
+
+  ' ======= DETAILED GROUPS (L2) =======
+  package "Validate (L2 detail)" as L2V {
+    usecase "Validate Loop\nfor each row" as V_LOOP
+    usecase "Write Validation Item" as V_WRITE
+    usecase "Stop On First Error" as V_STOP_FAST
+    usecase "Skip Invalid Row\n(continue)" as V_SKIP
+    usecase "Dump Intermediate\n(raw/normalized)" as V_DUMP
+  }
+
+  package "Plan Import (L2 detail)" as L2P {
+    usecase "Plan Loop\nfor each row" as P_LOOP
+    usecase "Build PlanAction" as P_ACTION
+    usecase "Append Plan Item" as P_APPEND
+    usecase "Mask Secrets In Plan" as P_MASK
+    usecase "Fail If Cache Missing" as P_NEED_CACHE
+  }
+
+  package "Apply Plan (L2 detail)" as L2A {
+    usecase "Apply Loop\nfor each PlanAction" as A_LOOP
+    usecase "Ensure Enriched Desired\n(secrets if missing)" as A_ENSURE
+    usecase "Write Apply Result Item" as A_WRITE
+    usecase "Stop On First Error" as A_STOP_FAST
+    usecase "Skip On Conflicts" as A_SKIP_CONFLICT
+  }
+
+  package "Refresh Cache (L2 detail)" as L2C {
+    usecase "Iterate Pages\n(paged reader)" as C_PAGES
+    usecase "Decode Page\n->records" as C_DECODE
+    usecase "Upsert Records\n(SQLite)" as C_UPSERT
+    usecase "Update Cache Metadata" as C_META
+  }
+
+  TOP -[hidden]-> CLI_T
+  CLI_T -[hidden]-> SHARED
+  SHARED -[hidden]-> L2V
+  L2V -[hidden]-> L2P
+  L2P -[hidden]-> L2A
+  L2A -[hidden]-> L2C
+
+  UC_VALIDATE -[hidden]-> UC_PLAN
+  UC_PLAN -[hidden]-> UC_APPLY
+  UC_APPLY -[hidden]-> UC_CACHE_REFRESH
+  UC_CACHE_REFRESH -[hidden]-> UC_CACHE_STATUS
+  UC_CACHE_STATUS -[hidden]-> UC_CACHE_CLEAR
+  UC_CACHE_CLEAR -[hidden]-> UC_CHECK_API
+
+  UC_NORM_ONLY -[hidden]-> UC_ENRICH_ONLY
+  UC_ENRICH_ONLY -[hidden]-> UC_MAP_ONLY
+  UC_MAP_ONLY -[hidden]-> UC_PREPARE
+}
+
+' ======= Actors =======
+op --> UC_VALIDATE
+op --> UC_PLAN
+op --> UC_APPLY
+op --> UC_CACHE_REFRESH
+op --> UC_CACHE_STATUS
+op --> UC_CACHE_CLEAR
+op --> UC_CHECK_API
+
+dev --> UC_NORM_ONLY
+dev --> UC_ENRICH_ONLY
+dev --> UC_MAP_ONLY
+dev --> UC_PREPARE
+
+' ======= Top-level includes =======
+UC_VALIDATE ..> UC_BOOT : <<include>>
+UC_VALIDATE ..> UC_SPEC : <<include>>
+UC_VALIDATE ..> UC_CTX : <<include>>
+UC_VALIDATE ..> UC_OPEN_REPORT : <<include>>
+UC_VALIDATE ..> V_LOOP : <<include>>
+UC_VALIDATE ..> UC_FINALIZE : <<include>>
+UC_VALIDATE ..> UC_FAILURE : <<extend>>
+
+UC_PLAN ..> UC_BOOT : <<include>>
+UC_PLAN ..> UC_SPEC : <<include>>
+UC_PLAN ..> UC_CTX : <<include>>
+UC_PLAN ..> UC_OPEN_REPORT : <<include>>
+UC_PLAN ..> P_LOOP : <<include>>
+UC_PLAN ..> UC_WRITE_PLAN : <<include>>
+UC_PLAN ..> UC_FINALIZE : <<include>>
+UC_PLAN ..> UC_FAILURE : <<extend>>
+
+UC_APPLY ..> UC_BOOT : <<include>>
+UC_APPLY ..> UC_SPEC : <<include>>
+UC_APPLY ..> UC_CTX : <<include>>
+UC_APPLY ..> UC_OPEN_REPORT : <<include>>
+UC_APPLY ..> UC_READ_PLAN : <<include>>
+UC_APPLY ..> A_LOOP : <<include>>
+UC_APPLY ..> UC_FINALIZE : <<include>>
+UC_APPLY ..> UC_FAILURE : <<extend>>
+
+UC_CACHE_REFRESH ..> UC_BOOT : <<include>>
+UC_CACHE_REFRESH ..> UC_SPEC : <<include>>
+UC_CACHE_REFRESH ..> UC_OPEN_REPORT : <<include>>
+UC_CACHE_REFRESH ..> C_PAGES : <<include>>
+UC_CACHE_REFRESH ..> UC_FINALIZE : <<include>>
+UC_CACHE_REFRESH ..> UC_FAILURE : <<extend>>
+
+' ======= CLI transform ops composition =======
+UC_PREPARE ..> UC_READ_SOURCE : <<include>>
+UC_PREPARE ..> UC_DECODE : <<include>>
+UC_PREPARE ..> UC_NORMALIZE : <<include>>
+UC_PREPARE ..> UC_VAL_ROW : <<include>>
+UC_PREPARE ..> UC_ENRICH : <<include>>
+UC_PREPARE ..> UC_MAP : <<include>>
+
+UC_NORM_ONLY ..> UC_READ_SOURCE : <<include>>
+UC_NORM_ONLY ..> UC_DECODE : <<include>>
+UC_NORM_ONLY ..> UC_NORMALIZE : <<include>>
+
+UC_ENRICH_ONLY ..> UC_READ_SOURCE : <<include>>
+UC_ENRICH_ONLY ..> UC_ENRICH : <<include>>
+
+UC_MAP_ONLY ..> UC_READ_SOURCE : <<include>>
+UC_MAP_ONLY ..> UC_MAP : <<include>>
+
+' ======= Validate L2 detail =======
+V_LOOP ..> UC_READ_SOURCE : <<include>>
+V_LOOP ..> UC_DECODE : <<include>>
+V_LOOP ..> UC_NORMALIZE : <<include>>
+V_LOOP ..> UC_VAL_ROW : <<include>>
+V_LOOP ..> UC_VAL_DATASET : <<include>>
+V_LOOP ..> V_WRITE : <<include>>
+
+V_STOP_FAST ..> UC_VALIDATE : <<extend>>
+V_SKIP ..> UC_VALIDATE : <<extend>>
+V_DUMP ..> UC_VALIDATE : <<extend>>
+
+' ======= Plan L2 detail =======
+P_LOOP ..> UC_READ_SOURCE : <<include>>
+P_LOOP ..> UC_PREPARE : <<include>>
+P_LOOP ..> UC_MATCHKEY : <<include>>
+P_LOOP ..> UC_LOOKUP : <<include>>
+P_LOOP ..> UC_POLICY : <<include>>
+P_LOOP ..> P_ACTION : <<include>>
+P_LOOP ..> P_APPEND : <<include>>
+
+P_MASK ..> UC_PLAN : <<extend>>
+P_NEED_CACHE ..> UC_PLAN : <<extend>>
+
+' ======= Apply L2 detail =======
+A_LOOP ..> A_ENSURE : <<include>>
+A_LOOP ..> UC_MAP : <<include>>
+A_LOOP ..> UC_EXEC : <<include>>
+UC_EXEC ..> UC_RETRY : <<include>>
+A_LOOP ..> A_WRITE : <<include>>
+
+A_STOP_FAST ..> UC_APPLY : <<extend>>
+A_SKIP_CONFLICT ..> UC_APPLY : <<extend>>
+
+' ======= Cache Refresh L2 detail =======
+C_PAGES ..> C_DECODE : <<include>>
+C_PAGES ..> C_UPSERT : <<include>>
+C_PAGES ..> C_META : <<include>>
+C_UPSERT ..> UC_CACHE_UPDATE : <<include>>
+
+@enduml

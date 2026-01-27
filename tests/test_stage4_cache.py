@@ -4,16 +4,52 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import httpx
-from connector.cacheDb import ensureSchema, getCacheDbPath, openCacheDb
-from connector.cacheRepo import getCounts, getUserByMatchKey, upsertUser
-from connector.cli import app
-from connector.ankeyApiClient import AnkeyApiClient
+from connector.infra.cache.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.handlers.registry import CacheHandlerRegistry
+from connector.infra.cache.handlers.employees_handler import EmployeesCacheHandler
+from connector.infra.cache.handlers.organizations_handler import OrganizationsCacheHandler
+from connector.infra.cache.schema import ensure_cache_ready
+from connector.infra.cache.repository import SqliteCacheRepository
+from connector.domain.ports.cache_repository import UpsertResult
+from connector.main import app
+from connector.infra.http.ankey_client import AnkeyApiClient
 
 runner = CliRunner()
 
-DATA_DIR = Path(__file__).parent / "data"
-USERS_JSON = DATA_DIR / "users_min.json"
-ORG_JSON = DATA_DIR / "org_min.json"
+# Минимальные наборы данных, имитирующие ответы API
+USERS_PAYLOAD = [
+    {
+        "_id": "user-123",
+        "_ouid": 999,
+        "personnel_number": "7777",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "mail": "john.doe@example.com",
+        "user_name": "jdoe",
+        "phone": "+111",
+        "usr_org_tab_num": "TAB-7777",
+        "organization_id": 201,
+        "account_status": "active",
+        "deletion_date": None,
+        "_rev": None,
+        "manager_ouid": None,
+        "is_logon_disabled": False,
+        "position": "Engineer",
+        "updated_at": "2024-01-01T00:00:00Z",
+    }
+]
+
+ORG_PAYLOAD = [
+    {
+        "_ouid": 201,
+        "code": "ORG-201",
+        "name": "Engineering",
+        "parent_id": None,
+        "updated_at": "2024-01-01T00:00:00Z",
+    }
+]
 
 
 def make_transport(responder):
@@ -21,25 +57,28 @@ def make_transport(responder):
 
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
-    import connector.cli as cli_module
-    import connector.cacheService as cache_service_module
+    import connector.main as cli_module
 
     def factory(*args, **kwargs):
         kwargs["transport"] = transport
         return AnkeyApiClient(*args, **kwargs)
 
     monkeypatch.setattr(cli_module, "AnkeyApiClient", factory)
-    monkeypatch.setattr(cache_service_module, "AnkeyApiClient", factory)
 
 def test_cache_schema_created(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        ensure_cache_ready(engine, registry)
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"meta", "users", "organizations"}.issubset(tables)
-        schema_version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
+        repo = SqliteCacheRepository(engine, registry)
+        schema_version = repo.get_meta(None).values.get("schema_version")
         assert schema_version == "2"
     finally:
         conn.close()
@@ -51,7 +90,12 @@ def test_cache_upsert_user(tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        ensureSchema(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        ensure_cache_ready(engine, registry)
+        repo = SqliteCacheRepository(engine, registry)
         user = {
             "_id": "user-123",
             "_ouid": 999,
@@ -73,17 +117,20 @@ def test_cache_upsert_user(tmp_path: Path):
             "position": "Engineer",
             "updated_at": "2024-01-01T00:00:00Z",
         }
-        status1 = upsertUser(conn, user)
+        status1 = repo.upsert("employees", user)
         user["phone"] = "+222"
-        status2 = upsertUser(conn, user)
-        fetched = getUserByMatchKey(conn, user["match_key"])
+        status2 = repo.upsert("employees", user)
+        fetched_row = conn.execute(
+            "SELECT * FROM users WHERE match_key = ?",
+            (user["match_key"],),
+        ).fetchone()
     finally:
         conn.close()
 
-    assert status1 == "inserted"
-    assert status2 == "updated"
-    assert fetched is not None
-    assert fetched["phone"] == "+222"
+    assert status1 == UpsertResult.INSERTED
+    assert status2 == UpsertResult.UPDATED
+    assert fetched_row is not None
+    assert fetched_row["phone"] == "+222"
 
 def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", monkeypatch=None):
     log_dir = tmp_path / "logs"
@@ -111,18 +158,15 @@ def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", monkeypatch=Non
     ]
 
     if monkeypatch is not None:
-        users = json.loads(USERS_JSON.read_text(encoding="utf-8"))
-        orgs = json.loads(ORG_JSON.read_text(encoding="utf-8"))
-
         def responder(request: httpx.Request) -> httpx.Response:
             params = dict(request.url.params)
             if "organization" in request.url.path:
                 if params.get("page") in ("1", 1, None):
-                    return httpx.Response(200, json={"result": orgs})
+                    return httpx.Response(200, json={"result": ORG_PAYLOAD})
                 return httpx.Response(200, json={"result": []})
             if "user" in request.url.path:
                 if params.get("page") in ("1", 1, None):
-                    return httpx.Response(200, json={"result": users})
+                    return httpx.Response(200, json={"result": USERS_PAYLOAD})
                 return httpx.Response(200, json={"result": []})
             return httpx.Response(404, text="not found")
 
@@ -144,7 +188,13 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
 
     conn = openCacheDb(str(db_path))
     try:
-        users_count, org_count = getCounts(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        repo = SqliteCacheRepository(engine, registry)
+        users_count = repo.count("employees")
+        org_count = repo.count("organizations")
     finally:
         conn.close()
 
@@ -152,8 +202,9 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
     assert org_count == 1
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["created"] == 2  # 1 user + 1 org
-    assert report["summary"]["failed"] == 0
+    total = report["context"]["cache_refresh"]["total"]
+    assert total["inserted"] == 2  # 1 user + 1 org
+    assert report["summary"]["rows_blocked"] == 0
 
 def test_cache_status_ok(monkeypatch, tmp_path: Path):
     refresh_result, cache_dir, _, _ = run_cache_refresh(tmp_path, run_id="refresh-for-status", monkeypatch=monkeypatch)
@@ -179,8 +230,9 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
     report_path = report_dir / "report_cache-status_status-1.json"
 
     assert result.exit_code == 0
-    assert "users=1" in result.stdout
-    assert "orgs=1" in result.stdout
+    assert "total=2" in result.stdout
+    assert "employees: count=1" in result.stdout
+    assert "organizations: count=1" in result.stdout
     assert report_path.exists()
 
 def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
@@ -209,7 +261,13 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     try:
-        users_count, org_count = getCounts(conn)
+        engine = SqliteEngine(conn)
+        registry = CacheHandlerRegistry()
+        registry.register(EmployeesCacheHandler())
+        registry.register(OrganizationsCacheHandler())
+        repo = SqliteCacheRepository(engine, registry)
+        users_count = repo.count("employees")
+        org_count = repo.count("organizations")
     finally:
         conn.close()
 
