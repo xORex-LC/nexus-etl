@@ -42,6 +42,9 @@ class _DummyEnrichDeps:
     def find_user_by_usr_org_tab_num(self, tab_num: str):
         return None
 
+    def find_org_by_ouid(self, _ouid: int):
+        return {"_ouid": _ouid}
+
 def test_row_validator_parses_valid_row():
     collected = _collect(
         [

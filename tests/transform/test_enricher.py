@@ -19,6 +19,9 @@ class _DummyEnrichDeps:
     def find_user_by_usr_org_tab_num(self, _tab_num: str):
         return None
 
+    def find_org_by_ouid(self, _ouid: int):
+        return {"_ouid": _ouid}
+
 
 class _DummySecretStore:
     def __init__(self) -> None:

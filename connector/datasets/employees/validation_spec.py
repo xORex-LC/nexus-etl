@@ -75,28 +75,6 @@ def _validate_positive_int(field: str) -> FieldValidator:
     return _inner
 
 
-def _validate_org_exists(
-    value: Any,
-    _: NormalizedEmployeesRow,
-    deps: ValidationDependencies,
-    errors: list[ValidationErrorItem],
-) -> None:
-    if value is None:
-        return
-    if deps.org_lookup is None:
-        return
-    org_exists = deps.org_lookup.get_by_id("organizations", value)
-    if org_exists is None:
-        errors.append(
-            ValidationErrorItem(
-                stage=DiagnosticStage.VALIDATE,
-                code="ORG_NOT_FOUND",
-                field="organization_id",
-                message="organization_id not found in cache",
-            )
-        )
-
-
 def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:
     mapping_spec = EmployeesMappingSpec()
     rules: list[ValidationRule[NormalizedEmployeesRow]] = []
@@ -105,7 +83,7 @@ def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:
         if attr == "email":
             validators = (_validate_email,)
         elif attr == "organization_id":
-            validators = (_validate_positive_int("organization_id"), _validate_org_exists)
+            validators = (_validate_positive_int("organization_id"),)
         rules.append(
             FieldRule(
                 name=attr,

@@ -24,3 +24,6 @@ class EmployeesEnrichDependencies:
 
     def find_user_by_usr_org_tab_num(self, tab_num: str) -> dict[str, Any] | None:
         return legacy_queries.findUserByUsrOrgTabNum(self.conn, tab_num)
+
+    def find_org_by_ouid(self, ouid: int) -> dict[str, Any] | None:
+        return legacy_queries.getOrgByOuid(self.conn, ouid)

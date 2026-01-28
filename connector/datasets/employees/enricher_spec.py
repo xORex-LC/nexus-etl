@@ -95,6 +95,27 @@ class ManagerLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDepend
 
 
 @dataclass(frozen=True)
+class OrganizationLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
+    name: str = "organization_lookup"
+
+    def apply(self, result, deps, errors, warnings) -> None:
+        _ = warnings
+        org_id = result.row.organization_id
+        if org_id is None:
+            return
+        org = deps.find_org_by_ouid(int(org_id))
+        if org is None:
+            errors.append(
+                ValidationErrorItem(
+                    stage=DiagnosticStage.ENRICH,
+                    code="ORG_NOT_FOUND",
+                    field="organization_id",
+                    message="organization_id not found in cache",
+                )
+            )
+
+
+@dataclass(frozen=True)
 class ResourceIdRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
     name: str = "resource_id"
     max_attempts: int = 3
@@ -177,6 +198,7 @@ class EmployeesEnricherSpec(EnricherSpec[NormalizedEmployeesRow, EmployeesEnrich
     rules: tuple[EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies], ...] = (
         BuildMatchKeyRule(),
         ManagerLookupRule(),
+        OrganizationLookupRule(),
         ResourceIdRule(),
         UsrOrgTabNumRule(),
         PasswordRule(),
