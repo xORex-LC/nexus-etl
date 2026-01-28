@@ -95,6 +95,25 @@ def _validate_org_reference(
                 )
             )
         return
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return
+        numeric = raw.lstrip("+-")
+        if numeric.isdigit():
+            try:
+                parsed = int(raw)
+            except ValueError:
+                return
+            if parsed <= 0:
+                errors.append(
+                    ValidationErrorItem(
+                        stage=DiagnosticStage.VALIDATE,
+                        code="INVALID_INT",
+                        field="organization_id",
+                        message="organization_id must be an integer > 0",
+                    )
+                )
 
 
 def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:

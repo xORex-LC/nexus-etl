@@ -191,7 +191,7 @@ class Resolver:
             current_value = desired_state.get(rule.field)
             if current_value is None:
                 continue
-            if isinstance(current_value, int):
+            if isinstance(current_value, int) and _should_skip_int(rule):
                 continue
 
             overrides = _extract_link_key_overrides(meta, rule.field)
@@ -434,6 +434,13 @@ def _max_attempts(settings: ResolverSettings | None) -> int:
     if settings is None:
         return 0
     return settings.pending_max_attempts
+
+
+def _should_skip_int(rule: LinkFieldRule) -> bool:
+    for key in rule.resolve_keys:
+        if key.name == rule.target_id_field:
+            return False
+    return True
 
 
 def _collect_batch_keys(link_rules: LinkRules, dataset: str) -> tuple[set[str], str]:

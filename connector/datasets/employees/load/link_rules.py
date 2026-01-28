@@ -23,6 +23,7 @@ def build_link_rules() -> LinkRules:
                 target_dataset="organizations",
                 resolve_keys=(
                     LinkKeyRule(name="name", field="organization_id"),
+                    LinkKeyRule(name="_ouid", field="organization_id"),
                 ),
                 dedup_rules=(
                     ("code",),
