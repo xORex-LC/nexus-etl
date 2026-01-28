@@ -4,13 +4,13 @@ from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.transform.source_record import SourceRecord
-from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
-from connector.datasets.employees.source_mapper import EmployeesSourceMapper
+from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
+from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
 from connector.infra.artifacts.report_writer import createEmptyReport
-from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
+from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.usecases.mapping_usecase import MappingUseCase
-from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
-from connector.datasets.employees.source_mapper import SOURCE_COLUMNS
+from connector.datasets.employees.transform.normalizer_spec import EmployeesNormalizerSpec
+from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
 
 
 def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:

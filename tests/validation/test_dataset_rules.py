@@ -5,12 +5,12 @@ from connector.domain.validation.validator import Validator
 from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
-from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
-from connector.datasets.employees.source_mapper import EmployeesSourceMapper
-from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
-from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
-from connector.datasets.employees.source_mapper import SOURCE_COLUMNS
-from connector.datasets.employees.validation_spec import EmployeesValidationSpec
+from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
+from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
+from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
+from connector.datasets.employees.transform.normalizer_spec import EmployeesNormalizerSpec
+from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
+from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
 
 
 def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None]:

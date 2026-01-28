@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from connector.domain.models import DiagnosticStage, Identity, MatchStatus, ValidationErrorItem
 from connector.domain.transform.enricher import EnrichRule, EnricherSpec
 from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
-from connector.datasets.employees.enrich_deps import EmployeesEnrichDependencies
-from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
-from connector.datasets.employees.normalized import NormalizedEmployeesRow
+from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
+from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
+from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.validation.row_rules import normalize_whitespace
 
 

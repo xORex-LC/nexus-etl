@@ -6,8 +6,8 @@ from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from typing import Mapping
 import re
-from connector.datasets.employees.models import EmployeesRowPublic
-from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
+from connector.datasets.employees.extract.models import EmployeesRowPublic
+from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 
 SOURCE_COLUMNS = [
     "raw_id",

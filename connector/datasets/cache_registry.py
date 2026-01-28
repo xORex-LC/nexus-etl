@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
-from connector.datasets.employees.cache_sync_adapter import EmployeesCacheSyncAdapter
-from connector.datasets.organizations.cache_sync_adapter import OrganizationsCacheSyncAdapter
-from connector.datasets.employees.cache_spec import employees_cache_spec
-from connector.datasets.organizations.cache_spec import organizations_cache_spec
+from connector.datasets.employees.load.cache_sync_adapter import EmployeesCacheSyncAdapter
+from connector.datasets.organizations.load.cache_sync_adapter import OrganizationsCacheSyncAdapter
+from connector.datasets.employees.load.cache_spec import employees_cache_spec
+from connector.datasets.organizations.load.cache_spec import organizations_cache_spec
 from connector.infra.cache.cache_spec import CacheSpec
 
 

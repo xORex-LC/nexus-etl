@@ -7,8 +7,8 @@ from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.row_rules import validate_email
 from connector.domain.validation.validator import FieldRule, ValidationRule, ValidationSpec
-from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
-from connector.datasets.employees.normalized import NormalizedEmployeesRow
+from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
+from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
 FieldValidator = Callable[

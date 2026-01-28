@@ -9,7 +9,7 @@ from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, Plan
 from connector.domain.error_codes import ErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
 from connector.domain.reporting.collector import ReportCollector
-from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
+from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
 
 runner = CliRunner()
 

@@ -5,7 +5,7 @@ from typing import Any
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.transform.normalizer import NormalizerRule, NormalizerSpec
 from connector.domain.validation.row_rules import normalize_whitespace, _boolean_parser, parse_int_strict
-from connector.datasets.employees.normalized import NormalizedEmployeesRow
+from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
 def _normalize_text(value: Any, errors, warnings) -> str | None:

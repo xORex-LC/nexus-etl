@@ -6,7 +6,7 @@ from connector.domain.models import RowRef
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
-from connector.datasets.employees.source_mapper import EmployeesSourceMapper
+from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
 
 
 def test_employees_source_mapper_builds_secrets():

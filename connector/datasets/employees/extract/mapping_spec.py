@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from connector.datasets.employees.models import EmployeesRowPublic
+from connector.datasets.employees.extract.models import EmployeesRowPublic
 
 
 @dataclass(frozen=True)

@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
-from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
-from connector.datasets.employees.normalized import NormalizedEmployeesRow
+from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
+from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
 @dataclass

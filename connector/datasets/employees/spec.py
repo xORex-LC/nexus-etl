@@ -1,29 +1,29 @@
 from __future__ import annotations
 
 from connector.datasets.spec import DatasetSpec, TransformBundle, ValidationBundle
-from connector.datasets.employees.projector import EmployeesProjector
-from connector.datasets.employees.reporting import employees_report_adapter
-from connector.datasets.employees.apply_adapter import EmployeesApplyAdapter
+from connector.datasets.employees.load.projector import EmployeesProjector
+from connector.datasets.employees.load.reporting import employees_report_adapter
+from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
 from connector.domain.planning.adapters import CacheEmployeeLookup
 from connector.domain.planning.deps import PlanningDependencies
 from connector.domain.planning.employees.decision import EmployeeDecisionPolicy
 from connector.domain.planning.employees.differ import EmployeeDiffer
 from connector.domain.planning.employees.matcher import EmployeeMatcher
-from connector.datasets.employees.planning_policy import EmployeesPlanningPolicy
+from connector.datasets.employees.load.planning_policy import EmployeesPlanningPolicy
 from connector.domain.validation.deps import ValidationDependencies
-from connector.datasets.employees.validation_spec import EmployeesValidationSpec
+from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
 from connector.domain.ports.secrets import SecretProviderProtocol
-from connector.datasets.employees.source_mapper import EmployeesSourceMapper
-from connector.datasets.employees.mapping_spec import EmployeesMappingSpec
-from connector.datasets.employees.normalizer_spec import EmployeesNormalizerSpec
-from connector.datasets.employees.enricher_spec import EmployeesEnricherSpec
-from connector.datasets.employees.enrich_deps import EmployeesEnrichDependencies
+from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
+from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
+from connector.datasets.employees.transform.normalizer_spec import EmployeesNormalizerSpec
+from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
+from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.validator import Validator
 from connector.infra.sources.csv_reader import CsvRecordSource
-from connector.datasets.employees.cache_spec import employees_cache_spec
-from connector.datasets.organizations.cache_spec import organizations_cache_spec
+from connector.datasets.employees.load.cache_spec import employees_cache_spec
+from connector.datasets.organizations.load.cache_spec import organizations_cache_spec
 
 class EmployeesSpec(DatasetSpec):
     """

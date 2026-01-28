@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from connector.domain.models import MatchStatus, ValidationRowResult
 from connector.domain.planning.protocols import PlanDecision, PlanDecisionKind, PlanningPolicyProtocol
-from connector.datasets.employees.projector import EmployeesProjector
+from connector.datasets.employees.load.projector import EmployeesProjector
 from connector.domain.planning.employees.decision import DecisionOutcome, EmployeeDecisionPolicy
 from connector.domain.planning.employees.differ import EmployeeDiffer
 from connector.domain.planning.employees.matcher import EmployeeMatcher
