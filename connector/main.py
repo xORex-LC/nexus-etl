@@ -13,8 +13,6 @@ from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.repository import SqliteCacheRepository
-from connector.infra.cache.handlers.registry import CacheHandlerRegistry
-from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
 from connector.usecases.cache_command_service import CacheCommandService
@@ -66,12 +64,6 @@ def ensureDir(path: str) -> None:
         - Path(path).mkdir(parents=True, exist_ok=True)
     """
     Path(path).mkdir(parents=True, exist_ok=True)
-
-def build_cache_registry(cache_specs) -> CacheHandlerRegistry:
-    registry = CacheHandlerRegistry()
-    for spec in cache_specs:
-        registry.register(GenericCacheHandler(spec))
-    return registry
 
 def requireCsv(csvPath: str | None) -> None:
     """
@@ -294,10 +286,10 @@ def runCacheRefreshCommand(
             client.resetRetryAttempts()
 
             engine = SqliteEngine(conn)
-            handler_registry = build_cache_registry(list_cache_specs())
-            ensure_cache_ready(engine, handler_registry)
+            cache_specs = list_cache_specs()
+            ensure_cache_ready(engine, cache_specs)
 
-            cache_repo = SqliteCacheRepository(engine, handler_registry)
+            cache_repo = SqliteCacheRepository(engine, cache_specs)
             if dataset is not None and dataset not in cache_repo.list_datasets():
                 typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
                 return 2
@@ -353,10 +345,10 @@ def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> Non
 
         try:
             engine = SqliteEngine(conn)
-            handler_registry = build_cache_registry(list_cache_specs())
-            ensure_cache_ready(engine, handler_registry)
+            cache_specs = list_cache_specs()
+            ensure_cache_ready(engine, cache_specs)
 
-            cache_repo = SqliteCacheRepository(engine, handler_registry)
+            cache_repo = SqliteCacheRepository(engine, cache_specs)
             if dataset is not None and dataset not in cache_repo.list_datasets():
                 typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
                 return 2
@@ -405,10 +397,10 @@ def runCacheClearCommand(ctx: typer.Context, dataset: str | None = None) -> None
 
         try:
             engine = SqliteEngine(conn)
-            handler_registry = build_cache_registry(list_cache_specs())
-            ensure_cache_ready(engine, handler_registry)
+            cache_specs = list_cache_specs()
+            ensure_cache_ready(engine, cache_specs)
 
-            cache_repo = SqliteCacheRepository(engine, handler_registry)
+            cache_repo = SqliteCacheRepository(engine, cache_specs)
             if dataset is not None and dataset not in cache_repo.list_datasets():
                 typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
                 return 2
@@ -465,8 +457,8 @@ def runImportPlanCommand(
 
         try:
             engine = SqliteEngine(conn)
-            handler_registry = build_cache_registry(list_cache_specs())
-            ensure_cache_ready(engine, handler_registry)
+            cache_specs = list_cache_specs()
+            ensure_cache_ready(engine, cache_specs)
 
             service = ImportPlanService()
             return service.run(
@@ -654,8 +646,8 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
             return 2
         try:
             engine = SqliteEngine(conn)
-            handler_registry = build_cache_registry(dataset_spec.build_cache_specs())
-            ensure_cache_ready(engine, handler_registry)
+            cache_specs = dataset_spec.build_cache_specs()
+            ensure_cache_ready(engine, cache_specs)
 
             deps = dataset_spec.build_validation_deps(conn, settings)
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
@@ -731,8 +723,8 @@ def runMappingCommand(
             return 2
         try:
             engine = SqliteEngine(conn)
-            handler_registry = build_cache_registry(dataset_spec.build_cache_specs())
-            ensure_cache_ready(engine, handler_registry)
+            cache_specs = dataset_spec.build_cache_specs()
+            ensure_cache_ready(engine, cache_specs)
 
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
             transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
@@ -794,8 +786,8 @@ def runNormalizeCommand(
             return 2
         try:
             engine = SqliteEngine(conn)
-            handler_registry = build_cache_registry(dataset_spec.build_cache_specs())
-            ensure_cache_ready(engine, handler_registry)
+            cache_specs = dataset_spec.build_cache_specs()
+            ensure_cache_ready(engine, cache_specs)
 
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
             transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
@@ -859,8 +851,8 @@ def runEnrichCommand(
             return 2
         try:
             engine = SqliteEngine(conn)
-            handler_registry = build_cache_registry(dataset_spec.build_cache_specs())
-            ensure_cache_ready(engine, handler_registry)
+            cache_specs = dataset_spec.build_cache_specs()
+            ensure_cache_ready(engine, cache_specs)
 
             secret_store = FileVaultSecretStore(vaultFile) if vaultFile else None
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)

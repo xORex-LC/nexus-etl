@@ -100,21 +100,17 @@ package "connector.infra.cache.handlers" as connector.infra.cache.handlers {
 }
 package "connector.infra.cache.handlers.base" as connector.infra.cache.handlers.base {
 }
+package "connector.infra.cache.handlers.generic_handler" as connector.infra.cache.handlers.generic_handler {
+}
 package "connector.infra.cache.handlers.employees_handler" as connector.infra.cache.handlers.employees_handler {
 }
 package "connector.infra.cache.handlers.organizations_handler" as connector.infra.cache.handlers.organizations_handler {
-}
-package "connector.infra.cache.handlers.registry" as connector.infra.cache.handlers.registry {
-}
-package "connector.infra.cache.legacy_queries" as connector.infra.cache.legacy_queries {
 }
 package "connector.infra.cache.repository" as connector.infra.cache.repository {
 }
 package "connector.infra.cache.schema" as connector.infra.cache.schema {
 }
 package "connector.infra.cache.sqlite_engine" as connector.infra.cache.sqlite_engine {
-}
-package "connector.infra.cache.validation_lookups" as connector.infra.cache.validation_lookups {
 }
 package "connector.infra.http" as connector.infra.http {
 }
@@ -179,7 +175,6 @@ connector.datasets.validation.registry --> connector.domain.validation.pipeline
 connector.domain.exceptions --> connector.domain.error_codes
 connector.domain.planning.adapters --> connector.domain.models
 connector.domain.planning.adapters --> connector.domain.planning.protocols
-connector.domain.planning.adapters --> connector.infra.cache.legacy_queries
 connector.domain.planning.deps --> connector.domain.planning.protocols
 connector.domain.planning.generic_planner --> connector.domain.models
 connector.domain.planning.generic_planner --> connector.domain.planning.plan_builder
@@ -210,15 +205,11 @@ connector.infra.cache.handlers.employees_handler --> connector.infra.cache.sqlit
 connector.infra.cache.handlers.organizations_handler --> connector.domain.ports.cache_repository
 connector.infra.cache.handlers.organizations_handler --> connector.infra.cache.handlers.base
 connector.infra.cache.handlers.organizations_handler --> connector.infra.cache.sqlite_engine
-connector.infra.cache.handlers.registry --> connector.infra.cache.handlers.base
 connector.infra.cache.repository --> connector.domain.ports.cache_repository
-connector.infra.cache.repository --> connector.infra.cache.handlers.registry
+connector.infra.cache.repository --> connector.infra.cache.handlers.generic_handler
 connector.infra.cache.repository --> connector.infra.cache.sqlite_engine
-connector.infra.cache.schema --> connector.infra.cache.handlers.registry
+connector.infra.cache.schema --> connector.infra.cache.handlers.generic_handler
 connector.infra.cache.schema --> connector.infra.cache.sqlite_engine
-connector.infra.cache.validation_lookups --> connector.domain.ports.lookups
-connector.infra.cache.validation_lookups --> connector.infra.cache
-connector.infra.cache.validation_lookups --> connector.infra.cache.legacy_queries
 connector.infra.http.ankey_client --> connector.errors
 connector.infra.http.request_executor --> connector.common.sanitize
 connector.infra.http.request_executor --> connector.domain.error_codes
@@ -252,7 +243,6 @@ connector.main --> connector.infra.artifacts.report_writer
 connector.main --> connector.infra.cache.db
 connector.main --> connector.infra.cache.handlers.employees_handler
 connector.main --> connector.infra.cache.handlers.organizations_handler
-connector.main --> connector.infra.cache.handlers.registry
 connector.main --> connector.infra.cache.repository
 connector.main --> connector.infra.cache.schema
 connector.main --> connector.infra.cache.sqlite_engine

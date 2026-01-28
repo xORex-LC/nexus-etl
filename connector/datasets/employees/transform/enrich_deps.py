@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from connector.domain.ports.cache_repository import CacheRepositoryProtocol
 from connector.domain.ports.lookups import LookupProtocol
 from connector.domain.ports.secrets import SecretStoreProtocol
-from connector.infra.cache import legacy_queries
 
 
 @dataclass(frozen=True)
@@ -17,13 +17,14 @@ class EmployeesEnrichDependencies:
 
     conn: Any
     identity_lookup: LookupProtocol | None
+    cache_repo: CacheRepositoryProtocol
     secret_store: SecretStoreProtocol | None = None
 
     def find_user_by_id(self, resource_id: str) -> dict[str, Any] | None:
-        return legacy_queries.findUserById(self.conn, resource_id)
+        return self.cache_repo.find_one("employees", {"_id": resource_id}, include_deleted=True)
 
     def find_user_by_usr_org_tab_num(self, tab_num: str) -> dict[str, Any] | None:
-        return legacy_queries.findUserByUsrOrgTabNum(self.conn, tab_num)
+        return self.cache_repo.find_one("employees", {"usr_org_tab_num": tab_num}, include_deleted=True)
 
     def find_org_by_ouid(self, ouid: int) -> dict[str, Any] | None:
-        return legacy_queries.getOrgByOuid(self.conn, ouid)
+        return self.cache_repo.find_one("organizations", {"_ouid": ouid}, include_deleted=True)

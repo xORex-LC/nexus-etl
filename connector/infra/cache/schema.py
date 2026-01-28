@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from connector.infra.cache.handlers.registry import CacheHandlerRegistry
+from connector.infra.cache.cache_spec import CacheSpec
+from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
 SCHEMA_VERSION = 2
@@ -27,15 +28,15 @@ def ensure_base_schema(engine: SqliteEngine) -> int:
     return current_version
 
 
-def ensure_cache_ready(engine: SqliteEngine, registry: CacheHandlerRegistry) -> int:
+def ensure_cache_ready(engine: SqliteEngine, cache_specs: list[CacheSpec]) -> int:
     """
     Назначение:
         Инициализирует базовую схему и таблицы датасетов.
     """
     with engine.transaction():
         version = ensure_base_schema(engine)
-        for handler in registry.list():
-            handler.ensure_schema(engine)
+        for spec in cache_specs:
+            GenericCacheHandler(spec).ensure_schema(engine)
     return version
 
 

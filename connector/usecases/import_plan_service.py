@@ -54,7 +54,7 @@ class ImportPlanService:
             report_items_limit=report_items_limit,
             include_enriched_items=False,
         )
-        enriched_ok = enrich_usecase.iter_enriched_ok(
+        enriched = enrich_usecase.iter_enriched(
             row_source=row_source,
             transformer=transformer,
         )
@@ -63,7 +63,7 @@ class ImportPlanService:
             include_valid_items=False,
         )
         validated_rows = validate_usecase.iter_validated(
-            enriched_source=enriched_ok,
+            enriched_source=enriched,
             validator=validator,
         )
         use_case = PlanUseCase(

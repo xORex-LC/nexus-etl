@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from connector.domain.models import Identity, MatchResult, MatchStatus
+from connector.domain.ports.cache_repository import CacheRepositoryProtocol
 from connector.domain.ports.lookups import LookupProtocol
-from connector.infra.cache import legacy_queries
 
 
 class CacheEmployeeLookup(LookupProtocol):
@@ -10,16 +10,16 @@ class CacheEmployeeLookup(LookupProtocol):
     Назначение/ответственность:
         Адаптер LookupProtocol, использующий локальный кэш/БД.
     Взаимодействия:
-        Делегирует поиск в findUsersByMatchKey.
+        Делегирует поиск в CacheRepositoryProtocol.find/find_one.
     Ограничения:
-        Транзакционность/соединение остаются на уровне вызывающего кода.
+        Транзакционность/жизненный цикл соединения остаются на уровне вызывающего кода.
     Примечание:
         TODO: Это employees-специфика (match_key). Нужна универсальная реализация,
         когда будет общий lookup между доменной identity и схемой хранения кэша.
     """
 
-    def __init__(self, conn):
-        self.conn = conn
+    def __init__(self, cache_repo: CacheRepositoryProtocol):
+        self.cache_repo = cache_repo
 
     def match(self, identity: Identity, include_deleted: bool) -> MatchResult:
         """
@@ -36,7 +36,11 @@ class CacheEmployeeLookup(LookupProtocol):
         if identity.primary != "match_key":
             raise ValueError(f"Unsupported identity primary for employees: {identity.primary}")
         key_value = identity.values.get("match_key", "")
-        candidates = legacy_queries.findUsersByMatchKey(self.conn, key_value)
+        candidates = self.cache_repo.find(
+            "employees",
+            {"match_key": key_value},
+            include_deleted=True,
+        )
         if not include_deleted:
             candidates = [c for c in candidates if not _is_deleted(c)]
 
@@ -53,7 +57,11 @@ class CacheEmployeeLookup(LookupProtocol):
         """
         if entity not in ("users", "employees"):
             return None
-        return legacy_queries.findUserById(self.conn, str(value))
+        return self.cache_repo.find_one(
+            "employees",
+            {"_id": str(value)},
+            include_deleted=True,
+        )
 
 
 def _is_deleted(user_row) -> bool:

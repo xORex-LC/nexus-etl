@@ -6,8 +6,6 @@ from typer.testing import CliRunner
 import httpx
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.sqlite_engine import SqliteEngine
-from connector.infra.cache.handlers.registry import CacheHandlerRegistry
-from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.datasets.cache_registry import list_cache_specs
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.repository import SqliteCacheRepository
@@ -71,13 +69,11 @@ def test_cache_schema_created(tmp_path: Path):
     conn = openCacheDb(str(db_path))
     try:
         engine = SqliteEngine(conn)
-        registry = CacheHandlerRegistry()
-        for spec in list_cache_specs():
-            registry.register(GenericCacheHandler(spec))
-        ensure_cache_ready(engine, registry)
+        cache_specs = list_cache_specs()
+        ensure_cache_ready(engine, cache_specs)
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"meta", "users", "organizations"}.issubset(tables)
-        repo = SqliteCacheRepository(engine, registry)
+        repo = SqliteCacheRepository(engine, cache_specs)
         schema_version = repo.get_meta(None).values.get("schema_version")
         assert schema_version == "2"
     finally:
@@ -91,11 +87,9 @@ def test_cache_upsert_user(tmp_path: Path):
     conn = openCacheDb(str(db_path))
     try:
         engine = SqliteEngine(conn)
-        registry = CacheHandlerRegistry()
-        for spec in list_cache_specs():
-            registry.register(GenericCacheHandler(spec))
-        ensure_cache_ready(engine, registry)
-        repo = SqliteCacheRepository(engine, registry)
+        cache_specs = list_cache_specs()
+        ensure_cache_ready(engine, cache_specs)
+        repo = SqliteCacheRepository(engine, cache_specs)
         user = {
             "_id": "user-123",
             "_ouid": 999,
@@ -189,10 +183,8 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
     conn = openCacheDb(str(db_path))
     try:
         engine = SqliteEngine(conn)
-        registry = CacheHandlerRegistry()
-        for spec in list_cache_specs():
-            registry.register(GenericCacheHandler(spec))
-        repo = SqliteCacheRepository(engine, registry)
+        cache_specs = list_cache_specs()
+        repo = SqliteCacheRepository(engine, cache_specs)
         users_count = repo.count("employees")
         org_count = repo.count("organizations")
     finally:
@@ -262,10 +254,8 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
     conn = openCacheDb(str(db_path))
     try:
         engine = SqliteEngine(conn)
-        registry = CacheHandlerRegistry()
-        for spec in list_cache_specs():
-            registry.register(GenericCacheHandler(spec))
-        repo = SqliteCacheRepository(engine, registry)
+        cache_specs = list_cache_specs()
+        repo = SqliteCacheRepository(engine, cache_specs)
         users_count = repo.count("employees")
         org_count = repo.count("organizations")
     finally:

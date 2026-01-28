@@ -24,6 +24,8 @@ from connector.domain.validation.validator import Validator
 from connector.infra.sources.csv_reader import CsvRecordSource
 from connector.datasets.employees.load.cache_spec import employees_cache_spec
 from connector.datasets.organizations.load.cache_spec import organizations_cache_spec
+from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.repository import SqliteCacheRepository
 
 class EmployeesSpec(DatasetSpec):
     """
@@ -39,11 +41,20 @@ class EmployeesSpec(DatasetSpec):
         return ValidationDependencies()
 
     def build_planning_deps(self, conn, settings) -> PlanningDependencies:
-        return PlanningDependencies(identity_lookup=CacheEmployeeLookup(conn))
+        _ = settings
+        cache_repo = self._build_cache_repo(conn)
+        return PlanningDependencies(identity_lookup=CacheEmployeeLookup(cache_repo))
 
     def build_enrich_deps(self, conn, settings, secret_store=None) -> EmployeesEnrichDependencies:
-        identity_lookup = CacheEmployeeLookup(conn)
-        return EmployeesEnrichDependencies(conn=conn, identity_lookup=identity_lookup, secret_store=secret_store)
+        _ = settings
+        cache_repo = self._build_cache_repo(conn)
+        identity_lookup = CacheEmployeeLookup(cache_repo)
+        return EmployeesEnrichDependencies(
+            conn=conn,
+            identity_lookup=identity_lookup,
+            cache_repo=cache_repo,
+            secret_store=secret_store,
+        )
 
     def build_transformers(self, deps: ValidationDependencies, enrich_deps: EmployeesEnrichDependencies) -> TransformBundle:
         _ = deps
@@ -64,6 +75,10 @@ class EmployeesSpec(DatasetSpec):
 
     def build_cache_specs(self) -> list:
         return [organizations_cache_spec, employees_cache_spec]
+
+    def _build_cache_repo(self, conn) -> SqliteCacheRepository:
+        engine = SqliteEngine(conn)
+        return SqliteCacheRepository(engine, self.build_cache_specs())
 
     def build_record_source(
         self,
