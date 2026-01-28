@@ -1,0 +1,105 @@
+@startuml
+title Resolver - Class Diagram
+
+class Resolver {
+  - resolve_rules: ResolveRules
+  - link_rules: LinkRules
+  - identity_repo: IdentityRepository
+  - pending_repo: PendingLinksRepository
+  - settings: ResolverSettings
+  + resolve(matched, resource_id_map, meta, batch_index)
+  + build_batch_index(matched_rows, dataset)
+}
+
+class ResolveRules {
+  + build_desired_state
+  + build_source_ref
+  + diff_policy
+  + secret_fields_for_op
+  + merge_policy
+}
+
+class LinkRules {
+  + fields: LinkFieldRule[*]
+}
+
+class LinkFieldRule {
+  + field: str
+  + target_dataset: str
+  + resolve_keys: LinkKeyRule[*]
+  + dedup_rules: tuple
+  + target_id_field: str
+  + coerce: str
+}
+
+class LinkKeyRule {
+  + name: str
+  + field: str
+}
+
+class ResolverSettings {
+  + pending_ttl_seconds: int
+  + pending_max_attempts: int
+  + pending_sweep_interval_seconds: int
+  + pending_on_expire: str
+  + pending_allow_partial: bool
+}
+
+class IdentityRepository <<protocol>> {
+  + upsert_identity(dataset, identity_key, resolved_id)
+  + find_candidates(dataset, identity_key)
+}
+
+class PendingLinksRepository <<protocol>> {
+  + add_pending(...)
+  + touch_attempt(pending_id)
+  + list_pending_for_key(dataset, identity_key)
+  + mark_conflict(pending_id)
+  + mark_resolved(pending_id)
+  + sweep_expired(...)
+}
+
+class MatchedRow {
+  + row_ref
+  + identity
+  + match_status
+  + desired_state
+  + existing
+  + resource_id
+}
+
+class ResolvedRow {
+  + row_ref
+  + identity
+  + op
+  + desired_state
+  + changes
+  + existing
+  + resource_id
+  + source_ref
+  + secret_fields
+}
+
+class TransformResult<T> {
+  + record
+  + row
+  + row_ref
+  + match_key
+  + meta
+  + errors
+  + warnings
+}
+
+Resolver --> ResolveRules
+Resolver --> LinkRules
+Resolver --> IdentityRepository
+Resolver --> PendingLinksRepository
+Resolver --> ResolverSettings
+Resolver ..> MatchedRow
+Resolver ..> ResolvedRow
+TransformResult <|-- "TransformResult[ResolvedRow]"
+TransformResult <|-- "TransformResult[MatchedRow]"
+LinkRules o-- LinkFieldRule
+LinkFieldRule o-- LinkKeyRule
+
+@enduml

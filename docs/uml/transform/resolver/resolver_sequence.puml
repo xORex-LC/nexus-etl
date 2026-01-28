@@ -1,0 +1,75 @@
+@startuml
+title Resolver.resolve - Sequence Diagram
+
+actor "ResolveUseCase" as RU
+participant "Resolver" as R
+participant "IdentityRepo" as IR
+participant "PendingRepo" as PR
+
+RU -> R: resolve(matched, meta, batch_index)
+activate R
+R -> R: _maybe_sweep_expired()
+
+alt match_status conflict
+  R -> R: add error RESOLVE_CONFLICT
+  R --> RU: (row=None, errors)
+  deactivate R
+  return
+end
+
+R -> R: desired_state = merge_policy(existing, desired)
+
+loop each LinkFieldRule
+  alt field missing OR value is None
+    R -> R: continue
+  else value is int AND skip-int
+    R -> R: continue
+  else
+    R -> R: key_values = extract(meta, desired_state)
+    R -> R: lookup candidates (batch_index or IR)
+    alt no candidates
+      R -> PR: add_pending(dataset, field, lookup_key, expires_at, payload)
+      R -> PR: touch_attempt(pending_id)
+      alt attempts >= max
+        R -> PR: mark_conflict(pending_id)
+        R -> R: add error RESOLVE_MAX_ATTEMPTS
+        R --> RU: (row=None, errors)
+        deactivate R
+        return
+      else
+        R -> R: add warning RESOLVE_PENDING
+        alt allow_partial = false
+          R --> RU: (row=None, warnings)
+          deactivate R
+          return
+        end
+      end
+    else exactly one
+      R -> R: coerce resolved_id
+      R -> R: desired_state[field] = resolved_id
+    else multiple
+      R -> R: add warning RESOLVE_PENDING (multi)
+      alt allow_partial = false
+        R --> RU: (row=None, warnings)
+        deactivate R
+        return
+      end
+    end
+  end
+end
+
+R -> R: resource_id = resolve_resource_id()
+alt resource_id missing
+  R -> R: add error RESOLVE_MISSING_EXISTING
+  R --> RU: (row=None, errors)
+  deactivate R
+  return
+end
+
+R -> R: op, changes = decide_op()
+R -> R: build ResolvedRow
+R -> PR: mark_resolved_for_source(row_id) [if no pending]
+R --> RU: (ResolvedRow, errors, warnings)
+
+deactivate R
+@enduml

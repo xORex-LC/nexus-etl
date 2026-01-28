@@ -1,0 +1,65 @@
+@startuml
+title Resolver.resolve - Activity Diagram
+
+start
+:maybe_sweep_expired;
+
+if (match_status conflict?) then (yes)
+  :add error RESOLVE_CONFLICT;
+  stop
+endif
+
+:merge desired_state (merge_policy?);
+
+repeat
+  :take next LinkFieldRule;
+  if (field missing OR value None?) then (yes)
+    :skip rule;
+  elseif (value is int AND skip-int?) then (yes)
+    :skip rule;
+  else (no)
+    :extract key_values
+from meta + desired_state;
+    :lookup candidates
+(batch_index or identity_repo);
+    if (candidates == 0?) then (yes)
+      :add pending;
+      :touch attempt;
+      if (attempts >= max?) then (yes)
+        :mark conflict;
+        :add error RESOLVE_MAX_ATTEMPTS;
+        stop
+      else (no)
+        :add warning RESOLVE_PENDING;
+        if (allow_partial?) then (yes)
+          :continue;
+        else (no)
+          stop
+        endif
+      endif
+    elseif (candidates == 1?) then (yes)
+      :coerce resolved_id;
+      :desired_state[field] = resolved_id;
+    else (multiple)
+      :add warning RESOLVE_PENDING (multi);
+      if (allow_partial?) then (yes)
+        :continue;
+      else (no)
+        stop
+      endif
+    endif
+  endif
+repeat while (more rules?) is (yes)
+
+:resource_id = resolve_resource_id;
+if (resource_id missing?) then (yes)
+  :add error RESOLVE_MISSING_EXISTING;
+  stop
+endif
+
+:op, changes = decide_op;
+:build ResolvedRow;
+:mark_resolved_for_source (if no pending);
+stop
+
+@enduml
