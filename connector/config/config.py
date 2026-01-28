@@ -79,6 +79,9 @@ class Settings:
     pending_sweep_interval_seconds: int = 60
     pending_on_expire: str = "error"
     pending_allow_partial: bool = False
+    # Срок хранения обработанных pending-записей (в днях). 0 = не чистить.
+    pending_retention_days: int = 14
+    pending_retention_days: int = 14
 
 @dataclass(frozen=True)
 class LoadedSettings:
@@ -310,6 +313,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "pending_sweep_interval_seconds": envGet("ANKEY_PENDING_SWEEP_INTERVAL_SECONDS"),
         "pending_on_expire": envGet("ANKEY_PENDING_ON_EXPIRE"),
         "pending_allow_partial": envGet("ANKEY_PENDING_ALLOW_PARTIAL"),
+        "pending_retention_days": envGet("ANKEY_PENDING_RETENTION_DAYS"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -352,6 +356,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         ),
         "pending_on_expire": cfg.get("pending_on_expire", defaults.pending_on_expire),
         "pending_allow_partial": cfg.get("pending_allow_partial", defaults.pending_allow_partial),
+        "pending_retention_days": cfg.get("pending_retention_days", defaults.pending_retention_days),
     }
 
     if env["host"] is not None:
@@ -419,6 +424,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["pending_on_expire"] = env["pending_on_expire"]
     if env["pending_allow_partial"] is not None:
         merged["pending_allow_partial"] = parseBool(env["pending_allow_partial"])
+    if env["pending_retention_days"] is not None:
+        merged["pending_retention_days"] = parseInt(env["pending_retention_days"])
 
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
@@ -460,6 +467,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         or defaults.pending_sweep_interval_seconds,
         pending_on_expire=merged["pending_on_expire"] or defaults.pending_on_expire,
         pending_allow_partial=parseBoolAny(merged["pending_allow_partial"]) or False,
+        pending_retention_days=parseIntAny(merged["pending_retention_days"])
+        or defaults.pending_retention_days,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)

@@ -182,6 +182,29 @@ class SqlitePendingLinksRepository(PendingLinksRepository):
         )
         return pending
 
+    def purge_stale(
+        self,
+        cutoff: str,
+        statuses: tuple[str, ...] | None = None,
+    ) -> int:
+        # Удаляем обработанные записи из pending_links по сроку хранения.
+        eff_statuses = statuses or (
+            PendingStatus.RESOLVED.value,
+            PendingStatus.EXPIRED.value,
+            PendingStatus.CONFLICT.value,
+        )
+        placeholders = ", ".join("?" for _ in eff_statuses)
+        row = self.engine.execute(
+            f"""
+            DELETE FROM pending_links
+            WHERE status IN ({placeholders})
+              AND COALESCE(last_attempt_at, created_at) IS NOT NULL
+              AND COALESCE(last_attempt_at, created_at) <= ?
+            """,
+            (*eff_statuses, cutoff),
+        )
+        return int(row.rowcount or 0)
+
 
 def _row_to_pending(row) -> PendingLink:
     return PendingLink(

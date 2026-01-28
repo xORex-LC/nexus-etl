@@ -19,6 +19,7 @@ class ResolverSettings:
     pending_sweep_interval_seconds: int
     pending_on_expire: str
     pending_allow_partial: bool
+    pending_retention_days: int
 
 
 @dataclass

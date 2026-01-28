@@ -33,3 +33,4 @@ pending_max_attempts: 5
 pending_sweep_interval_seconds: 60
 pending_on_expire: error
 pending_allow_partial: false
+pending_retention_days: 14

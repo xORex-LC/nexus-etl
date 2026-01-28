@@ -71,6 +71,7 @@ def test_resolver_resolves_link_from_identity_index():
         pending_sweep_interval_seconds=0,
         pending_on_expire="error",
         pending_allow_partial=False,
+        pending_retention_days=14,
     )
     resolver, pending_repo = _make_resolver(engine, settings)
     identity_repo = SqliteIdentityRepository(engine)
@@ -98,6 +99,7 @@ def test_resolver_creates_pending_when_no_candidate():
         pending_sweep_interval_seconds=0,
         pending_on_expire="error",
         pending_allow_partial=False,
+        pending_retention_days=14,
     )
     resolver, pending_repo = _make_resolver(engine, settings)
 
@@ -123,6 +125,7 @@ def test_resolver_stops_after_max_attempts():
         pending_sweep_interval_seconds=0,
         pending_on_expire="error",
         pending_allow_partial=False,
+        pending_retention_days=14,
     )
     resolver, pending_repo = _make_resolver(engine, settings)
 
@@ -148,6 +151,7 @@ def test_resolver_allows_partial_when_configured():
         pending_sweep_interval_seconds=0,
         pending_on_expire="error",
         pending_allow_partial=True,
+        pending_retention_days=14,
     )
     resolver, pending_repo = _make_resolver(engine, settings)
 
@@ -174,6 +178,7 @@ def test_resolver_uses_batch_index_for_candidates():
         pending_sweep_interval_seconds=0,
         pending_on_expire="error",
         pending_allow_partial=False,
+        pending_retention_days=14,
     )
     resolver, pending_repo = _make_resolver(engine, settings)
 
@@ -206,6 +211,7 @@ def test_resolver_dedup_rules_narrow_candidates():
         pending_sweep_interval_seconds=0,
         pending_on_expire="error",
         pending_allow_partial=False,
+        pending_retention_days=14,
     )
     resolver, pending_repo = _make_resolver(engine, settings)
     identity_repo = SqliteIdentityRepository(engine)

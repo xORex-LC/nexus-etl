@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from connector.common.sanitize import maskSecretsInObject
@@ -79,6 +80,7 @@ class ResolveUseCase:
                 store=status == "FAILED" or self.include_resolved_items,
             )
             _report_expired(report, resolver.drain_expired(), resolver.settings)
+        _purge_pending(resolver)
         return 1 if report.summary.errors_total > 0 else 0
 
     def _iter_resolved(
@@ -140,6 +142,19 @@ def _build_batch_index(
     if dataset is None:
         return {}
     return resolver.build_batch_index(matched_rows, dataset)
+
+
+def _purge_pending(resolver: Resolver) -> None:
+    # Чистим обработанные pending-записи по retention, если включено.
+    settings = resolver.settings
+    if settings is None:
+        return
+    if settings.pending_retention_days <= 0:
+        return
+    if resolver.pending_repo is None:
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.pending_retention_days)
+    resolver.pending_repo.purge_stale(cutoff.isoformat())
 
 
 def _resolve_status(item: TransformResult) -> str | None:

@@ -120,6 +120,7 @@ def _build_resolver_settings(settings) -> ResolverSettings:
             pending_sweep_interval_seconds=60,
             pending_on_expire="error",
             pending_allow_partial=False,
+            pending_retention_days=14,
         )
     return ResolverSettings(
         pending_ttl_seconds=settings.pending_ttl_seconds,
@@ -127,4 +128,5 @@ def _build_resolver_settings(settings) -> ResolverSettings:
         pending_sweep_interval_seconds=settings.pending_sweep_interval_seconds,
         pending_on_expire=settings.pending_on_expire,
         pending_allow_partial=settings.pending_allow_partial,
+        pending_retention_days=settings.pending_retention_days,
     )

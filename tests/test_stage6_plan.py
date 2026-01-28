@@ -8,6 +8,8 @@ from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.datasets.cache_registry import list_cache_specs
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.repository import SqliteCacheRepository
+from connector.infra.cache.identity_repository import SqliteIdentityRepository
+from connector.domain.planning.identity_keys import format_identity_key
 from connector.main import app
 
 runner = CliRunner()
@@ -56,19 +58,25 @@ def _build_repo(conn) -> SqliteCacheRepository:
 
 
 def _seed_org(repo: SqliteCacheRepository, ouid: int) -> None:
+    identity_repo = SqliteIdentityRepository(repo.engine)
     with repo.transaction():
         repo.upsert(
             "organizations",
             {"_ouid": ouid, "code": f"ORG-{ouid}", "name": f"Org {ouid}", "parent_id": None, "updated_at": None},
         )
+        identity_repo.upsert_identity("organizations", format_identity_key("_ouid", str(ouid)), str(ouid))
+        identity_repo.upsert_identity("organizations", format_identity_key("name", f"Org {ouid}"), str(ouid))
+        identity_repo.upsert_identity("organizations", format_identity_key("code", f"ORG-{ouid}"), str(ouid))
 
 def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: str, organization_id: int) -> None:
+    identity_repo = SqliteIdentityRepository(repo.engine)
+    ouid = int(_id.replace("u", "")) if _id.startswith("u") else 1
     with repo.transaction():
         repo.upsert(
             "employees",
             {
                 "_id": _id,
-                "_ouid": int(_id.replace("u", "")) if _id.startswith("u") else 1,
+                "_ouid": ouid,
                 "personnel_number": "100",
                 "last_name": "Doe",
                 "first_name": "John",
@@ -88,6 +96,8 @@ def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: 
                 "updated_at": None,
             },
         )
+        identity_repo.upsert_identity("employees", format_identity_key("match_key", match_key), str(ouid))
+        identity_repo.upsert_identity("employees", format_identity_key("organization_id", str(organization_id)), str(ouid))
 
 def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
     log_dir = tmp_path / "logs"

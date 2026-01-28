@@ -81,3 +81,9 @@ class PendingLinksRepository(Protocol):
     def touch_attempt(self, pending_id: int) -> int: ...
 
     def sweep_expired(self, now: str, *, reason: str | None = None) -> list[PendingLink]: ...
+
+    def purge_stale(
+        self,
+        cutoff: str,
+        statuses: tuple[str, ...] | None = None,
+    ) -> int: ...
