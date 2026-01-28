@@ -23,6 +23,3 @@ class EmployeesEnrichDependencies:
 
     def find_user_by_usr_org_tab_num(self, tab_num: str) -> dict[str, Any] | None:
         return self.cache_repo.find_one("employees", {"usr_org_tab_num": tab_num}, include_deleted=True)
-
-    def find_org_by_ouid(self, ouid: int) -> dict[str, Any] | None:
-        return self.cache_repo.find_one("organizations", {"_ouid": ouid}, include_deleted=True)

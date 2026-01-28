@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.transform.normalizer import NormalizerRule, NormalizerSpec
 from connector.domain.validation.row_rules import normalize_whitespace, _boolean_parser, parse_int_strict
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
@@ -17,20 +16,22 @@ def _normalize_text(value: Any, errors, warnings) -> str | None:
     return normalized or None
 
 
-def _int_parser(value: Any, errors, warnings) -> int | None:
+def _organization_parser(value: Any, errors, warnings) -> int | str | None:
+    _ = errors
     _ = warnings
-    try:
-        return parse_int_strict(str(value))
-    except ValueError:
-        errors.append(
-            ValidationErrorItem(
-                stage=DiagnosticStage.NORMALIZE,
-                code="INVALID_INT",
-                field="organization_id",
-                message="organization_id must be an integer",
-            )
-        )
+    if value is None:
         return None
+    if isinstance(value, int):
+        return value
+    normalized = normalize_whitespace(str(value))
+    if not normalized:
+        return None
+    if normalized.isdigit():
+        try:
+            return parse_int_strict(normalized)
+        except ValueError:
+            return normalized
+    return normalized
 
 
 class EmployeesNormalizerSpec(NormalizerSpec[NormalizedEmployeesRow]):
@@ -50,7 +51,7 @@ class EmployeesNormalizerSpec(NormalizerSpec[NormalizedEmployeesRow]):
         NormalizerRule("password", "password", parser=_normalize_text),
         NormalizerRule("personnel_number", "personnel_number", parser=_normalize_text),
         NormalizerRule("manager_id", "manager_id", parser=_normalize_text),
-        NormalizerRule("organization_id", "organization_id", parser=_int_parser),
+        NormalizerRule("organization_id", "organization_id", parser=_organization_parser),
         NormalizerRule("position", "position", parser=_normalize_text),
         NormalizerRule("avatar_id", "avatar_id", parser=_normalize_text),
         NormalizerRule("usr_org_tab_num", "usr_org_tab_num", parser=_normalize_text),

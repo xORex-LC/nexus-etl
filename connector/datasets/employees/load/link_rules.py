@@ -18,5 +18,17 @@ def build_link_rules() -> LinkRules:
                 target_id_field="_ouid",
                 coerce="int",
             ),
+            LinkFieldRule(
+                field="organization_id",
+                target_dataset="organizations",
+                resolve_keys=(
+                    LinkKeyRule(name="name", field="organization_id"),
+                ),
+                dedup_rules=(
+                    ("code",),
+                ),
+                target_id_field="_ouid",
+                coerce="int",
+            ),
         ),
     )
