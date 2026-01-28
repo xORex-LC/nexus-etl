@@ -27,6 +27,29 @@ class SqlitePendingLinksRepository(PendingLinksRepository):
         expires_at: str | None,
         payload: str | None = None,
     ) -> int:
+        existing = self.engine.fetchone(
+            """
+            SELECT pending_id
+            FROM pending_links
+            WHERE dataset = ? AND source_row_id = ? AND field = ? AND lookup_key = ? AND status = ?
+            """,
+            (dataset, source_row_id, field, lookup_key, PendingStatus.PENDING.value),
+        )
+        if existing is not None:
+            pending_id = int(existing[0])
+            if payload is not None or expires_at is not None:
+                self.engine.execute(
+                    """
+                    UPDATE pending_links
+                    SET payload = COALESCE(?, payload),
+                        expires_at = COALESCE(?, expires_at),
+                        last_attempt_at = CURRENT_TIMESTAMP
+                    WHERE pending_id = ?
+                    """,
+                    (payload, expires_at, pending_id),
+                )
+            return pending_id
+
         cur = self.engine.execute(
             """
             INSERT INTO pending_links(
@@ -119,7 +142,7 @@ class SqlitePendingLinksRepository(PendingLinksRepository):
             (PendingStatus.EXPIRED.value, reason, pending_id),
         )
 
-    def touch_attempt(self, pending_id: int) -> None:
+    def touch_attempt(self, pending_id: int) -> int:
         self.engine.execute(
             """
             UPDATE pending_links
@@ -128,6 +151,11 @@ class SqlitePendingLinksRepository(PendingLinksRepository):
             """,
             (pending_id,),
         )
+        row = self.engine.fetchone(
+            "SELECT attempts FROM pending_links WHERE pending_id = ?",
+            (pending_id,),
+        )
+        return int(row[0]) if row is not None else 0
 
     def sweep_expired(self, now: str, *, reason: str | None = None) -> list[PendingLink]:
         rows = self.engine.fetchall(

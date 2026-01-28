@@ -48,7 +48,7 @@ class ResolveUseCase:
         report,
     ) -> int:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
-        _report_expired(report, resolver.drain_expired())
+        _report_expired(report, resolver.drain_expired(), resolver.settings)
         for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset):
             row = resolved.row
             if row is None:
@@ -76,7 +76,7 @@ class ResolveUseCase:
                 meta={"op": row.op if row else None},
                 store=status == "FAILED" or self.include_resolved_items,
             )
-            _report_expired(report, resolver.drain_expired())
+            _report_expired(report, resolver.drain_expired(), resolver.settings)
         return 1 if report.summary.errors_total > 0 else 0
 
     def _iter_resolved(
@@ -149,8 +149,36 @@ def _resolve_status(item: TransformResult) -> str | None:
     return None
 
 
-def _report_expired(report, expired) -> None:
+def _report_expired(report, expired, settings) -> None:
+    mode = getattr(settings, "pending_on_expire", "error") if settings is not None else "error"
+    if mode == "skip":
+        return
     for item in expired:
+        error = ValidationErrorItem(
+            stage=DiagnosticStage.RESOLVE,
+            code="RESOLVE_EXPIRED",
+            field=item.field,
+            message=item.reason or "pending link expired",
+        )
+        if mode == "report_only":
+            report.add_item(
+                status="OK",
+                row_ref=RowRef(
+                    line_no=0,
+                    row_id=item.source_row_id,
+                    identity_primary=None,
+                    identity_value=None,
+                ),
+                payload=None,
+                errors=[],
+                warnings=[error],
+                meta={
+                    "pending_id": item.pending_id,
+                    "lookup_key": item.lookup_key,
+                },
+                store=True,
+            )
+            continue
         report.add_item(
             status="FAILED",
             row_ref=RowRef(
@@ -160,14 +188,7 @@ def _report_expired(report, expired) -> None:
                 identity_value=None,
             ),
             payload=None,
-            errors=[
-                ValidationErrorItem(
-                    stage=DiagnosticStage.RESOLVE,
-                    code="RESOLVE_EXPIRED",
-                    field=item.field,
-                    message=item.reason or "pending link expired",
-                )
-            ],
+            errors=[error],
             warnings=[],
             meta={
                 "pending_id": item.pending_id,

@@ -205,13 +205,11 @@ class Resolver:
             )
             if resolved_id is None:
                 pending_created = True
-                if not _allow_partial(self.settings):
-                    should_stop = True
                 row_id = matched.row_ref.row_id
                 expires_at = _build_expires_at(self.settings)
                 lookup_key = used_lookup or ""
                 payload = _serialize_pending_payload(matched, desired_state, meta)
-                self.pending_repo.add_pending(
+                pending_id = self.pending_repo.add_pending(
                     dataset=rule.target_dataset,
                     source_row_id=row_id,
                     field=rule.field,
@@ -219,6 +217,19 @@ class Resolver:
                     expires_at=expires_at,
                     payload=payload,
                 )
+                attempts = self.pending_repo.touch_attempt(pending_id)
+                max_attempts = _max_attempts(self.settings)
+                if max_attempts > 0 and attempts >= max_attempts:
+                    self.pending_repo.mark_conflict(pending_id, reason="max attempts reached")
+                    errors.append(
+                        ValidationErrorItem(
+                            stage=DiagnosticStage.RESOLVE,
+                            code="RESOLVE_MAX_ATTEMPTS",
+                            field=rule.field,
+                            message="pending max attempts reached",
+                        )
+                    )
+                    return pending_created, True
                 warnings.append(
                     ValidationErrorItem(
                         stage=DiagnosticStage.RESOLVE,
@@ -227,6 +238,8 @@ class Resolver:
                         message=reason or "link is pending",
                     )
                 )
+                if not _allow_partial(self.settings):
+                    should_stop = True
                 continue
 
             desired_state[rule.field] = _coerce_resolved(resolved_id, rule)
@@ -415,6 +428,12 @@ def _coerce_resolved(resolved_id: str, rule: LinkFieldRule) -> Any:
         except ValueError:
             return resolved_id
     return resolved_id
+
+
+def _max_attempts(settings: ResolverSettings | None) -> int:
+    if settings is None:
+        return 0
+    return settings.pending_max_attempts
 
 
 def _collect_batch_keys(link_rules: LinkRules, dataset: str) -> tuple[set[str], str]:
