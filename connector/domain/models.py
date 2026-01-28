@@ -15,6 +15,8 @@ class DiagnosticStage(str, Enum):
     NORMALIZE = "NORMALIZE"
     ENRICH = "ENRICH"
     VALIDATE = "VALIDATE"
+    MATCH = "MATCH"
+    RESOLVE = "RESOLVE"
     PLAN = "PLAN"
     APPLY = "APPLY"
     CACHE = "CACHE"
@@ -53,8 +55,9 @@ class ValidationRowResult:
 
 class MatchStatus(str, Enum):
     MATCHED = "matched"
-    CONFLICT = "conflict"
     NOT_FOUND = "not_found"
+    CONFLICT_TARGET = "conflict_target"
+    CONFLICT_SOURCE = "conflict_source"
 
 
 @dataclass(frozen=True)

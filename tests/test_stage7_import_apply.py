@@ -489,25 +489,19 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
 
 
 def test_plan_builder_does_not_emit_dataset_in_items():
-    report = ReportCollector(run_id="r", command="plan-test")
-    builder = PlanBuilder(
-        include_skipped_in_report=False,
-        report_items_limit=10,
-        identity_label="match_key",
-        conflict_code="conflict",
-        conflict_field="match_key",
-        report=report,
+    from connector.domain.planning.match_models import ResolvedRow, ResolveOp
+    from connector.domain.models import Identity, RowRef
+
+    builder = PlanBuilder()
+    resolved = ResolvedRow(
+        row_ref=RowRef(line_no=1, row_id="r1", identity_primary="match_key", identity_value="A|B|C|1"),
+        identity=Identity(primary="match_key", values={"match_key": "A|B|C|1"}),
+        op=ResolveOp.CREATE,
+        desired_state={"email": "a@b.c"},
+        changes={},
+        resource_id="id-1",
     )
-    builder.add_plan_item(
-        PlanItem(
-            row_id="r1",
-            line_no=1,
-            op="create",
-            resource_id="id-1",
-            desired_state={"email": "a@b.c"},
-            changes={},
-        )
-    )
+    builder.add_resolved(resolved)
     result = builder.build()
     assert "dataset" not in result.items[0]
     assert "entity_type" not in result.items[0]

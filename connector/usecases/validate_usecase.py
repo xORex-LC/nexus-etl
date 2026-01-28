@@ -117,3 +117,20 @@ class ValidateUseCase:
             },
         )
         return 1 if failed_rows > 0 else 0
+
+    def iter_validated_ok(
+        self,
+        enriched_source,
+        validator: Validator,
+    ):
+        """
+        Назначение:
+            Итератор валидированных строк без ошибок (для matcher).
+        """
+        for validated in self.iter_validated(enriched_source, validator):
+            validation_row: ValidationRow | None = validated.row
+            if validation_row is None:
+                continue
+            if validation_row.validation.errors:
+                continue
+            yield validated

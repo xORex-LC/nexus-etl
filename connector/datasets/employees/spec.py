@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 from connector.datasets.spec import DatasetSpec, TransformBundle, ValidationBundle
-from connector.datasets.employees.load.projector import EmployeesProjector
 from connector.datasets.employees.load.reporting import employees_report_adapter
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
-from connector.domain.planning.adapters import CacheEmployeeLookup
 from connector.domain.planning.deps import PlanningDependencies
-from connector.domain.planning.employees.decision import EmployeeDecisionPolicy
-from connector.domain.planning.employees.differ import EmployeeDiffer
-from connector.domain.planning.employees.matcher import EmployeeMatcher
-from connector.datasets.employees.load.planning_policy import EmployeesPlanningPolicy
+from connector.datasets.employees.load.matching_rules import build_matching_rules
+from connector.datasets.employees.load.resolve_rules import build_resolve_rules
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
 from connector.domain.ports.secrets import SecretProviderProtocol
@@ -43,15 +39,15 @@ class EmployeesSpec(DatasetSpec):
     def build_planning_deps(self, conn, settings) -> PlanningDependencies:
         _ = settings
         cache_repo = self._build_cache_repo(conn)
-        return PlanningDependencies(identity_lookup=CacheEmployeeLookup(cache_repo))
+        return PlanningDependencies(
+            cache_repo=cache_repo,
+        )
 
     def build_enrich_deps(self, conn, settings, secret_store=None) -> EmployeesEnrichDependencies:
         _ = settings
         cache_repo = self._build_cache_repo(conn)
-        identity_lookup = CacheEmployeeLookup(cache_repo)
         return EmployeesEnrichDependencies(
             conn=conn,
-            identity_lookup=identity_lookup,
             cache_repo=cache_repo,
             secret_store=secret_store,
         )
@@ -87,17 +83,11 @@ class EmployeesSpec(DatasetSpec):
     ):
         return CsvRecordSource(csv_path, csv_has_header)
 
-    def build_planning_policy(self, include_deleted: bool, deps: PlanningDependencies):
-        projector = EmployeesProjector()
-        matcher = EmployeeMatcher(deps.identity_lookup, include_deleted)
-        differ = EmployeeDiffer()
-        decision = EmployeeDecisionPolicy()
-        return EmployeesPlanningPolicy(
-            projector=projector,
-            matcher=matcher,
-            differ=differ,
-            decision=decision,
-        )
+    def build_matching_rules(self):
+        return build_matching_rules()
+
+    def build_resolve_rules(self):
+        return build_resolve_rules()
 
     def get_report_adapter(self):
         return self._report_adapter

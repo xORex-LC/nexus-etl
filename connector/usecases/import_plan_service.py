@@ -8,6 +8,10 @@ from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
 from connector.usecases.enrich_usecase import EnrichUseCase
 from connector.usecases.validate_usecase import ValidateUseCase
+from connector.usecases.match_usecase import MatchUseCase
+from connector.usecases.resolve_usecase import ResolveUseCase
+from connector.domain.planning.matcher import Matcher
+from connector.domain.planning.resolver import Resolver
 from connector.datasets.registry import get_spec
 
 class ImportPlanService:
@@ -24,9 +28,7 @@ class ImportPlanService:
         dataset: str,
         logger,
         run_id: str,
-        report,
         report_items_limit: int,
-        include_skipped_in_report: bool,
         report_dir: str,
         vault_file: str | None = None,
         settings=None,
@@ -54,7 +56,7 @@ class ImportPlanService:
             report_items_limit=report_items_limit,
             include_enriched_items=False,
         )
-        enriched = enrich_usecase.iter_enriched(
+        enriched_ok = enrich_usecase.iter_enriched_ok(
             row_source=row_source,
             transformer=transformer,
         )
@@ -62,23 +64,45 @@ class ImportPlanService:
             report_items_limit=report_items_limit,
             include_valid_items=False,
         )
-        validated_rows = validate_usecase.iter_validated(
-            enriched_source=enriched,
+        validated_rows = validate_usecase.iter_validated_ok(
+            enriched_source=enriched_ok,
             validator=validator,
         )
-        use_case = PlanUseCase(
-            report_items_limit=report_items_limit,
-            include_skipped_in_report=include_skipped_in_report,
-        )
-        plan_result = use_case.run(
-            validated_row_source=validated_rows,
-            dataset_spec=dataset_spec,
+        matching_rules = dataset_spec.build_matching_rules()
+        resolve_rules = dataset_spec.build_resolve_rules()
+        cache_repo = planning_deps.cache_repo
+        if cache_repo is None:
+            raise ValueError("planning cache_repo is not configured")
+
+        matcher = Matcher(
             dataset=dataset,
+            cache_repo=cache_repo,
+            matching_rules=matching_rules,
+            resolve_rules=resolve_rules,
             include_deleted=include_deleted,
-            logger=logger,
-            run_id=run_id,
-            planning_deps=planning_deps,
-            report=report,
+        )
+        match_usecase = MatchUseCase(
+            report_items_limit=report_items_limit,
+            include_matched_items=False,
+        )
+        matched_rows = match_usecase.iter_matched_ok(
+            validated_source=validated_rows,
+            matcher=matcher,
+        )
+
+        resolver = Resolver(resolve_rules)
+        resolve_usecase = ResolveUseCase(
+            report_items_limit=report_items_limit,
+            include_resolved_items=False,
+        )
+        resolved_rows = resolve_usecase.iter_resolved_ok(
+            matched_source=matched_rows,
+            resolver=resolver,
+        )
+
+        use_case = PlanUseCase()
+        plan_result = use_case.run(
+            resolved_row_source=resolved_rows,
         )
         plan_meta = {
             "csv_path": csv_path,
@@ -95,22 +119,4 @@ class ImportPlanService:
         )
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
 
-        report.set_meta(dataset=dataset, items_limit=report_items_limit)
-        report.set_context(
-            "plan",
-            {
-                "plan_file": plan_path,
-                "include_deleted": include_deleted,
-                "rows_total": plan_result.summary.rows_total,
-                "valid_rows": plan_result.summary.valid_rows,
-                "failed_rows": plan_result.summary.failed_rows,
-                "planned_create": plan_result.summary.planned_create,
-                "planned_update": plan_result.summary.planned_update,
-                "skipped": plan_result.summary.skipped,
-            },
-        )
-        report.add_op("create", count=plan_result.summary.planned_create)
-        report.add_op("update", count=plan_result.summary.planned_update)
-        report.add_op("skip", count=plan_result.summary.skipped)
-
-        return 1 if plan_result.summary.failed_rows > 0 else 0
+        return 0

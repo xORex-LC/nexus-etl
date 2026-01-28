@@ -108,8 +108,8 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
         str(csv_path),
     ]
     result = runner.invoke(app, args)
-    report_path = report_dir / f"report_import-plan_{run_id}.json"
-    return result.exit_code, report_path
+    plan_path = report_dir / f"plan_import_{run_id}.json"
+    return result.exit_code, plan_path
 
 def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -140,12 +140,14 @@ def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-missing")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-missing")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["summary"]["rows_blocked"] == 0
-    assert report["context"]["plan"]["plan_file"] is not None
+    assert plan["summary"]["planned_create"] == 0
+    assert plan["summary"]["planned_update"] == 0
+    assert plan["summary"]["skipped"] == 0
+    assert plan["items"] == []
 
 def test_plan_create_when_not_found(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -175,12 +177,14 @@ def test_plan_create_when_not_found(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-create")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-create")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["context"]["plan"]["planned_create"] == 1
-    assert report["summary"]["rows_blocked"] == 0
+    assert plan["summary"]["planned_create"] == 1
+    assert plan["summary"]["planned_update"] == 0
+    assert len(plan["items"]) == 1
+    assert plan["items"][0]["op"] == "create"
 
 def test_plan_update_when_found_and_diff(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -211,12 +215,14 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-update")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-update")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["context"]["plan"]["planned_update"] == 1
-    assert report["summary"]["rows_blocked"] == 0
+    assert plan["summary"]["planned_update"] == 1
+    assert len(plan["items"]) == 1
+    assert plan["items"][0]["op"] == "update"
+    assert "phone" in plan["items"][0]["changes"]
 
 def test_plan_skip_when_no_diff(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -247,14 +253,15 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-skip")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-skip")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["context"]["plan"]["planned_update"] == 0
-    assert report["context"]["plan"]["skipped"] == 1
+    assert plan["summary"]["planned_update"] == 0
+    assert plan["summary"]["skipped"] == 1
+    assert plan["items"] == []
 
-def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path):
+def test_plan_conflict_when_multiple_same_match_key(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
@@ -263,15 +270,6 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
         _seed_org(repo, ouid=50)
     finally:
         conn.close()
-
-    # Force duplicate candidates despite UNIQUE constraint by monkeypatching matcher
-    import connector.domain.planning.adapters as planning_adapters
-    from connector.domain.models import MatchResult, MatchStatus
-
-    def _fake_match(self, identity, include_deleted):
-        return MatchResult(status=MatchStatus.CONFLICT, candidate=None, candidates=[{"_id": "a"}, {"_id": "b"}])
-
-    monkeypatch.setattr(planning_adapters.CacheEmployeeLookup, "match", _fake_match)
 
     csv_path = tmp_path / "conflict.csv"
     _write_csv(
@@ -288,14 +286,27 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
                 org_id="50",
                 tab="TAB-100",
             )
+        ] + [
+            make_row(
+                raw_id="100",
+                full_name="Doe John M",
+                login="jdoe",
+                email_or_phone="another@example.com",
+                contacts="+333333",
+                flags="disabled=false",
+                role="Engineer",
+                org_id="50",
+                tab="TAB-100",
+            )
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-conflict")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-conflict")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
-    assert exit_code == 1
-    assert report["summary"]["rows_blocked"] == 1
+    assert exit_code == 0
+    assert plan["summary"]["planned_create"] == 1
+    assert len(plan["items"]) == 1
 
 def test_plan_error_when_org_missing(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -325,8 +336,8 @@ def test_plan_error_when_org_missing(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-org-missing")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-org-missing")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
-    assert exit_code == 1
-    assert report["summary"]["rows_blocked"] == 1
+    assert exit_code == 0
+    assert plan["items"] == []

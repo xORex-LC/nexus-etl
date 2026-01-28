@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol
-from connector.domain.ports.lookups import LookupProtocol
 from connector.domain.ports.secrets import SecretStoreProtocol
 
 
@@ -16,7 +15,6 @@ class EmployeesEnrichDependencies:
     """
 
     conn: Any
-    identity_lookup: LookupProtocol | None
     cache_repo: CacheRepositoryProtocol
     secret_store: SecretStoreProtocol | None = None
 
@@ -28,3 +26,6 @@ class EmployeesEnrichDependencies:
 
     def find_org_by_ouid(self, ouid: int) -> dict[str, Any] | None:
         return self.cache_repo.find_one("organizations", {"_ouid": ouid}, include_deleted=True)
+
+    def find_users_by_match_key(self, match_key: str) -> list[dict[str, Any]]:
+        return self.cache_repo.find("employees", {"match_key": match_key}, include_deleted=True)

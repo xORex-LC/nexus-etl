@@ -1,0 +1,40 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+from connector.domain.models import Identity, ValidationRowResult
+
+BuildIdentity = Callable[[Any, ValidationRowResult], Identity]
+BuildLinks = Callable[[Any, ValidationRowResult], dict[str, Identity]]
+BuildDesiredState = Callable[[Any, ValidationRowResult], dict[str, Any]]
+BuildSourceRef = Callable[[Identity], dict[str, Any]]
+DiffPolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
+SecretFieldsPolicy = Callable[[str, dict[str, Any], dict[str, Any] | None], list[str]]
+MergePolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class MatchingRules:
+    """
+    Назначение:
+        Набор правил сопоставления для matcher (dataset‑специфика).
+    """
+
+    build_identity: BuildIdentity
+    ignored_fields: set[str] = field(default_factory=set)
+    build_links: BuildLinks | None = None
+
+
+@dataclass(frozen=True)
+class ResolveRules:
+    """
+    Назначение:
+        Набор правил разрешения для resolver (dataset‑специфика).
+    """
+
+    build_desired_state: BuildDesiredState
+    build_source_ref: BuildSourceRef | None = None
+    diff_policy: DiffPolicy | None = None
+    secret_fields_for_op: SecretFieldsPolicy | None = None
+    merge_policy: MergePolicy | None = None

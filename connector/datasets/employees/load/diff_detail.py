@@ -4,8 +4,10 @@ from typing import Any
 
 from connector.domain.validation.row_rules import normalize_whitespace as normalizeWhitespace
 
+
 def _normalize_str(value: str | None) -> str | None:
     return normalizeWhitespace(value)
+
 
 def _to_bool(value: Any) -> bool | None:
     if value is None:
@@ -21,6 +23,7 @@ def _to_bool(value: Any) -> bool | None:
         if v in ("0", "false", "no", "n"):
             return False
     return None
+
 
 def build_user_diff(existing: dict[str, Any] | None, desired: dict[str, Any]) -> dict[str, Any]:
     """

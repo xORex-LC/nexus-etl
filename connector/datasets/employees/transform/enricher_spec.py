@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from connector.domain.models import DiagnosticStage, Identity, MatchStatus, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.transform.enricher import EnrichRule, EnricherSpec
 from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
 from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
@@ -45,22 +45,11 @@ class ManagerLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDepend
             return
         if isinstance(result.row.manager_id, int):
             return
-        if deps.identity_lookup is None:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="MANAGER_LOOKUP_MISSING",
-                    field="managerId",
-                    message="identity lookup is not configured",
-                )
-            )
-            return
         match_key_value = normalize_whitespace(str(result.row.manager_id))
         if not match_key_value:
             return
-        identity = Identity(primary="match_key", values={"match_key": match_key_value})
-        lookup = deps.identity_lookup.match(identity, include_deleted=False)
-        if lookup.status == MatchStatus.CONFLICT:
+        candidates = deps.find_users_by_match_key(match_key_value)
+        if len(candidates) > 1:
             errors.append(
                 ValidationErrorItem(
                     stage=DiagnosticStage.ENRICH,
@@ -70,7 +59,7 @@ class ManagerLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDepend
                 )
             )
             return
-        if lookup.status != MatchStatus.MATCHED or not lookup.candidate:
+        if not candidates:
             errors.append(
                 ValidationErrorItem(
                     stage=DiagnosticStage.ENRICH,
@@ -80,7 +69,7 @@ class ManagerLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDepend
                 )
             )
             return
-        manager_ouid = lookup.candidate.get("_ouid")
+        manager_ouid = candidates[0].get("_ouid")
         if manager_ouid is None:
             errors.append(
                 ValidationErrorItem(

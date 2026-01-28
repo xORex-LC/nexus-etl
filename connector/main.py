@@ -239,6 +239,75 @@ def runWithReport(
         if exitCode is not None:
             raise typer.Exit(code=exitCode)
 
+
+def runWithoutReport(
+    ctx: typer.Context,
+    commandName: str,
+    csvPath: str | None,
+    requiresCsv: bool,
+    requiresApiAccess: bool,
+    runner,
+) -> None:
+    """
+    Назначение:
+        Обвязка выполнения команд без формирования отчёта (только лог).
+    """
+    runId = ctx.obj["runId"]
+    settings: Settings = ctx.obj["settings"]
+    sources = ctx.obj["sources"]
+
+    startMonotonic = time.monotonic()
+    logger, logFilePath = createCommandLogger(
+        commandName=commandName,
+        logDir=settings.log_dir,
+        runId=runId,
+        logLevel=settings.log_level,
+    )
+
+    originalStdout = sys.stdout
+    originalStderr = sys.stderr
+
+    stdoutLoggerStream = StdStreamToLogger(logger, logging.INFO, runId, "stdout")
+    stderrLoggerStream = StdStreamToLogger(logger, logging.ERROR, runId, "stderr")
+
+    sys.stdout = TeeStream(originalStdout, stdoutLoggerStream)
+    sys.stderr = TeeStream(originalStderr, stderrLoggerStream)
+
+    exitCode: int | None = None
+
+    try:
+        logEvent(logger, logging.INFO, runId, "core", "Command started")
+        printRunHeader(runId, commandName, settings, sources)
+
+        if requiresApiAccess:
+            try:
+                requireApi(settings)
+            except typer.Exit:
+                logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
+                typer.echo("ERROR: missing API settings (see logs)", err=True)
+                exitCode = 2
+                return
+
+        if requiresCsv:
+            try:
+                requireCsv(csvPath)
+            except typer.Exit:
+                logEvent(logger, logging.ERROR, runId, "csv", "CSV is missing or not accessible")
+                typer.echo("ERROR: invalid or missing CSV (see logs)", err=True)
+                exitCode = 2
+                return
+
+        exitCode = runner(logger)
+
+    finally:
+        _ = getDurationMs(startMonotonic, time.monotonic())
+        logEvent(logger, logging.INFO, runId, "log", f"Log written: {logFilePath}")
+        sys.stdout = originalStdout
+        sys.stderr = originalStderr
+
+        if exitCode is not None:
+            raise typer.Exit(code=exitCode)
+
 def runCacheRefreshCommand(
     ctx: typer.Context,
     pageSize: int | None,
@@ -267,7 +336,7 @@ def runCacheRefreshCommand(
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
+            typer.echo("ERROR: failed to open cache DB (see logs)", err=True)
             return 2
 
         try:
@@ -437,7 +506,7 @@ def runImportPlanCommand(
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
-    def execute(logger, report) -> int:
+    def execute(logger) -> int:
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -447,13 +516,8 @@ def runImportPlanCommand(
 
         include_deleted = includeDeleted if includeDeleted is not None else settings.include_deleted
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-        report_include_skipped = (
-            reportIncludeSkipped if reportIncludeSkipped is not None else settings.report_include_skipped
-        )
         dataset_name = dataset if dataset is not None else settings.dataset_name
         csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
-        report.set_context("plan_options", {"include_skipped": report_include_skipped})
 
         try:
             engine = SqliteEngine(conn)
@@ -470,9 +534,7 @@ def runImportPlanCommand(
                 dataset=dataset_name,
                 logger=logger,
                 run_id=runId,
-                report=report,
                 report_items_limit=report_items_limit,
-                include_skipped_in_report=report_include_skipped,
                 report_dir=settings.report_dir,
                 vault_file=vaultFile,
             )
@@ -481,12 +543,12 @@ def runImportPlanCommand(
             return 2
         except Exception as exc:
             logEvent(logger, logging.ERROR, runId, "plan", f"Import plan failed: {exc}")
-            typer.echo("ERROR: import plan failed (see logs/report)", err=True)
+            typer.echo("ERROR: import plan failed (see logs)", err=True)
             return 2
         finally:
             conn.close()
 
-    runWithReport(
+    runWithoutReport(
         ctx=ctx,
         commandName="import-plan",
         csvPath=csvPath,

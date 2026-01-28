@@ -40,13 +40,15 @@ extract → map → normalize → enrich → validate → match → resolve → 
 - **Отчёта не формирует**
 
 ## Взаимосвязь с текущими компонентами
-- `EmployeeMatcher` + `MatchResult` уже реализуют matcher‑логику.
-- `GenericPlanner` + `PlanningPolicy` — это resolver‑логика.
+- Matcher/Resolver реализованы как отдельные доменные компоненты.
+- Dataset‑специфика задаётся через MatchingRules/ResolveRules в DatasetSpec.
 
 ## Дополнительные договорённости
 1) **MatchKey обязателен после enrich** — matcher принимает только строки с match_key.
 2) **RowRef формируется рано** (extract/mapper), чтобы matcher/resolver не вычисляли его.
-3) **Fingerprint**: нужен для сравнения дублей внутри source (по умолчанию хеш desired_state).
+3) **Fingerprint**: нужен для сравнения дублей внутри source.
+   - алгоритм: `md5(json.dumps(desired_state, sort_keys=True))`
+   - используется список `ignored_fields` (dataset‑spec) для исключения мета‑полей
 4) **Единый набор статусов** для matcher/resolver (matched/not_found/conflict_*).
 5) **Новый stage**: добавить `RESOLVE` или `MATCH` в DiagnosticStage для отчётов.
 6) **Validate** оставляет только формат/обязательность; вся логика сопоставления/наличия уходит в matcher/resolver.
@@ -58,7 +60,8 @@ extract → map → normalize → enrich → validate → match → resolve → 
 ## Минимум dataset‑специфики
 - `identity(row, validation)` — ключ сопоставления
 - `desired_state(row)` — каноническое состояние для планирования
-- (опционально) diff policy / ignore_fields
+- `ignored_fields` — набор полей для fingerprint/diff
+- (опционально) diff policy / merge policy / secret_fields_for_op
 
 ## Что делать с changes
 - **Рекомендация**: оставить вычисление `changes` внутри resolver/planner.
@@ -76,3 +79,69 @@ extract → map → normalize → enrich → validate → match → resolve → 
 - `MATCHED` → найден 1 existing
 - `NOT_FOUND` → 0 existing
 - `CONFLICT_TARGET` → >1 existing
+- `CONFLICT_SOURCE` → дубли внутри source с разным fingerprint
+
+## Минимальные контракты данных
+
+### MatchedRow (минимум)
+- row_ref
+- identity
+- match_status
+- desired_state
+- existing (если MATCHED)
+- fingerprint
+- warnings/errors
+- source_links (опционально, для cross‑row resolve)
+
+### ResolvedRow (минимум)
+- row_ref
+- identity
+- op (create/update/skip/conflict)
+- desired_state
+- existing
+- resource_id (берётся из existing при MATCHED)
+- source_ref (опционально)
+- warnings/errors
+ - changes (для update)
+
+## Коды ошибок (минимум)
+
+### Matcher
+- `MATCH_CONFLICT_TARGET`
+- `MATCH_CONFLICT_SOURCE`
+- `MATCH_IDENTITY_MISSING` (не должен встречаться при соблюдении пайплайна)
+
+### Resolver
+- `RESOLVE_CONFLICT`
+- `RESOLVE_MISSING_EXISTING`
+- `RESOLVE_INVALID_STATE`
+
+## Порядок UseCase
+```
+validate → match → resolve → plan
+```
+Match/Resolve имеют собственные отчёты; Plan отчёт не формирует.
+
+## Контракт правил matcher/resolver (dataset‑spec)
+
+Ядро matcher/resolver работает через правила (специфика датасета минимальна):
+
+### Matching rules (обязательные)
+- `build_identity(row, validation) -> Identity`
+- `ignored_fields: set[str]` (для fingerprint/diff)
+
+### In‑batch links (опциональные)
+- `build_links(row) -> dict[str, Identity]`
+  - пример: `{"manager": Identity(...)}`
+
+### Resolve rules (обязательные)
+- `build_desired_state(row) -> dict`
+ - `diff_policy(existing, desired_state) -> changes` (можно оставить дефолт)
+
+### Resolve policies (опциональные)
+- `merge_policy(existing, desired_state) -> desired_state`
+  - если нужно мягкое объединение/игнорирование полей
+ - `build_source_ref(identity) -> dict`
+ - `secret_fields_for_op(op, desired_state, existing) -> list[str]`
+
+Цель: ядро matcher/resolver не знает структуру датасета, только применяет правила. 
