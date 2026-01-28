@@ -4,7 +4,7 @@ from connector.infra.cache.cache_spec import CacheSpec
 from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def ensure_base_schema(engine: SqliteEngine) -> int:
@@ -16,12 +16,15 @@ def ensure_base_schema(engine: SqliteEngine) -> int:
     current_version = _get_schema_version(engine) or 0
 
     if current_version == 0:
+        _create_service_tables(engine)
         _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
     if current_version < SCHEMA_VERSION:
         if current_version < 2:
             _migrate_to_v2(engine)
+        if current_version < 3:
+            _migrate_to_v3(engine)
         _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
@@ -93,4 +96,72 @@ def _migrate_to_v2(engine: SqliteEngine) -> None:
         ON CONFLICT(key) DO UPDATE SET value=excluded.value
         """,
         ("users_count", "0"),
+    )
+
+
+def _migrate_to_v3(engine: SqliteEngine) -> None:
+    """
+    Миграция с v2: добавляем служебные таблицы для identity/pending.
+    """
+    _create_service_tables(engine)
+
+
+def _create_service_tables(engine: SqliteEngine) -> None:
+    engine.execute(
+        """
+        CREATE TABLE IF NOT EXISTS identity_index (
+            dataset TEXT NOT NULL,
+            identity_key TEXT NOT NULL,
+            resolved_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (dataset, identity_key, resolved_id)
+        )
+        """
+    )
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_identity_lookup
+        ON identity_index(dataset, identity_key)
+        """
+    )
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_identity_resolved
+        ON identity_index(dataset, resolved_id)
+        """
+    )
+    engine.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pending_links (
+            pending_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dataset TEXT NOT NULL,
+            source_row_id TEXT NOT NULL,
+            field TEXT NOT NULL,
+            lookup_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            reason TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_attempt_at TEXT,
+            expires_at TEXT
+        )
+        """
+    )
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pending_lookup
+        ON pending_links(dataset, lookup_key)
+        """
+    )
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pending_status
+        ON pending_links(status)
+        """
+    )
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pending_expires
+        ON pending_links(expires_at)
+        """
     )

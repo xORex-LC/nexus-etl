@@ -73,6 +73,13 @@ class Settings:
     max_actions: int | None = None
     dry_run: bool = False
 
+    # Resolver pending/identity tuning
+    pending_ttl_seconds: int = 120
+    pending_max_attempts: int = 5
+    pending_sweep_interval_seconds: int = 60
+    pending_on_expire: str = "error"
+    pending_allow_partial: bool = False
+
 @dataclass(frozen=True)
 class LoadedSettings:
     """
@@ -298,6 +305,11 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "stop_on_first_error": envGet("ANKEY_STOP_ON_FIRST_ERROR"),
         "max_actions": envGet("ANKEY_MAX_ACTIONS"),
         "dry_run": envGet("ANKEY_DRY_RUN"),
+        "pending_ttl_seconds": envGet("ANKEY_PENDING_TTL_SECONDS"),
+        "pending_max_attempts": envGet("ANKEY_PENDING_MAX_ATTEMPTS"),
+        "pending_sweep_interval_seconds": envGet("ANKEY_PENDING_SWEEP_INTERVAL_SECONDS"),
+        "pending_on_expire": envGet("ANKEY_PENDING_ON_EXPIRE"),
+        "pending_allow_partial": envGet("ANKEY_PENDING_ALLOW_PARTIAL"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -332,6 +344,14 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "stop_on_first_error": cfg.get("stop_on_first_error", defaults.stop_on_first_error),
         "max_actions": cfg.get("max_actions", defaults.max_actions),
         "dry_run": cfg.get("dry_run", defaults.dry_run),
+        "pending_ttl_seconds": cfg.get("pending_ttl_seconds", defaults.pending_ttl_seconds),
+        "pending_max_attempts": cfg.get("pending_max_attempts", defaults.pending_max_attempts),
+        "pending_sweep_interval_seconds": cfg.get(
+            "pending_sweep_interval_seconds",
+            defaults.pending_sweep_interval_seconds,
+        ),
+        "pending_on_expire": cfg.get("pending_on_expire", defaults.pending_on_expire),
+        "pending_allow_partial": cfg.get("pending_allow_partial", defaults.pending_allow_partial),
     }
 
     if env["host"] is not None:
@@ -389,6 +409,16 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["max_actions"] = parseInt(env["max_actions"])
     if env["dry_run"] is not None:
         merged["dry_run"] = parseBool(env["dry_run"])
+    if env["pending_ttl_seconds"] is not None:
+        merged["pending_ttl_seconds"] = parseInt(env["pending_ttl_seconds"])
+    if env["pending_max_attempts"] is not None:
+        merged["pending_max_attempts"] = parseInt(env["pending_max_attempts"])
+    if env["pending_sweep_interval_seconds"] is not None:
+        merged["pending_sweep_interval_seconds"] = parseInt(env["pending_sweep_interval_seconds"])
+    if env["pending_on_expire"] is not None:
+        merged["pending_on_expire"] = env["pending_on_expire"]
+    if env["pending_allow_partial"] is not None:
+        merged["pending_allow_partial"] = parseBool(env["pending_allow_partial"])
 
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
@@ -424,6 +454,12 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         max_actions=parseIntAny(merged["max_actions"]),
         dry_run=parseBoolAny(merged["dry_run"]) or False,
         dataset_name=merged.get("dataset_name") or defaults.dataset_name,
+        pending_ttl_seconds=parseIntAny(merged["pending_ttl_seconds"]) or defaults.pending_ttl_seconds,
+        pending_max_attempts=parseIntAny(merged["pending_max_attempts"]) or defaults.pending_max_attempts,
+        pending_sweep_interval_seconds=parseIntAny(merged["pending_sweep_interval_seconds"])
+        or defaults.pending_sweep_interval_seconds,
+        pending_on_expire=merged["pending_on_expire"] or defaults.pending_on_expire,
+        pending_allow_partial=parseBoolAny(merged["pending_allow_partial"]) or False,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)

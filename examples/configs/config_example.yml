@@ -28,3 +28,8 @@ csv_has_header: false
 stop_on_first_error: false
 max_actions: null
 dry_run: false
+pending_ttl_seconds: 120
+pending_max_attempts: 5
+pending_sweep_interval_seconds: 60
+pending_on_expire: error
+pending_allow_partial: false

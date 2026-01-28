@@ -145,3 +145,172 @@ Match/Resolve имеют собственные отчёты; Plan отчёт н
  - `secret_fields_for_op(op, desired_state, existing) -> list[str]`
 
 Цель: ядро matcher/resolver не знает структуру датасета, только применяет правила. 
+
+---
+## Open questions / observations (post-refactor)
+
+1) **Resolver conflict branch is effectively unused**
+   - `Resolver` checks `MatchStatus.CONFLICT_*`, but `Matcher` never sets those statuses.
+   - Currently, conflict in matcher returns `row=None` + error, so resolver never sees it.
+   - Decide: either emit `MatchedRow` with `match_status=CONFLICT_*` or remove conflict branch in resolver.
+
+2) **Matcher depends on resolve_rules for desired_state**
+   - `Matcher` builds `desired_state` via `resolve_rules` to compute fingerprint.
+   - This is a mild responsibility leak: matcher now depends on resolve-layer rules.
+   - Option: move desired_state builder into `matching_rules` or a shared builder.
+
+3) **ResolveOp.CONFLICT is never produced**
+   - `PlanUseCase` checks for `ResolveOp.CONFLICT`, but resolver does not output it.
+   - Decide: either remove this case or emit `ResolveOp.CONFLICT` when appropriate.
+
+4) **Fingerprint is computed before merge_policy**
+   - If merge_policy mutates desired_state, fingerprint may not reflect final state.
+   - Decide if fingerprint should be based on merged desired_state (post-merge) instead.
+
+---
+## Мини‑план (pending‑links + re‑resolve)
+
+1) Зафиксировать правила: какие поля считаем link‑полями, какой ключ для resolve, дефолтная политика ошибок/TTL.  
+2) Спроектировать служебное хранилище: `identity_index` + `pending_links` (в cache‑DB).  
+3) Ввести интерфейс репозитория для identity/pending (под будущий вынос в отдельную БД).  
+4) Добавить настройки с дефолтами: `pending_ttl`, `max_attempts`, `sweep_interval`, `on_expire`, `allow_partial`.  
+5) Обновить Resolver: пробовать resolve → если нет, писать pending и не пускать в apply; если да — писать resolved в `desired_state`.  
+6) Триггеры re‑resolve: на вход новой записи + периодический sweep pending.  
+7) Отчётность: фиксировать pending/expired/error.  
+8) Тесты: unit на resolver + интеграция с late‑arrival сценарием.
+
+---
+## Принятые решения (step 1: rules)
+
+- Link‑поля: любые ссылки на сущности/датасеты (включая междатасетные ссылки).
+- Resolve‑ключ: может быть неуникальным (например, ФИО). В таких случаях применяются dedup‑правила из DatasetSpec.
+- Конфликт кандидатов: если dedup‑правила не дают однозначного выбора, это `CONFLICT` и запись уходит в pending (далее управляется TTL).
+- Dedup‑правила: минимальный декларативный формат (только equality по наборам полей, без кастомных функций).
+- TTL по умолчанию: 2 минуты.
+- on_expire: `error`.
+- allow_partial: `false` (не отправляем в apply без полного resolve).
+
+### Детали реализации для шага 1 (rules)
+- В DatasetSpec завести декларацию link‑полей и их resolve‑стратегий:
+  - `link_fields`: имя поля, целевой датасет/сущность, источник ключа.
+  - `resolve_keys`: приоритетные ключи (например, external_id -> match_key -> name+org).
+  - `dedup_rules`: правила выбора при множественных кандидатах (наборы полей для equality, по приоритету).
+- Resolver должен уметь:
+  - ходить в cache других датасетов (через registry/port),
+  - принимать list кандидатов,
+  - применять dedup‑правила и возвращать либо resolved_id, либо CONFLICT.
+
+---
+## Принятые решения (step 2: storage)
+
+- `source_row_id` генерируется в extract и пишется в мета (пробрасывается через весь pipeline).
+- `resolved_id` хранится как `TEXT` для универсальности.
+- `identity_index` без `payload` по умолчанию.
+  - Dedup‑атрибуты при необходимости подтягиваются из cache по `resolved_id`.
+  - Возможна будущая оптимизация: `identity_attrs` (JSON) только для нужных полей из spec.
+
+---
+## Принятые решения (step 3: repositories)
+
+- Для `identity_index` и `pending_links` вводим отдельные порты (не переиспользуем CacheRepositoryProtocol).
+- Bulk‑операции откладываем, стартуем с одиночных методов.
+- В `pending_links` храним `reason` для конфликтов/истечений TTL.
+
+---
+## Принятые решения (step 4: settings)
+
+- Настройки кладём в config (ориентируемся на `examples/configs/config_example`).
+- Используем глобальные дефолты (без per‑dataset overrides на старте).
+- Базовые параметры:
+  - `pending_ttl_seconds = 120`
+  - `max_attempts = 5` (значение уточним при внедрении)
+  - `sweep_interval_seconds = 60`
+  - `on_expire = error`
+  - `allow_partial = false`
+
+---
+## Принятые решения (step 5: resolver behavior)
+
+- `build_desired_state` остаётся как есть, resolve применяется поверх `desired_state`.
+- `fingerprint/diff` считаем после resolve (от финального `desired_state`).
+- Pending ≠ error: pending отражается отдельным статусом; error ставится только при `expired`/`conflict_unresolved`.
+
+---
+## Принятые решения (step 6: re-resolve triggers)
+
+- Триггер 1: после `upsert_identity` проверяем pending по `lookup_key` (та же сущность/датасет) и пытаемся резолвить.
+- Триггер 2: периодический `sweep` по `pending_links` (по `sweep_interval_seconds`).
+- Триггер 3: при обработке новой входящей записи повторно пытаемся закрыть её собственные pending‑ссылки.
+
+### Опциональные оптимизации (после step 6)
+
+1) **Готовить lookup_key заранее (normalize/enrich)**
+   - В `TransformResult.meta` добавляем `link_keys`.
+   - На этапе normalize/enrich строим канонический ключ для каждого link‑поля.
+   - Resolver берёт `meta.link_keys[field]` без доп. вычислений.
+
+2) **Построить identity_index при refresh cache**
+   - На refresh сохраняем `identity_index` (dataset + match_key/external_id → resolved_id).
+   - Resolver делает только `find_candidates` по готовому индексу.
+
+3) **In‑batch map**
+   - В рамках батча/окна держим `link_key -> row_id` для записей из source.
+   - Resolver сначала проверяет in‑batch map, затем identity‑index.
+
+---
+## Принятые решения (step 7: reporting)
+
+- В отчёте выделяем отдельный статус для `pending`.
+- `expired` и `conflict_unresolved` отражаем как `error` с `reason`.
+- Сохраняем `source_row_id`/`field`/`lookup_key` в диагностике для трассировки.
+
+---
+## Принятые решения (step 8: tests)
+
+- Unit‑тесты на resolver:
+  - resolve успешен (1 кандидат → resolved_id подставлен).
+  - конфликт кандидатов → pending + reason.
+  - отсутствие кандидатов → pending.
+  - expired → error.
+- Интеграция:
+  - late‑arrival: ссылка сначала pending, затем закрывается после `upsert_identity`.
+  - sweep: pending истекают по TTL.
+
+---
+## План изменений/переносов (высокоуровневый)
+
+1) **Link‑rules**
+   - Модели правил link‑resolve в домене (rules).
+   - Расширение DatasetSpec новым контрактом (build_link_rules).
+   - Реализация правил для Employees в отдельном файле.
+
+2) **Storage (identity/pending)**
+   - Миграция schema: таблицы `identity_index` и `pending_links`.
+   - Новые порты: IdentityRepository, PendingLinksRepository.
+   - SQLite реализации в infra/cache.
+
+3) **Settings**
+   - Добавить настройки TTL/attempts/sweep/on_expire/allow_partial в Settings.
+   - Обновить `examples/configs/config_example.yml`.
+
+4) **Deps wiring**
+   - Расширить PlanningDependencies (identity_repo, pending_repo, resolver_settings).
+   - Прокинуть deps в DatasetSpec и usecases.
+
+5) **Resolver**
+   - Resolve link‑полей через identity/pending + dedup.
+   - Pending вместо immediate error.
+   - Fingerprint/diff после resolve.
+   - Удалить/заменить текущую source_links логику.
+
+6) **Identity updates**
+   - Обновлять identity_index на refresh cache.
+   - Upsert identity после apply (по resource_id_map).
+
+7) **Reporting**
+   - Статус `pending` в отчётах.
+   - `expired/conflict` как error с reason.
+
+8) **Tests**
+   - Unit: success/conflict/pending/expired.
+   - Integration: late‑arrival + sweep.
