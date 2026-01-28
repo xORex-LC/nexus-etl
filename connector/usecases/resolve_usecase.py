@@ -4,7 +4,7 @@ from dataclasses import asdict
 from typing import Iterable
 
 from connector.common.sanitize import maskSecretsInObject
-from connector.domain.models import MatchStatus
+from connector.domain.models import DiagnosticStage, MatchStatus, RowRef, ValidationErrorItem
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.resolver import Resolver
 from connector.domain.transform.result import TransformResult
@@ -28,12 +28,14 @@ class ResolveUseCase:
         self,
         matched_source: Iterable[TransformResult],
         resolver: Resolver,
+        *,
+        dataset: str | None = None,
     ):
         """
         Назначение:
             Итератор разрешённых строк без ошибок (для plan).
         """
-        for resolved in self._iter_resolved(matched_source, resolver):
+        for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset):
             if resolved.errors:
                 continue
             yield resolved
@@ -46,7 +48,8 @@ class ResolveUseCase:
         report,
     ) -> int:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
-        for resolved in self._iter_resolved(matched_source, resolver):
+        _report_expired(report, resolver.drain_expired())
+        for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset):
             row = resolved.row
             if row is None:
                 status = _resolve_status(resolved)
@@ -73,17 +76,21 @@ class ResolveUseCase:
                 meta={"op": row.op if row else None},
                 store=status == "FAILED" or self.include_resolved_items,
             )
+            _report_expired(report, resolver.drain_expired())
         return 1 if report.summary.errors_total > 0 else 0
 
     def _iter_resolved(
         self,
         matched_source: Iterable[TransformResult],
         resolver: Resolver,
+        *,
+        dataset: str | None = None,
     ):
         matched_rows: list[TransformResult[MatchedRow]] = []
         for matched in matched_source:
             matched_rows.append(matched)
 
+        batch_index = _build_batch_index(matched_rows, resolver, dataset)
         resource_id_map = _build_resource_id_map(matched_rows)
 
         for matched in matched_rows:
@@ -94,6 +101,7 @@ class ResolveUseCase:
                 matched.row,
                 resource_id_map=resource_id_map,
                 meta=matched.meta,
+                batch_index=batch_index,
             )
             yield TransformResult(
                 record=matched.record,
@@ -122,6 +130,16 @@ def _build_resource_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> d
     return mapping
 
 
+def _build_batch_index(
+    matched_rows: list[TransformResult[MatchedRow]],
+    resolver: Resolver,
+    dataset: str | None,
+) -> dict[str, dict[str, list[str]]]:
+    if dataset is None:
+        return {}
+    return resolver.build_batch_index(matched_rows, dataset)
+
+
 def _resolve_status(item: TransformResult) -> str | None:
     if item.errors:
         return "FAILED"
@@ -129,3 +147,31 @@ def _resolve_status(item: TransformResult) -> str | None:
         if warning.code == "RESOLVE_PENDING":
             return "PENDING"
     return None
+
+
+def _report_expired(report, expired) -> None:
+    for item in expired:
+        report.add_item(
+            status="FAILED",
+            row_ref=RowRef(
+                line_no=0,
+                row_id=item.source_row_id,
+                identity_primary=None,
+                identity_value=None,
+            ),
+            payload=None,
+            errors=[
+                ValidationErrorItem(
+                    stage=DiagnosticStage.RESOLVE,
+                    code="RESOLVE_EXPIRED",
+                    field=item.field,
+                    message=item.reason or "pending link expired",
+                )
+            ],
+            warnings=[],
+            meta={
+                "pending_id": item.pending_id,
+                "lookup_key": item.lookup_key,
+            },
+            store=True,
+        )

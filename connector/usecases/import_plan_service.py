@@ -12,6 +12,12 @@ from connector.usecases.match_usecase import MatchUseCase
 from connector.usecases.resolve_usecase import ResolveUseCase
 from connector.domain.planning.matcher import Matcher
 from connector.domain.planning.resolver import Resolver
+import json
+from connector.domain.planning.match_models import MatchedRow
+from connector.domain.models import Identity, MatchStatus, RowRef
+from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.result import TransformResult
+from connector.domain.planning.matcher import _build_fingerprint
 from connector.datasets.registry import get_spec
 
 class ImportPlanService:
@@ -90,10 +96,21 @@ class ImportPlanService:
             report_items_limit=report_items_limit,
             include_matched_items=False,
         )
-        matched_rows = match_usecase.iter_matched_ok(
-            validated_source=validated_rows,
-            matcher=matcher,
+        matched_rows = list(
+            match_usecase.iter_matched_ok(
+                validated_source=validated_rows,
+                matcher=matcher,
+            )
         )
+
+        pending_rows = _load_pending_rows(
+            dataset=dataset,
+            pending_repo=planning_deps.pending_repo,
+            cache_repo=cache_repo,
+            include_deleted=include_deleted,
+            ignored_fields=matching_rules.ignored_fields,
+        )
+        matched_rows.extend(pending_rows)
 
         resolver = Resolver(
             resolve_rules,
@@ -109,6 +126,7 @@ class ImportPlanService:
         resolved_rows = resolve_usecase.iter_resolved_ok(
             matched_source=matched_rows,
             resolver=resolver,
+            dataset=dataset,
         )
 
         use_case = PlanUseCase()
@@ -131,3 +149,80 @@ class ImportPlanService:
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
 
         return 0
+
+
+def _load_pending_rows(
+    *,
+    dataset: str,
+    pending_repo,
+    cache_repo,
+    include_deleted: bool,
+    ignored_fields: set[str],
+) -> list[TransformResult[MatchedRow]]:
+    if pending_repo is None:
+        return []
+    pending_rows = pending_repo.list_pending_rows(dataset)
+    if not pending_rows:
+        return []
+    results: list[TransformResult[MatchedRow]] = []
+    for pending in pending_rows:
+        try:
+            payload = json.loads(pending.payload)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        identity_data = payload.get("identity") or {}
+        values = identity_data.get("values") or {}
+        identity = Identity(primary=identity_data.get("primary") or "match_key", values=values)
+        if not identity.primary_value:
+            continue
+        row_ref_data = payload.get("row_ref") or {}
+        row_ref = RowRef(
+            line_no=int(row_ref_data.get("line_no") or 0),
+            row_id=str(row_ref_data.get("row_id") or pending.source_row_id),
+            identity_primary=row_ref_data.get("identity_primary"),
+            identity_value=row_ref_data.get("identity_value"),
+        )
+        desired_state = payload.get("desired_state") or {}
+        resource_id = payload.get("resource_id")
+        meta = payload.get("meta") or {}
+
+        candidates = cache_repo.find(
+            dataset,
+            {identity.primary: identity.primary_value},
+            include_deleted=include_deleted,
+        )
+        if len(candidates) > 1:
+            match_status = MatchStatus.CONFLICT_TARGET
+            existing = None
+        elif candidates:
+            match_status = MatchStatus.MATCHED
+            existing = candidates[0]
+        else:
+            match_status = MatchStatus.NOT_FOUND
+            existing = None
+
+        fingerprint = _build_fingerprint(desired_state, ignored_fields)
+        matched_row = MatchedRow(
+            row_ref=row_ref,
+            identity=identity,
+            match_status=match_status,
+            desired_state=desired_state,
+            existing=existing,
+            fingerprint=fingerprint,
+            source_links={},
+            resource_id=resource_id,
+        )
+        record = SourceRecord(line_no=row_ref.line_no, record_id=row_ref.row_id, values={})
+        results.append(
+            TransformResult(
+                record=record,
+                row=matched_row,
+                row_ref=row_ref,
+                match_key=None,
+                meta=meta,
+                secret_candidates={},
+                errors=[],
+                warnings=[],
+            )
+        )
+    return results

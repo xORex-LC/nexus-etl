@@ -4,7 +4,7 @@ from connector.infra.cache.cache_spec import CacheSpec
 from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def ensure_base_schema(engine: SqliteEngine) -> int:
@@ -25,6 +25,8 @@ def ensure_base_schema(engine: SqliteEngine) -> int:
             _migrate_to_v2(engine)
         if current_version < 3:
             _migrate_to_v3(engine)
+        if current_version < 4:
+            _migrate_to_v4(engine)
         _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
@@ -106,6 +108,14 @@ def _migrate_to_v3(engine: SqliteEngine) -> None:
     _create_service_tables(engine)
 
 
+def _migrate_to_v4(engine: SqliteEngine) -> None:
+    """
+    Миграция с v3: добавляем payload в pending_links.
+    """
+    if not _column_exists(engine, "pending_links", "payload"):
+        engine.execute("ALTER TABLE pending_links ADD COLUMN payload TEXT")
+
+
 def _create_service_tables(engine: SqliteEngine) -> None:
     engine.execute(
         """
@@ -143,7 +153,8 @@ def _create_service_tables(engine: SqliteEngine) -> None:
             attempts INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             last_attempt_at TEXT,
-            expires_at TEXT
+            expires_at TEXT,
+            payload TEXT
         )
         """
     )
@@ -165,3 +176,8 @@ def _create_service_tables(engine: SqliteEngine) -> None:
         ON pending_links(expires_at)
         """
     )
+
+
+def _column_exists(engine: SqliteEngine, table: str, column: str) -> bool:
+    rows = engine.fetchall(f"PRAGMA table_info({table})")
+    return any(row[1] == column for row in rows)

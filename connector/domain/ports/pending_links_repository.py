@@ -35,6 +35,19 @@ class PendingLink:
     last_attempt_at: str | None
     expires_at: str | None
     reason: str | None
+    payload: str | None
+
+
+@dataclass(frozen=True)
+class PendingRow:
+    """
+    Назначение:
+        Снимок строки для re-resolve.
+    """
+
+    dataset: str
+    source_row_id: str
+    payload: str
 
 
 class PendingLinksRepository(Protocol):
@@ -50,11 +63,16 @@ class PendingLinksRepository(Protocol):
         field: str,
         lookup_key: str,
         expires_at: str | None,
+        payload: str | None = None,
     ) -> int: ...
 
     def list_pending_for_key(self, dataset: str, lookup_key: str) -> list[PendingLink]: ...
 
+    def list_pending_rows(self, dataset: str) -> list[PendingRow]: ...
+
     def mark_resolved(self, pending_id: int) -> None: ...
+
+    def mark_resolved_for_source(self, source_row_id: str) -> None: ...
 
     def mark_conflict(self, pending_id: int, reason: str | None = None) -> None: ...
 

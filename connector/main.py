@@ -14,6 +14,7 @@ from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.repository import SqliteCacheRepository
 from connector.infra.cache.identity_repository import SqliteIdentityRepository
+from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
 from connector.usecases.cache_command_service import CacheCommandService
@@ -367,6 +368,7 @@ def runCacheRefreshCommand(
             adapters = list_cache_sync_adapters()
             identity_keys, identity_id_fields = build_identity_index_plan()
             identity_repo = SqliteIdentityRepository(engine)
+            pending_repo = SqlitePendingLinksRepository(engine)
             cache_refresh = CacheRefreshUseCase(
                 reader,
                 cache_repo,
@@ -374,6 +376,7 @@ def runCacheRefreshCommand(
                 identity_repo=identity_repo,
                 identity_keys=identity_keys,
                 identity_id_fields=identity_id_fields,
+                pending_repo=pending_repo,
             )
             service = CacheCommandService(cache_repo, cache_refresh)
 
@@ -607,6 +610,7 @@ def runImportApplyCommand(
         dataset_name = plan.meta.dataset
         conn = None
         identity_repo = None
+        pending_repo = None
         identity_keys: dict[str, set[str]] = {}
         identity_id_fields: dict[str, str] = {}
         try:
@@ -615,6 +619,7 @@ def runImportApplyCommand(
             cache_specs = list_cache_specs()
             ensure_cache_ready(engine, cache_specs)
             identity_repo = SqliteIdentityRepository(engine)
+            pending_repo = SqlitePendingLinksRepository(engine)
             identity_keys, identity_id_fields = build_identity_index_plan()
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
@@ -662,6 +667,7 @@ def runImportApplyCommand(
             identity_repo=identity_repo,
             identity_keys=identity_keys,
             identity_id_fields=identity_id_fields,
+            pending_repo=pending_repo,
         )
         exit_code = service.applyPlan(
             plan=plan,

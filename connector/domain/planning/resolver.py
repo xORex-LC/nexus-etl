@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
+import json
 
 from connector.domain.models import DiagnosticStage, MatchStatus, ValidationErrorItem
 from connector.domain.planning.deps import ResolverSettings
@@ -9,7 +10,7 @@ from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.planning.match_models import MatchedRow, ResolvedRow, ResolveOp
 from connector.domain.planning.rules import LinkFieldRule, LinkRules, ResolveRules
 from connector.domain.ports.identity_repository import IdentityRepository
-from connector.domain.ports.pending_links_repository import PendingLinksRepository
+from connector.domain.ports.pending_links_repository import PendingLink, PendingLinksRepository
 
 
 class Resolver:
@@ -32,6 +33,54 @@ class Resolver:
         self.identity_repo = identity_repo
         self.pending_repo = pending_repo
         self.settings = settings
+        self._last_sweep_at: datetime | None = None
+        self._expired: list[PendingLink] = []
+
+    def drain_expired(self) -> list[PendingLink]:
+        expired = list(self._expired)
+        self._expired.clear()
+        return expired
+
+    def build_batch_index(
+        self,
+        matched_rows: list,
+        dataset: str,
+    ) -> dict[str, dict[str, list[str]]]:
+        key_names, id_field = _collect_batch_keys(self.link_rules, dataset)
+        if not key_names:
+            return {}
+        index: dict[str, dict[str, list[str]]] = {dataset: {}}
+        for item in matched_rows:
+            row = item.row
+            if row is None:
+                continue
+            resolved_id = _extract_resolved_id(row, id_field)
+            if not resolved_id:
+                continue
+            for key_name in key_names:
+                value = _extract_identity_value(row, key_name)
+                if value is None:
+                    continue
+                lookup_key = format_identity_key(key_name, value)
+                bucket = index[dataset].setdefault(lookup_key, [])
+                bucket.append(resolved_id)
+        return index
+
+    def _maybe_sweep_expired(self) -> None:
+        if self.pending_repo is None:
+            return
+        interval = self.settings.pending_sweep_interval_seconds if self.settings else 0
+        if interval <= 0:
+            return
+        now = datetime.now(timezone.utc)
+        if self._last_sweep_at is not None:
+            elapsed = (now - self._last_sweep_at).total_seconds()
+            if elapsed < interval:
+                return
+        self._last_sweep_at = now
+        expired = self.pending_repo.sweep_expired(now.isoformat(), reason="expired")
+        if expired:
+            self._expired.extend(expired)
 
     def resolve(
         self,
@@ -39,9 +88,12 @@ class Resolver:
         *,
         resource_id_map: dict[str, str],
         meta: dict[str, Any] | None = None,
+        batch_index: dict[str, dict[str, list[str]]] | None = None,
     ) -> tuple[ResolvedRow | None, list[ValidationErrorItem], list[ValidationErrorItem]]:
         errors: list[ValidationErrorItem] = []
         warnings: list[ValidationErrorItem] = []
+
+        self._maybe_sweep_expired()
 
         if matched.match_status in (MatchStatus.CONFLICT_TARGET, MatchStatus.CONFLICT_SOURCE):
             errors.append(
@@ -58,7 +110,14 @@ class Resolver:
         if self.resolve_rules.merge_policy:
             desired_state = self.resolve_rules.merge_policy(matched.existing, desired_state)
 
-        should_stop = self._resolve_links(matched, desired_state, warnings, errors, meta)
+        pending_created, should_stop = self._resolve_links(
+            matched,
+            desired_state,
+            warnings,
+            errors,
+            meta,
+            batch_index,
+        )
         if should_stop:
             return None, errors, warnings
 
@@ -98,6 +157,8 @@ class Resolver:
             source_ref=source_ref,
             secret_fields=secret_fields,
         )
+        if not pending_created and self.pending_repo is not None:
+            self.pending_repo.mark_resolved_for_source(matched.row_ref.row_id)
         return resolved, errors, warnings
 
     def _resolve_links(
@@ -107,7 +168,8 @@ class Resolver:
         warnings: list[ValidationErrorItem],
         errors: list[ValidationErrorItem],
         meta: dict[str, Any] | None,
-    ) -> bool:
+        batch_index: dict[str, dict[str, list[str]]] | None,
+    ) -> tuple[bool, bool]:
         if not self.link_rules.fields:
             return False
         if self.identity_repo is None or self.pending_repo is None:
@@ -119,8 +181,9 @@ class Resolver:
                     message="identity/pending repositories are not configured",
                 )
             )
-            return True
+            return False, True
 
+        pending_created = False
         should_stop = False
         for rule in self.link_rules.fields:
             if rule.field not in desired_state:
@@ -138,19 +201,23 @@ class Resolver:
                 key_values,
                 desired_state,
                 self.identity_repo,
+                batch_index,
             )
             if resolved_id is None:
+                pending_created = True
                 if not _allow_partial(self.settings):
                     should_stop = True
                 row_id = matched.row_ref.row_id
                 expires_at = _build_expires_at(self.settings)
                 lookup_key = used_lookup or ""
+                payload = _serialize_pending_payload(matched, desired_state, meta)
                 self.pending_repo.add_pending(
                     dataset=rule.target_dataset,
                     source_row_id=row_id,
                     field=rule.field,
                     lookup_key=lookup_key,
                     expires_at=expires_at,
+                    payload=payload,
                 )
                 warnings.append(
                     ValidationErrorItem(
@@ -164,7 +231,7 @@ class Resolver:
 
             desired_state[rule.field] = _coerce_resolved(resolved_id, rule)
 
-        return should_stop
+        return pending_created, should_stop
 
 
 def _resolve_resource_id(matched: MatchedRow, resource_id_map: dict[str, str]) -> str | None:
@@ -245,6 +312,7 @@ def _resolve_with_rules(
     key_values: dict[str, str],
     desired_state: dict[str, Any],
     identity_repo: IdentityRepository,
+    batch_index: dict[str, dict[str, list[str]]] | None,
 ) -> tuple[str | None, str | None, str | None]:
     used_lookup = None
     for key in rule.resolve_keys:
@@ -253,7 +321,7 @@ def _resolve_with_rules(
             continue
         lookup_key = format_identity_key(key.name, value)
         used_lookup = lookup_key
-        candidates = identity_repo.find_candidates(rule.target_dataset, lookup_key)
+        candidates = _lookup_candidates(batch_index, identity_repo, rule.target_dataset, lookup_key)
         if not candidates:
             continue
         if len(candidates) == 1:
@@ -265,6 +333,7 @@ def _resolve_with_rules(
             key_values,
             desired_state,
             identity_repo,
+            batch_index,
         )
         if len(narrowed) == 1:
             return narrowed[0], None, used_lookup
@@ -279,6 +348,7 @@ def _apply_dedup_rules(
     key_values: dict[str, str],
     desired_state: dict[str, Any],
     identity_repo: IdentityRepository,
+    batch_index: dict[str, dict[str, list[str]]] | None,
 ) -> list[str]:
     if not rule.dedup_rules:
         return candidates
@@ -299,13 +369,27 @@ def _apply_dedup_rules(
                 rule_candidates = set()
                 break
             lookup_key = format_identity_key(key_name, lookup_value)
-            ids = identity_repo.find_candidates(rule.target_dataset, lookup_key)
+            ids = _lookup_candidates(batch_index, identity_repo, rule.target_dataset, lookup_key)
             rule_candidates = rule_candidates.intersection(ids)
         if rule_candidates:
             remaining = rule_candidates
         if len(remaining) == 1:
             return list(remaining)
     return list(remaining)
+
+
+def _lookup_candidates(
+    batch_index: dict[str, dict[str, list[str]]] | None,
+    identity_repo: IdentityRepository,
+    dataset: str,
+    lookup_key: str,
+) -> list[str]:
+    batch_hits = []
+    if batch_index:
+        batch_hits = batch_index.get(dataset, {}).get(lookup_key, [])
+    if batch_hits:
+        return list(dict.fromkeys(batch_hits))
+    return identity_repo.find_candidates(dataset, lookup_key)
 
 
 def _build_expires_at(settings: ResolverSettings | None) -> str | None:
@@ -331,3 +415,64 @@ def _coerce_resolved(resolved_id: str, rule: LinkFieldRule) -> Any:
         except ValueError:
             return resolved_id
     return resolved_id
+
+
+def _collect_batch_keys(link_rules: LinkRules, dataset: str) -> tuple[set[str], str]:
+    keys: set[str] = set()
+    id_field = "_id"
+    for rule in link_rules.fields:
+        if rule.target_dataset != dataset:
+            continue
+        keys.update(key.name for key in rule.resolve_keys)
+        for dedup in rule.dedup_rules:
+            keys.update(dedup)
+        if id_field != rule.target_id_field:
+            id_field = rule.target_id_field
+    return keys, id_field
+
+
+def _extract_resolved_id(row: MatchedRow, id_field: str) -> str | None:
+    if row.match_status == MatchStatus.MATCHED and row.existing:
+        existing_id = row.existing.get(id_field)
+        if existing_id is not None:
+            return str(existing_id).strip()
+    desired = row.desired_state
+    if desired and id_field in desired and desired.get(id_field) is not None:
+        return str(desired.get(id_field)).strip()
+    if id_field == "_id" and row.resource_id:
+        return str(row.resource_id).strip()
+    return None
+
+
+def _extract_identity_value(row: MatchedRow, key_name: str) -> str | None:
+    value = row.identity.values.get(key_name)
+    if value:
+        return str(value).strip()
+    if row.desired_state and key_name in row.desired_state:
+        raw = row.desired_state.get(key_name)
+        if raw is not None:
+            return str(raw).strip()
+    return None
+
+
+def _serialize_pending_payload(
+    matched: MatchedRow,
+    desired_state: dict[str, Any],
+    meta: dict[str, Any] | None,
+) -> str:
+    payload = {
+        "identity": {
+            "primary": matched.identity.primary,
+            "values": dict(matched.identity.values),
+        },
+        "row_ref": {
+            "line_no": matched.row_ref.line_no,
+            "row_id": matched.row_ref.row_id,
+            "identity_primary": matched.row_ref.identity_primary,
+            "identity_value": matched.row_ref.identity_value,
+        },
+        "desired_state": desired_state,
+        "resource_id": matched.resource_id,
+        "meta": meta or {},
+    }
+    return json.dumps(payload, ensure_ascii=True, default=str)

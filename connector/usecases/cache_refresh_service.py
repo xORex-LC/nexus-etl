@@ -11,6 +11,7 @@ from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol, UpsertResult
 from connector.domain.ports.identity_repository import IdentityRepository
+from connector.domain.ports.pending_links_repository import PendingLinksRepository
 from connector.domain.ports.target_read import TargetPagedReaderProtocol
 from connector.infra.logging.setup import logEvent
 
@@ -33,6 +34,7 @@ class CacheRefreshUseCase:
         identity_repo: IdentityRepository | None = None,
         identity_keys: dict[str, set[str]] | None = None,
         identity_id_fields: dict[str, str] | None = None,
+        pending_repo: PendingLinksRepository | None = None,
     ):
         self.target_reader = target_reader
         self.cache_repo = cache_repo
@@ -40,6 +42,7 @@ class CacheRefreshUseCase:
         self.identity_repo = identity_repo
         self.identity_keys = identity_keys or {}
         self.identity_id_fields = identity_id_fields or {}
+        self.pending_repo = pending_repo
 
     def refresh(
         self,
@@ -256,6 +259,14 @@ class CacheRefreshUseCase:
                 continue
             identity_key = format_identity_key(key_name, value_str)
             self.identity_repo.upsert_identity(dataset, identity_key, resolved_id_str)
+            self._resolve_pending_for_key(dataset, identity_key)
+
+    def _resolve_pending_for_key(self, dataset: str, identity_key: str) -> None:
+        if self.pending_repo is None:
+            return
+        pending = self.pending_repo.list_pending_for_key(dataset, identity_key)
+        for item in pending:
+            self.pending_repo.mark_resolved(item.pending_id)
 
 
 def _sum_stats(stats_by_dataset: dict[str, dict[str, int]]) -> dict[str, int]:
