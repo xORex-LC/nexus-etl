@@ -13,6 +13,7 @@ from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.repository import SqliteCacheRepository
+from connector.infra.cache.identity_repository import SqliteIdentityRepository
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
 from connector.usecases.cache_command_service import CacheCommandService
@@ -33,7 +34,7 @@ from connector.common.time import getDurationMs
 from connector.common.run_id import generate_run_id
 from connector.domain.validation.validator import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
-from connector.datasets.registry import get_spec
+from connector.datasets.registry import build_identity_index_plan, get_spec
 from connector.datasets.cache_registry import list_cache_sync_adapters, list_cache_specs
 from connector.infra.secrets import (
     NullSecretProvider,
@@ -364,7 +365,16 @@ def runCacheRefreshCommand(
                 return 2
             reader = AnkeyTargetPagedReader(client)
             adapters = list_cache_sync_adapters()
-            cache_refresh = CacheRefreshUseCase(reader, cache_repo, adapters)
+            identity_keys, identity_id_fields = build_identity_index_plan()
+            identity_repo = SqliteIdentityRepository(engine)
+            cache_refresh = CacheRefreshUseCase(
+                reader,
+                cache_repo,
+                adapters,
+                identity_repo=identity_repo,
+                identity_keys=identity_keys,
+                identity_id_fields=identity_id_fields,
+            )
             service = CacheCommandService(cache_repo, cache_refresh)
 
             return service.refresh(
@@ -595,6 +605,21 @@ def runImportApplyCommand(
             return 2
 
         dataset_name = plan.meta.dataset
+        conn = None
+        identity_repo = None
+        identity_keys: dict[str, set[str]] = {}
+        identity_id_fields: dict[str, str] = {}
+        try:
+            conn = openCacheDb(cacheDbPath)
+            engine = SqliteEngine(conn)
+            cache_specs = list_cache_specs()
+            ensure_cache_ready(engine, cache_specs)
+            identity_repo = SqliteIdentityRepository(engine)
+            identity_keys, identity_id_fields = build_identity_index_plan()
+        except sqlite3.Error as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
+        except Exception as exc:
+            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to init identity index: {exc}")
 
         baseUrl = f"https://{settings.host}:{settings.port}"
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -630,7 +655,14 @@ def runImportApplyCommand(
         client.resetRetryAttempts()
         secrets_provider = build_secret_provider(secretsFrom, vaultFile)
         executor = AnkeyRequestExecutor(client)
-        service = ImportApplyService(executor, secrets=secrets_provider, spec_resolver=get_spec)
+        service = ImportApplyService(
+            executor,
+            secrets=secrets_provider,
+            spec_resolver=get_spec,
+            identity_repo=identity_repo,
+            identity_keys=identity_keys,
+            identity_id_fields=identity_id_fields,
+        )
         exit_code = service.applyPlan(
             plan=plan,
             logger=logger,
@@ -644,6 +676,8 @@ def runImportApplyCommand(
         )
         if hasattr(client, "getRetryAttempts"):
             report.set_context("apply_runtime", {"retries_used": client.getRetryAttempts()})
+        if conn is not None:
+            conn.close()
         return exit_code
 
     runWithReport(

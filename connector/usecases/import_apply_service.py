@@ -10,6 +10,8 @@ from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol
 from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.domain.exceptions import MissingRequiredSecretError
+from connector.domain.planning.identity_keys import format_identity_key
+from connector.domain.ports.identity_repository import IdentityRepository
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem
 
@@ -23,10 +25,16 @@ class ImportApplyService:
         executor: RequestExecutorProtocol,
         secrets: SecretProviderProtocol | None = None,
         spec_resolver: Callable[..., DatasetSpec] = get_spec,
+        identity_repo: IdentityRepository | None = None,
+        identity_keys: dict[str, set[str]] | None = None,
+        identity_id_fields: dict[str, str] | None = None,
     ):
         self.executor = executor
         self.secrets = secrets
         self.spec_resolver = spec_resolver
+        self.identity_repo = identity_repo
+        self.identity_keys = identity_keys or {}
+        self.identity_id_fields = identity_id_fields or {}
 
     def applyPlan(
         self,
@@ -119,6 +127,12 @@ class ImportApplyService:
                             created += 1
                         elif action == "update":
                             updated += 1
+                        self._update_identity_index(
+                            dataset=item_dataset,
+                            desired_state=current_item.desired_state,
+                            response_json=exec_result.response_json,
+                            source_ref=current_item.source_ref,
+                        )
                         break
 
                     next_item = None
@@ -245,3 +259,39 @@ class ImportApplyService:
             "api_response": api_response,
             "error_details": error_details,
         }
+
+    def _update_identity_index(
+        self,
+        *,
+        dataset: str,
+        desired_state: dict[str, Any],
+        response_json: Any | None,
+        source_ref: dict[str, Any] | None,
+    ) -> None:
+        if self.identity_repo is None:
+            return
+        key_names = self.identity_keys.get(dataset)
+        if not key_names:
+            return
+        id_field = self.identity_id_fields.get(dataset, "_id")
+        resolved_id = None
+        if isinstance(response_json, dict):
+            resolved_id = response_json.get(id_field)
+        if resolved_id is None:
+            resolved_id = desired_state.get(id_field)
+        if resolved_id is None:
+            return
+        resolved_id_str = str(resolved_id).strip()
+        if resolved_id_str == "":
+            return
+        for key_name in key_names:
+            value = desired_state.get(key_name)
+            if value is None and isinstance(source_ref, dict):
+                value = source_ref.get(key_name)
+            if value is None:
+                continue
+            value_str = str(value).strip()
+            if value_str == "":
+                continue
+            identity_key = format_identity_key(key_name, value_str)
+            self.identity_repo.upsert_identity(dataset, identity_key, resolved_id_str)

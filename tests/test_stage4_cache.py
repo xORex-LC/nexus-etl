@@ -75,7 +75,7 @@ def test_cache_schema_created(tmp_path: Path):
         assert {"meta", "users", "organizations"}.issubset(tables)
         repo = SqliteCacheRepository(engine, cache_specs)
         schema_version = repo.get_meta(None).values.get("schema_version")
-        assert schema_version == "2"
+        assert schema_version == "3"
     finally:
         conn.close()
 

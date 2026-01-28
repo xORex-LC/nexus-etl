@@ -15,6 +15,7 @@ def build_link_rules() -> LinkRules:
                 dedup_rules=(
                     ("organization_id",),
                 ),
+                target_id_field="_ouid",
                 coerce="int",
             ),
         ),

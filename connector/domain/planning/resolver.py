@@ -5,6 +5,7 @@ from typing import Any
 
 from connector.domain.models import DiagnosticStage, MatchStatus, ValidationErrorItem
 from connector.domain.planning.deps import ResolverSettings
+from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.planning.match_models import MatchedRow, ResolvedRow, ResolveOp
 from connector.domain.planning.rules import LinkFieldRule, LinkRules, ResolveRules
 from connector.domain.ports.identity_repository import IdentityRepository
@@ -37,6 +38,7 @@ class Resolver:
         matched: MatchedRow,
         *,
         resource_id_map: dict[str, str],
+        meta: dict[str, Any] | None = None,
     ) -> tuple[ResolvedRow | None, list[ValidationErrorItem], list[ValidationErrorItem]]:
         errors: list[ValidationErrorItem] = []
         warnings: list[ValidationErrorItem] = []
@@ -56,7 +58,7 @@ class Resolver:
         if self.resolve_rules.merge_policy:
             desired_state = self.resolve_rules.merge_policy(matched.existing, desired_state)
 
-        should_stop = self._resolve_links(matched, desired_state, warnings, errors)
+        should_stop = self._resolve_links(matched, desired_state, warnings, errors, meta)
         if should_stop:
             return None, errors, warnings
 
@@ -104,6 +106,7 @@ class Resolver:
         desired_state: dict[str, Any],
         warnings: list[ValidationErrorItem],
         errors: list[ValidationErrorItem],
+        meta: dict[str, Any] | None,
     ) -> bool:
         if not self.link_rules.fields:
             return False
@@ -128,7 +131,8 @@ class Resolver:
             if isinstance(current_value, int):
                 continue
 
-            key_values = _extract_key_values(desired_state, rule.resolve_keys)
+            overrides = _extract_link_key_overrides(meta, rule.field)
+            key_values = _extract_key_values(desired_state, rule.resolve_keys, overrides)
             resolved_id, reason, used_lookup = _resolve_with_rules(
                 rule,
                 key_values,
@@ -193,10 +197,17 @@ def _default_diff(existing: dict[str, Any] | None, desired_state: dict[str, Any]
     return changes
 
 
-def _extract_key_values(desired_state: dict[str, Any], keys: tuple) -> dict[str, str]:
+def _extract_key_values(
+    desired_state: dict[str, Any],
+    keys: tuple,
+    overrides: dict[str, str] | None,
+) -> dict[str, str]:
     key_values: dict[str, str] = {}
     for key in keys:
-        value = desired_state.get(key.field)
+        if overrides and key.name in overrides:
+            value = overrides[key.name]
+        else:
+            value = desired_state.get(key.field)
         if value is None:
             continue
         if isinstance(value, int):
@@ -207,6 +218,26 @@ def _extract_key_values(desired_state: dict[str, Any], keys: tuple) -> dict[str,
             continue
         key_values[key.name] = value_str
     return key_values
+
+
+def _extract_link_key_overrides(meta: dict[str, Any] | None, field: str) -> dict[str, str] | None:
+    if not meta:
+        return None
+    link_keys = meta.get("link_keys")
+    if not isinstance(link_keys, dict):
+        return None
+    field_overrides = link_keys.get(field)
+    if not isinstance(field_overrides, dict):
+        return None
+    cleaned: dict[str, str] = {}
+    for name, value in field_overrides.items():
+        if value is None:
+            continue
+        value_str = str(value).strip()
+        if value_str == "":
+            continue
+        cleaned[str(name)] = value_str
+    return cleaned or None
 
 
 def _resolve_with_rules(
@@ -220,7 +251,7 @@ def _resolve_with_rules(
         value = key_values.get(key.name)
         if not value:
             continue
-        lookup_key = _format_identity_key(key.name, value)
+        lookup_key = format_identity_key(key.name, value)
         used_lookup = lookup_key
         candidates = identity_repo.find_candidates(rule.target_dataset, lookup_key)
         if not candidates:
@@ -267,7 +298,7 @@ def _apply_dedup_rules(
             if lookup_value == "":
                 rule_candidates = set()
                 break
-            lookup_key = _format_identity_key(key_name, lookup_value)
+            lookup_key = format_identity_key(key_name, lookup_value)
             ids = identity_repo.find_candidates(rule.target_dataset, lookup_key)
             rule_candidates = rule_candidates.intersection(ids)
         if rule_candidates:
@@ -275,10 +306,6 @@ def _apply_dedup_rules(
         if len(remaining) == 1:
             return list(remaining)
     return list(remaining)
-
-
-def _format_identity_key(name: str, value: str) -> str:
-    return f"{name}:{value}"
 
 
 def _build_expires_at(settings: ResolverSettings | None) -> str | None:

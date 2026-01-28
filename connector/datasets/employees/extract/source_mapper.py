@@ -7,6 +7,7 @@ from connector.domain.transform.source_record import SourceRecord
 from typing import Mapping
 import re
 from connector.datasets.employees.extract.models import EmployeesRowPublic
+from connector.domain.validation.row_rules import normalize_whitespace
 from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 
 SOURCE_COLUMNS = [
@@ -58,6 +59,7 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
 
         row = None
         secret_candidates = {}
+        link_keys: dict[str, dict[str, str]] = {}
         if not errors:
             row = EmployeesRowPublic(
                 email=email,
@@ -77,12 +79,17 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
                 resource_id=None,
             )
             secret_candidates = self.spec.collect_secret_candidates(row)
+            if manager_id is not None and not isinstance(manager_id, int):
+                match_key_value = normalize_whitespace(str(manager_id))
+                if match_key_value:
+                    link_keys["manager_id"] = {"match_key": match_key_value}
 
         return TransformResult(
             record=record,
             row=row,
             row_ref=None,
             match_key=None,
+            meta={"link_keys": link_keys} if link_keys else {},
             secret_candidates=secret_candidates,
             errors=errors,
             warnings=warnings,

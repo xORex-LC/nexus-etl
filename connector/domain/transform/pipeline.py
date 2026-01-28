@@ -35,11 +35,17 @@ class TransformPipeline(Generic[T, N, D]):
                 row=None,
                 row_ref=collected.row_ref,
                 match_key=collected.match_key,
+                meta=collected.meta,
                 secret_candidates=collected.secret_candidates,
                 errors=[*collected.errors],
                 warnings=[*collected.warnings],
             )
         mapped = self.mapper.map(collected.record)
+        if collected.meta:
+            if mapped.meta:
+                mapped.meta = {**collected.meta, **mapped.meta}
+            else:
+                mapped.meta = dict(collected.meta)
         mapped.errors = [*collected.errors, *mapped.errors]
         mapped.warnings = [*collected.warnings, *mapped.warnings]
         return mapped

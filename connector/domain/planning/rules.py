@@ -62,6 +62,7 @@ class LinkFieldRule:
     target_dataset: str
     resolve_keys: tuple[LinkKeyRule, ...]
     dedup_rules: tuple[tuple[str, ...], ...] = ()
+    target_id_field: str = "_id"
     coerce: str | None = None
 
 

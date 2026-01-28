@@ -49,6 +49,18 @@ class ResolveUseCase:
         for resolved in self._iter_resolved(matched_source, resolver):
             row = resolved.row
             if row is None:
+                status = _resolve_status(resolved)
+                if status is None:
+                    continue
+                report.add_item(
+                    status=status,
+                    row_ref=resolved.row_ref,
+                    payload=None,
+                    errors=resolved.errors,
+                    warnings=resolved.warnings,
+                    meta={"op": None},
+                    store=True,
+                )
                 continue
             status = "FAILED" if resolved.errors else "OK"
             payload = asdict(row) if self.include_resolved_items and row is not None else None
@@ -81,12 +93,14 @@ class ResolveUseCase:
             resolved_row, errors, warnings = resolver.resolve(
                 matched.row,
                 resource_id_map=resource_id_map,
+                meta=matched.meta,
             )
             yield TransformResult(
                 record=matched.record,
                 row=resolved_row,
                 row_ref=matched.row_ref,
                 match_key=matched.match_key,
+                meta=matched.meta,
                 secret_candidates=matched.secret_candidates,
                 errors=errors,
                 warnings=warnings,
@@ -106,3 +120,12 @@ def _build_resource_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> d
         if resource_id:
             mapping[row.identity.primary_value] = str(resource_id)
     return mapping
+
+
+def _resolve_status(item: TransformResult) -> str | None:
+    if item.errors:
+        return "FAILED"
+    for warning in item.warnings:
+        if warning.code == "RESOLVE_PENDING":
+            return "PENDING"
+    return None
