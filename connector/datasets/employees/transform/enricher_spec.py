@@ -36,54 +36,6 @@ class BuildMatchKeyRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDepend
 
 
 @dataclass(frozen=True)
-class ManagerLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
-    name: str = "manager_lookup"
-
-    def apply(self, result, deps, errors, warnings) -> None:
-        _ = warnings
-        if result.row.manager_id is None:
-            return
-        if isinstance(result.row.manager_id, int):
-            return
-        match_key_value = normalize_whitespace(str(result.row.manager_id))
-        if not match_key_value:
-            return
-        candidates = deps.find_users_by_match_key(match_key_value)
-        if len(candidates) > 1:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="MANAGER_CONFLICT",
-                    field="managerId",
-                    message="multiple managers found for match_key",
-                )
-            )
-            return
-        if not candidates:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="MANAGER_NOT_FOUND",
-                    field="managerId",
-                    message="manager not found in cache",
-                )
-            )
-            return
-        manager_ouid = candidates[0].get("_ouid")
-        if manager_ouid is None:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="MANAGER_OUID_MISSING",
-                    field="managerId",
-                    message="manager has no _ouid",
-                )
-            )
-            return
-        result.row.manager_id = int(manager_ouid)
-
-
-@dataclass(frozen=True)
 class OrganizationLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
     name: str = "organization_lookup"
 
@@ -186,7 +138,6 @@ class EmployeesEnricherSpec(EnricherSpec[NormalizedEmployeesRow, EmployeesEnrich
 
     rules: tuple[EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies], ...] = (
         BuildMatchKeyRule(),
-        ManagerLookupRule(),
         OrganizationLookupRule(),
         ResourceIdRule(),
         UsrOrgTabNumRule(),

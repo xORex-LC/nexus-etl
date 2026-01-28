@@ -26,6 +26,3 @@ class EmployeesEnrichDependencies:
 
     def find_org_by_ouid(self, ouid: int) -> dict[str, Any] | None:
         return self.cache_repo.find_one("organizations", {"_ouid": ouid}, include_deleted=True)
-
-    def find_users_by_match_key(self, match_key: str) -> list[dict[str, Any]]:
-        return self.cache_repo.find("employees", {"match_key": match_key}, include_deleted=True)

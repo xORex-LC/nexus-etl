@@ -55,6 +55,7 @@ class ResolveUseCase:
                 status = _resolve_status(resolved)
                 if status is None:
                     continue
+                _count_special_ops(report, resolved.errors, resolved.warnings)
                 report.add_item(
                     status=status,
                     row_ref=resolved.row_ref,
@@ -67,6 +68,7 @@ class ResolveUseCase:
                 continue
             status = "FAILED" if resolved.errors else "OK"
             payload = asdict(row) if self.include_resolved_items and row is not None else None
+            _count_special_ops(report, resolved.errors, resolved.warnings)
             report.add_item(
                 status=status,
                 row_ref=row.row_ref if row else None,
@@ -178,6 +180,7 @@ def _report_expired(report, expired, settings) -> None:
                 },
                 store=True,
             )
+            report.add_op("resolve_expired", ok=1, count=1)
             continue
         report.add_item(
             status="FAILED",
@@ -196,3 +199,11 @@ def _report_expired(report, expired, settings) -> None:
             },
             store=True,
         )
+        report.add_op("resolve_expired", failed=1, count=1)
+
+
+def _count_special_ops(report, errors, warnings) -> None:
+    if any(err.code == "RESOLVE_MAX_ATTEMPTS" for err in errors or []):
+        report.add_op("resolve_max_attempts", failed=1, count=1)
+    if any(warn.code == "RESOLVE_PENDING" for warn in warnings or []):
+        report.add_op("resolve_pending", ok=1, count=1)
