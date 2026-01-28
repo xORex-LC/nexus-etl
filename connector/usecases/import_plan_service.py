@@ -70,9 +70,14 @@ class ImportPlanService:
         )
         matching_rules = dataset_spec.build_matching_rules()
         resolve_rules = dataset_spec.build_resolve_rules()
+        link_rules = dataset_spec.build_link_rules()
         cache_repo = planning_deps.cache_repo
         if cache_repo is None:
             raise ValueError("planning cache_repo is not configured")
+        if planning_deps.identity_repo is None:
+            raise ValueError("planning identity_repo is not configured")
+        if planning_deps.pending_repo is None:
+            raise ValueError("planning pending_repo is not configured")
 
         matcher = Matcher(
             dataset=dataset,
@@ -90,7 +95,13 @@ class ImportPlanService:
             matcher=matcher,
         )
 
-        resolver = Resolver(resolve_rules)
+        resolver = Resolver(
+            resolve_rules,
+            link_rules,
+            identity_repo=planning_deps.identity_repo,
+            pending_repo=planning_deps.pending_repo,
+            settings=planning_deps.resolver_settings,
+        )
         resolve_usecase = ResolveUseCase(
             report_items_limit=report_items_limit,
             include_resolved_items=False,

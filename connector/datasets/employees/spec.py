@@ -3,8 +3,9 @@ from __future__ import annotations
 from connector.datasets.spec import DatasetSpec, TransformBundle, ValidationBundle
 from connector.datasets.employees.load.reporting import employees_report_adapter
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
-from connector.domain.planning.deps import PlanningDependencies
+from connector.domain.planning.deps import PlanningDependencies, ResolverSettings
 from connector.datasets.employees.load.matching_rules import build_matching_rules
+from connector.datasets.employees.load.link_rules import build_link_rules
 from connector.datasets.employees.load.resolve_rules import build_resolve_rules
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
@@ -22,6 +23,8 @@ from connector.datasets.employees.load.cache_spec import employees_cache_spec
 from connector.datasets.organizations.load.cache_spec import organizations_cache_spec
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.repository import SqliteCacheRepository
+from connector.infra.cache.identity_repository import SqliteIdentityRepository
+from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
 
 class EmployeesSpec(DatasetSpec):
     """
@@ -37,10 +40,16 @@ class EmployeesSpec(DatasetSpec):
         return ValidationDependencies()
 
     def build_planning_deps(self, conn, settings) -> PlanningDependencies:
-        _ = settings
+        resolver_settings = _build_resolver_settings(settings)
         cache_repo = self._build_cache_repo(conn)
+        engine = SqliteEngine(conn)
+        identity_repo = SqliteIdentityRepository(engine)
+        pending_repo = SqlitePendingLinksRepository(engine)
         return PlanningDependencies(
             cache_repo=cache_repo,
+            identity_repo=identity_repo,
+            pending_repo=pending_repo,
+            resolver_settings=resolver_settings,
         )
 
     def build_enrich_deps(self, conn, settings, secret_store=None) -> EmployeesEnrichDependencies:
@@ -89,6 +98,9 @@ class EmployeesSpec(DatasetSpec):
     def build_resolve_rules(self):
         return build_resolve_rules()
 
+    def build_link_rules(self):
+        return build_link_rules()
+
     def get_report_adapter(self):
         return self._report_adapter
 
@@ -98,3 +110,21 @@ class EmployeesSpec(DatasetSpec):
 # Фабрика экземпляра спеки
 def make_employees_spec(secrets: SecretProviderProtocol | None = None) -> EmployeesSpec:
     return EmployeesSpec(secrets=secrets)
+
+
+def _build_resolver_settings(settings) -> ResolverSettings:
+    if settings is None:
+        return ResolverSettings(
+            pending_ttl_seconds=120,
+            pending_max_attempts=5,
+            pending_sweep_interval_seconds=60,
+            pending_on_expire="error",
+            pending_allow_partial=False,
+        )
+    return ResolverSettings(
+        pending_ttl_seconds=settings.pending_ttl_seconds,
+        pending_max_attempts=settings.pending_max_attempts,
+        pending_sweep_interval_seconds=settings.pending_sweep_interval_seconds,
+        pending_on_expire=settings.pending_on_expire,
+        pending_allow_partial=settings.pending_allow_partial,
+    )

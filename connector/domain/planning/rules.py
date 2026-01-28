@@ -38,3 +38,38 @@ class ResolveRules:
     diff_policy: DiffPolicy | None = None
     secret_fields_for_op: SecretFieldsPolicy | None = None
     merge_policy: MergePolicy | None = None
+
+
+@dataclass(frozen=True)
+class LinkKeyRule:
+    """
+    Назначение:
+        Правило извлечения ключа для link-resolve.
+    """
+
+    name: str
+    field: str
+
+
+@dataclass(frozen=True)
+class LinkFieldRule:
+    """
+    Назначение:
+        Правило resolve для одного link-поля.
+    """
+
+    field: str
+    target_dataset: str
+    resolve_keys: tuple[LinkKeyRule, ...]
+    dedup_rules: tuple[tuple[str, ...], ...] = ()
+    coerce: str | None = None
+
+
+@dataclass(frozen=True)
+class LinkRules:
+    """
+    Назначение:
+        Набор link-правил для resolver (dataset-специфика).
+    """
+
+    fields: tuple[LinkFieldRule, ...] = ()
