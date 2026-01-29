@@ -1,0 +1,90 @@
+@startuml
+title Matcher - Class Diagram
+
+class Matcher {
+  - dataset: str
+  - cache_repo: CacheRepositoryProtocol
+  - matching_rules: MatchingRules
+  - resolve_rules: ResolveRules
+  - include_deleted: bool
+  + match(validated)
+}
+
+class MatchingRules {
+  + build_identity
+  + ignored_fields: set
+  + build_links
+  + identity_rules: IdentityRule[*]
+}
+
+class IdentityRule {
+  + name: str
+  + build_identity
+}
+
+class ResolveRules {
+  + build_desired_state
+  + build_source_ref
+  + diff_policy
+  + secret_fields_for_op
+  + merge_policy
+}
+
+class CacheRepositoryProtocol <<protocol>> {
+  + find(dataset, filters, include_deleted, mode)
+}
+
+class ValidationRow {
+  + row
+  + validation
+}
+
+class ValidationRowResult {
+  + line_no: int
+  + match_key: str
+  + usr_org_tab_num: str
+  + row_ref
+  + errors
+  + warnings
+}
+
+class Identity {
+  + primary: str
+  + values
+  + primary_value
+}
+
+class MatchedRow {
+  + row_ref
+  + identity
+  + match_status
+  + desired_state
+  + existing
+  + fingerprint
+  + fingerprint_fields
+  + source_links
+  + target_id
+}
+
+class TransformResult<T> {
+  + record
+  + row
+  + row_ref
+  + match_key
+  + meta
+  + errors
+  + warnings
+}
+
+Matcher --> MatchingRules
+Matcher --> ResolveRules
+Matcher --> CacheRepositoryProtocol
+Matcher ..> MatchedRow
+Matcher ..> ValidationRow
+MatchingRules o-- IdentityRule
+ValidationRow --> ValidationRowResult
+MatchedRow --> Identity
+TransformResult <|-- "TransformResult[MatchedRow]"
+TransformResult <|-- "TransformResult[ValidationRow]"
+
+@enduml

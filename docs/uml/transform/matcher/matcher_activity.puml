@@ -1,0 +1,42 @@
+@startuml
+title Matcher - Activity Diagram
+
+start
+:Input TransformResult[ValidationRow];
+if (validated.row or validation.row is None?) then (yes)
+  :Emit MATCH_IDENTITY_MISSING;
+  stop
+endif
+
+:Build identity rules list;
+repeat
+  :rule.build_identity(row, validation);
+  if (identity.primary_value empty?) then (skip)
+  else
+    :cache_repo.find(dataset, {primary: value});
+    if (candidates > 1?) then (yes)
+      :Emit MATCH_CONFLICT_TARGET;
+      stop
+    elseif (candidates == 1?) then (yes)
+      :Select identity + existing;
+      break
+    else (no)
+      :Remember first usable identity;
+    endif
+  endif
+repeat while (more rules?)
+
+if (no identity?) then (yes)
+  :Emit MATCH_IDENTITY_MISSING;
+  stop
+endif
+
+:build_desired_state(row, validation);
+:build_fingerprint(desired_state);
+:build_links (optional);
+:build RowRef (ensure identity); 
+:Create MatchedRow;
+:Return TransformResult[MatchedRow];
+stop
+
+@enduml
