@@ -15,15 +15,31 @@ MergePolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
 
 
 @dataclass(frozen=True)
+class IdentityRule:
+    """
+    Назначение:
+        Правило построения identity для matcher.
+    """
+
+    name: str
+    build_identity: BuildIdentity
+
+
+@dataclass(frozen=True)
 class MatchingRules:
     """
     Назначение:
         Набор правил сопоставления для matcher (dataset‑специфика).
+
+    Пояснения:
+        Если identity_rules не заданы, matcher использует build_identity
+        как единственное правило построения identity.
     """
 
     build_identity: BuildIdentity
     ignored_fields: set[str] = field(default_factory=set)
     build_links: BuildLinks | None = None
+    identity_rules: tuple[IdentityRule, ...] = ()
 
 
 @dataclass(frozen=True)

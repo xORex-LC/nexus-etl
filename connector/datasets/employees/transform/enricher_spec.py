@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.transform.enricher import EnrichRule, EnricherSpec
 from connector.domain.transform.match_key import MatchKeyError, build_delimited_match_key
-from connector.domain.transform.target_id import TargetIdPolicy, TargetIdRule
+from connector.domain.transform.target_id import TargetIdMode, TargetIdPolicy, TargetIdRule
 from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
 from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
@@ -43,7 +43,7 @@ def _build_target_id_policy() -> TargetIdPolicy[EmployeesEnrichDependencies]:
     """
     return TargetIdPolicy(
         field_name="target_id",
-        mode="required",
+        mode=TargetIdMode.REQUIRED,
         allow_source_value=True,
         generator=lambda: str(uuid.uuid4()),
         exists=lambda deps, value: deps.find_user_by_target_id(value) is not None,
