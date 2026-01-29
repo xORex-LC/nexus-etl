@@ -17,7 +17,7 @@ from connector.domain.planning.match_models import MatchedRow
 from connector.domain.models import Identity, MatchStatus, RowRef
 from connector.domain.transform.source_record import SourceRecord
 from connector.domain.transform.result import TransformResult
-from connector.domain.planning.matcher import _build_fingerprint
+from connector.domain.planning.match_models import build_fingerprint
 from connector.datasets.registry import get_spec
 
 class ImportPlanService:
@@ -201,7 +201,10 @@ def _load_pending_rows(
             match_status = MatchStatus.NOT_FOUND
             existing = None
 
-        fingerprint = _build_fingerprint(desired_state, ignored_fields)
+        fingerprint, fingerprint_fields = build_fingerprint(
+            desired_state,
+            ignored_fields=ignored_fields,
+        )
         matched_row = MatchedRow(
             row_ref=row_ref,
             identity=identity,
@@ -209,6 +212,7 @@ def _load_pending_rows(
             desired_state=desired_state,
             existing=existing,
             fingerprint=fingerprint,
+            fingerprint_fields=fingerprint_fields,
             source_links={},
             resource_id=resource_id,
         )

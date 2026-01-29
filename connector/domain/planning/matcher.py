@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
-import hashlib
 from typing import Any
 
 from connector.domain.models import DiagnosticStage, Identity, MatchStatus, RowRef, ValidationErrorItem
-from connector.domain.planning.match_models import MatchedRow
+from connector.domain.planning.match_models import MatchedRow, build_fingerprint
 from connector.domain.planning.rules import MatchingRules, ResolveRules
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol
 from connector.domain.transform.result import TransformResult
@@ -64,7 +62,10 @@ class Matcher:
             )
 
         desired_state = self.resolve_rules.build_desired_state(row, validation)
-        fingerprint = _build_fingerprint(desired_state, self.matching_rules.ignored_fields)
+        fingerprint, fingerprint_fields = build_fingerprint(
+            desired_state,
+            ignored_fields=self.matching_rules.ignored_fields,
+        )
 
         candidates = self.cache_repo.find(
             self.dataset,
@@ -111,6 +112,7 @@ class Matcher:
             desired_state=desired_state,
             existing=existing,
             fingerprint=fingerprint,
+            fingerprint_fields=fingerprint_fields,
             source_links=links,
             resource_id=getattr(row, "resource_id", None),
         )
@@ -125,12 +127,6 @@ class Matcher:
             errors=[*validated.errors],
             warnings=[*validated.warnings],
         )
-
-
-def _build_fingerprint(desired_state: dict[str, Any], ignored_fields: set[str]) -> str:
-    clean = {k: v for k, v in desired_state.items() if k not in ignored_fields}
-    payload = json.dumps(clean, ensure_ascii=True, sort_keys=True, default=str)
-    return hashlib.md5(payload.encode("utf-8")).hexdigest()
 
 
 def _make_match_error(code: str, field: str | None, message: str) -> list[ValidationErrorItem]:

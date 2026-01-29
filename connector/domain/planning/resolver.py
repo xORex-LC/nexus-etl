@@ -3,14 +3,22 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import json
+import logging
 
 from connector.domain.models import DiagnosticStage, MatchStatus, ValidationErrorItem
 from connector.domain.planning.deps import ResolverSettings
 from connector.domain.planning.identity_keys import format_identity_key
-from connector.domain.planning.match_models import MatchedRow, ResolvedRow, ResolveOp
+from connector.domain.planning.match_models import (
+    MatchedRow,
+    ResolvedRow,
+    ResolveOp,
+    build_fingerprint_for_keys,
+)
 from connector.domain.planning.rules import LinkFieldRule, LinkRules, ResolveRules
 from connector.domain.ports.identity_repository import IdentityRepository
 from connector.domain.ports.pending_links_repository import PendingLink, PendingLinksRepository
+
+logger = logging.getLogger(__name__)
 
 
 class Resolver:
@@ -96,6 +104,7 @@ class Resolver:
         self._maybe_sweep_expired()
 
         if matched.match_status in (MatchStatus.CONFLICT_TARGET, MatchStatus.CONFLICT_SOURCE):
+            # Политика: конфликт на этапе match = hard-fail, план не строим.
             errors.append(
                 ValidationErrorItem(
                     stage=DiagnosticStage.RESOLVE,
@@ -106,9 +115,25 @@ class Resolver:
             )
             return None, errors, warnings
 
-        desired_state = dict(matched.desired_state)
+        original_desired = dict(matched.desired_state)
+        desired_state = dict(original_desired)
         if self.resolve_rules.merge_policy:
-            desired_state = self.resolve_rules.merge_policy(matched.existing, desired_state)
+            # merge_policy должен только дополнять desired_state на основе existing,
+            # не затирая явно заданные значения.
+            merged = self.resolve_rules.merge_policy(matched.existing, desired_state)
+            if merged is not None:
+                overwritten = [
+                    key for key, value in original_desired.items() if key in merged and merged[key] != value
+                ]
+                if overwritten:
+                    logger.warning(
+                        "merge_policy tried to overwrite desired fields; preserving source values. row_id=%s fields=%s",
+                        matched.row_ref.row_id,
+                        overwritten,
+                    )
+                for key, value in original_desired.items():
+                    merged[key] = value
+                desired_state = merged
 
         pending_created, should_stop = self._resolve_links(
             matched,
@@ -257,12 +282,34 @@ def _resolve_resource_id(matched: MatchedRow, resource_id_map: dict[str, str]) -
 def _decide_op(matched: MatchedRow, desired_state: dict[str, Any], rules: ResolveRules) -> tuple[str, dict[str, Any]]:
     if matched.match_status == MatchStatus.NOT_FOUND:
         return ResolveOp.CREATE, {}
+    if _can_skip_with_fingerprint(matched, desired_state, rules):
+        return ResolveOp.SKIP, {}
 
     diff_policy = rules.diff_policy or _default_diff
     changes = diff_policy(matched.existing, desired_state)
     if not changes:
         return ResolveOp.SKIP, {}
     return ResolveOp.UPDATE, changes
+
+
+def _can_skip_with_fingerprint(
+    matched: MatchedRow,
+    desired_state: dict[str, Any],
+    rules: ResolveRules,
+) -> bool:
+    if matched.match_status != MatchStatus.MATCHED:
+        return False
+    if matched.existing is None:
+        return False
+    if not matched.fingerprint_fields:
+        return False
+    if rules.merge_policy is not None:
+        return False
+    if rules.diff_policy is not None:
+        return False
+    desired_fingerprint = build_fingerprint_for_keys(desired_state, matched.fingerprint_fields)
+    existing_fingerprint = build_fingerprint_for_keys(matched.existing, matched.fingerprint_fields)
+    return desired_fingerprint == existing_fingerprint
 
 
 def _default_diff(existing: dict[str, Any] | None, desired_state: dict[str, Any]) -> dict[str, Any]:

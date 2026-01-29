@@ -31,6 +31,16 @@ class ResolveRules:
     """
     Назначение:
         Набор правил разрешения для resolver (dataset‑специфика).
+
+    Пояснения:
+        merge_policy применяется до link-resolve и diff.
+        Рекомендуемый контракт:
+            - принимать existing и desired_state,
+            - возвращать новый desired_state,
+            - не удалять явно заданные значения,
+            - использовать existing только как источник дефолтов.
+        Важно:
+            если merge_policy задан, оптимизация skip по fingerprint отключается.
     """
 
     build_desired_state: BuildDesiredState

@@ -43,6 +43,7 @@ class ResolverSettings {
   + pending_sweep_interval_seconds: int
   + pending_on_expire: str
   + pending_allow_partial: bool
+  + pending_retention_days: int
 }
 
 class IdentityRepository <<protocol>> {
@@ -54,9 +55,13 @@ class PendingLinksRepository <<protocol>> {
   + add_pending(...)
   + touch_attempt(pending_id)
   + list_pending_for_key(dataset, identity_key)
+  + list_pending_rows(dataset)
   + mark_conflict(pending_id)
+  + mark_expired(pending_id)
   + mark_resolved(pending_id)
+  + mark_resolved_for_source(source_row_id)
   + sweep_expired(...)
+  + purge_stale(cutoff, statuses)
 }
 
 class MatchedRow {
@@ -65,6 +70,9 @@ class MatchedRow {
   + match_status
   + desired_state
   + existing
+  + fingerprint
+  + fingerprint_fields
+  + source_links
   + resource_id
 }
 

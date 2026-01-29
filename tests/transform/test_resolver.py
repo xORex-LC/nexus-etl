@@ -58,6 +58,7 @@ def _make_matched_row() -> MatchedRow:
         desired_state={"manager_id": "mgr", "organization_id": 10},
         existing=None,
         fingerprint="fp",
+        fingerprint_fields=("manager_id", "organization_id"),
         source_links={},
         resource_id="RID-1",
     )
