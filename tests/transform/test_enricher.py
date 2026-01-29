@@ -13,7 +13,7 @@ from connector.datasets.employees.transform.normalized import NormalizedEmployee
 class _DummyEnrichDeps:
     identity_lookup = None
 
-    def find_user_by_id(self, _resource_id: str):
+    def find_user_by_target_id(self, _target_id: str):
         return None
 
     def find_user_by_usr_org_tab_num(self, _tab_num: str):
@@ -62,7 +62,7 @@ def test_enricher_builds_match_key_and_generates_values():
         position="Engineer",
         avatar_id=None,
         usr_org_tab_num=None,
-        resource_id=None,
+        target_id=None,
     )
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
     result = enricher.enrich(_build_result(row))
@@ -70,7 +70,7 @@ def test_enricher_builds_match_key_and_generates_values():
     assert result.errors == []
     assert result.match_key is not None
     assert result.match_key.value == "Doe|John|M|100"
-    assert result.row.resource_id is not None
+    assert result.row.target_id is not None
     assert result.row.usr_org_tab_num is not None
     assert result.secret_candidates.get("password")
 
@@ -91,7 +91,7 @@ def test_enricher_reports_missing_match_key():
         position="Engineer",
         avatar_id=None,
         usr_org_tab_num="TAB-100",
-        resource_id="RID-1",
+        target_id="RID-1",
     )
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
     result = enricher.enrich(_build_result(row))
@@ -117,7 +117,7 @@ def test_enricher_writes_secrets_to_store():
         position="Engineer",
         avatar_id=None,
         usr_org_tab_num="TAB-100",
-        resource_id="RID-1",
+        target_id="RID-1",
     )
     secret_store = _DummySecretStore()
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), secret_store, "employees", run_id="run-1")

@@ -7,7 +7,7 @@ class Resolver {
   - identity_repo: IdentityRepository
   - pending_repo: PendingLinksRepository
   - settings: ResolverSettings
-  + resolve(matched, resource_id_map, meta, batch_index)
+  + resolve(matched, target_id_map, meta, batch_index)
   + build_batch_index(matched_rows, dataset)
 }
 
@@ -73,7 +73,7 @@ class MatchedRow {
   + fingerprint
   + fingerprint_fields
   + source_links
-  + resource_id
+  + target_id
 }
 
 class ResolvedRow {
@@ -83,7 +83,7 @@ class ResolvedRow {
   + desired_state
   + changes
   + existing
-  + resource_id
+  + target_id
   + source_ref
   + secret_fields
 }

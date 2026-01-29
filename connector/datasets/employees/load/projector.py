@@ -13,7 +13,7 @@ class EmployeesProjector:
     def to_desired_state(self, validated_entity) -> dict:
         desired = asdict(validated_entity)
         desired.pop("password", None)
-        desired.pop("resource_id", None)
+        desired.pop("target_id", None)
         return desired
 
     def to_identity(self, validated_entity, validation_result) -> Identity:

@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.transform.enricher import EnrichRule, EnricherSpec
-from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
+from connector.domain.transform.match_key import MatchKeyError, build_delimited_match_key
+from connector.domain.transform.target_id import TargetIdPolicy, TargetIdRule
 from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
 from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
@@ -35,32 +36,19 @@ class BuildMatchKeyRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDepend
         result.match_key = match_key
 
 
-@dataclass(frozen=True)
-class ResourceIdRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
-    name: str = "resource_id"
-    max_attempts: int = 3
-
-    def apply(self, result, deps, errors, warnings) -> None:
-        _ = warnings
-        resource_id = result.row.resource_id
-        attempts = 0
-        while attempts < self.max_attempts:
-            if not resource_id:
-                resource_id = str(uuid.uuid4())
-            existing = deps.find_user_by_id(resource_id)
-            if existing is None:
-                result.row.resource_id = resource_id
-                return
-            resource_id = None
-            attempts += 1
-        errors.append(
-            ValidationErrorItem(
-                stage=DiagnosticStage.ENRICH,
-                code="RESOURCE_ID_CONFLICT",
-                field="resource_id",
-                message="unable to generate unique resource_id",
-            )
-        )
+def _build_target_id_policy() -> TargetIdPolicy[EmployeesEnrichDependencies]:
+    """
+    Назначение:
+        Политика формирования target_id для employees.
+    """
+    return TargetIdPolicy(
+        field_name="target_id",
+        mode="required",
+        allow_source_value=True,
+        generator=lambda: str(uuid.uuid4()),
+        exists=lambda deps, value: deps.find_user_by_target_id(value) is not None,
+        max_attempts=3,
+    )
 
 
 @dataclass(frozen=True)
@@ -117,7 +105,7 @@ class EmployeesEnricherSpec(EnricherSpec[NormalizedEmployeesRow, EmployeesEnrich
 
     rules: tuple[EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies], ...] = (
         BuildMatchKeyRule(),
-        ResourceIdRule(),
+        TargetIdRule(policy=_build_target_id_policy()),
         UsrOrgTabNumRule(),
         PasswordRule(),
     )

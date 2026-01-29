@@ -77,7 +77,7 @@ class ImportApplyService:
                 break
 
             actions_count += 1
-            if not item.resource_id:
+            if not item.target_id:
                 failed += 1
                 if should_store("FAILED"):
                     report.add_item(
@@ -87,9 +87,9 @@ class ImportApplyService:
                         errors=[
                             ValidationErrorItem(
                                 stage=DiagnosticStage.APPLY,
-                                code="RESOURCE_ID_MISSING",
-                                field="resource_id",
-                                message="resource_id is required",
+                                code="TARGET_ID_MISSING",
+                                field="target_id",
+                                message="target_id is required",
                             )
                         ],
                         warnings=[],
@@ -255,7 +255,7 @@ class ImportApplyService:
     def _build_meta(item, status_code, api_response, error_details) -> dict[str, Any]:
         return {
             "op": getattr(item, "op", None),
-            "resource_id": getattr(item, "resource_id", None),
+            "target_id": getattr(item, "target_id", None),
             "changes": getattr(item, "changes", {}),
             "desired_state": getattr(item, "desired_state", {}),
             "status_code": status_code,

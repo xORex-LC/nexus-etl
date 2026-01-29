@@ -35,7 +35,7 @@ class MatchedRow:
     fingerprint: str
     fingerprint_fields: tuple[str, ...]
     source_links: dict[str, Identity] = field(default_factory=dict)
-    resource_id: str | None = None
+    target_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -51,7 +51,7 @@ class ResolvedRow:
     desired_state: dict[str, Any]
     existing: dict[str, Any] | None = None
     changes: dict[str, Any] = field(default_factory=dict)
-    resource_id: str | None = None
+    target_id: str | None = None
     source_ref: dict[str, Any] | None = None
     secret_fields: list[str] = field(default_factory=list)
 

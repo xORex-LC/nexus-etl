@@ -6,7 +6,7 @@ participant "Resolver" as R
 participant "IdentityRepo" as IR
 participant "PendingRepo" as PR
 
-RU -> R: resolve(matched, meta, batch_index)
+RU -> R: resolve(matched, target_id_map, meta, batch_index)
 activate R
 R -> R: _maybe_sweep_expired()
 
@@ -58,9 +58,9 @@ loop each LinkFieldRule
   end
 end
 
-R -> R: resource_id = resolve_resource_id()
-alt resource_id missing
-  R -> R: add error RESOLVE_MISSING_EXISTING
+R -> R: target_id = resolve_target_id()
+alt target_id missing
+  R -> R: add error RESOLVE_TARGET_ID_MISSING
   R --> RU: (row=None, errors)
   deactivate R
   return

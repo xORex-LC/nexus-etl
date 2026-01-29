@@ -99,7 +99,7 @@ extract → map → normalize → enrich → validate → match → resolve → 
 - op (create/update/skip/conflict)
 - desired_state
 - existing
-- resource_id (берётся из existing при MATCHED)
+- target_id (берётся из existing при MATCHED)
 - source_ref (опционально)
 - warnings/errors
  - changes (для update)
@@ -113,7 +113,7 @@ extract → map → normalize → enrich → validate → match → resolve → 
 
 ### Resolver
 - `RESOLVE_CONFLICT`
-- `RESOLVE_MISSING_EXISTING`
+- `RESOLVE_TARGET_ID_MISSING`
 - `RESOLVE_INVALID_STATE`
 
 ## Порядок UseCase
@@ -305,7 +305,7 @@ Match/Resolve имеют собственные отчёты; Plan отчёт н
 
 6) **Identity updates**
    - Обновлять identity_index на refresh cache.
-   - Upsert identity после apply (по resource_id_map).
+   - Upsert identity после apply (по target_id_map).
 
 7) **Reporting**
    - Статус `pending` в отчётах.

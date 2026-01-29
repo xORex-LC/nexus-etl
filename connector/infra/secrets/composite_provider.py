@@ -24,7 +24,7 @@ class CompositeSecretProvider(SecretProviderProtocol):
         row_id: str | None = None,
         line_no: int | None = None,
         source_ref: dict | None = None,
-        resource_id: str | None = None,
+        target_id: str | None = None,
         run_id: str | None = None,
     ) -> str | None:
         for provider in self._providers:
@@ -34,7 +34,7 @@ class CompositeSecretProvider(SecretProviderProtocol):
                 row_id=row_id,
                 line_no=line_no,
                 source_ref=source_ref,
-                resource_id=resource_id,
+                target_id=target_id,
                 run_id=run_id,
             )
             if value is not None:

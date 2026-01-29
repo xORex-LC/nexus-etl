@@ -95,7 +95,7 @@ class ResolveUseCase:
             matched_rows.append(matched)
 
         batch_index = _build_batch_index(matched_rows, resolver, dataset)
-        resource_id_map = _build_resource_id_map(matched_rows)
+        target_id_map = _build_target_id_map(matched_rows)
 
         for matched in matched_rows:
             if matched.row is None:
@@ -103,7 +103,7 @@ class ResolveUseCase:
                 continue
             resolved_row, errors, warnings = resolver.resolve(
                 matched.row,
-                resource_id_map=resource_id_map,
+                target_id_map=target_id_map,
                 meta=matched.meta,
                 batch_index=batch_index,
             )
@@ -119,18 +119,18 @@ class ResolveUseCase:
             )
 
 
-def _build_resource_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dict[str, str]:
+def _build_target_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for item in matched_rows:
         row = item.row
         if row is None:
             continue
         if row.match_status == MatchStatus.MATCHED and row.existing:
-            resource_id = row.existing.get("_id")
+            target_id = row.existing.get("_id")
         else:
-            resource_id = row.resource_id
-        if resource_id:
-            mapping[row.identity.primary_value] = str(resource_id)
+            target_id = row.target_id
+        if target_id:
+            mapping[row.identity.primary_value] = str(target_id)
     return mapping
 
 

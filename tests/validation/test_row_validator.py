@@ -36,7 +36,7 @@ class _DummyEnrichDeps:
     identity_lookup = None
     secret_store = None
 
-    def find_user_by_id(self, resource_id: str):
+    def find_user_by_target_id(self, target_id: str):
         return None
 
     def find_user_by_usr_org_tab_num(self, tab_num: str):

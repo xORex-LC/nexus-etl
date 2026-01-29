@@ -51,9 +51,9 @@ from meta + desired_state;
   endif
 repeat while (more rules?) is (yes)
 
-:resource_id = resolve_resource_id;
-if (resource_id missing?) then (yes)
-  :add error RESOLVE_MISSING_EXISTING;
+:target_id = resolve_target_id;
+if (target_id missing?) then (yes)
+  :add error RESOLVE_TARGET_ID_MISSING;
   stop
 endif
 

@@ -76,7 +76,7 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
                 position=position,
                 avatar_id=None,
                 usr_org_tab_num=extra_pairs.get("tab"),
-                resource_id=None,
+                target_id=None,
             )
             secret_candidates = self.spec.collect_secret_candidates(row)
             if manager_id is not None and not isinstance(manager_id, int):

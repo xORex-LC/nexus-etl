@@ -200,7 +200,7 @@ class "<color:red>MissingRequiredSecretError</color>" as connector.domain.except
   dataset : str
   field : str
   line_no : int | None
-  resource_id : str | None
+  target_id : str | None
   row_id : str | None
 }
 class "Operation" as connector.domain.planning.plan_models.Operation {
@@ -250,7 +250,7 @@ class "PlanItem" as connector.domain.planning.plan_models.PlanItem <<plan>> {
   desired_state : dict[str, Any]
   line_no : int | None
   op : str
-  resource_id : str
+  target_id : str
   row_id : str
   source_ref : dict[str, Any] | None
 }
@@ -379,7 +379,7 @@ class "PlanDecision" as connector.domain.planning.protocols.PlanDecision <<plan>
   kind
   message : str | None
   reason_code : str | None
-  resource_id : str | None
+  target_id : str | None
   source_ref : dict[str, Any] | None
   warnings : list[ValidationErrorItem]
 }

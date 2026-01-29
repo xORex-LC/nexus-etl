@@ -183,7 +183,10 @@ def _load_pending_rows(
             identity_value=row_ref_data.get("identity_value"),
         )
         desired_state = payload.get("desired_state") or {}
-        resource_id = payload.get("resource_id")
+        target_id = payload.get("target_id")
+        if target_id is None:
+            # Legacy support: pending payload may store resource_id.
+            target_id = payload.get("resource_id")
         meta = payload.get("meta") or {}
 
         candidates = cache_repo.find(
@@ -214,7 +217,7 @@ def _load_pending_rows(
             fingerprint=fingerprint,
             fingerprint_fields=fingerprint_fields,
             source_links={},
-            resource_id=resource_id,
+            target_id=target_id,
         )
         record = SourceRecord(line_no=row_ref.line_no, record_id=row_ref.row_id, values={})
         results.append(

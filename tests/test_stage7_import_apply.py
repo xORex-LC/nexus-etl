@@ -79,7 +79,7 @@ def test_plan_reader_reads_items(tmp_path: Path):
                         "line_no": 1,
                             "dataset": "employees",
                             "op": "create",
-                            "resource_id": "id-1",
+                            "target_id": "id-1",
                         "desired_state": {"email": "a@b.c"},
                         "changes": {"mail": "a@b.c"},
                         "source_ref": {"match_key": "A|B|C|1"},
@@ -92,7 +92,7 @@ def test_plan_reader_reads_items(tmp_path: Path):
     )
     plan = readPlanFile(str(plan_path))
     assert plan.items[0].op == "create"
-    assert plan.items[0].resource_id == "id-1"
+    assert plan.items[0].target_id == "id-1"
 
 def test_payload_builder_contains_exact_keys():
     payload = buildUserUpsertPayload(
@@ -135,7 +135,7 @@ def test_apply_adapter_builds_request():
         row_id="line:1",
         line_no=1,
         op="create",
-        resource_id="abc",
+        target_id="abc",
         desired_state={
             "email": "u@example.com",
             "last_name": "L",
@@ -165,7 +165,7 @@ def test_import_apply_stop_on_first_error():
             row_id="line:1",
             line_no=1,
             op="create",
-            resource_id="id-1",
+            target_id="id-1",
             desired_state={
                 "email": "a@b.c",
                 "last_name": "L",
@@ -188,7 +188,7 @@ def test_import_apply_stop_on_first_error():
             row_id="line:2",
             line_no=2,
             op="update",
-            resource_id="id-2",
+            target_id="id-2",
             desired_state={
                 "email": "b@b.c",
                 "last_name": "L",
@@ -239,7 +239,7 @@ def test_import_apply_max_actions_limits_requests():
             row_id="line:1",
             line_no=1,
             op="create",
-            resource_id="id-1",
+            target_id="id-1",
             desired_state={
                 "email": "a@b.c",
                 "last_name": "L",
@@ -262,7 +262,7 @@ def test_import_apply_max_actions_limits_requests():
             row_id="line:2",
             line_no=2,
             op="create",
-            resource_id="id-2",
+            target_id="id-2",
             desired_state={
                 "email": "b@b.c",
                 "last_name": "L",
@@ -313,7 +313,7 @@ def test_import_apply_resource_exists_retries():
             row_id="line:1",
             line_no=1,
             op="create",
-            resource_id="id-1",
+            target_id="id-1",
             desired_state={
                 "email": "a@b.c",
                 "last_name": "L",
@@ -406,7 +406,7 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
                         "line_no": 1,
                             "dataset": "employees",
                             "op": "create",
-                        "resource_id": "id-1",
+                        "target_id": "id-1",
                         "desired_state": {
                             "email": "u1@example.com",
                             "last_name": "L",
@@ -430,7 +430,7 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
                         "line_no": 2,
                             "dataset": "employees",
                             "op": "update",
-                        "resource_id": "id-2",
+                        "target_id": "id-2",
                         "desired_state": {
                             "email": "u2@example.com",
                             "last_name": "L",
@@ -499,7 +499,7 @@ def test_plan_builder_does_not_emit_dataset_in_items():
         op=ResolveOp.CREATE,
         desired_state={"email": "a@b.c"},
         changes={},
-        resource_id="id-1",
+        target_id="id-1",
     )
     builder.add_resolved(resolved)
     result = builder.build()
@@ -515,7 +515,7 @@ def test_apply_report_items_include_dataset():
                 row_id="r1",
                 line_no=1,
                 op="create",
-                resource_id="id-1",
+                target_id="id-1",
                 desired_state={
                     "email": "u@example.com",
                     "password": "secret",

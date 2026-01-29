@@ -94,7 +94,7 @@ class Resolver:
         self,
         matched: MatchedRow,
         *,
-        resource_id_map: dict[str, str],
+        target_id_map: dict[str, str],
         meta: dict[str, Any] | None = None,
         batch_index: dict[str, dict[str, list[str]]] | None = None,
     ) -> tuple[ResolvedRow | None, list[ValidationErrorItem], list[ValidationErrorItem]]:
@@ -146,14 +146,14 @@ class Resolver:
         if should_stop:
             return None, errors, warnings
 
-        resource_id = _resolve_resource_id(matched, resource_id_map)
-        if not resource_id:
+        target_id = _resolve_target_id(matched, target_id_map)
+        if not target_id:
             errors.append(
                 ValidationErrorItem(
                     stage=DiagnosticStage.RESOLVE,
-                    code="RESOLVE_MISSING_EXISTING",
-                    field="resource_id",
-                    message="resource_id is missing for resolved row",
+                    code="RESOLVE_TARGET_ID_MISSING",
+                    field="target_id",
+                    message="target_id is missing for resolved row",
                 )
             )
             return None, errors, warnings
@@ -178,7 +178,7 @@ class Resolver:
             desired_state=desired_state,
             changes=changes,
             existing=matched.existing,
-            resource_id=resource_id,
+            target_id=target_id,
             source_ref=source_ref,
             secret_fields=secret_fields,
         )
@@ -272,11 +272,11 @@ class Resolver:
         return pending_created, should_stop
 
 
-def _resolve_resource_id(matched: MatchedRow, resource_id_map: dict[str, str]) -> str | None:
+def _resolve_target_id(matched: MatchedRow, target_id_map: dict[str, str]) -> str | None:
     if matched.match_status == MatchStatus.MATCHED:
         existing_id = matched.existing.get("_id") if matched.existing else None
         return str(existing_id) if existing_id is not None else None
-    return matched.resource_id or resource_id_map.get(matched.identity.primary_value)
+    return matched.target_id or target_id_map.get(matched.identity.primary_value)
 
 
 def _decide_op(matched: MatchedRow, desired_state: dict[str, Any], rules: ResolveRules) -> tuple[str, dict[str, Any]]:
@@ -512,8 +512,8 @@ def _extract_resolved_id(row: MatchedRow, id_field: str) -> str | None:
     desired = row.desired_state
     if desired and id_field in desired and desired.get(id_field) is not None:
         return str(desired.get(id_field)).strip()
-    if id_field == "_id" and row.resource_id:
-        return str(row.resource_id).strip()
+    if id_field == "_id" and row.target_id:
+        return str(row.target_id).strip()
     return None
 
 
@@ -545,7 +545,7 @@ def _serialize_pending_payload(
             "identity_value": matched.row_ref.identity_value,
         },
         "desired_state": desired_state,
-        "resource_id": matched.resource_id,
+        "target_id": matched.target_id,
         "meta": meta or {},
     }
     return json.dumps(payload, ensure_ascii=True, default=str)

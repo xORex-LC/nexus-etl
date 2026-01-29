@@ -60,7 +60,7 @@ def _make_matched_row() -> MatchedRow:
         fingerprint="fp",
         fingerprint_fields=("manager_id", "organization_id"),
         source_links={},
-        resource_id="RID-1",
+        target_id="RID-1",
     )
 
 
@@ -81,7 +81,7 @@ def test_resolver_resolves_link_from_identity_index():
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
         matched,
-        resource_id_map={},
+        target_id_map={},
         meta={"link_keys": {"manager_id": {"match_key": "mgr"}}},
     )
 
@@ -107,7 +107,7 @@ def test_resolver_creates_pending_when_no_candidate():
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
         matched,
-        resource_id_map={},
+        target_id_map={},
         meta={"link_keys": {"manager_id": {"match_key": "mgr"}}},
     )
 
@@ -133,7 +133,7 @@ def test_resolver_stops_after_max_attempts():
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
         matched,
-        resource_id_map={},
+        target_id_map={},
         meta={"link_keys": {"manager_id": {"match_key": "mgr"}}},
     )
 
@@ -159,7 +159,7 @@ def test_resolver_allows_partial_when_configured():
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
         matched,
-        resource_id_map={},
+        target_id_map={},
         meta={"link_keys": {"manager_id": {"match_key": "mgr"}}},
     )
 
@@ -191,7 +191,7 @@ def test_resolver_uses_batch_index_for_candidates():
     }
     resolved, errors, warnings = resolver.resolve(
         matched,
-        resource_id_map={},
+        target_id_map={},
         meta={"link_keys": {"manager_id": {"match_key": "mgr"}}},
         batch_index=batch_index,
     )
@@ -223,7 +223,7 @@ def test_resolver_dedup_rules_narrow_candidates():
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
         matched,
-        resource_id_map={},
+        target_id_map={},
         meta={"link_keys": {"manager_id": {"match_key": "mgr"}}},
     )
 

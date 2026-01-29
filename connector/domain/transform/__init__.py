@@ -3,6 +3,7 @@ from .result import TransformResult
 from .normalizer import Normalizer, NormalizerRule, NormalizerSpec
 from .enricher import Enricher, EnricherSpec, EnrichRule
 from .source_record import SourceRecord
+from .target_id import TargetIdMode, TargetIdPolicy, TargetIdRule
 
 __all__ = [
     "MatchKey",
@@ -16,4 +17,7 @@ __all__ = [
     "Enricher",
     "EnricherSpec",
     "EnrichRule",
+    "TargetIdMode",
+    "TargetIdPolicy",
+    "TargetIdRule",
 ]

@@ -114,7 +114,7 @@ class Matcher:
             fingerprint=fingerprint,
             fingerprint_fields=fingerprint_fields,
             source_links=links,
-            resource_id=getattr(row, "resource_id", None),
+            target_id=getattr(row, "target_id", None),
         )
 
         return TransformResult(

@@ -17,7 +17,7 @@ def test_plan_builder_serializes_secret_fields():
         op=ResolveOp.CREATE,
         desired_state={"email": "a@b.c"},
         changes={},
-        resource_id="id-1",
+        target_id="id-1",
         secret_fields=["password"],
     )
     builder.add_resolved(resolved)
@@ -44,7 +44,7 @@ def test_plan_reader_reads_secret_fields(tmp_path: Path):
                         "row_id": "line:1",
                         "line_no": 1,
                         "op": "create",
-                        "resource_id": "id-1",
+                        "target_id": "id-1",
                         "desired_state": {"email": "a@b.c"},
                         "changes": {"mail": "a@b.c"},
                         "secret_fields": ["password"],

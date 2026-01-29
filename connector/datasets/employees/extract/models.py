@@ -24,4 +24,4 @@ class EmployeesRowPublic:
     position: str | None
     avatar_id: str | None
     usr_org_tab_num: str | None
-    resource_id: str | None = None
+    target_id: str | None = None
