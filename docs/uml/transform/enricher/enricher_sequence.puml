@@ -1,0 +1,72 @@
+@startuml
+title Enricher - Sequence Diagram (TO BE)
+
+actor Caller
+participant Enricher
+participant EnricherSpec
+participant "EnrichmentOperation" as Op
+participant "CandidateProvider" as Provider
+participant SinkCache
+participant Dictionaries
+participant ConflictResolver
+participant MergeEngine
+participant SecretStore
+
+Caller -> Enricher: enrich(TransformResult[T])
+Enricher -> Enricher: if input.errors or row is None\nthen return input
+
+Enricher -> EnricherSpec: get operations
+loop for each operation
+  Enricher -> Op: execute(ctx, result, deps)
+  Op -> Op: check required_keys / preconditions
+
+  alt missing_key
+    Op -> Op: outcome by strictness.on_missing_key\n(SKIP/WARN/ERROR/NEEDS_RESOLVE)
+  else
+    loop for each provider
+      Op -> Provider: fetch(ctx, result, deps)
+      alt provider = sink_cache
+        Provider -> SinkCache: lookup(key)
+        SinkCache --> Provider: candidates[0..N]
+      else provider = dictionaries
+        Provider -> Dictionaries: lookup(dict, key, at/as_of)
+        Dictionaries --> Provider: candidates[0..N]
+      else provider = computed
+        Provider -> Provider: compute candidates
+      end
+      Provider --> Op: CandidateValue[*]
+    end
+
+    Op -> ConflictResolver: decide(candidates, conflict_policy)
+
+    alt decision = SELECTED
+      Op -> MergeEngine: merge(field, current, decision, merge_policy, semantics)
+      MergeEngine --> Op: merged row + merge decision
+      Op -> Op: emit EnrichEvent(APPLIED/SKIPPED)
+    else decision = NONE
+      Op -> Op: outcome by strictness.on_no_candidates
+    else decision = AMBIGUOUS
+      Op -> Op: outcome NEEDS_RESOLVE\n+ create ResolveHint
+    else decision = ERROR
+      Op -> Op: outcome by strictness.on_provider_error
+    end
+  end
+
+  Op --> Enricher: OperationReport(outcome, events, hints, warnings/errors)
+  Enricher -> Enricher: append events/hints into meta\nappend warnings/errors
+end
+
+alt secret_candidates exist and SecretStore available
+  Enricher -> Enricher: require match_key
+  alt match_key missing
+    Enricher -> Enricher: emit MATCH_KEY_MISSING (ENRICH error)
+  else
+    Enricher -> SecretStore: put_many(dataset, match_key, secrets, run_id)
+    alt store error
+      Enricher -> Enricher: emit SECRET_STORE_ERROR (ENRICH error/warn)
+    end
+  end
+end
+
+Enricher --> Caller: TransformResult[T] (row + meta + diagnostics)
+@enduml

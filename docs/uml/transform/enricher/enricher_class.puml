@@ -1,0 +1,187 @@
+@startuml
+title Enricher - Class Diagram (TO BE)
+
+class Enricher {
+  - dataset: str
+  - spec: EnricherSpec
+  - deps: EnrichDeps
+  - secret_store: SecretStoreProtocol
+  - conflict_resolver: ConflictResolver
+  - merge_engine: MergeEngine
+  + enrich(input: TransformResult[T]): TransformResult[T]
+}
+
+class EnricherSpec {
+  + operations: EnrichmentOperation[*]
+  + field_semantics: FieldSemanticsMap
+  + source_priorities: SourcePrioritySpec
+  + default_merge_policy: MergePolicy
+}
+
+interface EnrichmentOperation {
+  + name: str
+  + targets: set
+  + required_keys: KeyRequirement[*]
+  + providers: CandidateProvider[*]
+  + merge_policy: MergePolicy
+  + strictness: StrictnessPolicy
+  + conflict_policy: ConflictPolicy
+  + execute(ctx, result, deps): OperationReport
+}
+
+class LookupOp
+class FillMissingOp
+class ComputeOp
+class GenerateOp
+class MembershipOp
+
+EnrichmentOperation <|.. LookupOp
+EnrichmentOperation <|.. FillMissingOp
+EnrichmentOperation <|.. ComputeOp
+EnrichmentOperation <|.. GenerateOp
+EnrichmentOperation <|.. MembershipOp
+
+interface CandidateProvider {
+  + name: str
+  + fetch(ctx, result, deps): CandidateValue[*]
+}
+
+class SinkCacheProvider
+class DictionaryProvider
+class ComputedProvider
+
+CandidateProvider <|.. SinkCacheProvider
+CandidateProvider <|.. DictionaryProvider
+CandidateProvider <|.. ComputedProvider
+
+class CandidateValue {
+  + field: str
+  + value
+  + source: str
+  + priority: int
+  + confidence: float
+  + evidence: dict
+}
+
+class ConflictResolver {
+  + decide(candidates, policy): CandidateDecision
+}
+
+class CandidateDecision {
+  + status: str  ' SELECTED | AMBIGUOUS | NONE | ERROR
+  + selected: CandidateValue
+  + candidates: CandidateValue[*]
+  + reason: str
+}
+
+class MergeEngine {
+  + merge(field, current, decision, policy, semantics): MergeResult
+}
+
+class MergePolicy {
+  + mode: str  ' fill_only_if_empty | recompute_always | override_if_invalid | override_if_authoritative | never_override
+}
+
+class FieldSemanticsMap {
+  + semantics_by_field: dict
+}
+
+class StrictnessPolicy {
+  + on_missing_key: str     ' SKIP | WARN | ERROR | NEEDS_RESOLVE
+  + on_no_candidates: str   ' SKIP | WARN | ERROR
+  + on_ambiguous: str       ' NEEDS_RESOLVE | WARN | ERROR
+  + on_provider_error: str  ' SKIP | WARN | ERROR
+}
+
+class OperationReport {
+  + op: str
+  + outcome: EnrichOutcome
+  + events: EnrichEvent[*]
+  + resolve_hints: ResolveHint[*]
+  + warnings: ValidationErrorItem[*]
+  + errors: ValidationErrorItem[*]
+}
+
+enum EnrichOutcome {
+  APPLIED
+  SKIPPED
+  WARNED
+  FAILED
+  NEEDS_RESOLVE
+}
+
+class EnrichEvent {
+  + op: str
+  + field: str
+  + before
+  + after
+  + source: str
+  + decision: str
+  + outcome: str
+}
+
+class ResolveHint {
+  + field: str
+  + lookup_key: str
+  + reason: str
+  + candidates: list
+  + provider: str
+  + suggested_policy: str
+}
+
+class EnrichContext {
+  + run_id: str
+  + dataset: str
+  + now: datetime
+  + as_of: datetime
+}
+
+class EnrichDeps {
+  + sink_cache: SinkCacheLookupPort
+  + dictionaries: DictionaryProviderPort
+  + clock: ClockPort
+}
+
+interface SinkCacheLookupPort <<protocol>> {
+  + lookup(dataset, key_name, key_value): CandidateValue[*]
+  + get(dataset, target_id): dict
+}
+
+interface DictionaryProviderPort <<protocol>> {
+  + lookup(dict_name, key, at): list
+  + contains(dict_name, value, at): bool
+  + canonicalize(dict_name, value, at): list
+}
+
+interface SecretStoreProtocol <<protocol>> {
+  + put_many(dataset, match_key, secrets, run_id)
+}
+
+class TransformResult<T> {
+  + record
+  + row
+  + row_ref
+  + match_key
+  + meta
+  + errors
+  + warnings
+  + secret_candidates
+}
+
+Enricher --> EnricherSpec
+Enricher --> EnrichDeps
+Enricher --> ConflictResolver
+Enricher --> MergeEngine
+Enricher --> SecretStoreProtocol
+Enricher ..> EnrichmentOperation
+EnrichmentOperation --> CandidateProvider
+ConflictResolver --> CandidateDecision
+CandidateDecision --> CandidateValue
+OperationReport --> EnrichEvent
+OperationReport --> ResolveHint
+OperationReport --> EnrichOutcome
+EnrichDeps --> SinkCacheLookupPort
+EnrichDeps --> DictionaryProviderPort
+
+TransformResult <|-- "TransformResult[EnrichedRow]"
+@enduml
