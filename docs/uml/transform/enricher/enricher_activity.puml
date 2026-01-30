@@ -1,0 +1,69 @@
+@startuml
+title Enricher - Activity Diagram (TO BE)
+
+start
+:Input TransformResult[T];
+
+if (input.row is None?) then (yes)
+  :Return input (no-op);
+  stop
+endif
+
+if (input.errors present?) then (yes)
+  :Return input (no-op);
+  stop
+endif
+
+:Init local errors/warnings;
+:Init meta.enrich_events & meta.resolve_requests;
+
+repeat
+  :Take next operation from spec;
+
+  :Preconditions + required_keys check;
+  if (missing key?) then (yes)
+    :Apply on_missing_key policy\n(SKIP/WARN/ERROR/NEEDS_RESOLVE);
+    if (NEEDS_RESOLVE?) then (yes)
+      :Add ResolveHint to meta;
+    endif
+  else (no)
+    :Fetch candidates from providers\n(sink_cache / dictionaries / computed);
+    if (provider error?) then (yes)
+      :Apply on_provider_error policy;
+    else (no)
+      if (candidates == 0?) then (yes)
+        :Apply on_no_candidates policy;
+      elseif (candidates > 1?) then (yes)
+        :ConflictResolver.decide;
+        if (ambiguous?) then (yes)
+          :Outcome NEEDS_RESOLVE;
+          :Add ResolveHint to meta;
+        else (selected)
+          :MergeEngine.merge (by merge_policy + field semantics);
+          :Emit EnrichEvent;
+        endif
+      else (1 candidate)
+        :MergeEngine.merge (by merge_policy + field semantics);
+        :Emit EnrichEvent;
+      endif
+    endif
+  endif
+
+repeat while (more operations?)
+
+if (secret_candidates exist AND secret_store enabled?) then (yes)
+  if (match_key missing?) then (yes)
+    :Emit MATCH_KEY_MISSING (ENRICH error);
+  else (no)
+    :secret_store.put_many(...);
+    if (store failed?) then (yes)
+      :Emit SECRET_STORE_ERROR;
+    endif
+  endif
+endif
+
+:Attach local warnings/errors to result;
+:Return TransformResult[T] to next stages;
+stop
+
+@enduml
