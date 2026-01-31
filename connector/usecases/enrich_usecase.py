@@ -110,3 +110,16 @@ class EnrichUseCase:
             if map_result.errors:
                 continue
             yield map_result
+
+    def iter_enriched(
+        self,
+        row_source,
+        transformer: TransformPipeline,
+    ):
+        """
+        Назначение:
+            Итератор всех обогащенных строк (включая ошибки).
+        """
+        extractor = Extractor(row_source)
+        for collected in extractor.run():
+            yield transformer.enrich(collected)

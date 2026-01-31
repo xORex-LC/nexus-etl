@@ -24,7 +24,7 @@ def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:
 class _DummyEnrichDeps:
     identity_lookup = None
 
-    def find_user_by_id(self, _resource_id: str):
+    def find_user_by_target_id(self, _target_id: str):
         return None
 
     def find_user_by_usr_org_tab_num(self, _tab_num: str):

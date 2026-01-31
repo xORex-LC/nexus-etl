@@ -63,12 +63,16 @@ def _build_plan(meta_raw: dict, summary_raw: dict, items_raw: list, path: str) -
         desired_raw = raw.get("desired_state") if isinstance(raw.get("desired_state"), dict) else {}
         if isMaskedSecret(desired_raw.get("password")):
             desired_raw = {k: v for k, v in desired_raw.items() if k != "password"}
+        target_id_raw = raw.get("target_id")
+        if target_id_raw is None:
+            # Legacy support: old plan files may store resource_id.
+            target_id_raw = raw.get("resource_id")
         items.append(
             PlanItem(
                 row_id=_get_str(raw.get("row_id")) or "",
                 line_no=raw.get("line_no"),
                 op=_get_str(raw.get("op")) or "",
-                resource_id=_get_str(raw.get("resource_id")) or "",
+                target_id=_get_str(target_id_raw) or "",
                 desired_state=desired_raw if isinstance(desired_raw, dict) else {},
                 changes=raw.get("changes") if isinstance(raw.get("changes"), dict) else {},
                 source_ref=raw.get("source_ref") if isinstance(raw.get("source_ref"), dict) else None,

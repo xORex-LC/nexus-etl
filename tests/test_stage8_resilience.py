@@ -127,7 +127,7 @@ def test_import_apply_error_stats():
             row_id="line:1",
             line_no=1,
             op="create",
-            resource_id="id-1",
+            target_id="id-1",
             desired_state={
                 "email": "u@example.com",
                 "last_name": "L",

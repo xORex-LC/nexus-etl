@@ -55,7 +55,7 @@ class PlanItem:
 
     Поля:
         op: операция (create/update)
-        resource_id: идентификатор ресурса (новый UUID для create, существующий id для update)
+        target_id: идентификатор сущности в target (формат задаётся политикой датасета)
         desired_state: полное желаемое состояние (для create; для update можно хранить тоже полное)
         changes: частичный словарь изменённых полей (для update)
         row_id/line_no/source_ref: ссылки на исходные данные для трассировки
@@ -64,7 +64,7 @@ class PlanItem:
     row_id: str
     line_no: int | None
     op: str
-    resource_id: str
+    target_id: str
     desired_state: dict[str, Any]
     changes: dict[str, Any]
     source_ref: dict[str, Any] | None = None

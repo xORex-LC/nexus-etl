@@ -8,6 +8,16 @@ from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
 from connector.usecases.enrich_usecase import EnrichUseCase
 from connector.usecases.validate_usecase import ValidateUseCase
+from connector.usecases.match_usecase import MatchUseCase
+from connector.usecases.resolve_usecase import ResolveUseCase
+from connector.domain.planning.matcher import Matcher
+from connector.domain.planning.resolver import Resolver
+import json
+from connector.domain.planning.match_models import MatchedRow
+from connector.domain.models import Identity, MatchStatus, RowRef
+from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.result import TransformResult
+from connector.domain.planning.match_models import build_fingerprint
 from connector.datasets.registry import get_spec
 
 class ImportPlanService:
@@ -24,9 +34,7 @@ class ImportPlanService:
         dataset: str,
         logger,
         run_id: str,
-        report,
         report_items_limit: int,
-        include_skipped_in_report: bool,
         report_dir: str,
         vault_file: str | None = None,
         settings=None,
@@ -62,23 +70,68 @@ class ImportPlanService:
             report_items_limit=report_items_limit,
             include_valid_items=False,
         )
-        validated_rows = validate_usecase.iter_validated(
+        validated_rows = validate_usecase.iter_validated_ok(
             enriched_source=enriched_ok,
             validator=validator,
         )
-        use_case = PlanUseCase(
-            report_items_limit=report_items_limit,
-            include_skipped_in_report=include_skipped_in_report,
-        )
-        plan_result = use_case.run(
-            validated_row_source=validated_rows,
-            dataset_spec=dataset_spec,
+        matching_rules = dataset_spec.build_matching_rules()
+        resolve_rules = dataset_spec.build_resolve_rules()
+        link_rules = dataset_spec.build_link_rules()
+        cache_repo = planning_deps.cache_repo
+        if cache_repo is None:
+            raise ValueError("planning cache_repo is not configured")
+        if planning_deps.identity_repo is None:
+            raise ValueError("planning identity_repo is not configured")
+        if planning_deps.pending_repo is None:
+            raise ValueError("planning pending_repo is not configured")
+
+        matcher = Matcher(
             dataset=dataset,
+            cache_repo=cache_repo,
+            matching_rules=matching_rules,
+            resolve_rules=resolve_rules,
             include_deleted=include_deleted,
-            logger=logger,
-            run_id=run_id,
-            planning_deps=planning_deps,
-            report=report,
+        )
+        match_usecase = MatchUseCase(
+            report_items_limit=report_items_limit,
+            include_matched_items=False,
+        )
+        matched_rows = list(
+            match_usecase.iter_matched_ok(
+                validated_source=validated_rows,
+                matcher=matcher,
+            )
+        )
+
+        pending_rows = _load_pending_rows(
+            dataset=dataset,
+            pending_repo=planning_deps.pending_repo,
+            cache_repo=cache_repo,
+            include_deleted=include_deleted,
+            ignored_fields=matching_rules.ignored_fields,
+        )
+        matched_rows.extend(pending_rows)
+
+        resolver = Resolver(
+            resolve_rules,
+            link_rules,
+            identity_repo=planning_deps.identity_repo,
+            pending_repo=planning_deps.pending_repo,
+            settings=planning_deps.resolver_settings,
+        )
+        resolve_usecase = ResolveUseCase(
+            report_items_limit=report_items_limit,
+            include_resolved_items=False,
+        )
+        resolved_rows = resolve_usecase.iter_resolved_ok(
+            matched_source=matched_rows,
+            resolver=resolver,
+            dataset=dataset,
+        )
+
+        use_case = PlanUseCase()
+        plan_result = use_case.run(
+            resolved_row_source=resolved_rows,
         )
         plan_meta = {
             "csv_path": csv_path,
@@ -95,22 +148,88 @@ class ImportPlanService:
         )
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
 
-        report.set_meta(dataset=dataset, items_limit=report_items_limit)
-        report.set_context(
-            "plan",
-            {
-                "plan_file": plan_path,
-                "include_deleted": include_deleted,
-                "rows_total": plan_result.summary.rows_total,
-                "valid_rows": plan_result.summary.valid_rows,
-                "failed_rows": plan_result.summary.failed_rows,
-                "planned_create": plan_result.summary.planned_create,
-                "planned_update": plan_result.summary.planned_update,
-                "skipped": plan_result.summary.skipped,
-            },
-        )
-        report.add_op("create", count=plan_result.summary.planned_create)
-        report.add_op("update", count=plan_result.summary.planned_update)
-        report.add_op("skip", count=plan_result.summary.skipped)
+        return 0
 
-        return 1 if plan_result.summary.failed_rows > 0 else 0
+
+def _load_pending_rows(
+    *,
+    dataset: str,
+    pending_repo,
+    cache_repo,
+    include_deleted: bool,
+    ignored_fields: set[str],
+) -> list[TransformResult[MatchedRow]]:
+    if pending_repo is None:
+        return []
+    pending_rows = pending_repo.list_pending_rows(dataset)
+    if not pending_rows:
+        return []
+    results: list[TransformResult[MatchedRow]] = []
+    for pending in pending_rows:
+        try:
+            payload = json.loads(pending.payload)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        identity_data = payload.get("identity") or {}
+        values = identity_data.get("values") or {}
+        identity = Identity(primary=identity_data.get("primary") or "match_key", values=values)
+        if not identity.primary_value:
+            continue
+        row_ref_data = payload.get("row_ref") or {}
+        row_ref = RowRef(
+            line_no=int(row_ref_data.get("line_no") or 0),
+            row_id=str(row_ref_data.get("row_id") or pending.source_row_id),
+            identity_primary=row_ref_data.get("identity_primary"),
+            identity_value=row_ref_data.get("identity_value"),
+        )
+        desired_state = payload.get("desired_state") or {}
+        target_id = payload.get("target_id")
+        if target_id is None:
+            # Legacy support: pending payload may store resource_id.
+            target_id = payload.get("resource_id")
+        meta = payload.get("meta") or {}
+
+        candidates = cache_repo.find(
+            dataset,
+            {identity.primary: identity.primary_value},
+            include_deleted=include_deleted,
+        )
+        if len(candidates) > 1:
+            match_status = MatchStatus.CONFLICT_TARGET
+            existing = None
+        elif candidates:
+            match_status = MatchStatus.MATCHED
+            existing = candidates[0]
+        else:
+            match_status = MatchStatus.NOT_FOUND
+            existing = None
+
+        fingerprint, fingerprint_fields = build_fingerprint(
+            desired_state,
+            ignored_fields=ignored_fields,
+        )
+        matched_row = MatchedRow(
+            row_ref=row_ref,
+            identity=identity,
+            match_status=match_status,
+            desired_state=desired_state,
+            existing=existing,
+            fingerprint=fingerprint,
+            fingerprint_fields=fingerprint_fields,
+            source_links={},
+            target_id=target_id,
+        )
+        record = SourceRecord(line_no=row_ref.line_no, record_id=row_ref.row_id, values={})
+        results.append(
+            TransformResult(
+                record=record,
+                row=matched_row,
+                row_ref=row_ref,
+                match_key=None,
+                meta=meta,
+                secret_candidates={},
+                errors=[],
+                warnings=[],
+            )
+        )
+    return results

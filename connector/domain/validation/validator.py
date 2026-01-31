@@ -107,6 +107,7 @@ class Validator(Generic[T]):
             row=ValidationRow(row=row, validation=result),
             row_ref=row_ref,
             match_key=enriched.match_key,
+            meta=enriched.meta,
             secret_candidates=enriched.secret_candidates,
             errors=result.errors,
             warnings=[],

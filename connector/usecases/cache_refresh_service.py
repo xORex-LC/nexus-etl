@@ -8,7 +8,10 @@ from typing import Any
 from connector.common.time import getNowIso
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol, UpsertResult
+from connector.domain.ports.identity_repository import IdentityRepository
+from connector.domain.ports.pending_links_repository import PendingLinksRepository
 from connector.domain.ports.target_read import TargetPagedReaderProtocol
 from connector.infra.logging.setup import logEvent
 
@@ -28,10 +31,18 @@ class CacheRefreshUseCase:
         target_reader: TargetPagedReaderProtocol,
         cache_repo: CacheRepositoryProtocol,
         adapters: list[CacheSyncAdapterProtocol],
+        identity_repo: IdentityRepository | None = None,
+        identity_keys: dict[str, set[str]] | None = None,
+        identity_id_fields: dict[str, str] | None = None,
+        pending_repo: PendingLinksRepository | None = None,
     ):
         self.target_reader = target_reader
         self.cache_repo = cache_repo
         self.adapters = adapters
+        self.identity_repo = identity_repo
+        self.identity_keys = identity_keys or {}
+        self.identity_id_fields = identity_id_fields or {}
+        self.pending_repo = pending_repo
 
     def refresh(
         self,
@@ -125,6 +136,7 @@ class CacheRefreshUseCase:
                                     stats["inserted"] += 1
                                 else:
                                     stats["updated"] += 1
+                                self._update_identity_index(adapter.dataset, mapped)
                                 report.add_item(
                                     status="OK",
                                     row_ref=None,
@@ -224,6 +236,37 @@ class CacheRefreshUseCase:
             "by_dataset": stats_by_dataset,
             "total": totals,
         }
+
+    def _update_identity_index(self, dataset: str, mapped: dict[str, Any]) -> None:
+        if self.identity_repo is None:
+            return
+        key_names = self.identity_keys.get(dataset)
+        if not key_names:
+            return
+        id_field = self.identity_id_fields.get(dataset, "_id")
+        resolved_id = mapped.get(id_field)
+        if resolved_id is None:
+            return
+        resolved_id_str = str(resolved_id).strip()
+        if resolved_id_str == "":
+            return
+        for key_name in key_names:
+            value = mapped.get(key_name)
+            if value is None:
+                continue
+            value_str = str(value).strip()
+            if value_str == "":
+                continue
+            identity_key = format_identity_key(key_name, value_str)
+            self.identity_repo.upsert_identity(dataset, identity_key, resolved_id_str)
+            self._resolve_pending_for_key(dataset, identity_key)
+
+    def _resolve_pending_for_key(self, dataset: str, identity_key: str) -> None:
+        if self.pending_repo is None:
+            return
+        pending = self.pending_repo.list_pending_for_key(dataset, identity_key)
+        for item in pending:
+            self.pending_repo.mark_resolved(item.pending_id)
 
 
 def _sum_stats(stats_by_dataset: dict[str, dict[str, int]]) -> dict[str, int]:

@@ -20,8 +20,8 @@ class EmployeesRowPublic:
     password: str | None
     personnel_number: str | None
     manager_id: str | int | None
-    organization_id: int | None
+    organization_id: int | str | None
     position: str | None
     avatar_id: str | None
     usr_org_tab_num: str | None
-    resource_id: str | None = None
+    target_id: str | None = None

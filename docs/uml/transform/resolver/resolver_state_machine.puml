@@ -1,0 +1,31 @@
+@startuml
+title Resolver - State Machine Diagram
+
+[*] --> Matched
+
+Matched --> Failed : conflict
+Matched --> Pending : no candidates / multi candidates
+Matched --> Resolved : resolved links OK
+
+Pending --> Resolved : candidate found in later run
+Pending --> Failed : max_attempts
+Pending --> Failed : expired (TTL)
+
+Resolved --> Planned : op=create/update
+Resolved --> Skipped : op=skip (no diff)
+
+Failed --> [*]
+Planned --> [*]
+Skipped --> [*]
+
+note right of Pending
+Pending stored in pending_links
+Report status = PENDING
+end note
+
+note right of Failed
+Report status = FAILED
+codes: RESOLVE_MAX_ATTEMPTS / RESOLVE_EXPIRED / RESOLVE_CONFLICT
+end note
+
+@enduml
