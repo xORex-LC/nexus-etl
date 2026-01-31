@@ -7,6 +7,7 @@ from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
+from connector.domain.models import DiagnosticStage, ValidationErrorItem
 
 
 @dataclass
@@ -21,6 +22,11 @@ class _DummyEnrichDeps:
 
     def find_org_by_ouid(self, _ouid: int):
         return {"_ouid": _ouid}
+
+
+class _ConflictingTabDeps(_DummyEnrichDeps):
+    def find_user_by_usr_org_tab_num(self, _tab_num: str):
+        return {"match_key": "OTHER"}
 
 
 class _DummySecretStore:
@@ -101,6 +107,41 @@ def test_enricher_reports_missing_match_key():
     assert result.match_key is None
 
 
+def test_enricher_runs_only_allowed_ops_on_error():
+    row = NormalizedEmployeesRow(
+        email="user@example.com",
+        last_name="Doe",
+        first_name="John",
+        middle_name="M",
+        is_logon_disable=False,
+        user_name="jdoe",
+        phone="+111",
+        password=None,
+        personnel_number="100",
+        manager_id=None,
+        organization_id=20,
+        position="Engineer",
+        avatar_id=None,
+        usr_org_tab_num=None,
+        target_id=None,
+    )
+    result = _build_result(row)
+    result.errors.append(
+        ValidationErrorItem(
+            stage=DiagnosticStage.MAP,
+            code="DUMMY_ERROR",
+            field=None,
+            message="upstream error",
+        )
+    )
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
+    enriched = enricher.enrich(result)
+
+    assert enriched.match_key is not None
+    assert enriched.row.target_id is None
+    assert enriched.row.usr_org_tab_num is None
+
+
 def test_enricher_writes_secrets_to_store():
     row = NormalizedEmployeesRow(
         email="user@example.com",
@@ -130,3 +171,28 @@ def test_enricher_writes_secrets_to_store():
     assert match_key == "Doe|John|M|100"
     assert secrets == {"password": "secret"}
     assert run_id == "run-1"
+
+
+def test_enricher_reports_usr_org_tab_conflict():
+    row = NormalizedEmployeesRow(
+        email="user@example.com",
+        last_name="Doe",
+        first_name="John",
+        middle_name="M",
+        is_logon_disable=False,
+        user_name="jdoe",
+        phone="+111",
+        password=None,
+        personnel_number="100",
+        manager_id=None,
+        organization_id=20,
+        position="Engineer",
+        avatar_id=None,
+        usr_org_tab_num=None,
+        target_id=None,
+    )
+    enricher = Enricher(EmployeesEnricherSpec(), _ConflictingTabDeps(), None, "employees")
+    result = enricher.enrich(_build_result(row))
+
+    codes = {issue.code for issue in result.errors}
+    assert "USR_ORG_TAB_CONFLICT" in codes
