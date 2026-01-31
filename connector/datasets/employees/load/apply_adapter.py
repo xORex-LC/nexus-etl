@@ -33,7 +33,7 @@ class EmployeesApplyAdapter(ApplyAdapter):
                     row_id=item.row_id,
                     line_no=item.line_no,
                     source_ref=item.source_ref,
-                    resource_id=item.resource_id,
+                    target_id=item.target_id,
                 )
                 if self.secrets
                 else None
@@ -44,13 +44,13 @@ class EmployeesApplyAdapter(ApplyAdapter):
                     field=field,
                     row_id=item.row_id,
                     line_no=item.line_no,
-                    resource_id=item.resource_id,
+                    target_id=item.target_id,
                 )
             payload_source[field] = secret
 
         payload = buildUserUpsertPayload(payload_source)
         return RequestSpec.put(
-            path=f"/ankey/managed/user/{item.resource_id}",
+            path=f"/ankey/managed/user/{item.target_id}",
             query={"_prettyPrint": "true", "decrypt": "false"},
             payload=payload,
         )
@@ -58,7 +58,7 @@ class EmployeesApplyAdapter(ApplyAdapter):
     def on_failed_request(self, item: PlanItem, result: ExecutionResult, retries_left: int) -> PlanItem | None:
         """
         Назначение:
-            Обработка конфликта resourceExists для create: сгенерировать новый resource_id.
+            Обработка конфликта resourceExists для create: сгенерировать новый target_id.
         """
         if retries_left <= 0:
             return None
@@ -69,7 +69,7 @@ class EmployeesApplyAdapter(ApplyAdapter):
                 row_id=item.row_id,
                 line_no=item.line_no,
                 op=item.op,
-                resource_id=str(uuid.uuid4()),
+                target_id=str(uuid.uuid4()),
                 desired_state=item.desired_state,
                 changes=item.changes,
                 source_ref=item.source_ref,

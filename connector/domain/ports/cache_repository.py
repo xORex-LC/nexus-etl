@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import ContextManager, Protocol
+from typing import Any, ContextManager, Protocol, Sequence
 
 
 class UpsertResult(str, Enum):
@@ -44,3 +44,21 @@ class CacheRepositoryProtocol(Protocol):
     def get_meta(self, dataset: str | None = None) -> CacheMeta: ...
     def set_meta(self, dataset: str | None, key: str, value: str | None) -> None: ...
     def reset_meta(self, dataset: str) -> None: ...
+
+    def find(
+        self,
+        dataset: str,
+        filters: dict[str, Any],
+        *,
+        include_deleted: bool = False,
+        mode: str = "exact",
+    ) -> list[dict]: ...
+
+    def find_one(
+        self,
+        dataset: str,
+        filters: dict[str, Any],
+        *,
+        include_deleted: bool = False,
+        mode: str = "exact",
+    ) -> dict | None: ...

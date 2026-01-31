@@ -3,203 +3,167 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from connector.domain.models import DiagnosticStage, Identity, MatchStatus, ValidationErrorItem
-from connector.domain.transform.enricher import EnrichRule, EnricherSpec
-from connector.domain.transform.match_key import MatchKey, MatchKeyError, build_delimited_match_key
-from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
-from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
-from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
+from connector.domain.transform.enricher import (
+    EnrichOperationError,
+    EnrichOperationType,
+    EnrichOutcome,
+    EnricherSpec,
+    EnrichmentOperation,
+    KeyRegistry,
+    MergeMode,
+    MergePolicy,
+    RunWhenErrors,
+    StrictnessPolicy,
+)
+from connector.domain.transform.match_key import MatchKeyError, build_delimited_match_key
+from connector.domain.transform.target_id import TargetIdMode, TargetIdPolicy
 from connector.domain.validation.row_rules import normalize_whitespace
+from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
+from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
+from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
-@dataclass(frozen=True)
-class BuildMatchKeyRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
-    name: str = "build_match_key"
+def _build_match_key(result, deps) -> dict[str, str] | None:
+    _ = deps
+    if result.row is None:
+        return None
+    spec = EmployeesMappingSpec()
+    try:
+        match_key = build_delimited_match_key(spec.get_match_key_parts(result.row), strict=True)
+    except MatchKeyError as exc:
+        raise EnrichOperationError(
+            code="MATCH_KEY_MISSING",
+            message="match_key cannot be built",
+            field="matchKey",
+        ) from exc
+    return {"match_key": match_key.value}
 
-    def apply(self, result, deps, errors, warnings) -> None:
-        _ = deps
-        _ = warnings
-        spec = EmployeesMappingSpec()
-        try:
-            match_key = build_delimited_match_key(spec.get_match_key_parts(result.row), strict=True)
-        except MatchKeyError:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="MATCH_KEY_MISSING",
-                    field="matchKey",
-                    message="match_key cannot be built",
-                )
+
+def _build_target_id_policy() -> TargetIdPolicy[EmployeesEnrichDependencies]:
+    """
+    Назначение:
+        Политика формирования target_id для employees.
+    """
+    return TargetIdPolicy(
+        field_name="target_id",
+        mode=TargetIdMode.REQUIRED,
+        allow_source_value=True,
+        generator=lambda: str(uuid.uuid4()),
+        exists=lambda deps, value: deps.find_user_by_target_id(value) is not None,
+        max_attempts=3,
+    )
+
+
+def _target_id_generator(result, deps) -> str | None:
+    row = result.row
+    if row is None:
+        return None
+    policy = _build_target_id_policy()
+    if policy.mode == TargetIdMode.NONE:
+        return None
+    current = getattr(row, policy.field_name, None)
+    if current is not None and policy.allow_source_value:
+        candidate = str(current).strip() or None
+        if candidate:
+            return candidate
+    if policy.generator is None:
+        if policy.mode == TargetIdMode.REQUIRED:
+            raise EnrichOperationError(
+                code="TARGET_ID_MISSING",
+                message="target_id is required",
+                field=policy.field_name,
             )
-            return
-        result.match_key = match_key
+        return None
+    return policy.generator()
 
 
-@dataclass(frozen=True)
-class ManagerLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
-    name: str = "manager_lookup"
-
-    def apply(self, result, deps, errors, warnings) -> None:
-        _ = warnings
-        if result.row.manager_id is None:
-            return
-        if isinstance(result.row.manager_id, int):
-            return
-        if deps.identity_lookup is None:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="MANAGER_LOOKUP_MISSING",
-                    field="managerId",
-                    message="identity lookup is not configured",
-                )
-            )
-            return
-        match_key_value = normalize_whitespace(str(result.row.manager_id))
-        if not match_key_value:
-            return
-        identity = Identity(primary="match_key", values={"match_key": match_key_value})
-        lookup = deps.identity_lookup.match(identity, include_deleted=False)
-        if lookup.status == MatchStatus.CONFLICT:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="MANAGER_CONFLICT",
-                    field="managerId",
-                    message="multiple managers found for match_key",
-                )
-            )
-            return
-        if lookup.status != MatchStatus.MATCHED or not lookup.candidate:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="MANAGER_NOT_FOUND",
-                    field="managerId",
-                    message="manager not found in cache",
-                )
-            )
-            return
-        manager_ouid = lookup.candidate.get("_ouid")
-        if manager_ouid is None:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="MANAGER_OUID_MISSING",
-                    field="managerId",
-                    message="manager has no _ouid",
-                )
-            )
-            return
-        result.row.manager_id = int(manager_ouid)
+def _usr_org_tab_num_generator(result, deps) -> str | None:
+    _ = deps
+    row = result.row
+    if row is None:
+        return None
+    current = normalize_whitespace(row.usr_org_tab_num)
+    if current:
+        return current
+    return f"TAB-{uuid.uuid4().hex[:8]}"
 
 
-@dataclass(frozen=True)
-class OrganizationLookupRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
-    name: str = "organization_lookup"
-
-    def apply(self, result, deps, errors, warnings) -> None:
-        _ = warnings
-        org_id = result.row.organization_id
-        if org_id is None:
-            return
-        org = deps.find_org_by_ouid(int(org_id))
-        if org is None:
-            errors.append(
-                ValidationErrorItem(
-                    stage=DiagnosticStage.ENRICH,
-                    code="ORG_NOT_FOUND",
-                    field="organization_id",
-                    message="organization_id not found in cache",
-                )
-            )
+def _usr_org_tab_allow_if(result, existing: dict) -> bool:
+    if result.match_key is None:
+        return False
+    return existing.get("match_key") == result.match_key.value
 
 
-@dataclass(frozen=True)
-class ResourceIdRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
-    name: str = "resource_id"
-    max_attempts: int = 3
-
-    def apply(self, result, deps, errors, warnings) -> None:
-        _ = warnings
-        resource_id = result.row.resource_id
-        attempts = 0
-        while attempts < self.max_attempts:
-            if not resource_id:
-                resource_id = str(uuid.uuid4())
-            existing = deps.find_user_by_id(resource_id)
-            if existing is None:
-                result.row.resource_id = resource_id
-                return
-            resource_id = None
-            attempts += 1
-        errors.append(
-            ValidationErrorItem(
-                stage=DiagnosticStage.ENRICH,
-                code="RESOURCE_ID_CONFLICT",
-                field="resource_id",
-                message="unable to generate unique resource_id",
-            )
-        )
+def _password_generator(result, deps) -> str | None:
+    _ = deps
+    existing = result.secret_candidates.get("password")
+    if existing:
+        return existing
+    return uuid.uuid4().hex
 
 
-@dataclass(frozen=True)
-class UsrOrgTabNumRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
-    name: str = "usr_org_tab_num"
-    max_attempts: int = 3
-
-    def apply(self, result, deps, errors, warnings) -> None:
-        _ = warnings
-        tab_num = normalize_whitespace(result.row.usr_org_tab_num)
-        attempts = 0
-        while attempts < self.max_attempts:
-            if not tab_num:
-                tab_num = f"TAB-{uuid.uuid4().hex[:8]}"
-            existing = deps.find_user_by_usr_org_tab_num(tab_num)
-            if existing is None:
-                result.row.usr_org_tab_num = tab_num
-                return
-            if result.match_key is not None and existing.get("match_key") == result.match_key.value:
-                result.row.usr_org_tab_num = tab_num
-                return
-            tab_num = None
-            attempts += 1
-        errors.append(
-            ValidationErrorItem(
-                stage=DiagnosticStage.ENRICH,
-                code="USR_ORG_TAB_CONFLICT",
-                field="usrOrgTabNum",
-                message="unable to generate unique usr_org_tab_num",
-            )
-        )
-
-
-@dataclass(frozen=True)
-class PasswordRule(EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
-    name: str = "password"
-
-    def apply(self, result, deps, errors, warnings) -> None:
-        _ = deps
-        _ = warnings
-        password = result.secret_candidates.get("password")
-        if password:
-            return
-        generated = uuid.uuid4().hex
-        result.secret_candidates["password"] = generated
+def _build_key_registry() -> KeyRegistry[NormalizedEmployeesRow]:
+    return KeyRegistry(builders={})
 
 
 @dataclass(frozen=True)
 class EmployeesEnricherSpec(EnricherSpec[NormalizedEmployeesRow, EmployeesEnrichDependencies]):
     """
     Назначение:
-        Спецификация правил обогащения для employees.
+        Спецификация операций enrich для employees.
     """
 
-    rules: tuple[EnrichRule[NormalizedEmployeesRow, EmployeesEnrichDependencies], ...] = (
-        BuildMatchKeyRule(),
-        ManagerLookupRule(),
-        OrganizationLookupRule(),
-        ResourceIdRule(),
-        UsrOrgTabNumRule(),
-        PasswordRule(),
+    # TODO(dicts): здесь добавлять dictionary-операции (lookup/canonicalize/membership),
+    # используя deps.dictionaries. Пример:
+    # EnrichmentOperation(
+    #     name="department_name",
+    #     op_type=EnrichOperationType.LOOKUP,
+    #     targets=("department_name",),
+    #     required_keys=("department_code",),
+    #     providers=(DepartmentDictionaryProvider(),),
+    # )
+    operations: tuple[EnrichmentOperation[NormalizedEmployeesRow, EmployeesEnrichDependencies], ...] = (
+        EnrichmentOperation(
+            name="build_match_key",
+            op_type=EnrichOperationType.COMPUTE,
+            targets=("match_key",),
+            run_when_errors=RunWhenErrors.ALWAYS,
+            strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
+            compute=_build_match_key,
+        ),
+        EnrichmentOperation(
+            name="target_id",
+            op_type=EnrichOperationType.GENERATE,
+            targets=("target_id",),
+            merge_policy=MergePolicy(mode=MergeMode.RECOMPUTE_ALWAYS),
+            strictness=StrictnessPolicy(on_no_candidates=EnrichOutcome.FAILED, on_provider_error=EnrichOutcome.FAILED),
+            generator=_target_id_generator,
+            exists=lambda deps, value: deps.find_user_by_target_id(value),
+            max_attempts=_build_target_id_policy().max_attempts,
+            missing_error_code="TARGET_ID_MISSING",
+            conflict_error_code="TARGET_ID_CONFLICT",
+            error_field="target_id",
+        ),
+        EnrichmentOperation(
+            name="usr_org_tab_num",
+            op_type=EnrichOperationType.GENERATE,
+            targets=("usr_org_tab_num",),
+            merge_policy=MergePolicy(mode=MergeMode.RECOMPUTE_ALWAYS),
+            strictness=StrictnessPolicy(on_no_candidates=EnrichOutcome.FAILED, on_provider_error=EnrichOutcome.FAILED),
+            generator=_usr_org_tab_num_generator,
+            exists=lambda deps, value: deps.find_user_by_usr_org_tab_num(value),
+            allow_if=_usr_org_tab_allow_if,
+            max_attempts=3,
+            conflict_error_code="USR_ORG_TAB_CONFLICT",
+            error_field="usrOrgTabNum",
+        ),
+        EnrichmentOperation(
+            name="password",
+            op_type=EnrichOperationType.GENERATE,
+            targets=("secret:password",),
+            merge_policy=MergePolicy(mode=MergeMode.FILL_ONLY_IF_EMPTY),
+            strictness=StrictnessPolicy(on_no_candidates=EnrichOutcome.WARNED),
+            generator=_password_generator,
+        ),
     )
+    key_registry: KeyRegistry[NormalizedEmployeesRow] = _build_key_registry()

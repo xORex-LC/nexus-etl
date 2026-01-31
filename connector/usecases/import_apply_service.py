@@ -10,6 +10,9 @@ from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol
 from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.domain.exceptions import MissingRequiredSecretError
+from connector.domain.planning.identity_keys import format_identity_key
+from connector.domain.ports.identity_repository import IdentityRepository
+from connector.domain.ports.pending_links_repository import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem
 
@@ -23,10 +26,18 @@ class ImportApplyService:
         executor: RequestExecutorProtocol,
         secrets: SecretProviderProtocol | None = None,
         spec_resolver: Callable[..., DatasetSpec] = get_spec,
+        identity_repo: IdentityRepository | None = None,
+        identity_keys: dict[str, set[str]] | None = None,
+        identity_id_fields: dict[str, str] | None = None,
+        pending_repo: PendingLinksRepository | None = None,
     ):
         self.executor = executor
         self.secrets = secrets
         self.spec_resolver = spec_resolver
+        self.identity_repo = identity_repo
+        self.identity_keys = identity_keys or {}
+        self.identity_id_fields = identity_id_fields or {}
+        self.pending_repo = pending_repo
 
     def applyPlan(
         self,
@@ -66,7 +77,7 @@ class ImportApplyService:
                 break
 
             actions_count += 1
-            if not item.resource_id:
+            if not item.target_id:
                 failed += 1
                 if should_store("FAILED"):
                     report.add_item(
@@ -76,9 +87,9 @@ class ImportApplyService:
                         errors=[
                             ValidationErrorItem(
                                 stage=DiagnosticStage.APPLY,
-                                code="RESOURCE_ID_MISSING",
-                                field="resource_id",
-                                message="resource_id is required",
+                                code="TARGET_ID_MISSING",
+                                field="target_id",
+                                message="target_id is required",
                             )
                         ],
                         warnings=[],
@@ -119,6 +130,12 @@ class ImportApplyService:
                             created += 1
                         elif action == "update":
                             updated += 1
+                        self._update_identity_index(
+                            dataset=item_dataset,
+                            desired_state=current_item.desired_state,
+                            response_json=exec_result.response_json,
+                            source_ref=current_item.source_ref,
+                        )
                         break
 
                     next_item = None
@@ -238,10 +255,54 @@ class ImportApplyService:
     def _build_meta(item, status_code, api_response, error_details) -> dict[str, Any]:
         return {
             "op": getattr(item, "op", None),
-            "resource_id": getattr(item, "resource_id", None),
+            "target_id": getattr(item, "target_id", None),
             "changes": getattr(item, "changes", {}),
             "desired_state": getattr(item, "desired_state", {}),
             "status_code": status_code,
             "api_response": api_response,
             "error_details": error_details,
         }
+
+    def _update_identity_index(
+        self,
+        *,
+        dataset: str,
+        desired_state: dict[str, Any],
+        response_json: Any | None,
+        source_ref: dict[str, Any] | None,
+    ) -> None:
+        if self.identity_repo is None:
+            return
+        key_names = self.identity_keys.get(dataset)
+        if not key_names:
+            return
+        id_field = self.identity_id_fields.get(dataset, "_id")
+        resolved_id = None
+        if isinstance(response_json, dict):
+            resolved_id = response_json.get(id_field)
+        if resolved_id is None:
+            resolved_id = desired_state.get(id_field)
+        if resolved_id is None:
+            return
+        resolved_id_str = str(resolved_id).strip()
+        if resolved_id_str == "":
+            return
+        for key_name in key_names:
+            value = desired_state.get(key_name)
+            if value is None and isinstance(source_ref, dict):
+                value = source_ref.get(key_name)
+            if value is None:
+                continue
+            value_str = str(value).strip()
+            if value_str == "":
+                continue
+            identity_key = format_identity_key(key_name, value_str)
+            self.identity_repo.upsert_identity(dataset, identity_key, resolved_id_str)
+            self._resolve_pending_for_key(dataset, identity_key)
+
+    def _resolve_pending_for_key(self, dataset: str, identity_key: str) -> None:
+        if self.pending_repo is None:
+            return
+        pending = self.pending_repo.list_pending_for_key(dataset, identity_key)
+        for item in pending:
+            self.pending_repo.mark_resolved(item.pending_id)

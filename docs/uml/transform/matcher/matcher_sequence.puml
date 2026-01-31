@@ -1,0 +1,39 @@
+@startuml
+title Matcher - Sequence Diagram
+
+actor Caller
+participant Matcher
+participant MatchingRules
+participant "IdentityRule" as Rule
+participant CacheRepo
+participant ResolveRules
+
+Caller -> Matcher: match(TransformResult[ValidationRow])
+Matcher -> MatchingRules: get identity_rules
+loop for each rule
+  Matcher -> Rule: build_identity(row, validation)
+  alt identity.primary_value empty
+    Matcher -> Matcher: skip rule
+  else
+    Matcher -> CacheRepo: find(dataset, {primary: value})
+    alt candidates_many
+      Matcher -> Matcher: emit MATCH_CONFLICT_TARGET
+      Matcher --> Caller: TransformResult.errors
+    else candidates_one
+      Matcher -> Matcher: select identity + existing
+    else
+      Matcher -> Matcher: remember identity (fallback)
+    end
+  end
+end
+alt identity missing
+  Matcher -> Matcher: emit MATCH_IDENTITY_MISSING
+  Matcher --> Caller: TransformResult.errors
+end
+Matcher -> ResolveRules: build_desired_state(row, validation)
+Matcher -> Matcher: build_fingerprint(desired_state)
+Matcher -> Matcher: build_links (optional)
+Matcher -> Matcher: build RowRef
+Matcher --> Caller: TransformResult[MatchedRow]
+
+@enduml

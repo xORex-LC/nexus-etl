@@ -5,11 +5,11 @@ from typer.testing import CliRunner
 
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.sqlite_engine import SqliteEngine
-from connector.infra.cache.handlers.registry import CacheHandlerRegistry
-from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.datasets.cache_registry import list_cache_specs
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.repository import SqliteCacheRepository
+from connector.infra.cache.identity_repository import SqliteIdentityRepository
+from connector.domain.planning.identity_keys import format_identity_key
 from connector.main import app
 
 runner = CliRunner()
@@ -52,27 +52,31 @@ def make_row(
 
 def _build_repo(conn) -> SqliteCacheRepository:
     engine = SqliteEngine(conn)
-    registry = CacheHandlerRegistry()
-    for spec in list_cache_specs():
-        registry.register(GenericCacheHandler(spec))
-    ensure_cache_ready(engine, registry)
-    return SqliteCacheRepository(engine, registry)
+    cache_specs = list_cache_specs()
+    ensure_cache_ready(engine, cache_specs)
+    return SqliteCacheRepository(engine, cache_specs)
 
 
 def _seed_org(repo: SqliteCacheRepository, ouid: int) -> None:
+    identity_repo = SqliteIdentityRepository(repo.engine)
     with repo.transaction():
         repo.upsert(
             "organizations",
             {"_ouid": ouid, "code": f"ORG-{ouid}", "name": f"Org {ouid}", "parent_id": None, "updated_at": None},
         )
+        identity_repo.upsert_identity("organizations", format_identity_key("_ouid", str(ouid)), str(ouid))
+        identity_repo.upsert_identity("organizations", format_identity_key("name", f"Org {ouid}"), str(ouid))
+        identity_repo.upsert_identity("organizations", format_identity_key("code", f"ORG-{ouid}"), str(ouid))
 
 def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: str, organization_id: int) -> None:
+    identity_repo = SqliteIdentityRepository(repo.engine)
+    ouid = int(_id.replace("u", "")) if _id.startswith("u") else 1
     with repo.transaction():
         repo.upsert(
             "employees",
             {
                 "_id": _id,
-                "_ouid": int(_id.replace("u", "")) if _id.startswith("u") else 1,
+                "_ouid": ouid,
                 "personnel_number": "100",
                 "last_name": "Doe",
                 "first_name": "John",
@@ -92,6 +96,8 @@ def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: 
                 "updated_at": None,
             },
         )
+        identity_repo.upsert_identity("employees", format_identity_key("match_key", match_key), str(ouid))
+        identity_repo.upsert_identity("employees", format_identity_key("organization_id", str(organization_id)), str(ouid))
 
 def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
     log_dir = tmp_path / "logs"
@@ -112,8 +118,8 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
         str(csv_path),
     ]
     result = runner.invoke(app, args)
-    report_path = report_dir / f"report_import-plan_{run_id}.json"
-    return result.exit_code, report_path
+    plan_path = report_dir / f"plan_import_{run_id}.json"
+    return result.exit_code, plan_path
 
 def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -144,12 +150,14 @@ def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-missing")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-missing")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["summary"]["rows_blocked"] == 0
-    assert report["context"]["plan"]["plan_file"] is not None
+    assert plan["summary"]["planned_create"] == 0
+    assert plan["summary"]["planned_update"] == 0
+    assert plan["summary"]["skipped"] == 0
+    assert plan["items"] == []
 
 def test_plan_create_when_not_found(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -179,12 +187,14 @@ def test_plan_create_when_not_found(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-create")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-create")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["context"]["plan"]["planned_create"] == 1
-    assert report["summary"]["rows_blocked"] == 0
+    assert plan["summary"]["planned_create"] == 1
+    assert plan["summary"]["planned_update"] == 0
+    assert len(plan["items"]) == 1
+    assert plan["items"][0]["op"] == "create"
 
 def test_plan_update_when_found_and_diff(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -215,12 +225,14 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-update")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-update")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["context"]["plan"]["planned_update"] == 1
-    assert report["summary"]["rows_blocked"] == 0
+    assert plan["summary"]["planned_update"] == 1
+    assert len(plan["items"]) == 1
+    assert plan["items"][0]["op"] == "update"
+    assert "phone" in plan["items"][0]["changes"]
 
 def test_plan_skip_when_no_diff(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -251,14 +263,15 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-skip")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-skip")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert report["context"]["plan"]["planned_update"] == 0
-    assert report["context"]["plan"]["skipped"] == 1
+    assert plan["summary"]["planned_update"] == 0
+    assert plan["summary"]["skipped"] == 1
+    assert plan["items"] == []
 
-def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path):
+def test_plan_conflict_when_multiple_same_match_key(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
@@ -267,15 +280,6 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
         _seed_org(repo, ouid=50)
     finally:
         conn.close()
-
-    # Force duplicate candidates despite UNIQUE constraint by monkeypatching matcher
-    import connector.domain.planning.adapters as planning_adapters
-    from connector.domain.models import MatchResult, MatchStatus
-
-    def _fake_match(self, identity, include_deleted):
-        return MatchResult(status=MatchStatus.CONFLICT, candidate=None, candidates=[{"_id": "a"}, {"_id": "b"}])
-
-    monkeypatch.setattr(planning_adapters.CacheEmployeeLookup, "match", _fake_match)
 
     csv_path = tmp_path / "conflict.csv"
     _write_csv(
@@ -292,14 +296,27 @@ def test_plan_conflict_when_multiple_same_match_key(monkeypatch, tmp_path: Path)
                 org_id="50",
                 tab="TAB-100",
             )
+        ] + [
+            make_row(
+                raw_id="100",
+                full_name="Doe John M",
+                login="jdoe",
+                email_or_phone="another@example.com",
+                contacts="+333333",
+                flags="disabled=false",
+                role="Engineer",
+                org_id="50",
+                tab="TAB-100",
+            )
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-conflict")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-conflict")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
-    assert exit_code == 1
-    assert report["summary"]["rows_blocked"] == 1
+    assert exit_code == 0
+    assert plan["summary"]["planned_create"] == 1
+    assert len(plan["items"]) == 1
 
 def test_plan_error_when_org_missing(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -329,8 +346,8 @@ def test_plan_error_when_org_missing(tmp_path: Path):
         ],
     )
 
-    exit_code, report_path = _run_plan(tmp_path, csv_path, run_id="plan-org-missing")
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-org-missing")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
-    assert exit_code == 1
-    assert report["summary"]["rows_blocked"] == 1
+    assert exit_code == 0
+    assert plan["items"] == []

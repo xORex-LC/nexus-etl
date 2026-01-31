@@ -75,6 +75,47 @@ def _validate_positive_int(field: str) -> FieldValidator:
     return _inner
 
 
+def _validate_org_reference(
+    value: Any,
+    _: NormalizedEmployeesRow,
+    __: ValidationDependencies,
+    errors: list[ValidationErrorItem],
+) -> None:
+    # Resolver может заменить строковое имя/код организации на _ouid после валидации.
+    if value is None:
+        return
+    if isinstance(value, int):
+        if value <= 0:
+            errors.append(
+                ValidationErrorItem(
+                    stage=DiagnosticStage.VALIDATE,
+                    code="INVALID_INT",
+                    field="organization_id",
+                    message="organization_id must be an integer > 0",
+                )
+            )
+        return
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return
+        numeric = raw.lstrip("+-")
+        if numeric.isdigit():
+            try:
+                parsed = int(raw)
+            except ValueError:
+                return
+            if parsed <= 0:
+                errors.append(
+                    ValidationErrorItem(
+                        stage=DiagnosticStage.VALIDATE,
+                        code="INVALID_INT",
+                        field="organization_id",
+                        message="organization_id must be an integer > 0",
+                    )
+                )
+
+
 def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:
     mapping_spec = EmployeesMappingSpec()
     rules: list[ValidationRule[NormalizedEmployeesRow]] = []
@@ -83,7 +124,7 @@ def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:
         if attr == "email":
             validators = (_validate_email,)
         elif attr == "organization_id":
-            validators = (_validate_positive_int("organization_id"),)
+            validators = (_validate_org_reference,)
         rules.append(
             FieldRule(
                 name=attr,

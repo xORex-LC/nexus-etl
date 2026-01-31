@@ -1,0 +1,25 @@
+@startuml
+title Matcher - State Machine Diagram
+
+[*] --> Input
+Input --> MissingInput : validation row missing
+Input --> ResolveIdentity : valid row
+
+ResolveIdentity --> ConflictTarget : multiple candidates
+ResolveIdentity --> IdentityMissing : no identity
+ResolveIdentity --> Matched : matched existing
+ResolveIdentity --> NotFound : no candidates
+
+NotFound --> BuildDesiredState
+Matched --> BuildDesiredState
+
+BuildDesiredState --> BuildFingerprint
+BuildFingerprint --> BuildLinks
+BuildLinks --> BuildRowRef
+BuildRowRef --> Output
+
+ConflictTarget --> [*]
+IdentityMissing --> [*]
+Output --> [*]
+
+@enduml

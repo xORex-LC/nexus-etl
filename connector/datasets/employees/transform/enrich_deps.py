@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from connector.domain.ports.lookups import LookupProtocol
+from connector.domain.ports.cache_repository import CacheRepositoryProtocol
 from connector.domain.ports.secrets import SecretStoreProtocol
-from connector.infra.cache import legacy_queries
+from connector.domain.ports.dictionaries import DictionaryProviderPort
 
 
 @dataclass(frozen=True)
@@ -16,14 +16,14 @@ class EmployeesEnrichDependencies:
     """
 
     conn: Any
-    identity_lookup: LookupProtocol | None
+    cache_repo: CacheRepositoryProtocol
     secret_store: SecretStoreProtocol | None = None
+    dictionaries: DictionaryProviderPort | None = None
 
-    def find_user_by_id(self, resource_id: str) -> dict[str, Any] | None:
-        return legacy_queries.findUserById(self.conn, resource_id)
+    # TODO(dicts): подключить dictionaries provider и использовать в dictionary-операциях Enricher.
+
+    def find_user_by_target_id(self, target_id: str) -> dict[str, Any] | None:
+        return self.cache_repo.find_one("employees", {"_id": target_id}, include_deleted=True)
 
     def find_user_by_usr_org_tab_num(self, tab_num: str) -> dict[str, Any] | None:
-        return legacy_queries.findUserByUsrOrgTabNum(self.conn, tab_num)
-
-    def find_org_by_ouid(self, ouid: int) -> dict[str, Any] | None:
-        return legacy_queries.getOrgByOuid(self.conn, ouid)
+        return self.cache_repo.find_one("employees", {"usr_org_tab_num": tab_num}, include_deleted=True)

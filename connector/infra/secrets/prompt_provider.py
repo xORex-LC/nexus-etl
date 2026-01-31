@@ -28,7 +28,7 @@ class PromptSecretProvider(SecretProviderProtocol):
         row_id: str | None = None,
         line_no: int | None = None,
         source_ref: dict | None = None,
-        resource_id: str | None = None,
+        target_id: str | None = None,
         run_id: str | None = None,
     ) -> str | None:
         key: Key = (dataset, field, row_id, line_no)

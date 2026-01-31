@@ -19,7 +19,7 @@ class NullSecretProvider(SecretProviderProtocol):
         row_id: str | None = None,
         line_no: int | None = None,
         source_ref: dict | None = None,
-        resource_id: str | None = None,
+        target_id: str | None = None,
         run_id: str | None = None,
     ) -> str | None:
         return None

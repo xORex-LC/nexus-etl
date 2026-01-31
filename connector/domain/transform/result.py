@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 from typing import Generic, TypeVar
 
 from connector.domain.models import RowRef, ValidationErrorItem
@@ -21,6 +22,7 @@ class TransformResult(Generic[T]):
     row: T | None
     row_ref: RowRef | None
     match_key: MatchKey | None
+    meta: dict[str, Any] = field(default_factory=dict)
     secret_candidates: dict[str, str] = field(default_factory=dict)
     errors: list[ValidationErrorItem] = field(default_factory=list)
     warnings: list[ValidationErrorItem] = field(default_factory=list)
