@@ -2,7 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.transform.enricher import CandidateValue, ConflictResolver, Enricher, EnricherSpec, EnrichmentOperation, EnrichOperationType, KeyRegistry, RunWhenErrors, StrictnessPolicy, EnrichOutcome
+from connector.domain.transform.enricher import (
+    CandidateValue,
+    ConflictResolver,
+    Enricher,
+    EnricherSpec,
+    EnrichmentOperation,
+    EnrichOperationType,
+    KeyRegistry,
+    RunWhenErrors,
+    StrictnessPolicy,
+    EnrichOutcome,
+)
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
@@ -342,3 +353,52 @@ def test_enricher_warns_on_candidate_field_mismatch():
     enriched = enricher.enrich(result)
     codes = {issue.code for issue in enriched.warnings}
     assert "ENRICH_TARGET_MISMATCH" in codes
+
+
+def test_enricher_stop_on_failed_prevents_followup_ops():
+    @dataclass
+    class _Row:
+        field: str | None = None
+
+    def _compute(result, deps):
+        _ = (result, deps)
+        raise Exception("boom")
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="compute_fail",
+                op_type=EnrichOperationType.COMPUTE,
+                targets=("field",),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
+                compute=_compute,
+            ),
+            EnrichmentOperation(
+                name="should_not_run",
+                op_type=EnrichOperationType.GENERATE,
+                targets=("field",),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.WARNED),
+                generator=lambda _r, _d: "value",
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+        stop_on_failed=True,
+    )
+    enricher = Enricher(spec, _DummyEnrichDeps(), None, "employees")
+    record = SourceRecord(line_no=1, record_id="line:1", values={})
+    result = TransformResult(
+        record=record,
+        row=_Row(),
+        row_ref=None,
+        match_key=None,
+        errors=[],
+        warnings=[],
+    )
+
+    enriched = enricher.enrich(result)
+
+    codes = {issue.code for issue in enriched.errors}
+    assert "ENRICH_PROVIDER_ERROR" in codes
+    assert enriched.row.field is None

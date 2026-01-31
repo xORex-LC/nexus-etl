@@ -218,6 +218,10 @@ class KeyRegistry(Generic[T]):
     def resolve(self, key: str, result: TransformResult[T]) -> Any | None:
         builder = self.builders.get(key)
         if builder is None:
+            if result.row is not None and hasattr(result.row, key):
+                return getattr(result.row, key)
+            if result.meta:
+                return result.meta.get(key)
             return None
         return builder(result)
 
@@ -263,6 +267,7 @@ class EnricherSpec(Generic[T, D]):
     default_strictness: StrictnessPolicy = StrictnessPolicy()
     authoritative_sources: set[str] = field(default_factory=lambda: {"sink_cache"})
     is_fatal_error: Callable[[ValidationErrorItem], bool] | None = None
+    stop_on_failed: bool = False
 
 
 class _FieldMutationTracker:
@@ -392,6 +397,8 @@ class Enricher(Generic[T, D]):
                 result.meta["enrich_events"].extend([event.__dict__ for event in op_report.events])
             if op_report.resolve_hints:
                 result.meta["resolve_requests"].extend([hint.__dict__ for hint in op_report.resolve_hints])
+            if self.spec.stop_on_failed and op_report.outcome == EnrichOutcome.FAILED:
+                break
 
         self._store_secrets(result, errors, warnings)
 
@@ -475,7 +482,7 @@ class Enricher(Generic[T, D]):
         if decision.status == "AMBIGUOUS":
             hint = ResolveHint(
                 field=op.targets[0],
-                lookup_key=self._build_lookup_key(op, key_values),
+                lookup_key=self._build_lookup_key(op, key_values, ctx),
                 reason="ambiguous",
                 candidates=[self._candidate_ref(cand) for cand in decision.candidates],
                 suggested_policy="manual",
@@ -629,6 +636,9 @@ class Enricher(Generic[T, D]):
                         )
                     )
                     continue
+                decision_label = "overridden_previous_op"
+            else:
+                decision_label = "applied"
             if not self.merge_engine.should_apply(current, candidate, merge_policy):
                 events.append(
                     EnrichEvent(
@@ -651,7 +661,7 @@ class Enricher(Generic[T, D]):
                     before=current,
                     after=candidate.value,
                     source=candidate.source,
-                    decision="applied",
+                    decision=decision_label,
                     outcome=EnrichOutcome.APPLIED.value,
                 )
             )
@@ -681,9 +691,17 @@ class Enricher(Generic[T, D]):
             return
         setattr(result.row, field, value)
 
-    def _build_lookup_key(self, op: EnrichmentOperation[T, D], values: dict[str, Any]) -> dict[str, Any]:
-        primary = op.required_keys[0] if op.required_keys else "unknown"
-        return {"name": primary, "value": values.get(primary), "strength": "strong"}
+    def _build_lookup_key(
+        self,
+        op: EnrichmentOperation[T, D],
+        values: dict[str, Any],
+        ctx: EnrichContext,
+    ) -> dict[str, Any]:
+        return {
+            "keys": dict(values),
+            "strength": "strong",
+            "as_of": ctx.as_of,
+        }
 
     def _candidate_ref(self, candidate: CandidateValue) -> dict[str, Any]:
         target_id = None

@@ -29,6 +29,7 @@ class EnricherSpec {
   + default_strictness: StrictnessPolicy
   + authoritative_sources: set
   + is_fatal_error: callable
+  + stop_on_failed: bool
 }
 
 class EnrichmentOperation {
