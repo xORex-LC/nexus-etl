@@ -58,6 +58,4 @@ class TransformPipeline(Generic[T, N, D]):
 
     def enrich(self, collected: TransformResult[None]) -> TransformResult[N]:
         normalized = self.normalize_only(collected)
-        if normalized.errors:
-            return normalized
         return self.enricher.enrich(normalized)
