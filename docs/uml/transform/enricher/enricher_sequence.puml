@@ -61,6 +61,7 @@ loop for each operation
   Op --> Enricher: OperationReport(outcome, events, hints, warnings/errors)
   Enricher -> Enricher: append events/hints into meta\nappend warnings/errors
   Enricher -> Enricher: summary.record(outcome)
+  Enricher -> Enricher: if stop_on_failed and outcome==FAILED -> break
 end
 
 alt secret_candidates exist and SecretStore available

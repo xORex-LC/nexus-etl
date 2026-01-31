@@ -61,6 +61,10 @@ repeat
   endif
 
   :Update EnricherReport summary;
+  if (stop_on_failed AND outcome=FAILED) then (yes)
+    :Break loop;
+    break
+  endif
 
 repeat while (more operations?)
 
