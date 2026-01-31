@@ -1,10 +1,17 @@
 @startuml
-title Enricher - State Machine Diagram (TO BE)
+title Enricher - State Machine Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 
 [*] --> Input
 
 Input --> Skipped : row missing OR upstream errors
-Input --> ExecuteOps : valid row
+Input --> ExecuteOps : valid row (or errors with allowed ops)
 
 ExecuteOps --> Failed : operation FAILED (policy=ERROR)
 ExecuteOps --> NeedsResolve : operation NEEDS_RESOLVE (ambiguous/missing key)

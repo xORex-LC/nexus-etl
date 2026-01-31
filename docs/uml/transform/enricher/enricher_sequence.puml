@@ -1,5 +1,12 @@
 @startuml
-title Enricher - Sequence Diagram (TO BE)
+title Enricher - Sequence Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam sequence {
+  ArrowColor #4b5563
+  LifeLineBorderColor #9ca3af
+}
 
 actor Caller
 participant Enricher
@@ -17,6 +24,7 @@ Enricher -> Enricher: if input.errors or row is None\nthen return input
 
 Enricher -> EnricherSpec: get operations
 loop for each operation
+  Enricher -> Enricher: check run_when_errors
   Enricher -> Op: execute(ctx, result, deps)
   Op -> Op: check required_keys / preconditions
 
@@ -31,8 +39,6 @@ loop for each operation
       else provider = dictionaries
         Provider -> Dictionaries: lookup(dict, key, at/as_of)
         Dictionaries --> Provider: candidates[0..N]
-      else provider = computed
-        Provider -> Provider: compute candidates
       end
       Provider --> Op: CandidateValue[*]
     end
@@ -54,6 +60,7 @@ loop for each operation
 
   Op --> Enricher: OperationReport(outcome, events, hints, warnings/errors)
   Enricher -> Enricher: append events/hints into meta\nappend warnings/errors
+  Enricher -> Enricher: summary.record(outcome)
 end
 
 alt secret_candidates exist and SecretStore available

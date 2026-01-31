@@ -1,5 +1,13 @@
 @startuml
-title Enricher - Class Diagram (TO BE)
+title Enricher - Class Diagram (Current)
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 
 class Enricher {
   - dataset: str
@@ -8,51 +16,56 @@ class Enricher {
   - secret_store: SecretStoreProtocol
   - conflict_resolver: ConflictResolver
   - merge_engine: MergeEngine
+  - summary: EnricherReport
   + enrich(input: TransformResult[T]): TransformResult[T]
 }
 
 class EnricherSpec {
   + operations: EnrichmentOperation[*]
+  + key_registry: KeyRegistry
   + field_semantics: FieldSemanticsMap
   + source_priorities: SourcePrioritySpec
   + default_merge_policy: MergePolicy
+  + default_strictness: StrictnessPolicy
+  + authoritative_sources: set
+  + is_fatal_error: callable
 }
 
-interface EnrichmentOperation {
+class EnrichmentOperation {
   + name: str
+  + op_type: EnrichOperationType
   + targets: set
   + required_keys: KeyRequirement[*]
   + providers: CandidateProvider[*]
   + merge_policy: MergePolicy
   + strictness: StrictnessPolicy
-  + conflict_policy: ConflictPolicy
-  + execute(ctx, result, deps): OperationReport
+  + run_when_errors: RunWhenErrors
 }
 
-class LookupOp
-class FillMissingOp
-class ComputeOp
-class GenerateOp
-class MembershipOp
+enum EnrichOperationType {
+  COMPUTE
+  FILL_MISSING
+  LOOKUP
+  GENERATE
+  MEMBERSHIP
+}
 
-EnrichmentOperation <|.. LookupOp
-EnrichmentOperation <|.. FillMissingOp
-EnrichmentOperation <|.. ComputeOp
-EnrichmentOperation <|.. GenerateOp
-EnrichmentOperation <|.. MembershipOp
+enum RunWhenErrors {
+  NEVER
+  ONLY_NON_FATAL
+  ALWAYS
+}
 
 interface CandidateProvider {
   + name: str
-  + fetch(ctx, result, deps): CandidateValue[*]
+  + fetch(ctx, result, deps, key_values): CandidateValue[*]
 }
 
 class SinkCacheProvider
 class DictionaryProvider
-class ComputedProvider
 
 CandidateProvider <|.. SinkCacheProvider
 CandidateProvider <|.. DictionaryProvider
-CandidateProvider <|.. ComputedProvider
 
 class CandidateValue {
   + field: str
@@ -91,6 +104,19 @@ class StrictnessPolicy {
   + on_no_candidates: str   ' SKIP | WARN | ERROR
   + on_ambiguous: str       ' NEEDS_RESOLVE | WARN | ERROR
   + on_provider_error: str  ' SKIP | WARN | ERROR
+}
+
+class KeyRegistry {
+  + builders: dict
+  + resolve(key, result)
+}
+
+class EnricherReport {
+  + operations_total: int
+  + outcomes: dict
+  + updated_fields: int
+  + record(report)
+  + as_dict()
 }
 
 class OperationReport {
@@ -173,6 +199,7 @@ Enricher --> EnrichDeps
 Enricher --> ConflictResolver
 Enricher --> MergeEngine
 Enricher --> SecretStoreProtocol
+Enricher --> EnricherReport
 Enricher ..> EnrichmentOperation
 EnrichmentOperation --> CandidateProvider
 ConflictResolver --> CandidateDecision
@@ -180,6 +207,9 @@ CandidateDecision --> CandidateValue
 OperationReport --> EnrichEvent
 OperationReport --> ResolveHint
 OperationReport --> EnrichOutcome
+EnricherSpec --> KeyRegistry
+EnricherSpec --> StrictnessPolicy
+EnricherSpec --> MergePolicy
 EnrichDeps --> SinkCacheLookupPort
 EnrichDeps --> DictionaryProviderPort
 

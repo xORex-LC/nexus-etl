@@ -113,6 +113,15 @@ class EmployeesEnricherSpec(EnricherSpec[NormalizedEmployeesRow, EmployeesEnrich
         Спецификация операций enrich для employees.
     """
 
+    # TODO(dicts): здесь добавлять dictionary-операции (lookup/canonicalize/membership),
+    # используя deps.dictionaries. Пример:
+    # EnrichmentOperation(
+    #     name="department_name",
+    #     op_type=EnrichOperationType.LOOKUP,
+    #     targets=("department_name",),
+    #     required_keys=("department_code",),
+    #     providers=(DepartmentDictionaryProvider(),),
+    # )
     operations: tuple[EnrichmentOperation[NormalizedEmployeesRow, EmployeesEnrichDependencies], ...] = (
         EnrichmentOperation(
             name="build_match_key",
@@ -158,4 +167,3 @@ class EmployeesEnricherSpec(EnricherSpec[NormalizedEmployeesRow, EmployeesEnrich
         ),
     )
     key_registry: KeyRegistry[NormalizedEmployeesRow] = _build_key_registry()
-
