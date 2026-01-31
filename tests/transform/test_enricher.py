@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.transform.enricher import Enricher
+from connector.domain.transform.enricher import CandidateValue, ConflictResolver, Enricher, EnricherSpec, EnrichmentOperation, EnrichOperationType, KeyRegistry, RunWhenErrors, StrictnessPolicy, EnrichOutcome
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
@@ -203,3 +203,142 @@ def test_enricher_reports_usr_org_tab_conflict():
 
     codes = {issue.code for issue in result.errors}
     assert "USR_ORG_TAB_CONFLICT" in codes
+
+
+def test_conflict_resolver_prefers_higher_priority():
+    resolver = ConflictResolver()
+    low = CandidateValue(field="field", value="low", source="computed", priority=1, confidence=0.5)
+    high = CandidateValue(field="field", value="high", source="sink_cache", priority=10, confidence=0.1)
+
+    decision = resolver.decide([low, high])
+
+    assert decision.selected is not None
+    assert decision.selected.value == "high"
+
+
+def test_enricher_rejects_multi_target_operation():
+    @dataclass
+    class _Row:
+        a: str | None = None
+        b: str | None = None
+
+    def _compute(result, deps):
+        _ = deps
+        return {"a": "value"}
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="multi",
+                op_type=EnrichOperationType.COMPUTE,
+                targets=("a", "b"),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
+                compute=_compute,
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = Enricher(spec, _DummyEnrichDeps(), None, "employees")
+    record = SourceRecord(line_no=1, record_id="line:1", values={})
+    result = TransformResult(
+        record=record,
+        row=_Row(),
+        row_ref=None,
+        match_key=None,
+        errors=[],
+        warnings=[],
+    )
+
+    enriched = enricher.enrich(result)
+
+    codes = {issue.code for issue in enriched.errors}
+    assert "ENRICH_MULTI_TARGET_UNSUPPORTED" in codes
+
+
+def test_enricher_defaults_priority_by_source():
+    @dataclass
+    class _Row:
+        field: str | None = None
+
+    class _Provider:
+        name = "provider"
+
+        def fetch(self, ctx, result, deps, key_values):
+            _ = (ctx, result, deps, key_values)
+            return [
+                CandidateValue(field="field", value="low", source="low", priority=None),
+                CandidateValue(field="field", value="high", source="high", priority=None),
+            ]
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="lookup",
+                op_type=EnrichOperationType.LOOKUP,
+                targets=("field",),
+                providers=(_Provider(),),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.WARNED),
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+        source_priorities={"low": 1, "high": 10},
+    )
+    enricher = Enricher(spec, _DummyEnrichDeps(), None, "employees")
+    record = SourceRecord(line_no=1, record_id="line:1", values={})
+    result = TransformResult(
+        record=record,
+        row=_Row(),
+        row_ref=None,
+        match_key=None,
+        errors=[],
+        warnings=[],
+    )
+
+    enriched = enricher.enrich(result)
+
+    assert enriched.row.field == "high"
+
+
+def test_enricher_warns_on_candidate_field_mismatch():
+    @dataclass
+    class _Row:
+        field: str | None = None
+
+    class _Provider:
+        name = "provider"
+
+        def fetch(self, ctx, result, deps, key_values):
+            _ = (ctx, result, deps, key_values)
+            return [
+                CandidateValue(field="other", value="x", source="source", priority=1),
+            ]
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="lookup",
+                op_type=EnrichOperationType.LOOKUP,
+                targets=("field",),
+                providers=(_Provider(),),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.WARNED),
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = Enricher(spec, _DummyEnrichDeps(), None, "employees")
+    record = SourceRecord(line_no=1, record_id="line:1", values={})
+    result = TransformResult(
+        record=record,
+        row=_Row(),
+        row_ref=None,
+        match_key=None,
+        errors=[],
+        warnings=[],
+    )
+
+    enriched = enricher.enrich(result)
+    codes = {issue.code for issue in enriched.warnings}
+    assert "ENRICH_TARGET_MISMATCH" in codes

@@ -59,7 +59,7 @@ class MergeMode(str, Enum):
 
     FILL_ONLY_IF_EMPTY = "fill_only_if_empty"
     RECOMPUTE_ALWAYS = "recompute_always"
-    OVERRIDE_IF_INVALID = "override_if_invalid"
+    OVERRIDE_IF_EMPTY = "override_if_empty"
     OVERRIDE_IF_AUTHORITATIVE = "override_if_authoritative"
     NEVER_OVERRIDE = "never_override"
 
@@ -97,7 +97,7 @@ class CandidateValue:
     field: str
     value: Any
     source: str
-    priority: int = 0
+    priority: int | None = None
     confidence: float | None = None
     evidence: dict[str, Any] | None = None
 
@@ -145,7 +145,7 @@ class ResolveHint:
     suggested_policy: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass
 class OperationReport:
     """
     Назначение:
@@ -297,7 +297,10 @@ class ConflictResolver:
             return CandidateDecision(status="SELECTED", selected=candidates[0], candidates=candidates)
         sorted_candidates = sorted(
             candidates,
-            key=lambda cand: (cand.priority, -(cand.confidence or 0.0)),
+            key=lambda cand: (
+                -((cand.priority if cand.priority is not None else 0)),
+                -(cand.confidence or 0.0),
+            ),
         )
         top = sorted_candidates[0]
         if len(sorted_candidates) > 1:
@@ -323,7 +326,7 @@ class MergeEngine:
             return False
         if policy.mode == MergeMode.OVERRIDE_IF_AUTHORITATIVE:
             return candidate.source in self.authoritative_sources
-        if policy.mode == MergeMode.OVERRIDE_IF_INVALID:
+        if policy.mode == MergeMode.OVERRIDE_IF_EMPTY:
             return current is None or current == ""
         return current is None or current == ""
 
@@ -364,6 +367,19 @@ class Enricher(Generic[T, D]):
         if "resolve_requests" not in result.meta:
             result.meta["resolve_requests"] = []
         summary = EnricherReport()
+        if (
+            result.errors
+            and self.spec.is_fatal_error is None
+            and any(op.run_when_errors == RunWhenErrors.ONLY_NON_FATAL for op in self.spec.operations)
+        ):
+            warnings.append(
+                ValidationErrorItem(
+                    stage=DiagnosticStage.ENRICH,
+                    code="ENRICH_FATAL_POLICY_UNSET",
+                    field=None,
+                    message="run_when_errors=ONLY_NON_FATAL requires fatal error classifier",
+                )
+            )
 
         for op in self.spec.operations:
             if not self._should_run_operation(op, result.errors):
@@ -410,6 +426,13 @@ class Enricher(Generic[T, D]):
     ) -> OperationReport:
         strictness = op.strictness or self.spec.default_strictness
         merge_policy = op.merge_policy or self.spec.default_merge_policy
+        if len(op.targets) != 1:
+            return self._report_by_policy(
+                op=op,
+                outcome=EnrichOutcome.FAILED,
+                code="ENRICH_MULTI_TARGET_UNSUPPORTED",
+                message="operation targets must contain exactly one field",
+            )
 
         key_values = {}
         for key in op.required_keys:
@@ -489,24 +512,33 @@ class Enricher(Generic[T, D]):
             values = op.compute(result, self.deps)
             if not values:
                 return []
+            target = op.targets[0]
+            if target not in values:
+                return []
             return [
                 CandidateValue(
-                    field=field,
-                    value=value,
+                    field=target,
+                    value=values[target],
                     source="computed",
                     priority=self._priority_for("computed"),
                 )
-                for field, value in values.items()
             ]
         if op.op_type == EnrichOperationType.GENERATE:
             return self._generate_candidates(result, op)
 
         candidates: list[CandidateValue] = []
+        target = op.targets[0]
         for provider in op.providers:
             fetched = provider.fetch(ctx, result, self.deps, key_values)
             if fetched:
                 for candidate in fetched:
-                    if candidate.priority == 0:
+                    if candidate.field != target:
+                        raise EnrichOperationError(
+                            code="ENRICH_TARGET_MISMATCH",
+                            message="candidate field does not match operation target",
+                            field=candidate.field,
+                        )
+                    if candidate.priority is None:
                         candidate = CandidateValue(
                             field=candidate.field,
                             value=candidate.value,
@@ -654,10 +686,15 @@ class Enricher(Generic[T, D]):
         return {"name": primary, "value": values.get(primary), "strength": "strong"}
 
     def _candidate_ref(self, candidate: CandidateValue) -> dict[str, Any]:
+        target_id = None
+        identity_key = None
+        if candidate.evidence:
+            target_id = candidate.evidence.get("target_id")
+            identity_key = candidate.evidence.get("identity_key")
         return {
             "source": candidate.source,
-            "identity_key": None,
-            "target_id": None,
+            "identity_key": identity_key,
+            "target_id": target_id,
             "evidence": candidate.evidence,
         }
 

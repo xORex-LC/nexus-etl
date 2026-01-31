@@ -34,7 +34,7 @@ class EnricherSpec {
 class EnrichmentOperation {
   + name: str
   + op_type: EnrichOperationType
-  + targets: set
+  + targets: set  ' must be size=1
   + required_keys: KeyRequirement[*]
   + providers: CandidateProvider[*]
   + merge_policy: MergePolicy
@@ -71,7 +71,7 @@ class CandidateValue {
   + field: str
   + value
   + source: str
-  + priority: int
+  + priority: int | None  ' higher = better
   + confidence: float
   + evidence: dict
 }
@@ -92,7 +92,7 @@ class MergeEngine {
 }
 
 class MergePolicy {
-  + mode: str  ' fill_only_if_empty | recompute_always | override_if_invalid | override_if_authoritative | never_override
+  + mode: str  ' fill_only_if_empty | recompute_always | override_if_empty | override_if_authoritative | never_override
 }
 
 class FieldSemanticsMap {
