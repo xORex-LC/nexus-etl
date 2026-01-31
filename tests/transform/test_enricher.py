@@ -79,6 +79,10 @@ def test_enricher_builds_match_key_and_generates_values():
     assert result.row.target_id is not None
     assert result.row.usr_org_tab_num is not None
     assert result.secret_candidates.get("password")
+    summary = result.meta.get("enrich_summary")
+    assert summary is not None
+    assert summary["operations_total"] == 4
+    assert summary["outcomes"].get("APPLIED") == 4
 
 
 def test_enricher_reports_missing_match_key():
@@ -140,6 +144,9 @@ def test_enricher_runs_only_allowed_ops_on_error():
     assert enriched.match_key is not None
     assert enriched.row.target_id is None
     assert enriched.row.usr_org_tab_num is None
+    summary = enriched.meta.get("enrich_summary")
+    assert summary is not None
+    assert summary["operations_total"] == 1
 
 
 def test_enricher_writes_secrets_to_store():

@@ -7,6 +7,7 @@ from typing import Any, Callable, Generic, Iterable, Protocol, TypeVar
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
 from connector.domain.ports.secrets import SecretStoreProtocol
 from connector.domain.transform.match_key import MatchKey
+from connector.domain.transform.enricher_report import EnricherReport
 from connector.domain.transform.result import TransformResult
 
 T = TypeVar("T")
@@ -362,22 +363,25 @@ class Enricher(Generic[T, D]):
             result.meta["enrich_events"] = []
         if "resolve_requests" not in result.meta:
             result.meta["resolve_requests"] = []
+        summary = EnricherReport()
 
         for op in self.spec.operations:
             if not self._should_run_operation(op, result.errors):
                 continue
-            report = self._execute_operation(ctx, result, op, tracker)
-            errors.extend(report.errors)
-            warnings.extend(report.warnings)
-            if report.events:
-                result.meta["enrich_events"].extend([event.__dict__ for event in report.events])
-            if report.resolve_hints:
-                result.meta["resolve_requests"].extend([hint.__dict__ for hint in report.resolve_hints])
+            op_report = self._execute_operation(ctx, result, op, tracker)
+            summary.record(op_report)
+            errors.extend(op_report.errors)
+            warnings.extend(op_report.warnings)
+            if op_report.events:
+                result.meta["enrich_events"].extend([event.__dict__ for event in op_report.events])
+            if op_report.resolve_hints:
+                result.meta["resolve_requests"].extend([hint.__dict__ for hint in op_report.resolve_hints])
 
         self._store_secrets(result, errors, warnings)
 
         result.errors = [*result.errors, *errors]
         result.warnings = [*result.warnings, *warnings]
+        result.meta["enrich_summary"] = summary.as_dict()
         return result
 
     def _should_run_operation(
@@ -393,6 +397,7 @@ class Enricher(Generic[T, D]):
             return False
         checker = self.spec.is_fatal_error
         if checker is None:
+            # TODO(severity): определить fatal/non-fatal через ValidationErrorItem.severity.
             return False
         return not any(checker(err) for err in errors)
 

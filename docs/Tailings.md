@@ -25,6 +25,7 @@
 29) Убрать двойную истину для counts: meta.users_count/org_count vs реальные COUNT(*) — определить единый источник и инвариант обновления (транзакционно).
 30) Усилить типизацию DTO на границах (SourceRecord/Normalized/Enriched) — заменить dict/Any на dataclass/TypedDict для контрактов.
 31) Версионировать миграции SQLite (registry/файлы), чтобы порядок изменений был воспроизводим и тестируем.
+32) Добавить severity у ValidationErrorItem (fatal/non-fatal) и использовать в Enricher.run_when_errors=ONLY_NON_FATAL.
 
 Sink-spec leakage (where sink/normalized specificity leaks into non-dataset layers):
 - (удалено) csv_reader.py (employees-only нормализованный CSV) — больше не используется.

@@ -1,5 +1,12 @@
 @startuml
-title Enricher - Activity Diagram (TO BE)
+title Enricher - Activity Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam activity {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 
 start
 :Input TransformResult[T];
@@ -10,15 +17,18 @@ if (input.row is None?) then (yes)
 endif
 
 if (input.errors present?) then (yes)
-  :Return input (no-op);
-  stop
+  :Limit operations by run_when_errors;
 endif
 
 :Init local errors/warnings;
 :Init meta.enrich_events & meta.resolve_requests;
+:Init EnricherReport summary;
 
 repeat
   :Take next operation from spec;
+  if (errors present AND op.run_when_errors not allowed?) then (skip)
+    :Skip operation;
+  else (run)
 
   :Preconditions + required_keys check;
   if (missing key?) then (yes)
@@ -27,7 +37,7 @@ repeat
       :Add ResolveHint to meta;
     endif
   else (no)
-    :Fetch candidates from providers\n(sink_cache / dictionaries / computed);
+    :Fetch candidates from providers\n(sink_cache / dictionaries);
     if (provider error?) then (yes)
       :Apply on_provider_error policy;
     else (no)
@@ -48,6 +58,9 @@ repeat
       endif
     endif
   endif
+  endif
+
+  :Update EnricherReport summary;
 
 repeat while (more operations?)
 
@@ -63,6 +76,7 @@ if (secret_candidates exist AND secret_store enabled?) then (yes)
 endif
 
 :Attach local warnings/errors to result;
+:Attach enrich_summary to meta;
 :Return TransformResult[T] to next stages;
 stop
 

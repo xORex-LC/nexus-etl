@@ -18,6 +18,7 @@ from .enricher import (
     RunWhenErrors,
     StrictnessPolicy,
 )
+from .enricher_report import EnricherReport
 from .source_record import SourceRecord
 from .target_id import TargetIdMode, TargetIdPolicy
 
@@ -46,6 +47,7 @@ __all__ = [
     "ResolveHint",
     "RunWhenErrors",
     "StrictnessPolicy",
+    "EnricherReport",
     "TargetIdMode",
     "TargetIdPolicy",
 ]
