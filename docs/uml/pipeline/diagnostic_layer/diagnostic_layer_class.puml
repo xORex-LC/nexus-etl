@@ -1,0 +1,121 @@
+@startuml
+set namespaceSeparator none
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+enum DiagnosticStage {
+  EXTRACT
+  MAP
+  NORMALIZE
+  ENRICH
+  VALIDATE
+  MATCH
+  RESOLVE
+  PLAN
+  APPLY
+  SINK
+  CACHE
+}
+
+enum Severity {
+  ERROR
+  WARNING
+}
+
+enum SystemErrorCode {
+  DATA_INVALID
+  CONFLICT
+  AUTH_UNAUTHORIZED
+  AUTH_FORBIDDEN
+  SECRETS_MISSING
+  INFRA_NETWORK
+  INFRA_TIMEOUT
+  REMOTE_5XX
+  CACHE_ERROR
+  PLAN_INVALID
+  CONFIG_INVALID
+  INTERNAL_ERROR
+}
+
+class DiagnosticItem {
+  +stage: DiagnosticStage
+  +code: String
+  +message: String
+  +field: String [0..1]
+  +record_ref: String [0..1]
+  +details: Map<String, Any> [0..1]
+  +severity: Severity
+}
+
+class TransformResult<T> {
+  +record: T
+  +errors: List<DiagnosticItem>
+  +warnings: List<DiagnosticItem>
+  +add_error(stage, code, field, message, details)
+  +add_warning(stage, code, field, message, details)
+}
+
+class CatalogEntry {
+  +diag_code: String
+  +system_code: SystemErrorCode
+  +default_message: String [0..1]
+  +severity: Severity [0..1]
+}
+
+class ErrorCatalog {
+  +entries: Map<String, CatalogEntry>
+  +classify(diag_code: String): SystemErrorCode
+  +get_entry(diag_code: String): CatalogEntry
+}
+
+class DiagnosticFactory {
+  +catalog: ErrorCatalog
+  +error(stage, code, field, message, record_ref, details): DiagnosticItem
+  +warning(stage, code, field, message, record_ref, details): DiagnosticItem
+}
+
+class OperationError {
+  +stage: DiagnosticStage
+  +code: String
+  +message: String
+  +field: String [0..1]
+  +details: Map<String, Any> [0..1]
+}
+
+class Translator {
+  +from_http(stage, status, body): DiagnosticItem
+  +from_exception(stage, exc): DiagnosticItem
+  +system_code_of(diag: DiagnosticItem): SystemErrorCode
+}
+
+class RetryPolicy {
+  +should_retry(sys: SystemErrorCode, attempt: int): bool
+  +max_attempts(): int
+}
+
+class StopPolicy {
+  +is_fatal(sys: SystemErrorCode): bool
+  +should_stop_fast(sys: SystemErrorCode, flags): bool
+}
+
+class ExitCodePolicy {
+  +finalize(summary): int
+}
+
+ErrorCatalog "1" o-- "*" CatalogEntry
+DiagnosticFactory --> ErrorCatalog
+Translator --> ErrorCatalog
+TransformResult --> DiagnosticItem
+OperationError ..> DiagnosticStage
+DiagnosticFactory ..> DiagnosticItem
+
+RetryPolicy ..> SystemErrorCode
+StopPolicy ..> SystemErrorCode
+ExitCodePolicy ..> SystemErrorCode
+@enduml

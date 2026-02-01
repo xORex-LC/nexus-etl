@@ -1,0 +1,34 @@
+@startuml
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam SequenceArrowColor #4b5563
+skinparam SequenceLifeLineBorderColor #9ca3af
+actor Runner as R
+participant "StageRunner" as SR
+participant "diagnostic_boundary(stage)" as B
+participant "StageLogic" as S
+participant "DiagnosticFactory" as F
+participant "Translator" as T
+
+R -> SR : run(stage, input)
+SR -> B : enter(stage)
+B -> S : execute(input)
+
+alt OperationError thrown
+  S -> B : raise OperationError
+  B -> F : error(stage=e.stage, code=e.code, field=e.field, message=e.message, details=e.details)
+  F --> B : DiagnosticItem
+  B --> SR : TransformResult(errors=[item])
+else Unexpected Exception
+  S -> B : raise Exception
+  B -> T : from_exception(stage, exc)
+  T --> B : DiagnosticItem
+  B --> SR : TransformResult(errors=[item])
+else Success
+  S --> B : output (TransformResult or value)
+  B --> SR : output
+end
+
+SR --> R : output + diagnostics
+@enduml
