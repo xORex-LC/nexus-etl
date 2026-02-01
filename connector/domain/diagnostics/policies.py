@@ -53,6 +53,9 @@ SYSTEM_TO_DIAG: dict[SystemErrorCode, str] = {
     SystemErrorCode.AUTH_UNAUTHORIZED: "SINK_UNAUTHORIZED",
     SystemErrorCode.AUTH_FORBIDDEN: "SINK_FORBIDDEN",
     SystemErrorCode.CONFLICT: "SINK_CONFLICT",
+    SystemErrorCode.INFRA_TIMEOUT: "SINK_TIMEOUT",
+    SystemErrorCode.IO_ERROR: "SINK_IO_ERROR",
+    SystemErrorCode.INFRA_UNAVAILABLE: "SINK_UNAVAILABLE",
 }
 
 RETRYABLE_CODES: frozenset[SystemErrorCode] = frozenset(

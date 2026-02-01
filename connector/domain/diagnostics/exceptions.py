@@ -16,6 +16,16 @@ class UnknownDiagnosticCodeError(ValueError):
         self.diag_code = diag_code
 
 
+class DiagnosticContextNotConfiguredError(RuntimeError):
+    """
+    Назначение:
+        Сигнализирует об использовании diagnostics без configure().
+    """
+
+    def __init__(self) -> None:
+        super().__init__("DiagnosticFactory is not configured. Call diagnostics.configure(...) first.")
+
+
 @dataclass
 class OperationError(Exception):
     """

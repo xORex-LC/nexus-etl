@@ -4,6 +4,8 @@ from connector.domain.diagnostics import DiagnosticFactory, build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog, CatalogEntry
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.context import get_factory
+from connector.domain.diagnostics.exceptions import DiagnosticContextNotConfiguredError
 from connector.domain.diagnostics.translator import Translator
 from connector.domain.models import DiagnosticSeverity, DiagnosticStage, RowRef
 from connector.domain.ports.execution import ExecutionResult
@@ -67,6 +69,20 @@ def test_transform_result_add_error_attaches_row_ref() -> None:
     assert item.record_ref == row_ref
 
 
+def test_get_factory_requires_configure() -> None:
+    from connector.domain.diagnostics import context as diag_context
+
+    token = diag_context._factory_var.set(None)
+    try:
+        try:
+            _ = get_factory()
+        except DiagnosticContextNotConfiguredError:
+            return
+        assert False, "Expected DiagnosticContextNotConfiguredError when diagnostics not configured"
+    finally:
+        diag_context._factory_var.reset(token)
+
+
 def test_build_catalog_merges_dataset_codes_in_strict_mode() -> None:
     catalog = build_catalog("employees", strict=True)
     factory = DiagnosticFactory(catalog)
@@ -82,3 +98,19 @@ def test_build_catalog_strict_without_dataset_rejects_dataset_code() -> None:
     except UnknownDiagnosticCodeError:
         return
     assert False, "Expected UnknownDiagnosticCodeError without dataset catalog"
+
+
+def test_translator_preserves_infra_timeout_code() -> None:
+    catalog = build_catalog(None, strict=True)
+    translator = Translator(catalog)
+    result = ExecutionResult(
+        ok=False,
+        status_code=None,
+        response_json=None,
+        error_code=SystemErrorCode.INFRA_TIMEOUT,
+        error_message="timeout",
+        error_reason=None,
+        error_details=None,
+    )
+    diag = translator.from_execution_result(DiagnosticStage.SINK, result)
+    assert diag.code == "SINK_TIMEOUT"
