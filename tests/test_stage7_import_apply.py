@@ -219,7 +219,7 @@ def test_import_apply_stop_on_first_error():
     logger = logging.getLogger("test")
     logger.addHandler(logging.NullHandler())
     report = ReportCollector(run_id="r", command="import-apply")
-    code = service.applyPlan(
+    result = service.applyPlan(
         plan=plan,
         logger=logger,
         report=report,
@@ -230,7 +230,7 @@ def test_import_apply_stop_on_first_error():
         report_items_limit=10,
         resource_exists_retries=0,
     )
-    assert code == 1
+    assert result.exit_code() == 1
     assert report.build().summary.ops.get("apply_failed", {}).get("failed") == 1
 
 def test_import_apply_max_actions_limits_requests():
@@ -347,7 +347,7 @@ def test_import_apply_resource_exists_retries():
     logger = logging.getLogger("test3")
     logger.addHandler(logging.NullHandler())
     report = ReportCollector(run_id="r", command="import-apply")
-    code = service.applyPlan(
+    result = service.applyPlan(
         plan=plan,
         logger=logger,
         report=report,
@@ -358,7 +358,7 @@ def test_import_apply_resource_exists_retries():
         report_items_limit=10,
         resource_exists_retries=1,
     )
-    assert code == 0
+    assert result.exit_code() == 0
     assert report.build().summary.ops.get("create", {}).get("ok") == 1
     assert len(executor.calls) == 2
 
@@ -544,7 +544,7 @@ def test_apply_report_items_include_dataset():
     logger = logging.getLogger("test-report-dataset")
     logger.addHandler(logging.NullHandler())
     report = ReportCollector(run_id="r", command="import-apply")
-    code = service.applyPlan(
+    result = service.applyPlan(
         plan=plan,
         logger=logger,
         report=report,
@@ -555,7 +555,7 @@ def test_apply_report_items_include_dataset():
         report_items_limit=10,
         resource_exists_retries=0,
     )
-    assert code == 1
+    assert result.exit_code() == 1
     built = report.build()
     assert built.meta.dataset == dataset
     assert built.items

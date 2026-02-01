@@ -7,6 +7,8 @@ from connector.common.sanitize import maskSecretsInObject
 from connector.domain.validation.validator import Validator
 from connector.domain.validation.validated_row import ValidationRow
 from connector.domain.models import RowRef
+from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 
 
 class ValidateUseCase:
@@ -53,7 +55,7 @@ class ValidateUseCase:
         run_id: str,
         report,
         log_failure,
-    ) -> int:
+    ) -> CommandResult:
         rows_total = 0
         valid_rows = 0
         failed_rows = 0
@@ -116,7 +118,12 @@ class ValidateUseCase:
                 "warnings_rows": warning_rows,
             },
         )
-        return 1 if failed_rows > 0 else 0
+        result = CommandResult()
+        if failed_rows > 0:
+            result.add_code(SystemErrorCode.DATA_INVALID)
+        else:
+            result.add_code(SystemErrorCode.OK)
+        return result
 
     def iter_validated_ok(
         self,

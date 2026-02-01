@@ -5,6 +5,7 @@ from connector.domain.diagnostics.context import configure, error, get_factory, 
 from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.domain.diagnostics.core_catalog import build_core_catalog
 from connector.domain.diagnostics.translator import Translator
+from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import (
     RetryPolicy,
     StopPolicy,
@@ -13,6 +14,7 @@ from connector.domain.diagnostics.policies import (
     default_retry_policy,
     default_stop_policy,
     map_system_code,
+    resolve_primary_code,
 )
 
 __all__ = [
@@ -28,6 +30,7 @@ __all__ = [
     "SystemErrorCode",
     "build_core_catalog",
     "Translator",
+    "CommandResult",
     "RetryPolicy",
     "StopPolicy",
     "ExitCodePolicy",
@@ -35,4 +38,5 @@ __all__ = [
     "default_retry_policy",
     "default_stop_policy",
     "map_system_code",
+    "resolve_primary_code",
 ]

@@ -7,6 +7,8 @@ from connector.common.sanitize import maskSecretsInObject
 from connector.domain.transform.extractor import Extractor
 from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.models import RowRef
+from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 
 
 class NormalizeUseCase:
@@ -31,7 +33,7 @@ class NormalizeUseCase:
         logger: logging.Logger,
         run_id: str,
         report,
-    ) -> int:
+    ) -> CommandResult:
         rows_total = 0
         normalized_ok = 0
         normalize_failed = 0
@@ -93,4 +95,9 @@ class NormalizeUseCase:
                 "vault_candidates_fields_total": vault_candidates_fields_total,
             },
         )
-        return 1 if normalize_failed > 0 else 0
+        result = CommandResult()
+        if normalize_failed > 0:
+            result.add_code(SystemErrorCode.DATA_INVALID)
+        else:
+            result.add_code(SystemErrorCode.OK)
+        return result

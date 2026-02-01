@@ -158,7 +158,7 @@ def test_import_apply_error_stats():
     )
     adapter = EmployeesApplyAdapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
-    code = service.applyPlan(
+    result = service.applyPlan(
         plan=plan,
         logger=logger,
         report=report,
@@ -169,5 +169,5 @@ def test_import_apply_error_stats():
         report_items_limit=10,
         resource_exists_retries=0,
     )
-    assert code == 1
+    assert result.exit_code() == 1
     assert report.build().context["apply"]["error_stats"].get("SINK_HTTP_ERROR") == 1

@@ -9,6 +9,8 @@ from connector.domain.diagnostics.context import error as diag_error, warning as
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.translator import Translator
 from connector.domain.planning.match_models import MatchedRow
+from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.domain.planning.matcher import Matcher
 from connector.domain.transform.result import TransformResult
 
@@ -49,7 +51,7 @@ class MatchUseCase:
         matcher: Matcher,
         dataset: str,
         report,
-    ) -> int:
+    ) -> CommandResult:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         for matched in self._iter_matched(validated_source, matcher):
             row = matched.row
@@ -65,7 +67,12 @@ class MatchUseCase:
                 meta={"match_status": row.match_status if row else None},
                 store=status == "FAILED" or self.include_matched_items,
             )
-        return 1 if report.summary.errors_total > 0 else 0
+        result = CommandResult()
+        if report.summary.errors_total > 0:
+            result.add_code(SystemErrorCode.CONFLICT)
+        else:
+            result.add_code(SystemErrorCode.OK)
+        return result
 
     def _iter_matched(
         self,
@@ -80,6 +87,7 @@ class MatchUseCase:
                 stage=DiagnosticStage.MATCH,
                 translator=Translator(get_factory().catalog),
                 sink=boundary_errors,
+                record_ref=validated.row_ref,
             ):
                 matched = matcher.match(validated)
             if matched is None:
