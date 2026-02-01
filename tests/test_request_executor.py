@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.error_codes import ErrorCode
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.domain.ports.execution import RequestSpec
 from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.http.ankey_client import ApiError
@@ -39,7 +39,7 @@ def test_executor_sets_error_reason_from_payload():
 
     assert result.ok is False
     assert result.error_reason == "resourceexists"
-    assert result.error_code == ErrorCode.CONFLICT
+    assert result.error_code == SystemErrorCode.CONFLICT
     assert result.error_details is not None
     assert "body_snippet" in result.error_details
 
@@ -54,4 +54,4 @@ def test_executor_maps_invalid_json_api_error():
     result = executor.execute(RequestSpec("GET", "/ankey/managed/user", expected_statuses=(200,)))
 
     assert result.ok is False
-    assert result.error_code == ErrorCode.INVALID_JSON
+    assert result.error_code == SystemErrorCode.IO_ERROR

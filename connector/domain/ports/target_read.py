@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Protocol, Any
 
-from connector.domain.error_codes import ErrorCode
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,7 @@ class TargetPageResult:
     ok: bool
     page: int
     items: list[dict[str, Any]] | None
-    error_code: ErrorCode | None = None
+    error_code: SystemErrorCode | None = None
     error_message: str | None = None
     error_details: dict[str, Any] | None = None
 

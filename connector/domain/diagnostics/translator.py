@@ -7,7 +7,6 @@ from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.diagnostics.factory import DiagnosticFactory
 from connector.domain.ports.execution import ExecutionResult
-from connector.domain.error_codes import ErrorCode
 
 
 class Translator:
@@ -57,11 +56,11 @@ class Translator:
             Преобразовать ExecutionResult в DiagnosticItem.
         """
         code = "SINK_HTTP_ERROR"
-        if result.error_code == ErrorCode.UNAUTHORIZED:
+        if result.error_code == SystemErrorCode.AUTH_UNAUTHORIZED:
             code = "SINK_UNAUTHORIZED"
-        elif result.error_code == ErrorCode.FORBIDDEN:
+        elif result.error_code == SystemErrorCode.AUTH_FORBIDDEN:
             code = "SINK_FORBIDDEN"
-        elif result.error_code == ErrorCode.CONFLICT:
+        elif result.error_code == SystemErrorCode.CONFLICT:
             code = "SINK_CONFLICT"
         details = {
             "status_code": result.status_code,

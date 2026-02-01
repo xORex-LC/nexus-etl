@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.error_codes import ErrorCode
 
 
 @dataclass
@@ -11,7 +10,7 @@ class MissingRequiredSecretError(Exception):
     Назначение:
         Ошибка прикладного уровня, сигнализирующая об отсутствии обязательного секрета.
     Инварианты/гарантии:
-        - code установлен в ErrorCode.SECRET_REQUIRED.
+        - code установлен в "SECRET_REQUIRED".
         - Содержит контекст записи (dataset, field, row_id/line_no, target_id).
     """
 
@@ -22,8 +21,8 @@ class MissingRequiredSecretError(Exception):
     target_id: str | None = None
 
     @property
-    def code(self) -> ErrorCode:
-        return ErrorCode.SECRET_REQUIRED
+    def code(self) -> str:
+        return "SECRET_REQUIRED"
 
     def __str__(self) -> str:
         return (

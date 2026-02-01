@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
-from connector.domain.error_codes import ErrorCode
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 
 
 @dataclass
@@ -122,7 +122,7 @@ class ExecutionResult:
     ok: bool
     status_code: int | None
     response_json: Any | None = None
-    error_code: ErrorCode | None = None
+    error_code: SystemErrorCode | None = None
     error_message: str | None = None
     error_reason: str | None = None
     error_details: dict[str, Any] | None = None

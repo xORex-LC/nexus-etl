@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Generic, TypeVar
 
-from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem, ValidationRowResult
+from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem, ValidationRowResult
 from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validated_row import ValidationRow
@@ -25,7 +25,7 @@ class ValidationSpec(Generic[T]):
     rules: tuple[ValidationRule[T], ...]
 
 
-FieldValidator = Callable[[Any, Any, ValidationDependencies, list[ValidationErrorItem]], None]
+FieldValidator = Callable[[Any, Any, ValidationDependencies, list[DiagnosticItem]], None]
 
 
 @dataclass(frozen=True)
@@ -128,8 +128,8 @@ def logValidationFailure(
     context: str,
     result: ValidationRowResult,
     report_item_index: int | None,
-    errors: list[ValidationErrorItem] | None = None,
-    warnings: list[ValidationErrorItem] | None = None,
+    errors: list[DiagnosticItem] | None = None,
+    warnings: list[DiagnosticItem] | None = None,
 ) -> None:
     """
     Назначение:

@@ -5,7 +5,7 @@ from typing import Any
 import json
 import logging
 
-from connector.domain.models import DiagnosticStage, MatchStatus, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, MatchStatus, DiagnosticItem
 from connector.domain.diagnostics.runtime import error as diag_error, warning as diag_warning
 from connector.domain.planning.deps import ResolverSettings
 from connector.domain.planning.identity_keys import format_identity_key
@@ -98,9 +98,9 @@ class Resolver:
         target_id_map: dict[str, str],
         meta: dict[str, Any] | None = None,
         batch_index: dict[str, dict[str, list[str]]] | None = None,
-    ) -> tuple[ResolvedRow | None, list[ValidationErrorItem], list[ValidationErrorItem]]:
-        errors: list[ValidationErrorItem] = []
-        warnings: list[ValidationErrorItem] = []
+    ) -> tuple[ResolvedRow | None, list[DiagnosticItem], list[DiagnosticItem]]:
+        errors: list[DiagnosticItem] = []
+        warnings: list[DiagnosticItem] = []
 
         self._maybe_sweep_expired()
 
@@ -193,8 +193,8 @@ class Resolver:
         self,
         matched: MatchedRow,
         desired_state: dict[str, Any],
-        warnings: list[ValidationErrorItem],
-        errors: list[ValidationErrorItem],
+        warnings: list[DiagnosticItem],
+        errors: list[DiagnosticItem],
         meta: dict[str, Any] | None,
         batch_index: dict[str, dict[str, list[str]]] | None,
     ) -> tuple[bool, bool]:

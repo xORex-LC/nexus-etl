@@ -5,10 +5,8 @@ from typing import Any, Iterator
 
 import httpx
 
-from connector.errors import AppError
 
-
-class ApiError(AppError):
+class ApiError(Exception):
     def __init__(
         self,
         message: str,
@@ -25,13 +23,10 @@ class ApiError(AppError):
             - code: строковый код (HTTP_*, NETWORK_ERROR, INVALID_JSON и т.п.).
             - status_code/body_snippet используются для диагностики.
         """
-        super().__init__(
-            category="api",
-            code=code or (f"HTTP_{status_code}" if status_code else "API_ERROR"),
-            message=message,
-            retryable=retryable,
-            details=details or {},
-        )
+        super().__init__(message)
+        self.code = code or (f"HTTP_{status_code}" if status_code else "API_ERROR")
+        self.retryable = retryable
+        self.details = details or {}
         self.status_code = status_code
         self.body_snippet = body_snippet
 

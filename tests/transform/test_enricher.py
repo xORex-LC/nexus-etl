@@ -18,7 +18,7 @@ from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
-from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, DiagnosticItem
 
 
 @dataclass
@@ -142,7 +142,7 @@ def test_enricher_runs_only_allowed_ops_on_error():
     )
     result = _build_result(row)
     result.errors.append(
-        ValidationErrorItem(
+        DiagnosticItem(
             stage=DiagnosticStage.MAP,
             code="DUMMY_ERROR",
             field=None,

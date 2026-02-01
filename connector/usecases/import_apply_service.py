@@ -173,7 +173,7 @@ class ImportApplyService:
                     break
                 except MissingRequiredSecretError as exc:
                     failed += 1
-                    err_code = exc.code.value
+                    err_code = exc.code
                     error_stats[err_code] = error_stats.get(err_code, 0) + 1
                     if should_store("FAILED"):
                         report.add_item(

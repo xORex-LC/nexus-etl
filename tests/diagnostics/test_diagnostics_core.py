@@ -7,7 +7,6 @@ from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.domain.diagnostics.translator import Translator
 from connector.domain.models import DiagnosticSeverity, DiagnosticStage, RowRef
 from connector.domain.ports.execution import ExecutionResult
-from connector.domain.error_codes import ErrorCode
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 
@@ -47,7 +46,7 @@ def test_translator_maps_execution_result() -> None:
         ok=False,
         status_code=401,
         response_json=None,
-        error_code=ErrorCode.UNAUTHORIZED,
+        error_code=SystemErrorCode.AUTH_UNAUTHORIZED,
         error_message="unauthorized",
         error_reason=None,
         error_details=None,

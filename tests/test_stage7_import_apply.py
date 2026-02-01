@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.infra.artifacts.plan_reader import readPlanFile
-from connector.domain.error_codes import ErrorCode
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
 from connector.domain.mappers.user_payload import buildUserUpsertPayload
 from connector.domain.planning.plan_builder import PlanBuilder
@@ -211,7 +211,7 @@ def test_import_apply_stop_on_first_error():
     plan = _make_plan(items)
     executor = DummyExecutor(
         [
-            ExecutionResult(ok=False, status_code=500, error_code=ErrorCode.HTTP_ERROR, error_message="boom"),
+            ExecutionResult(ok=False, status_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
         ]
     )
     adapter = EmployeesApplyAdapter()
@@ -337,7 +337,7 @@ def test_import_apply_resource_exists_retries():
     executor = DummyExecutor(
         [
             ExecutionResult(
-                ok=False, status_code=409, error_code=ErrorCode.CONFLICT, error_message="conflict", error_reason="resourceexists"
+                ok=False, status_code=409, error_code=SystemErrorCode.CONFLICT, error_message="conflict", error_reason="resourceexists"
             ),
             ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
         ]
@@ -536,7 +536,7 @@ def test_apply_report_items_include_dataset():
     )
     executor = DummyExecutor(
         [
-            ExecutionResult(ok=False, status_code=500, error_code=ErrorCode.HTTP_ERROR, error_message="boom"),
+            ExecutionResult(ok=False, status_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
         ]
     )
     adapter = EmployeesApplyAdapter()
