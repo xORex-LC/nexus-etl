@@ -6,6 +6,7 @@ skinparam SequenceArrowColor #4b5563
 skinparam SequenceLifeLineBorderColor #9ca3af
 actor Runner as R
 participant "StageRunner" as SR
+participant "DiagnosticContext" as C
 participant "diagnostic_boundary(stage)" as B
 participant "StageLogic" as S
 participant "DiagnosticFactory" as F

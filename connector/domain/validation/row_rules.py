@@ -8,6 +8,14 @@ from connector.domain.models import DiagnosticStage
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
+__all__ = [
+    "normalize_whitespace",
+    "validate_email",
+    "parse_boolean_strict",
+    "parse_int_strict",
+    "_boolean_parser",
+]
+
 def normalize_whitespace(value: str | None) -> str | None:
     """
     Назначение:
@@ -33,16 +41,18 @@ def parse_int_strict(value: str) -> int:
         raise ValueError("Empty int value")
     return int(value)
 
-def _boolean_parser(value: Any, errors, _: list) -> bool | None:
+def _boolean_parser(value: Any, errors, row_refs: list) -> bool | None:
     try:
         return parse_boolean_strict(str(value))
     except ValueError:
+        record_ref = row_refs[0] if row_refs else None
         errors.append(
             diag_error(
                 stage=DiagnosticStage.NORMALIZE,
                 code="INVALID_BOOLEAN",
                 field="isLogonDisable",
                 message="isLogonDisable must be 'true' or 'false'",
+                record_ref=record_ref,
             )
         )
         return None

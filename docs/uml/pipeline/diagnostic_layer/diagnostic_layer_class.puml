@@ -1,4 +1,5 @@
 @startuml
+title Diagnostic Layer - Class Diagram (Current)
 set namespaceSeparator none
 skinparam classAttributeIconSize 0
 skinparam backgroundColor white
@@ -56,7 +57,7 @@ class DiagnosticItem {
   +field: String [0..1]
   +record_ref: RowRef [0..1]
   +details: Map<String, Any> [0..1]
-  +severity: DiagnosticSeverity
+  +severity: DiagnosticSeverity [0..1]
 }
 
 class TransformResult<T> {
@@ -87,6 +88,17 @@ class DiagnosticFactory {
   +warning(stage, code, field, message, record_ref, details): DiagnosticItem
 }
 
+class DiagnosticContext {
+  +configure(factory: DiagnosticFactory)
+  +get_factory(): DiagnosticFactory
+  +error(...): DiagnosticItem
+  +warning(...): DiagnosticItem
+}
+
+class DiagnosticBoundary {
+  +diagnostic_boundary(stage, translator, sink)
+}
+
 class OperationError {
   +stage: DiagnosticStage
   +code: String
@@ -102,6 +114,10 @@ class Translator {
   +system_code_of(diag: DiagnosticItem): SystemErrorCode
 }
 
+class HttpMapping {
+  +map_http_status(status: int): SystemErrorCode
+}
+
 class RetryPolicy {
   +should_retry(sys: SystemErrorCode, attempt: int): bool
   +max_attempts(): int
@@ -113,17 +129,29 @@ class StopPolicy {
 }
 
 class ExitCodePolicy {
-  +finalize(summary): int
+  +exit_code(sys: SystemErrorCode): int
+}
+
+class PolicyTable {
+  +default_retry_policy()
+  +default_stop_policy()
+  +default_exit_policy()
+  +map_system_code(system_code)
 }
 
 ErrorCatalog "1" o-- "*" CatalogEntry
 DiagnosticFactory --> ErrorCatalog
-Translator --> ErrorCatalog
+DiagnosticFactory ..> DiagnosticItem
+Translator --> DiagnosticFactory
+Translator --> PolicyTable
+PolicyTable --> SystemErrorCode
+HttpMapping --> SystemErrorCode
+DiagnosticContext --> DiagnosticFactory
+DiagnosticBoundary --> Translator
+DiagnosticBoundary --> OperationError
 TransformResult --> DiagnosticItem
 DiagnosticItem --> RowRef
 OperationError ..> DiagnosticStage
-DiagnosticFactory ..> DiagnosticItem
-
 RetryPolicy ..> SystemErrorCode
 StopPolicy ..> SystemErrorCode
 ExitCodePolicy ..> SystemErrorCode

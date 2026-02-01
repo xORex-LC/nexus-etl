@@ -12,29 +12,35 @@ skinparam component {
 component "Bootstrap / Composition Root" as boot
 
 component "CoreCatalog" as core
-component "SourceCatalog\n(CSV, IO, encoding)" as src
-component "SinkCatalog\n(Ankey HTTP/API)" as sink
+component "SourceCatalog\n(CSV, IO)" as src
+component "SinkCatalog\n(HTTP/API)" as sink
 component "DatasetCatalog\n(Employees)" as emp
-component "DatasetCatalog\n(Cars)" as cars
 
 component "ErrorCatalog" as catalog
 component "DiagnosticFactory" as factory
+component "DiagnosticContext" as ctx
 component "Translator" as translator
-component "Policies\n(Retry/Stop/Exit)" as policy
+component "HttpMapping" as httpmap
+component "Policies\n(Retry/Stop/Exit + map_system_code)" as policy
+component "DiagnosticBoundary" as boundary
 
 boot --> core
 boot --> src
 boot --> sink
 boot --> emp
-boot --> cars
 
 core --> catalog
 src --> catalog
 sink --> catalog
 emp --> catalog
-cars --> catalog
 
 catalog --> factory
+factory --> ctx
 catalog --> translator
+httpmap --> translator
 catalog --> policy
+policy --> translator
+
+translator --> boundary
+ctx --> boundary
 @enduml
