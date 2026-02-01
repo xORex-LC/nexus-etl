@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem, ValidationRowResult
-from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validated_row import ValidationRow
 from connector.domain.transform.result import TransformResult
@@ -25,7 +24,7 @@ class ValidationSpec(Generic[T]):
     rules: tuple[ValidationRule[T], ...]
 
 
-FieldValidator = Callable[[Any, Any, ValidationDependencies, list[DiagnosticItem]], None]
+FieldValidator = Callable[[Any, Any, ValidationDependencies, Callable[..., DiagnosticItem]], None]
 
 
 @dataclass(frozen=True)
@@ -52,18 +51,15 @@ class FieldRule(Generic[T]):
         if self.required and is_empty:
             secret_value = result.secret_candidates.get(self.attr)
             if secret_value is None or str(secret_value).strip() == "":
-                result.errors.append(
-                    diag_error(
-                        stage=DiagnosticStage.VALIDATE,
-                        code="REQUIRED_FIELD_MISSING",
-                        field=self.field,
-                        message=f"{self.field} is required",
-                        record_ref=result.row_ref,
-                    )
+                result.add_error(
+                    stage=DiagnosticStage.VALIDATE,
+                    code="REQUIRED_FIELD_MISSING",
+                    field=self.field,
+                    message=f"{self.field} is required",
                 )
                 return
         for validator in self.validators:
-            validator(value, row, deps, result.errors)
+            validator(value, row, deps, result.add_error)
 
 
 class Validator(Generic[T]):

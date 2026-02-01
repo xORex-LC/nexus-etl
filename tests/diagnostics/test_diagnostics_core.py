@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.diagnostics import DiagnosticFactory
+from connector.domain.diagnostics import DiagnosticFactory, build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog, CatalogEntry
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 from connector.domain.diagnostics.system_codes import SystemErrorCode
@@ -65,3 +65,20 @@ def test_transform_result_add_error_attaches_row_ref() -> None:
     )
     item = result.add_error(stage=DiagnosticStage.VALIDATE, code="REQUIRED_FIELD_MISSING")
     assert item.record_ref == row_ref
+
+
+def test_build_catalog_merges_dataset_codes_in_strict_mode() -> None:
+    catalog = build_catalog("employees", strict=True)
+    factory = DiagnosticFactory(catalog)
+    item = factory.error(DiagnosticStage.VALIDATE, code="INVALID_EMAIL")
+    assert item.code == "INVALID_EMAIL"
+
+
+def test_build_catalog_strict_without_dataset_rejects_dataset_code() -> None:
+    catalog = build_catalog(None, strict=True)
+    factory = DiagnosticFactory(catalog)
+    try:
+        factory.error(DiagnosticStage.VALIDATE, code="INVALID_EMAIL")
+    except UnknownDiagnosticCodeError:
+        return
+    assert False, "Expected UnknownDiagnosticCodeError without dataset catalog"

@@ -48,6 +48,39 @@ class ErrorCatalog:
             for entry in entries:
                 self.register(entry)
 
+    def with_strict(self, strict: bool) -> "ErrorCatalog":
+        """
+        Назначение:
+            Вернуть копию каталога с иным режимом strict.
+        """
+        catalog = ErrorCatalog(strict=strict)
+        catalog.register_many(self._entries.values())
+        return catalog
+
+    def contains(self, diag_code: str) -> bool:
+        """
+        Назначение:
+            Проверить наличие кода в каталоге.
+        """
+        return diag_code in self._entries
+
+    def merge(self, other: "ErrorCatalog", *, on_conflict: str = "error") -> "ErrorCatalog":
+        """
+        Назначение:
+            Объединить два каталога в новый.
+        Параметры:
+            on_conflict:
+                "error" — выбросить исключение при конфликте кода,
+                "override" — использовать запись из other.
+        """
+        merged = ErrorCatalog(strict=self.strict or other.strict)
+        merged.register_many(self._entries.values())
+        for entry in other._entries.values():
+            if entry.diag_code in merged._entries and on_conflict != "override":
+                raise ValueError(f"Duplicate diagnostic code: {entry.diag_code}")
+            merged._entries[entry.diag_code] = entry
+        return merged
+
     def register(self, entry: CatalogEntry) -> None:
         """
         Назначение:

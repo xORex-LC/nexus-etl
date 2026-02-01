@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.models import DiagnosticStage
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -41,18 +40,13 @@ def parse_int_strict(value: str) -> int:
         raise ValueError("Empty int value")
     return int(value)
 
-def _boolean_parser(value: Any, errors, row_refs: list) -> bool | None:
+def _boolean_parser(value: Any, add_error, _add_warning) -> bool | None:
     try:
         return parse_boolean_strict(str(value))
     except ValueError:
-        record_ref = row_refs[0] if row_refs else None
-        errors.append(
-            diag_error(
-                stage=DiagnosticStage.NORMALIZE,
-                code="INVALID_BOOLEAN",
-                field="isLogonDisable",
-                message="isLogonDisable must be 'true' or 'false'",
-                record_ref=record_ref,
-            )
+        add_error(
+            code="INVALID_BOOLEAN",
+            field="isLogonDisable",
+            message="isLogonDisable must be 'true' or 'false'",
         )
         return None

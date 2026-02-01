@@ -7,18 +7,14 @@ from connector.domain.validation.row_rules import normalize_whitespace, _boolean
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
-def _normalize_text(value: Any, errors, warnings) -> str | None:
-    _ = errors
-    _ = warnings
+def _normalize_text(value: Any, _add_error, _add_warning) -> str | None:
     if value is None:
         return None
     normalized = normalize_whitespace(str(value))
     return normalized or None
 
 
-def _organization_parser(value: Any, errors, warnings) -> int | str | None:
-    _ = errors
-    _ = warnings
+def _organization_parser(value: Any, _add_error, _add_warning) -> int | str | None:
     if value is None:
         return None
     if isinstance(value, int):

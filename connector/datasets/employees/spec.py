@@ -25,6 +25,7 @@ from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.repository import SqliteCacheRepository
 from connector.infra.cache.identity_repository import SqliteIdentityRepository
 from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
+from connector.datasets.employees.diagnostic_catalog import build_employees_catalog
 
 class EmployeesSpec(DatasetSpec):
     """
@@ -106,6 +107,9 @@ class EmployeesSpec(DatasetSpec):
 
     def get_apply_adapter(self):
         return self._apply_adapter
+
+    def get_diagnostic_catalog(self, strict: bool):
+        return build_employees_catalog(strict=strict)
 
 # Фабрика экземпляра спеки
 def make_employees_spec(secrets: SecretProviderProtocol | None = None) -> EmployeesSpec:
