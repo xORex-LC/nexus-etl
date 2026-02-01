@@ -14,7 +14,11 @@ from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.ports.identity_repository import IdentityRepository
 from connector.domain.ports.pending_links_repository import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject
-from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, RowRef
+from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.translator import Translator
+from connector.domain.diagnostics.runtime import get_factory
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 
 class ImportApplyService:
     """
@@ -62,6 +66,7 @@ class ImportApplyService:
             raise ValueError("Plan meta.dataset is required for apply")
         dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
         apply_adapter = dataset_spec.get_apply_adapter()
+        translator = Translator(get_factory().catalog)
 
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
 
@@ -85,11 +90,12 @@ class ImportApplyService:
                         row_ref=self._build_row_ref(item),
                         payload=None,
                         errors=[
-                            ValidationErrorItem(
+                            diag_error(
                                 stage=DiagnosticStage.APPLY,
                                 code="TARGET_ID_MISSING",
                                 field="target_id",
                                 message="target_id is required",
+                                record_ref=self._build_row_ref(item),
                             )
                         ],
                         warnings=[],
@@ -147,27 +153,21 @@ class ImportApplyService:
                         continue
 
                     failed += 1
-                    code = exec_result.error_code.name if exec_result.error_code else "API_ERROR"
-                    error_stats[code] = error_stats.get(code, 0) + 1
+                    diag = translator.from_execution_result(DiagnosticStage.SINK, exec_result)
+                    error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
                     if should_store("FAILED"):
                         report.add_item(
                             status="FAILED",
                             row_ref=self._build_row_ref(current_item),
                             payload=maskSecretsInObject(self._build_payload(current_item)),
-                            errors=[
-                                ValidationErrorItem(
-                                    stage=DiagnosticStage.APPLY,
-                                    code=code,
-                                    field=None,
-                                    message=exec_result.error_message or "request failed",
-                                )
-                            ],
+                            errors=[diag],
                             warnings=[],
                             meta=maskSecretsInObject(
                                 self._build_meta(current_item, exec_result.status_code, exec_result.response_json, exec_result.error_details)
                             ),
                         )
-                    if code in ("UNAUTHORIZED", "FORBIDDEN"):
+                    sys_code = translator.system_code_of(diag)
+                    if sys_code in (SystemErrorCode.AUTH_UNAUTHORIZED, SystemErrorCode.AUTH_FORBIDDEN):
                         fatal_error = True
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exec_result.error_message}")
                     break
@@ -181,11 +181,12 @@ class ImportApplyService:
                             row_ref=self._build_row_ref(current_item),
                             payload=maskSecretsInObject(self._build_payload(current_item)),
                             errors=[
-                                ValidationErrorItem(
+                                diag_error(
                                     stage=DiagnosticStage.APPLY,
                                     code=err_code,
                                     field=exc.field,
                                     message=str(exc),
+                                    record_ref=self._build_row_ref(current_item),
                                 )
                             ],
                             warnings=[],
@@ -203,11 +204,12 @@ class ImportApplyService:
                             row_ref=self._build_row_ref(current_item),
                             payload=maskSecretsInObject(self._build_payload(current_item)),
                             errors=[
-                                ValidationErrorItem(
+                                diag_error(
                                     stage=DiagnosticStage.APPLY,
                                     code=err_code,
                                     field=None,
                                     message=str(exc),
+                                    record_ref=self._build_row_ref(current_item),
                                 )
                             ],
                             warnings=[],

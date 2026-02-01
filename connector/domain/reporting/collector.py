@@ -148,13 +148,14 @@ class ReportCollector:
     ) -> list[ReportDiagnostic]:
         diagnostics: list[ReportDiagnostic] = []
         for err in errors:
-            diagnostics.append(self._from_error(err, severity="error"))
+            diagnostics.append(self._from_error(err, fallback_severity="error"))
         for warn in warnings:
-            diagnostics.append(self._from_error(warn, severity="warning"))
+            diagnostics.append(self._from_error(warn, fallback_severity="warning"))
         return diagnostics
 
     @staticmethod
-    def _from_error(item: ValidationErrorItem, severity: str) -> ReportDiagnostic:
+    def _from_error(item: ValidationErrorItem, fallback_severity: str) -> ReportDiagnostic:
+        severity = item.severity.value if getattr(item, "severity", None) is not None else fallback_severity
         return ReportDiagnostic(
             severity=severity,
             stage=item.stage,

@@ -23,24 +23,30 @@ enum DiagnosticStage {
   CACHE
 }
 
-enum Severity {
+enum DiagnosticSeverity {
   ERROR
   WARNING
 }
 
 enum SystemErrorCode {
+  OK
+  UNKNOWN_CODE
+  INTERNAL_ERROR
   DATA_INVALID
   CONFLICT
   AUTH_UNAUTHORIZED
   AUTH_FORBIDDEN
-  SECRETS_MISSING
-  INFRA_NETWORK
   INFRA_TIMEOUT
-  REMOTE_5XX
+  INFRA_UNAVAILABLE
+  IO_ERROR
   CACHE_ERROR
-  PLAN_INVALID
-  CONFIG_INVALID
-  INTERNAL_ERROR
+}
+
+class RowRef {
+  +line_no: int
+  +row_id: String
+  +identity_primary: String [0..1]
+  +identity_value: String [0..1]
 }
 
 class DiagnosticItem {
@@ -48,9 +54,9 @@ class DiagnosticItem {
   +code: String
   +message: String
   +field: String [0..1]
-  +record_ref: String [0..1]
+  +record_ref: RowRef [0..1]
   +details: Map<String, Any> [0..1]
-  +severity: Severity
+  +severity: DiagnosticSeverity
 }
 
 class TransformResult<T> {
@@ -65,11 +71,12 @@ class CatalogEntry {
   +diag_code: String
   +system_code: SystemErrorCode
   +default_message: String [0..1]
-  +severity: Severity [0..1]
+  +severity: DiagnosticSeverity [0..1]
 }
 
 class ErrorCatalog {
   +entries: Map<String, CatalogEntry>
+  +strict: bool
   +classify(diag_code: String): SystemErrorCode
   +get_entry(diag_code: String): CatalogEntry
 }
@@ -90,6 +97,7 @@ class OperationError {
 
 class Translator {
   +from_http(stage, status, body): DiagnosticItem
+  +from_execution_result(stage, result): DiagnosticItem
   +from_exception(stage, exc): DiagnosticItem
   +system_code_of(diag: DiagnosticItem): SystemErrorCode
 }
@@ -112,6 +120,7 @@ ErrorCatalog "1" o-- "*" CatalogEntry
 DiagnosticFactory --> ErrorCatalog
 Translator --> ErrorCatalog
 TransformResult --> DiagnosticItem
+DiagnosticItem --> RowRef
 OperationError ..> DiagnosticStage
 DiagnosticFactory ..> DiagnosticItem
 

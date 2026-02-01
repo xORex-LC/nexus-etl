@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
@@ -217,7 +218,7 @@ def _read_source_value(raw: Mapping[str, str | None], field: str, errors: list[V
         if alt_key in raw:
             return raw.get(alt_key)
     errors.append(
-        ValidationErrorItem(
+        diag_error(
             stage=DiagnosticStage.MAP,
             code="missing_source_column",
             field=field,

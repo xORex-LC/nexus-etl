@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem, ValidationRowResult
+from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validated_row import ValidationRow
 from connector.domain.transform.result import TransformResult
@@ -52,11 +53,12 @@ class FieldRule(Generic[T]):
             secret_value = result.secret_candidates.get(self.attr)
             if secret_value is None or str(secret_value).strip() == "":
                 result.errors.append(
-                    ValidationErrorItem(
+                    diag_error(
                         stage=DiagnosticStage.VALIDATE,
                         code="REQUIRED_FIELD_MISSING",
                         field=self.field,
                         message=f"{self.field} is required",
+                        record_ref=result.row_ref,
                     )
                 )
                 return
@@ -102,6 +104,12 @@ class Validator(Generic[T]):
                     rule.apply(row, result, self.deps)
                 else:
                     rule(row, result, self.deps)
+        for err in result.errors:
+            if err.record_ref is None:
+                err.record_ref = row_ref
+        for warn in result.warnings:
+            if warn.record_ref is None:
+                warn.record_ref = row_ref
         return TransformResult(
             record=enriched.record,
             row=ValidationRow(row=row, validation=result),

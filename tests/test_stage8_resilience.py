@@ -170,4 +170,4 @@ def test_import_apply_error_stats():
         resource_exists_retries=0,
     )
     assert code == 1
-    assert report.build().context["apply"]["error_stats"].get("HTTP_ERROR") == 1
+    assert report.build().context["apply"]["error_stats"].get("SINK_HTTP_ERROR") == 1

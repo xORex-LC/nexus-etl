@@ -40,6 +40,8 @@ class Settings:
             Логировать в JSON формате.
         report_format: str
             Формат отчётов.
+        diagnostics_strict: bool
+            Строгая проверка неизвестных диагностических кодов.
     """
     host: str | None = None
     port: int | None = None
@@ -72,6 +74,8 @@ class Settings:
     stop_on_first_error: bool = False
     max_actions: int | None = None
     dry_run: bool = False
+    diagnostics_strict: bool = False
+    diagnostics_strict: bool = False
 
     # Resolver pending/identity tuning
     pending_ttl_seconds: int = 120
@@ -314,6 +318,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "pending_on_expire": envGet("ANKEY_PENDING_ON_EXPIRE"),
         "pending_allow_partial": envGet("ANKEY_PENDING_ALLOW_PARTIAL"),
         "pending_retention_days": envGet("ANKEY_PENDING_RETENTION_DAYS"),
+        "diagnostics_strict": envGet("ANKEY_DIAGNOSTICS_STRICT"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -357,6 +362,7 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "pending_on_expire": cfg.get("pending_on_expire", defaults.pending_on_expire),
         "pending_allow_partial": cfg.get("pending_allow_partial", defaults.pending_allow_partial),
         "pending_retention_days": cfg.get("pending_retention_days", defaults.pending_retention_days),
+        "diagnostics_strict": cfg.get("diagnostics_strict", defaults.diagnostics_strict),
     }
 
     if env["host"] is not None:
@@ -426,6 +432,8 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["pending_allow_partial"] = parseBool(env["pending_allow_partial"])
     if env["pending_retention_days"] is not None:
         merged["pending_retention_days"] = parseInt(env["pending_retention_days"])
+    if env["diagnostics_strict"] is not None:
+        merged["diagnostics_strict"] = parseBool(env["diagnostics_strict"])
 
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
@@ -469,6 +477,9 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         pending_allow_partial=parseBoolAny(merged["pending_allow_partial"]) or False,
         pending_retention_days=parseIntAny(merged["pending_retention_days"])
         or defaults.pending_retention_days,
+        diagnostics_strict=parseBoolAny(merged.get("diagnostics_strict"))
+        if merged.get("diagnostics_strict") is not None
+        else defaults.diagnostics_strict,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)

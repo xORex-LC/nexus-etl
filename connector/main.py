@@ -21,6 +21,7 @@ from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
+from connector.domain.diagnostics import DiagnosticFactory, build_core_catalog, configure
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
@@ -1035,6 +1036,11 @@ def main(
     retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API calls"),
     retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff for retries"),
     resourceExistsRetries: int | None = typer.Option(None, "--resource-exists-retries", help="Retries for resourceExists"),
+    strictDiagnostics: bool | None = typer.Option(
+        None,
+        "--strict-diagnostics/--no-strict-diagnostics",
+        help="Fail on unknown diagnostic codes",
+    ),
 ):
     """
     Назначение:
@@ -1079,8 +1085,11 @@ def main(
         "retry_backoff_seconds": retryBackoffSeconds,
         "resource_exists_retries": resourceExistsRetries,
         "report_include_skipped": None,  # set per-command in runImportPlanCommand
+        "diagnostics_strict": strictDiagnostics,
     }
     loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
+
+    configure(DiagnosticFactory(build_core_catalog(strict=loaded.settings.diagnostics_strict)))
 
     ensureDir(loaded.settings.log_dir)
     ensureDir(loaded.settings.report_dir)
