@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.models import DiagnosticStage
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

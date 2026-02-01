@@ -36,7 +36,7 @@ from connector.common.time import getDurationMs
 from connector.common.run_id import generate_run_id
 from connector.domain.validation.validator import logValidationFailure
 from connector.domain.validation.deps import ValidationDependencies
-from connector.datasets.registry import build_identity_index_plan, get_spec
+from connector.datasets.registry import build_identity_index_plan, get_spec, resolve_dataset_name
 from connector.datasets.cache_registry import list_cache_sync_adapters, list_cache_specs
 from connector.infra.secrets import (
     NullSecretProvider,
@@ -530,7 +530,7 @@ def runImportPlanCommand(
 
         include_deleted = includeDeleted if includeDeleted is not None else settings.include_deleted
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-        dataset_name = dataset if dataset is not None else settings.dataset_name
+        dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
         csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
 
         try:
@@ -809,7 +809,7 @@ def runMappingCommand(
     runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
     csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-    dataset_name = dataset if dataset is not None else settings.dataset_name
+    dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_mapped_items = includeMappedItems if includeMappedItems is not None else True
 
@@ -872,7 +872,7 @@ def runNormalizeCommand(
     runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
     csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-    dataset_name = dataset if dataset is not None else settings.dataset_name
+    dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_normalized_items = includeNormalizedItems if includeNormalizedItems is not None else True
 
@@ -937,7 +937,7 @@ def runEnrichCommand(
     runId = ctx.obj["runId"]
     settings: Settings = ctx.obj["settings"]
     csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-    dataset_name = dataset if dataset is not None else settings.dataset_name
+    dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_enriched_items = includeEnrichedItems if includeEnrichedItems is not None else True
 

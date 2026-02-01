@@ -5,7 +5,7 @@ from typing import Iterable
 
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage
-from connector.domain.diagnostics.runtime import error as diag_error, warning as diag_warning
+from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.matcher import Matcher
 from connector.domain.transform.result import TransformResult

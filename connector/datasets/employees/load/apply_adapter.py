@@ -7,7 +7,7 @@ from connector.datasets.spec import ApplyAdapter
 from connector.domain.ports.execution import RequestSpec, ExecutionResult
 from connector.domain.mappers.user_payload import buildUserUpsertPayload
 from connector.domain.ports.secrets import SecretProviderProtocol
-from connector.domain.exceptions import MissingRequiredSecretError
+from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
 from connector.domain.planning.plan_models import PlanItem
 
 

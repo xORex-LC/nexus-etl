@@ -9,16 +9,16 @@ from connector.datasets.registry import get_spec
 from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol
 from connector.domain.ports.secrets import SecretProviderProtocol
-from connector.domain.exceptions import MissingRequiredSecretError
+from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
 from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.ports.identity_repository import IdentityRepository
 from connector.domain.ports.pending_links_repository import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.diagnostics.translator import Translator
-from connector.domain.diagnostics.runtime import get_factory
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.context import get_factory
+from connector.domain.diagnostics.policies import default_stop_policy
 
 class ImportApplyService:
     """
@@ -67,6 +67,7 @@ class ImportApplyService:
         dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
         apply_adapter = dataset_spec.get_apply_adapter()
         translator = Translator(get_factory().catalog)
+        stop_policy = default_stop_policy()
 
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
 
@@ -167,7 +168,7 @@ class ImportApplyService:
                             ),
                         )
                     sys_code = translator.system_code_of(diag)
-                    if sys_code in (SystemErrorCode.AUTH_UNAUTHORIZED, SystemErrorCode.AUTH_FORBIDDEN):
+                    if stop_policy.is_fatal(sys_code):
                         fatal_error = True
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exec_result.error_message}")
                     break

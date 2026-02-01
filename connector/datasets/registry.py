@@ -22,6 +22,14 @@ def list_specs(secrets: SecretProviderProtocol | None = None) -> list[DatasetSpe
     return [factory(secrets=secrets) for factory in _registry.values()]
 
 
+def resolve_dataset_name(dataset: str | None, default: str) -> str:
+    """
+    Назначение:
+        Определить имя датасета с учётом значения по умолчанию.
+    """
+    return dataset if dataset is not None else default
+
+
 def build_identity_index_plan(
     secrets: SecretProviderProtocol | None = None,
 ) -> tuple[dict[str, set[str]], dict[str, str]]:

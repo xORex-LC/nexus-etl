@@ -6,7 +6,7 @@ import json
 import logging
 
 from connector.domain.models import DiagnosticStage, MatchStatus, DiagnosticItem
-from connector.domain.diagnostics.runtime import error as diag_error, warning as diag_warning
+from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.planning.deps import ResolverSettings
 from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.planning.match_models import (

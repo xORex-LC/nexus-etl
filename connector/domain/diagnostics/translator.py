@@ -4,6 +4,7 @@ from typing import Any
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import map_system_code
 from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.diagnostics.factory import DiagnosticFactory
 from connector.domain.ports.execution import ExecutionResult
@@ -55,13 +56,7 @@ class Translator:
         Назначение:
             Преобразовать ExecutionResult в DiagnosticItem.
         """
-        code = "SINK_HTTP_ERROR"
-        if result.error_code == SystemErrorCode.AUTH_UNAUTHORIZED:
-            code = "SINK_UNAUTHORIZED"
-        elif result.error_code == SystemErrorCode.AUTH_FORBIDDEN:
-            code = "SINK_FORBIDDEN"
-        elif result.error_code == SystemErrorCode.CONFLICT:
-            code = "SINK_CONFLICT"
+        code = map_system_code(result.error_code)
         details = {
             "status_code": result.status_code,
             "error_code": result.error_code.value if result.error_code else None,

@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Callable, Generic, Iterable, Protocol, TypeVar
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
-from connector.domain.diagnostics.runtime import error as diag_error, warning as diag_warning
+from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.ports.secrets import SecretStoreProtocol
 from connector.domain.transform.match_key import MatchKey
 from connector.domain.transform.enricher_report import EnricherReport
@@ -326,15 +326,14 @@ class MergeEngine:
         self.authoritative_sources = authoritative_sources
 
     def should_apply(self, current: Any, candidate: CandidateValue, policy: MergePolicy) -> bool:
-        if policy.mode == MergeMode.RECOMPUTE_ALWAYS:
-            return True
-        if policy.mode == MergeMode.NEVER_OVERRIDE:
-            return False
-        if policy.mode == MergeMode.OVERRIDE_IF_AUTHORITATIVE:
-            return candidate.source in self.authoritative_sources
-        if policy.mode == MergeMode.OVERRIDE_IF_EMPTY:
-            return current is None or current == ""
-        return current is None or current == ""
+        handlers = {
+            MergeMode.RECOMPUTE_ALWAYS: lambda: True,
+            MergeMode.NEVER_OVERRIDE: lambda: False,
+            MergeMode.OVERRIDE_IF_AUTHORITATIVE: lambda: candidate.source in self.authoritative_sources,
+            MergeMode.OVERRIDE_IF_EMPTY: lambda: current is None or current == "",
+        }
+        handler = handlers.get(policy.mode, handlers[MergeMode.OVERRIDE_IF_EMPTY])
+        return handler()
 
 
 class Enricher(Generic[T, D]):
