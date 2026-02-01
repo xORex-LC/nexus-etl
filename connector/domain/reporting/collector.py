@@ -4,7 +4,7 @@ from dataclasses import asdict
 from typing import Any, Iterable, Mapping
 
 from connector.common.time import getNowIso
-from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem
 from connector.domain.reporting.models import (
     ReportDiagnostic,
     ReportEnvelope,
@@ -64,8 +64,8 @@ class ReportCollector:
         status: str,
         row_ref: RowRef | None = None,
         payload: Mapping[str, Any] | None = None,
-        errors: Iterable[ValidationErrorItem] | None = None,
-        warnings: Iterable[ValidationErrorItem] | None = None,
+        errors: Iterable[DiagnosticItem] | None = None,
+        warnings: Iterable[DiagnosticItem] | None = None,
         meta: dict[str, Any] | None = None,
         store: bool = True,
     ) -> None:
@@ -126,8 +126,8 @@ class ReportCollector:
 
     def _count_diagnostics(
         self,
-        errors: list[ValidationErrorItem],
-        warnings: list[ValidationErrorItem],
+        errors: list[DiagnosticItem],
+        warnings: list[DiagnosticItem],
     ) -> None:
         self.summary.errors_total += len(errors)
         self.summary.warnings_total += len(warnings)
@@ -143,8 +143,8 @@ class ReportCollector:
 
     def _build_diagnostics(
         self,
-        errors: list[ValidationErrorItem],
-        warnings: list[ValidationErrorItem],
+        errors: list[DiagnosticItem],
+        warnings: list[DiagnosticItem],
     ) -> list[ReportDiagnostic]:
         diagnostics: list[ReportDiagnostic] = []
         for err in errors:
@@ -154,7 +154,7 @@ class ReportCollector:
         return diagnostics
 
     @staticmethod
-    def _from_error(item: ValidationErrorItem, fallback_severity: str) -> ReportDiagnostic:
+    def _from_error(item: DiagnosticItem, fallback_severity: str) -> ReportDiagnostic:
         severity = item.severity.value if getattr(item, "severity", None) is not None else fallback_severity
         return ReportDiagnostic(
             severity=severity,

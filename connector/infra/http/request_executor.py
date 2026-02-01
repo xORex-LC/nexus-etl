@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from connector.common.sanitize import maskSecretsInObject, truncateText
-from connector.domain.error_codes import ErrorCode
+from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.http_mapping import map_http_status
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol, RequestSpec
 from connector.infra.http.ankey_client import ApiError, AnkeyApiClient
 
@@ -54,7 +55,7 @@ class AnkeyRequestExecutor(RequestExecutorProtocol):
                 ok=False,
                 status_code=status_code,
                 response_json=safe_json,
-                error_code=ErrorCode.from_status(status_code),
+                error_code=map_http_status(status_code),
                 error_message=f"HTTP {status_code}",
                 error_reason=reason,
                 error_details=details,
@@ -77,7 +78,7 @@ class AnkeyRequestExecutor(RequestExecutorProtocol):
                 ok=False,
                 status_code=None,
                 response_json=None,
-                error_code=ErrorCode.UNEXPECTED_ERROR,
+                error_code=SystemErrorCode.INTERNAL_ERROR,
                 error_message=truncateText(str(exc)),
                 error_reason=None,
                 error_details=None,
@@ -92,18 +93,18 @@ class AnkeyRequestExecutor(RequestExecutorProtocol):
             return truncateText(payload)
         return maskSecretsInObject(payload)
 
-    def _error_from_api_error(self, exc: ApiError) -> ErrorCode:
+    def _error_from_api_error(self, exc: ApiError) -> SystemErrorCode:
         """
         Назначение:
             Перевести ApiError в общий ErrorCode.
         """
         if exc.code == "INVALID_JSON":
-            return ErrorCode.INVALID_JSON
+            return SystemErrorCode.IO_ERROR
         if exc.code == "NETWORK_ERROR":
-            return ErrorCode.NETWORK_ERROR
+            return SystemErrorCode.INFRA_UNAVAILABLE
         if exc.status_code:
-            return ErrorCode.from_status(exc.status_code)
-        return ErrorCode.API_ERROR
+            return map_http_status(exc.status_code)
+        return SystemErrorCode.INTERNAL_ERROR
 
     def _detect_error_reason(self, payload: Any, body_snippet: str | None) -> str | None:
         """

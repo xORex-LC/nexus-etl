@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Generic, Iterable, Protocol, TypeVar
 
-from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.runtime import error as diag_error, warning as diag_warning
 from connector.domain.ports.secrets import SecretStoreProtocol
 from connector.domain.transform.match_key import MatchKey
@@ -157,8 +157,8 @@ class OperationReport:
     outcome: EnrichOutcome
     events: list[EnrichEvent] = field(default_factory=list)
     resolve_hints: list[ResolveHint] = field(default_factory=list)
-    warnings: list[ValidationErrorItem] = field(default_factory=list)
-    errors: list[ValidationErrorItem] = field(default_factory=list)
+    warnings: list[DiagnosticItem] = field(default_factory=list)
+    errors: list[DiagnosticItem] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -267,7 +267,7 @@ class EnricherSpec(Generic[T, D]):
     default_merge_policy: MergePolicy = MergePolicy()
     default_strictness: StrictnessPolicy = StrictnessPolicy()
     authoritative_sources: set[str] = field(default_factory=lambda: {"sink_cache"})
-    is_fatal_error: Callable[[ValidationErrorItem], bool] | None = None
+    is_fatal_error: Callable[[DiagnosticItem], bool] | None = None
     stop_on_failed: bool = False
 
 
@@ -364,8 +364,8 @@ class Enricher(Generic[T, D]):
             return result
 
         ctx = EnrichContext(dataset=self.dataset, run_id=self.run_id)
-        errors: list[ValidationErrorItem] = []
-        warnings: list[ValidationErrorItem] = []
+        errors: list[DiagnosticItem] = []
+        warnings: list[DiagnosticItem] = []
         tracker = _FieldMutationTracker()
 
         if "enrich_events" not in result.meta:
@@ -419,7 +419,7 @@ class Enricher(Generic[T, D]):
     def _should_run_operation(
         self,
         op: EnrichmentOperation[T, D],
-        errors: list[ValidationErrorItem],
+        errors: list[DiagnosticItem],
     ) -> bool:
         if not errors:
             return True
@@ -429,7 +429,7 @@ class Enricher(Generic[T, D]):
             return False
         checker = self.spec.is_fatal_error
         if checker is None:
-            # TODO(severity): определить fatal/non-fatal через ValidationErrorItem.severity.
+            # TODO(severity): определить fatal/non-fatal через DiagnosticItem.severity.
             return False
         return not any(checker(err) for err in errors)
 
@@ -734,15 +734,15 @@ class Enricher(Generic[T, D]):
         field: str | None = None,
     ) -> OperationReport:
         resolved = outcome if isinstance(outcome, EnrichOutcome) else EnrichOutcome(outcome)
-        errors: list[ValidationErrorItem] = []
-        warnings: list[ValidationErrorItem] = []
+        errors: list[DiagnosticItem] = []
+        warnings: list[DiagnosticItem] = []
         if resolved == EnrichOutcome.FAILED:
             errors.append(self._make_error(code=code, message=message, field=field))
         elif resolved in (EnrichOutcome.WARNED, EnrichOutcome.NEEDS_RESOLVE):
             warnings.append(self._make_warning(code=code, message=message, field=field))
         return OperationReport(op=op.name, outcome=resolved, warnings=warnings, errors=errors)
 
-    def _make_error(self, code: str, message: str, field: str | None = None) -> ValidationErrorItem:
+    def _make_error(self, code: str, message: str, field: str | None = None) -> DiagnosticItem:
         return diag_error(
             stage=DiagnosticStage.ENRICH,
             code=code,
@@ -750,7 +750,7 @@ class Enricher(Generic[T, D]):
             message=message,
         )
 
-    def _make_warning(self, code: str, message: str, field: str | None = None) -> ValidationErrorItem:
+    def _make_warning(self, code: str, message: str, field: str | None = None) -> DiagnosticItem:
         return diag_warning(
             stage=DiagnosticStage.ENRICH,
             code=code,
@@ -766,8 +766,8 @@ class Enricher(Generic[T, D]):
     def _store_secrets(
         self,
         result: TransformResult[T],
-        errors: list[ValidationErrorItem],
-        warnings: list[ValidationErrorItem],
+        errors: list[DiagnosticItem],
+        warnings: list[DiagnosticItem],
     ) -> None:
         if not result.secret_candidates:
             return

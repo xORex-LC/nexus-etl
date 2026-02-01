@@ -6,7 +6,6 @@ from connector.usecases.import_apply_service import ImportApplyService
 from connector.infra.secrets.dict_provider import DictSecretProvider
 from connector.infra.secrets.null_provider import NullSecretProvider
 from connector.domain.ports.execution import ExecutionResult, RequestSpec, RequestExecutorProtocol
-from connector.domain.error_codes import ErrorCode
 
 
 class DummyExecutor(RequestExecutorProtocol):
@@ -113,7 +112,7 @@ def test_apply_create_fails_when_secret_missing():
     assert executor.calls == 0
     assert report.items, "должна быть записана ошибка"
     diag = report.items[0].diagnostics[0]
-    assert diag.code == ErrorCode.SECRET_REQUIRED.value
+    assert diag.code == "SECRET_REQUIRED"
 
 
 class CountingProvider(NullSecretProvider):

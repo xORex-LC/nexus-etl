@@ -3,15 +3,15 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Callable, Generic, Mapping, TypeVar
 
-from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.transform.result import TransformResult
 
 T = TypeVar("T")
 U = TypeVar("U")
 
-NormalizerParser = Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], Any]
-NormalizerValidator = Callable[[Any, list[ValidationErrorItem], list[ValidationErrorItem]], None]
+NormalizerParser = Callable[[Any, list[DiagnosticItem], list[DiagnosticItem]], Any]
+NormalizerValidator = Callable[[Any, list[DiagnosticItem], list[DiagnosticItem]], None]
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,7 @@ class NormalizerRule:
     validators: tuple[NormalizerValidator, ...] = ()
     required: bool = False
 
-    def apply(self, values: dict[str, Any], errors: list[ValidationErrorItem], warnings: list[ValidationErrorItem]) -> Any:
+    def apply(self, values: dict[str, Any], errors: list[DiagnosticItem], warnings: list[DiagnosticItem]) -> Any:
         raw = values.get(self.source_key)
         if raw is None:
             if self.required:
@@ -69,8 +69,8 @@ class Normalizer(Generic[T]):
         self.spec = spec
 
     def normalize(self, source: TransformResult[Any]) -> TransformResult[T]:
-        errors: list[ValidationErrorItem] = []
-        warnings: list[ValidationErrorItem] = []
+        errors: list[DiagnosticItem] = []
+        warnings: list[DiagnosticItem] = []
         normalized_values: dict[str, Any] = {}
 
         source_values = _to_mapping(source.row)

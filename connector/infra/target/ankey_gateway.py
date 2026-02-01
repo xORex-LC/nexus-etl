@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from connector.common.sanitize import maskSecretsInObject, truncateText
-from connector.domain.error_codes import ErrorCode
+from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.http_mapping import map_http_status
 from connector.domain.ports.target_read import TargetPageResult, TargetPagedReaderProtocol
 from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
 
@@ -50,11 +51,11 @@ class AnkeyTargetPagedReader(TargetPagedReaderProtocol):
                 error_details["body_snippet"] = truncateText(str(body_snippet))
 
             status_code = getattr(exc, "status_code", None)
-            error_code = ErrorCode.from_status(status_code) if status_code else ErrorCode.API_ERROR
+            error_code = map_http_status(status_code)
             if getattr(exc, "code", None) == "NETWORK_ERROR":
-                error_code = ErrorCode.NETWORK_ERROR
+                error_code = SystemErrorCode.INFRA_UNAVAILABLE
             if getattr(exc, "code", None) == "INVALID_JSON":
-                error_code = ErrorCode.INVALID_JSON
+                error_code = SystemErrorCode.IO_ERROR
 
             yield TargetPageResult(
                 ok=False,

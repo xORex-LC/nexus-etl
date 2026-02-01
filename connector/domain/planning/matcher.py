@@ -7,7 +7,7 @@ from connector.domain.models import (
     Identity,
     MatchStatus,
     RowRef,
-    ValidationErrorItem,
+    DiagnosticItem,
     ValidationRowResult,
 )
 from connector.domain.diagnostics.runtime import error as diag_error
@@ -119,7 +119,7 @@ class Matcher:
         self,
         row: Any,
         validation: ValidationRowResult,
-    ) -> tuple[Identity | None, dict[str, Any] | None, MatchStatus, ValidationErrorItem | None]:
+    ) -> tuple[Identity | None, dict[str, Any] | None, MatchStatus, DiagnosticItem | None]:
         identity: Identity | None = None
         existing: dict[str, Any] | None = None
         match_status = MatchStatus.NOT_FOUND
@@ -155,7 +155,7 @@ def _make_match_error(
     field: str | None,
     message: str,
     record_ref: RowRef | None,
-) -> list[ValidationErrorItem]:
+) -> list[DiagnosticItem]:
     return [
         diag_error(
             stage=DiagnosticStage.MATCH,
@@ -190,7 +190,7 @@ def _build_identity_error(
     identity: Identity | None,
     message: str,
     record_ref: RowRef | None,
-) -> ValidationErrorItem:
+) -> DiagnosticItem:
     return diag_error(
         stage=DiagnosticStage.MATCH,
         code="MATCH_IDENTITY_MISSING",
@@ -204,7 +204,7 @@ def _build_conflict_error(
     identity: Identity,
     rule_name: str | None = None,
     record_ref: RowRef | None = None,
-) -> ValidationErrorItem:
+) -> DiagnosticItem:
     suffix = f" ({rule_name})" if rule_name else ""
     return diag_error(
         stage=DiagnosticStage.MATCH,

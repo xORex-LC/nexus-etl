@@ -6,7 +6,7 @@ from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
 from connector.main import app
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
-from connector.domain.error_codes import ErrorCode
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
 from connector.domain.reporting.collector import ReportCollector
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
@@ -154,7 +154,7 @@ def test_import_apply_error_stats():
     logger = logging.getLogger("dummy")
     logger.addHandler(logging.NullHandler())
     executor = DummyExecutor(
-        ExecutionResult(ok=False, status_code=400, error_code=ErrorCode.HTTP_ERROR, error_message="HTTP 400")
+        ExecutionResult(ok=False, status_code=400, error_code=SystemErrorCode.DATA_INVALID, error_message="HTTP 400")
     )
     adapter = EmployeesApplyAdapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.row_rules import validate_email
@@ -13,7 +13,7 @@ from connector.datasets.employees.transform.normalized import NormalizedEmployee
 
 
 FieldValidator = Callable[
-    [Any, NormalizedEmployeesRow, ValidationDependencies, list[ValidationErrorItem]],
+    [Any, NormalizedEmployeesRow, ValidationDependencies, list[DiagnosticItem]],
     None,
 ]
 
@@ -22,7 +22,7 @@ def _validate_email(
     value: Any,
     _: NormalizedEmployeesRow,
     __: ValidationDependencies,
-    errors: list[ValidationErrorItem],
+    errors: list[DiagnosticItem],
 ) -> None:
     if value is None:
         return
@@ -41,7 +41,7 @@ def _validate_avatar_id(
     value: Any,
     _: NormalizedEmployeesRow,
     __: ValidationDependencies,
-    errors: list[ValidationErrorItem],
+    errors: list[DiagnosticItem],
 ) -> None:
     if value is not None and str(value).strip() != "":
         errors.append(
@@ -59,7 +59,7 @@ def _validate_positive_int(field: str) -> FieldValidator:
         value: Any,
         _: NormalizedEmployeesRow,
         __: ValidationDependencies,
-        errors: list[ValidationErrorItem],
+        errors: list[DiagnosticItem],
     ) -> None:
         if value is None:
             return
@@ -80,7 +80,7 @@ def _validate_org_reference(
     value: Any,
     _: NormalizedEmployeesRow,
     __: ValidationDependencies,
-    errors: list[ValidationErrorItem],
+    errors: list[DiagnosticItem],
 ) -> None:
     # Resolver может заменить строковое имя/код организации на _ouid после валидации.
     if value is None:

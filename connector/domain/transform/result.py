@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from typing import Generic, TypeVar
 
-from connector.domain.models import DiagnosticStage, RowRef, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem
 from connector.domain.diagnostics.runtime import error as diag_error, warning as diag_warning
 from connector.domain.transform.match_key import MatchKey
 from connector.domain.transform.source_record import SourceRecord
@@ -25,11 +25,11 @@ class TransformResult(Generic[T]):
     match_key: MatchKey | None
     meta: dict[str, Any] = field(default_factory=dict)
     secret_candidates: dict[str, str] = field(default_factory=dict)
-    errors: list[ValidationErrorItem] = field(default_factory=list)
-    warnings: list[ValidationErrorItem] = field(default_factory=list)
+    errors: list[DiagnosticItem] = field(default_factory=list)
+    warnings: list[DiagnosticItem] = field(default_factory=list)
 
     @property
-    def issues(self) -> list[ValidationErrorItem]:
+    def issues(self) -> list[DiagnosticItem]:
         return [*self.errors, *self.warnings]
 
     def add_error(
@@ -39,7 +39,7 @@ class TransformResult(Generic[T]):
         message: str | None = None,
         field: str | None = None,
         details: dict[str, Any] | None = None,
-    ) -> ValidationErrorItem:
+    ) -> DiagnosticItem:
         """
         Назначение:
             Добавить диагностическую ошибку через DiagnosticFactory.
@@ -62,7 +62,7 @@ class TransformResult(Generic[T]):
         message: str | None = None,
         field: str | None = None,
         details: dict[str, Any] | None = None,
-    ) -> ValidationErrorItem:
+    ) -> DiagnosticItem:
         """
         Назначение:
             Добавить диагностическое предупреждение через DiagnosticFactory.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
@@ -37,8 +37,8 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
         self.spec = spec or EmployeesMappingSpec()
 
     def map(self, record: SourceRecord) -> TransformResult[EmployeesRowPublic]:
-        errors: list[ValidationErrorItem] = []
-        warnings: list[ValidationErrorItem] = []
+        errors: list[DiagnosticItem] = []
+        warnings: list[DiagnosticItem] = []
 
         raw = record.values
         raw_id = _normalize(_read_source_value(raw, "raw_id", errors))
@@ -205,7 +205,7 @@ def _parse_role(employment: str | None) -> str | None:
     return None
 
 
-def _read_source_value(raw: Mapping[str, str | None], field: str, errors: list[ValidationErrorItem]) -> str | None:
+def _read_source_value(raw: Mapping[str, str | None], field: str, errors: list[DiagnosticItem]) -> str | None:
     """
     Назначение:
         Прочитать значение из SourceRecord по имени поля или по col_* схеме.

@@ -46,10 +46,6 @@ class DiagnosticItem:
     record_ref: "RowRef" | None = None
     details: dict[str, Any] | None = None
     severity: DiagnosticSeverity | None = None
-
-
-ValidationErrorItem = DiagnosticItem
-
 @dataclass
 class ValidationRowResult:
     """
@@ -62,8 +58,8 @@ class ValidationRowResult:
     usr_org_tab_num: str | None
     row_ref: "RowRef" | None = None
     secret_candidates: dict[str, str] = field(default_factory=dict)
-    errors: list[ValidationErrorItem] = field(default_factory=list)
-    warnings: list[ValidationErrorItem] = field(default_factory=list)
+    errors: list[DiagnosticItem] = field(default_factory=list)
+    warnings: list[DiagnosticItem] = field(default_factory=list)
 
     @property
     def valid(self) -> bool:
