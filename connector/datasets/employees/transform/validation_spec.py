@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.row_rules import validate_email
 from connector.domain.validation.validator import FieldRule, ValidationRule, ValidationSpec

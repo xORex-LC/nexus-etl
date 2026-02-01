@@ -5,7 +5,7 @@ from typing import Any
 from typing import Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem
-from connector.domain.diagnostics.runtime import error as diag_error, warning as diag_warning
+from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.transform.match_key import MatchKey
 from connector.domain.transform.source_record import SourceRecord
 

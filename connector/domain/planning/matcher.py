@@ -10,7 +10,7 @@ from connector.domain.models import (
     DiagnosticItem,
     ValidationRowResult,
 )
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.planning.match_models import MatchedRow, build_fingerprint
 from connector.domain.planning.rules import IdentityRule, MatchingRules, ResolveRules
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol

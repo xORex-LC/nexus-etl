@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from connector.domain.diagnostics.exceptions import OperationError
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.diagnostics.translator import Translator
 from connector.domain.models import DiagnosticStage
 

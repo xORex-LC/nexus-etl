@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from connector.domain.models import DiagnosticStage, RowRef
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.ports.sources import RowSource
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord

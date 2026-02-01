@@ -8,7 +8,7 @@ from typing import Any
 from connector.common.time import getNowIso
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.models import DiagnosticStage
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol, UpsertResult
 from connector.domain.ports.identity_repository import IdentityRepository

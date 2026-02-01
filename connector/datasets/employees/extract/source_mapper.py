@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord

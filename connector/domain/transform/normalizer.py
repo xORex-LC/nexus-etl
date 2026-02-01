@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Callable, Generic, Mapping, TypeVar
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.transform.result import TransformResult
 
 T = TypeVar("T")

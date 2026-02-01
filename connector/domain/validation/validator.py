@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem, ValidationRowResult
-from connector.domain.diagnostics.runtime import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validated_row import ValidationRow
 from connector.domain.transform.result import TransformResult

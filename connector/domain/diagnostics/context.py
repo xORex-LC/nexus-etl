@@ -1,22 +1,21 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import Any
 
-from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.core_catalog import build_core_catalog
 from connector.domain.diagnostics.factory import DiagnosticFactory
 from connector.domain.models import DiagnosticItem, DiagnosticSeverity, DiagnosticStage, RowRef
 
-_factory: DiagnosticFactory | None = None
+_factory_var: ContextVar[DiagnosticFactory | None] = ContextVar("diagnostic_factory", default=None)
 
 
 def configure(factory: DiagnosticFactory) -> None:
     """
     Назначение:
-        Зарегистрировать фабрику диагностик (composition root).
+        Зарегистрировать фабрику диагностик в текущем контексте.
     """
-    global _factory
-    _factory = factory
+    _factory_var.set(factory)
 
 
 def get_factory() -> DiagnosticFactory:
@@ -24,10 +23,11 @@ def get_factory() -> DiagnosticFactory:
     Назначение:
         Получить текущую фабрику диагностик.
     """
-    global _factory
-    if _factory is None:
-        _factory = DiagnosticFactory(build_core_catalog(strict=False))
-    return _factory
+    factory = _factory_var.get()
+    if factory is None:
+        factory = DiagnosticFactory(build_core_catalog(strict=False))
+        _factory_var.set(factory)
+    return factory
 
 
 def error(
