@@ -6,7 +6,9 @@ from typing import Iterable
 
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, MatchStatus, RowRef
-from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error, get_factory
+from connector.domain.diagnostics.boundary import diagnostic_boundary
+from connector.domain.diagnostics.translator import Translator
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.resolver import Resolver
 from connector.domain.transform.result import TransformResult
@@ -102,12 +104,23 @@ class ResolveUseCase:
             if matched.row is None:
                 yield matched  # type: ignore[return-value]
                 continue
-            resolved_row, errors, warnings = resolver.resolve(
-                matched.row,
-                target_id_map=target_id_map,
-                meta=matched.meta,
-                batch_index=batch_index,
-            )
+            boundary_errors: list = []
+            resolved_row = None
+            errors: list = []
+            warnings: list = []
+            with diagnostic_boundary(
+                stage=DiagnosticStage.RESOLVE,
+                translator=Translator(get_factory().catalog),
+                sink=boundary_errors,
+            ):
+                resolved_row, errors, warnings = resolver.resolve(
+                    matched.row,
+                    target_id_map=target_id_map,
+                    meta=matched.meta,
+                    batch_index=batch_index,
+                )
+            if boundary_errors:
+                errors = [*errors, *boundary_errors]
             yield TransformResult(
                 record=matched.record,
                 row=resolved_row,

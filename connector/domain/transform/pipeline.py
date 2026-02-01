@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Generic, TypeVar
 
 from connector.domain.transform.result import TransformResult
+from connector.domain.models import DiagnosticStage
+from connector.domain.diagnostics.boundary import diagnostic_boundary
+from connector.domain.diagnostics.context import get_factory
+from connector.domain.diagnostics.translator import Translator
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.enricher import Enricher
@@ -40,22 +44,85 @@ class TransformPipeline(Generic[T, N, D]):
                 errors=[*collected.errors],
                 warnings=[*collected.warnings],
             )
-        mapped = self.mapper.map(collected.record)
+        errors = [*collected.errors]
+        warnings = [*collected.warnings]
+        mapped: TransformResult[T] | None = None
+        with diagnostic_boundary(
+            stage=DiagnosticStage.MAP,
+            translator=Translator(get_factory().catalog),
+            sink=errors,
+        ):
+            mapped = self.mapper.map(collected.record)
+        if mapped is None:
+            return TransformResult(
+                record=collected.record,
+                row=None,
+                row_ref=collected.row_ref,
+                match_key=collected.match_key,
+                meta=dict(collected.meta) if collected.meta else None,
+                secret_candidates=dict(collected.secret_candidates),
+                errors=errors,
+                warnings=warnings,
+            )
         if collected.meta:
             if mapped.meta:
                 mapped.meta = {**collected.meta, **mapped.meta}
             else:
                 mapped.meta = dict(collected.meta)
-        mapped.errors = [*collected.errors, *mapped.errors]
-        mapped.warnings = [*collected.warnings, *mapped.warnings]
+        mapped.errors = [*errors, *mapped.errors]
+        mapped.warnings = [*warnings, *mapped.warnings]
         return mapped
 
     def normalize_only(self, collected: TransformResult[None]) -> TransformResult[N]:
         mapped = self.map_source(collected)
         if mapped.errors:
             return mapped  # type: ignore[return-value]
-        return self.normalizer.normalize(mapped)
+        errors = [*mapped.errors]
+        warnings = [*mapped.warnings]
+        normalized: TransformResult[N] | None = None
+        with diagnostic_boundary(
+            stage=DiagnosticStage.NORMALIZE,
+            translator=Translator(get_factory().catalog),
+            sink=errors,
+        ):
+            normalized = self.normalizer.normalize(mapped)
+        if normalized is None:
+            return TransformResult(
+                record=mapped.record,
+                row=None,
+                row_ref=mapped.row_ref,
+                match_key=mapped.match_key,
+                meta=dict(mapped.meta) if mapped.meta else None,
+                secret_candidates=dict(mapped.secret_candidates),
+                errors=errors,
+                warnings=warnings,
+            )
+        normalized.errors = [*errors, *normalized.errors]
+        normalized.warnings = [*warnings, *normalized.warnings]
+        return normalized
 
     def enrich(self, collected: TransformResult[None]) -> TransformResult[N]:
         normalized = self.normalize_only(collected)
-        return self.enricher.enrich(normalized)
+        errors = [*normalized.errors]
+        warnings = [*normalized.warnings]
+        enriched: TransformResult[N] | None = None
+        with diagnostic_boundary(
+            stage=DiagnosticStage.ENRICH,
+            translator=Translator(get_factory().catalog),
+            sink=errors,
+        ):
+            enriched = self.enricher.enrich(normalized)
+        if enriched is None:
+            return TransformResult(
+                record=normalized.record,
+                row=None,
+                row_ref=normalized.row_ref,
+                match_key=normalized.match_key,
+                meta=dict(normalized.meta) if normalized.meta else None,
+                secret_candidates=dict(normalized.secret_candidates),
+                errors=errors,
+                warnings=warnings,
+            )
+        enriched.errors = [*errors, *enriched.errors]
+        enriched.warnings = [*warnings, *enriched.warnings]
+        return enriched
