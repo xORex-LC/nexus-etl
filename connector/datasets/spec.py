@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Protocol
 
+from connector.domain.diagnostics.catalog import ErrorCatalog
+
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validator import Validator
 from connector.domain.planning.deps import PlanningDependencies
@@ -87,3 +89,4 @@ class DatasetSpec(Protocol):
     def build_link_rules(self) -> LinkRules: ...
     def get_report_adapter(self) -> ReportAdapter: ...
     def get_apply_adapter(self) -> ApplyAdapter: ...
+    def get_diagnostic_catalog(self, strict: bool) -> ErrorCatalog: ...

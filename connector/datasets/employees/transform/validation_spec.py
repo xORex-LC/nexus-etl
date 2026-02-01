@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
-from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.row_rules import validate_email
 from connector.domain.validation.validator import FieldRule, ValidationRule, ValidationSpec
@@ -12,29 +11,23 @@ from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSp
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
-FieldValidator = Callable[
-    [Any, NormalizedEmployeesRow, ValidationDependencies, list[DiagnosticItem]],
-    None,
-]
+FieldValidator = Callable[[Any, NormalizedEmployeesRow, ValidationDependencies, Callable[..., DiagnosticItem]], None]
 
 
 def _validate_email(
     value: Any,
     row: NormalizedEmployeesRow,
     __: ValidationDependencies,
-    errors: list[DiagnosticItem],
+    add_error: Callable[..., DiagnosticItem],
 ) -> None:
     if value is None:
         return
     if not validate_email(str(value)):
-        errors.append(
-            diag_error(
-                stage=DiagnosticStage.VALIDATE,
-                code="INVALID_EMAIL",
-                field="email",
-                message="email has invalid format",
-                record_ref=getattr(row, "row_ref", None),
-            )
+        add_error(
+            stage=DiagnosticStage.VALIDATE,
+            code="INVALID_EMAIL",
+            field="email",
+            message="email has invalid format",
         )
 
 
@@ -42,17 +35,14 @@ def _validate_avatar_id(
     value: Any,
     row: NormalizedEmployeesRow,
     __: ValidationDependencies,
-    errors: list[DiagnosticItem],
+    add_error: Callable[..., DiagnosticItem],
 ) -> None:
     if value is not None and str(value).strip() != "":
-        errors.append(
-            diag_error(
-                stage=DiagnosticStage.VALIDATE,
-                code="INVALID_AVATAR_ID",
-                field="avatarId",
-                message="avatarId must be empty or null",
-                record_ref=getattr(row, "row_ref", None),
-            )
+        add_error(
+            stage=DiagnosticStage.VALIDATE,
+            code="INVALID_AVATAR_ID",
+            field="avatarId",
+            message="avatarId must be empty or null",
         )
 
 
@@ -61,19 +51,16 @@ def _validate_positive_int(field: str) -> FieldValidator:
         value: Any,
         row: NormalizedEmployeesRow,
         __: ValidationDependencies,
-        errors: list[DiagnosticItem],
+        add_error: Callable[..., DiagnosticItem],
     ) -> None:
         if value is None:
             return
         if not isinstance(value, int) or value <= 0:
-            errors.append(
-                diag_error(
-                    stage=DiagnosticStage.VALIDATE,
-                    code="INVALID_INT",
-                    field=field,
-                    message=f"{field} must be an integer > 0",
-                    record_ref=getattr(row, "row_ref", None),
-                )
+            add_error(
+                stage=DiagnosticStage.VALIDATE,
+                code="INVALID_INT",
+                field=field,
+                message=f"{field} must be an integer > 0",
             )
 
     return _inner
@@ -83,21 +70,18 @@ def _validate_org_reference(
     value: Any,
     row: NormalizedEmployeesRow,
     __: ValidationDependencies,
-    errors: list[DiagnosticItem],
+    add_error: Callable[..., DiagnosticItem],
 ) -> None:
     # Resolver может заменить строковое имя/код организации на _ouid после валидации.
     if value is None:
         return
     if isinstance(value, int):
         if value <= 0:
-            errors.append(
-                diag_error(
-                    stage=DiagnosticStage.VALIDATE,
-                    code="INVALID_INT",
-                    field="organization_id",
-                    message="organization_id must be an integer > 0",
-                    record_ref=getattr(row, "row_ref", None),
-                )
+            add_error(
+                stage=DiagnosticStage.VALIDATE,
+                code="INVALID_INT",
+                field="organization_id",
+                message="organization_id must be an integer > 0",
             )
         return
     if isinstance(value, str):
@@ -111,14 +95,11 @@ def _validate_org_reference(
             except ValueError:
                 return
             if parsed <= 0:
-                errors.append(
-                    diag_error(
-                        stage=DiagnosticStage.VALIDATE,
-                        code="INVALID_INT",
-                        field="organization_id",
-                        message="organization_id must be an integer > 0",
-                        record_ref=getattr(row, "row_ref", None),
-                    )
+                add_error(
+                    stage=DiagnosticStage.VALIDATE,
+                    code="INVALID_INT",
+                    field="organization_id",
+                    message="organization_id must be an integer > 0",
                 )
 
 

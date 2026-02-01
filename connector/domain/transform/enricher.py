@@ -5,7 +5,6 @@ from enum import Enum
 from typing import Any, Callable, Generic, Iterable, Protocol, TypeVar
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
-from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.ports.secrets import SecretStoreProtocol
 from connector.domain.transform.match_key import MatchKey
 from connector.domain.transform.enricher_report import EnricherReport
@@ -378,12 +377,11 @@ class Enricher(Generic[T, D]):
             and any(op.run_when_errors == RunWhenErrors.ONLY_NON_FATAL for op in self.spec.operations)
         ):
             warnings.append(
-                diag_warning(
+                result.add_warning(
                     stage=DiagnosticStage.ENRICH,
                     code="ENRICH_FATAL_POLICY_UNSET",
                     field=None,
                     message="run_when_errors=ONLY_NON_FATAL requires fatal error classifier",
-                    record_ref=result.row_ref,
                 )
             )
 
@@ -443,11 +441,11 @@ class Enricher(Generic[T, D]):
         merge_policy = op.merge_policy or self.spec.default_merge_policy
         if len(op.targets) != 1:
             return self._report_by_policy(
+                result=result,
                 op=op,
                 outcome=EnrichOutcome.FAILED,
                 code="ENRICH_MULTI_TARGET_UNSUPPORTED",
                 message="operation targets must contain exactly one field",
-                record_ref=result.row_ref,
             )
 
         key_values = {}
@@ -455,40 +453,40 @@ class Enricher(Generic[T, D]):
             key_values[key] = self.spec.key_registry.resolve(key, result)
         if op.required_keys and any(value is None or value == "" for value in key_values.values()):
             return self._report_by_policy(
+                result=result,
                 op=op,
                 outcome=strictness.on_missing_key,
                 code="ENRICH_MISSING_KEY",
                 message="required key is missing",
-                record_ref=result.row_ref,
             )
 
         try:
             candidates = self._collect_candidates(ctx, result, op, key_values)
         except EnrichOperationError as exc:
             return self._report_by_policy(
+                result=result,
                 op=op,
                 outcome=strictness.on_provider_error,
                 code=exc.code,
                 message=exc.message,
                 field=exc.field,
-                record_ref=result.row_ref,
             )
         except Exception as exc:  # noqa: BLE001
             return self._report_by_policy(
+                result=result,
                 op=op,
                 outcome=strictness.on_provider_error,
                 code="ENRICH_PROVIDER_ERROR",
                 message=str(exc),
-                record_ref=result.row_ref,
             )
 
         if not candidates:
             return self._report_by_policy(
+                result=result,
                 op=op,
                 outcome=strictness.on_no_candidates,
                 code="ENRICH_NO_CANDIDATES",
                 message="no candidates available",
-                record_ref=result.row_ref,
             )
 
         decision = self.conflict_resolver.decide(candidates)
@@ -501,22 +499,22 @@ class Enricher(Generic[T, D]):
                 suggested_policy="manual",
             )
             report = self._report_by_policy(
+                result=result,
                 op=op,
                 outcome=strictness.on_ambiguous,
                 code="ENRICH_AMBIGUOUS",
                 message="ambiguous candidates",
-                record_ref=result.row_ref,
             )
             report.resolve_hints.append(hint)
             return report
 
         if decision.status == "NONE":
             return self._report_by_policy(
+                result=result,
                 op=op,
                 outcome=strictness.on_no_candidates,
                 code="ENRICH_NO_CANDIDATES",
                 message="no candidates available",
-                record_ref=result.row_ref,
             )
 
         return self._apply_candidates(result, op, decision.selected, merge_policy, tracker)
@@ -733,50 +731,48 @@ class Enricher(Generic[T, D]):
 
     def _report_by_policy(
         self,
+        result: TransformResult[T],
         op: EnrichmentOperation[T, D],
         outcome: str,
         code: str,
         message: str,
         field: str | None = None,
-        record_ref: RowRef | None = None,
     ) -> OperationReport:
         resolved = outcome if isinstance(outcome, EnrichOutcome) else EnrichOutcome(outcome)
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
         if resolved == EnrichOutcome.FAILED:
-            errors.append(self._make_error(code=code, message=message, field=field, record_ref=record_ref))
+            errors.append(self._make_error(result, code=code, message=message, field=field))
         elif resolved in (EnrichOutcome.WARNED, EnrichOutcome.NEEDS_RESOLVE):
-            warnings.append(self._make_warning(code=code, message=message, field=field, record_ref=record_ref))
+            warnings.append(self._make_warning(result, code=code, message=message, field=field))
         return OperationReport(op=op.name, outcome=resolved, warnings=warnings, errors=errors)
 
     def _make_error(
         self,
+        result: TransformResult[T],
         code: str,
         message: str,
         field: str | None = None,
-        record_ref: RowRef | None = None,
     ) -> DiagnosticItem:
-        return diag_error(
+        return result.add_error(
             stage=DiagnosticStage.ENRICH,
             code=code,
             field=field,
             message=message,
-            record_ref=record_ref,
         )
 
     def _make_warning(
         self,
+        result: TransformResult[T],
         code: str,
         message: str,
         field: str | None = None,
-        record_ref: RowRef | None = None,
     ) -> DiagnosticItem:
-        return diag_warning(
+        return result.add_warning(
             stage=DiagnosticStage.ENRICH,
             code=code,
             field=field,
             message=message,
-            record_ref=record_ref,
         )
 
     def _priority_for(self, source: str) -> int:
@@ -796,12 +792,11 @@ class Enricher(Generic[T, D]):
             return
         if result.match_key is None:
             errors.append(
-                diag_error(
+                result.add_error(
                     stage=DiagnosticStage.ENRICH,
                     code="MATCH_KEY_MISSING",
                     field="matchKey",
                     message="match_key is required to store secrets",
-                    record_ref=result.row_ref,
                 )
             )
             return
@@ -814,12 +809,11 @@ class Enricher(Generic[T, D]):
             )
         except Exception as exc:  # noqa: BLE001
             errors.append(
-                diag_error(
+                result.add_error(
                     stage=DiagnosticStage.ENRICH,
                     code="SECRET_STORE_ERROR",
                     field=None,
                     message=str(exc),
-                    record_ref=result.row_ref,
                 )
             )
 

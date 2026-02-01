@@ -65,6 +65,25 @@ class ValidationRowResult:
     def valid(self) -> bool:
         return len(self.errors) == 0
 
+    def add_error(
+        self,
+        stage: DiagnosticStage,
+        code: str,
+        message: str | None = None,
+        field: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> DiagnosticItem:
+        item = DiagnosticItem(
+            stage=stage,
+            code=code,
+            field=field,
+            message=message or "",
+            record_ref=self.row_ref,
+            details=details,
+        )
+        self.errors.append(item)
+        return item
+
 
 class MatchStatus(str, Enum):
     MATCHED = "matched"

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.models import DiagnosticStage, DiagnosticItem, RowRef
-from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
@@ -39,24 +38,32 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
     def map(self, record: SourceRecord) -> TransformResult[EmployeesRowPublic]:
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
-        row_ref = RowRef(
-            line_no=record.line_no,
-            row_id=record.record_id,
-            identity_primary=None,
-            identity_value=None,
+        result = TransformResult(
+            record=record,
+            row=None,
+            # RowRef будет рассчитан позже на этапах enrich/validate.
+            row_ref=None,
+            match_key=None,
         )
 
+        def add_error(code: str, message: str | None = None, field: str | None = None):
+            return result.add_error(
+                stage=DiagnosticStage.MAP,
+                code=code,
+                field=field,
+                message=message,
+            )
+
         raw = record.values
-        row_ref = None
-        raw_id = _normalize(_read_source_value(raw, "raw_id", errors, row_ref))
-        full_name = _normalize(_read_source_value(raw, "full_name", errors, row_ref))
-        login = _normalize(_read_source_value(raw, "login", errors, row_ref))
-        email_or_phone = _normalize(_read_source_value(raw, "email_or_phone", errors, row_ref))
-        contacts = _normalize(_read_source_value(raw, "contacts", errors, row_ref))
-        manager = _normalize(_read_source_value(raw, "manager", errors, row_ref))
-        flags = _normalize(_read_source_value(raw, "flags", errors, row_ref))
-        employment = _normalize(_read_source_value(raw, "employment", errors, row_ref))
-        extra = _normalize(_read_source_value(raw, "extra", errors, row_ref))
+        raw_id = _normalize(_read_source_value(raw, "raw_id", errors, None, add_error))
+        full_name = _normalize(_read_source_value(raw, "full_name", errors, None, add_error))
+        login = _normalize(_read_source_value(raw, "login", errors, None, add_error))
+        email_or_phone = _normalize(_read_source_value(raw, "email_or_phone", errors, None, add_error))
+        contacts = _normalize(_read_source_value(raw, "contacts", errors, None, add_error))
+        manager = _normalize(_read_source_value(raw, "manager", errors, None, add_error))
+        flags = _normalize(_read_source_value(raw, "flags", errors, None, add_error))
+        employment = _normalize(_read_source_value(raw, "employment", errors, None, add_error))
+        extra = _normalize(_read_source_value(raw, "extra", errors, None, add_error))
 
         last_name, first_name, middle_name = _split_full_name(full_name)
         email, phone = _pick_email_phone(email_or_phone, contacts)
@@ -92,16 +99,12 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
                 if match_key_value:
                     link_keys["manager_id"] = {"match_key": match_key_value}
 
-        return TransformResult(
-            record=record,
-            row=row,
-            row_ref=None,
-            match_key=None,
-            meta={"link_keys": link_keys} if link_keys else {},
-            secret_candidates=secret_candidates,
-            errors=errors,
-            warnings=warnings,
-        )
+        result.row = row
+        result.meta = {"link_keys": link_keys} if link_keys else {}
+        result.secret_candidates = secret_candidates
+        result.errors = errors
+        result.warnings = warnings
+        return result
 
 
 _EMAIL_RE = re.compile(r"[^\s,;|]+@[^\s,;|]+")
@@ -217,6 +220,7 @@ def _read_source_value(
     field: str,
     errors: list[DiagnosticItem],
     record_ref: RowRef | None,
+    add_error,
 ) -> str | None:
     """
     Назначение:
@@ -230,12 +234,10 @@ def _read_source_value(
         if alt_key in raw:
             return raw.get(alt_key)
     errors.append(
-        diag_error(
-            stage=DiagnosticStage.MAP,
+        add_error(
             code="missing_source_column",
             field=field,
             message=f"Missing source column '{field}'",
-            record_ref=record_ref,
         )
     )
     return None
