@@ -1,0 +1,40 @@
+@startuml
+set namespaceSeparator none
+skinparam componentStyle rectangle
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam component {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+component "Bootstrap / Composition Root" as boot
+
+component "CoreCatalog" as core
+component "SourceCatalog\n(CSV, IO, encoding)" as src
+component "SinkCatalog\n(Ankey HTTP/API)" as sink
+component "DatasetCatalog\n(Employees)" as emp
+component "DatasetCatalog\n(Cars)" as cars
+
+component "ErrorCatalog" as catalog
+component "DiagnosticFactory" as factory
+component "Translator" as translator
+component "Policies\n(Retry/Stop/Exit)" as policy
+
+boot --> core
+boot --> src
+boot --> sink
+boot --> emp
+boot --> cars
+
+core --> catalog
+src --> catalog
+sink --> catalog
+emp --> catalog
+cars --> catalog
+
+catalog --> factory
+catalog --> translator
+catalog --> policy
+@enduml

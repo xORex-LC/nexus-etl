@@ -1,0 +1,20 @@
+@startuml
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam ActivityBackgroundColor #f7e9dc
+skinparam ActivityBorderColor #d9c2a8
+start
+:Stage code needs to report issue;
+:Call TransformResult.add_error(...) OR DiagnosticFactory.error(...);
+:Validate diag_code is registered (strict mode);
+:Lookup CatalogEntry (diag_code -> system_code, defaults);
+if (message provided?) then (yes)
+  :Use message;
+else (no)
+  :Use default_message;
+endif
+:Create DiagnosticItem(stage, code, message, field, details, severity);
+:Append into TransformResult.errors/warnings;
+stop
+@enduml
