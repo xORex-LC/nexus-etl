@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any, Callable, Generic, Iterable, Protocol, TypeVar
 
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.diagnostics.runtime import error as diag_error, warning as diag_warning
 from connector.domain.ports.secrets import SecretStoreProtocol
 from connector.domain.transform.match_key import MatchKey
 from connector.domain.transform.enricher_report import EnricherReport
@@ -378,11 +379,12 @@ class Enricher(Generic[T, D]):
             and any(op.run_when_errors == RunWhenErrors.ONLY_NON_FATAL for op in self.spec.operations)
         ):
             warnings.append(
-                ValidationErrorItem(
+                diag_warning(
                     stage=DiagnosticStage.ENRICH,
                     code="ENRICH_FATAL_POLICY_UNSET",
                     field=None,
                     message="run_when_errors=ONLY_NON_FATAL requires fatal error classifier",
+                    record_ref=result.row_ref,
                 )
             )
 
@@ -401,6 +403,13 @@ class Enricher(Generic[T, D]):
                 break
 
         self._store_secrets(result, errors, warnings)
+
+        for err in errors:
+            if err.record_ref is None:
+                err.record_ref = result.row_ref
+        for warn in warnings:
+            if warn.record_ref is None:
+                warn.record_ref = result.row_ref
 
         result.errors = [*result.errors, *errors]
         result.warnings = [*result.warnings, *warnings]
@@ -730,11 +739,19 @@ class Enricher(Generic[T, D]):
         if resolved == EnrichOutcome.FAILED:
             errors.append(self._make_error(code=code, message=message, field=field))
         elif resolved in (EnrichOutcome.WARNED, EnrichOutcome.NEEDS_RESOLVE):
-            warnings.append(self._make_error(code=code, message=message, field=field))
+            warnings.append(self._make_warning(code=code, message=message, field=field))
         return OperationReport(op=op.name, outcome=resolved, warnings=warnings, errors=errors)
 
     def _make_error(self, code: str, message: str, field: str | None = None) -> ValidationErrorItem:
-        return ValidationErrorItem(
+        return diag_error(
+            stage=DiagnosticStage.ENRICH,
+            code=code,
+            field=field,
+            message=message,
+        )
+
+    def _make_warning(self, code: str, message: str, field: str | None = None) -> ValidationErrorItem:
+        return diag_warning(
             stage=DiagnosticStage.ENRICH,
             code=code,
             field=field,
@@ -758,11 +775,12 @@ class Enricher(Generic[T, D]):
             return
         if result.match_key is None:
             errors.append(
-                ValidationErrorItem(
+                diag_error(
                     stage=DiagnosticStage.ENRICH,
                     code="MATCH_KEY_MISSING",
                     field="matchKey",
                     message="match_key is required to store secrets",
+                    record_ref=result.row_ref,
                 )
             )
             return
@@ -775,11 +793,12 @@ class Enricher(Generic[T, D]):
             )
         except Exception as exc:  # noqa: BLE001
             errors.append(
-                ValidationErrorItem(
+                diag_error(
                     stage=DiagnosticStage.ENRICH,
                     code="SECRET_STORE_ERROR",
                     field=None,
                     message=str(exc),
+                    record_ref=result.row_ref,
                 )
             )
 

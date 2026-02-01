@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from connector.common.sanitize import maskSecretsInObject
-from connector.domain.models import DiagnosticStage, MatchStatus, RowRef, ValidationErrorItem
+from connector.domain.models import DiagnosticStage, MatchStatus, RowRef
+from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.resolver import Resolver
 from connector.domain.transform.result import TransformResult
@@ -171,21 +172,22 @@ def _report_expired(report, expired, settings) -> None:
     if mode == "skip":
         return
     for item in expired:
-        error = ValidationErrorItem(
+        error = diag_error(
             stage=DiagnosticStage.RESOLVE,
             code="RESOLVE_EXPIRED",
             field=item.field,
             message=item.reason or "pending link expired",
+            record_ref=RowRef(
+                line_no=0,
+                row_id=item.source_row_id,
+                identity_primary=None,
+                identity_value=None,
+            ),
         )
         if mode == "report_only":
             report.add_item(
                 status="OK",
-                row_ref=RowRef(
-                    line_no=0,
-                    row_id=item.source_row_id,
-                    identity_primary=None,
-                    identity_value=None,
-                ),
+                row_ref=error.record_ref,
                 payload=None,
                 errors=[],
                 warnings=[error],
@@ -199,12 +201,7 @@ def _report_expired(report, expired, settings) -> None:
             continue
         report.add_item(
             status="FAILED",
-            row_ref=RowRef(
-                line_no=0,
-                row_id=item.source_row_id,
-                identity_primary=None,
-                identity_value=None,
-            ),
+            row_ref=error.record_ref,
             payload=None,
             errors=[error],
             warnings=[],

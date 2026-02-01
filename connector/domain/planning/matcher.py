@@ -10,6 +10,7 @@ from connector.domain.models import (
     ValidationErrorItem,
     ValidationRowResult,
 )
+from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.planning.match_models import MatchedRow, build_fingerprint
 from connector.domain.planning.rules import IdentityRule, MatchingRules, ResolveRules
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol
@@ -47,7 +48,7 @@ class Matcher:
                 match_key=validated.match_key,
                 meta=validated.meta,
                 secret_candidates=validated.secret_candidates,
-                errors=[*_make_match_error("MATCH_IDENTITY_MISSING", None, "empty validated row")],
+                errors=[*_make_match_error("MATCH_IDENTITY_MISSING", None, "empty validated row", validated.row_ref)],
                 warnings=[*validated.warnings],
             )
 
@@ -76,7 +77,7 @@ class Matcher:
                 match_key=validated.match_key,
                 meta=validated.meta,
                 secret_candidates=validated.secret_candidates,
-                errors=[*_make_match_error("MATCH_IDENTITY_MISSING", None, "identity value is empty")],
+                errors=[*_make_match_error("MATCH_IDENTITY_MISSING", None, "identity value is empty", validation.row_ref)],
                 warnings=[*validated.warnings],
             )
 
@@ -137,7 +138,7 @@ class Matcher:
                 include_deleted=self.include_deleted,
             )
             if len(candidates) > 1:
-                return identity, None, MatchStatus.NOT_FOUND, _build_conflict_error(candidate, rule.name)
+                return identity, None, MatchStatus.NOT_FOUND, _build_conflict_error(candidate, rule.name, validation.row_ref)
             if candidates:
                 identity = candidate
                 existing = candidates[0]
@@ -145,17 +146,23 @@ class Matcher:
                 return identity, existing, match_status, None
 
         if identity is None:
-            return None, None, MatchStatus.NOT_FOUND, _build_identity_error(None, "identity value is empty")
+            return None, None, MatchStatus.NOT_FOUND, _build_identity_error(None, "identity value is empty", validation.row_ref)
         return identity, None, match_status, None
 
 
-def _make_match_error(code: str, field: str | None, message: str) -> list[ValidationErrorItem]:
+def _make_match_error(
+    code: str,
+    field: str | None,
+    message: str,
+    record_ref: RowRef | None,
+) -> list[ValidationErrorItem]:
     return [
-        ValidationErrorItem(
+        diag_error(
             stage=DiagnosticStage.MATCH,
             code=code,
             field=field,
             message=message,
+            record_ref=record_ref,
         )
     ]
 
@@ -179,22 +186,32 @@ def _ensure_row_ref(validation: ValidationRowResult, identity: Identity, identit
     )
 
 
-def _build_identity_error(identity: Identity | None, message: str) -> ValidationErrorItem:
-    return ValidationErrorItem(
+def _build_identity_error(
+    identity: Identity | None,
+    message: str,
+    record_ref: RowRef | None,
+) -> ValidationErrorItem:
+    return diag_error(
         stage=DiagnosticStage.MATCH,
         code="MATCH_IDENTITY_MISSING",
         field=identity.primary if identity else None,
         message=message,
+        record_ref=record_ref,
     )
 
 
-def _build_conflict_error(identity: Identity, rule_name: str | None = None) -> ValidationErrorItem:
+def _build_conflict_error(
+    identity: Identity,
+    rule_name: str | None = None,
+    record_ref: RowRef | None = None,
+) -> ValidationErrorItem:
     suffix = f" ({rule_name})" if rule_name else ""
-    return ValidationErrorItem(
+    return diag_error(
         stage=DiagnosticStage.MATCH,
         code="MATCH_CONFLICT_TARGET",
         field=identity.primary,
         message=f"multiple existing candidates found{suffix}",
+        record_ref=record_ref,
     )
 
 

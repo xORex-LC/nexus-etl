@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Mapping
+from typing import Any, Mapping
 
 class DiagnosticStage(str, Enum):
     """
@@ -20,10 +20,21 @@ class DiagnosticStage(str, Enum):
     PLAN = "PLAN"
     APPLY = "APPLY"
     CACHE = "CACHE"
+    SINK = "SINK"
+
+
+class DiagnosticSeverity(str, Enum):
+    """
+    Назначение:
+        Уровень критичности диагностического события.
+    """
+
+    ERROR = "error"
+    WARNING = "warning"
 
 
 @dataclass
-class ValidationErrorItem:
+class DiagnosticItem:
     """
     Назначение:
         Диагностическое сообщение пайплайна (ошибка/предупреждение).
@@ -32,6 +43,12 @@ class ValidationErrorItem:
     code: str
     field: str | None
     message: str
+    record_ref: "RowRef" | None = None
+    details: dict[str, Any] | None = None
+    severity: DiagnosticSeverity | None = None
+
+
+ValidationErrorItem = DiagnosticItem
 
 @dataclass
 class ValidationRowResult:

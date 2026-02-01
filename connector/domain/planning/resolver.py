@@ -6,6 +6,7 @@ import json
 import logging
 
 from connector.domain.models import DiagnosticStage, MatchStatus, ValidationErrorItem
+from connector.domain.diagnostics.runtime import error as diag_error, warning as diag_warning
 from connector.domain.planning.deps import ResolverSettings
 from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.planning.match_models import (
@@ -106,11 +107,12 @@ class Resolver:
         if matched.match_status in (MatchStatus.CONFLICT_TARGET, MatchStatus.CONFLICT_SOURCE):
             # Политика: конфликт на этапе match = hard-fail, план не строим.
             errors.append(
-                ValidationErrorItem(
+                diag_error(
                     stage=DiagnosticStage.RESOLVE,
                     code="RESOLVE_CONFLICT",
                     field=matched.identity.primary,
                     message="conflict during match stage",
+                    record_ref=matched.row_ref,
                 )
             )
             return None, errors, warnings
@@ -149,11 +151,12 @@ class Resolver:
         target_id = _resolve_target_id(matched, target_id_map)
         if not target_id:
             errors.append(
-                ValidationErrorItem(
+                diag_error(
                     stage=DiagnosticStage.RESOLVE,
                     code="RESOLVE_TARGET_ID_MISSING",
                     field="target_id",
                     message="target_id is missing for resolved row",
+                    record_ref=matched.row_ref,
                 )
             )
             return None, errors, warnings
@@ -199,11 +202,12 @@ class Resolver:
             return False
         if self.identity_repo is None or self.pending_repo is None:
             errors.append(
-                ValidationErrorItem(
+                diag_error(
                     stage=DiagnosticStage.RESOLVE,
                     code="RESOLVE_CONFIG_MISSING",
                     field=None,
                     message="identity/pending repositories are not configured",
+                    record_ref=matched.row_ref,
                 )
             )
             return False, True
@@ -247,20 +251,22 @@ class Resolver:
                 if max_attempts > 0 and attempts >= max_attempts:
                     self.pending_repo.mark_conflict(pending_id, reason="max attempts reached")
                     errors.append(
-                        ValidationErrorItem(
+                        diag_error(
                             stage=DiagnosticStage.RESOLVE,
                             code="RESOLVE_MAX_ATTEMPTS",
                             field=rule.field,
                             message="pending max attempts reached",
+                            record_ref=matched.row_ref,
                         )
                     )
                     return pending_created, True
                 warnings.append(
-                    ValidationErrorItem(
+                    diag_warning(
                         stage=DiagnosticStage.RESOLVE,
                         code="RESOLVE_PENDING",
                         field=rule.field,
                         message=reason or "link is pending",
+                        record_ref=matched.row_ref,
                     )
                 )
                 if not _allow_partial(self.settings):

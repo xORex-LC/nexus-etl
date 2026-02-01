@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Callable, Generic, Mapping, TypeVar
 
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.transform.result import TransformResult
 
 T = TypeVar("T")
@@ -31,7 +32,7 @@ class NormalizerRule:
         if raw is None:
             if self.required:
                 errors.append(
-                    ValidationErrorItem(
+                    diag_error(
                         stage=DiagnosticStage.NORMALIZE,
                         code="REQUIRED_FIELD_MISSING",
                         field=self.source_key,
@@ -87,6 +88,13 @@ class Normalizer(Generic[T]):
 
         for rule in self.spec.rules:
             normalized_values[rule.target] = rule.apply(source_values, errors, warnings)
+
+        for err in errors:
+            if err.record_ref is None:
+                err.record_ref = source.row_ref
+        for warn in warnings:
+            if warn.record_ref is None:
+                warn.record_ref = source.row_ref
 
         row = None
         if not errors:

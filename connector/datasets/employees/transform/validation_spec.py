@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from connector.domain.models import DiagnosticStage, ValidationErrorItem
+from connector.domain.diagnostics.runtime import error as diag_error
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.row_rules import validate_email
 from connector.domain.validation.validator import FieldRule, ValidationRule, ValidationSpec
@@ -27,7 +28,7 @@ def _validate_email(
         return
     if not validate_email(str(value)):
         errors.append(
-            ValidationErrorItem(
+            diag_error(
                 stage=DiagnosticStage.VALIDATE,
                 code="INVALID_EMAIL",
                 field="email",
@@ -44,7 +45,7 @@ def _validate_avatar_id(
 ) -> None:
     if value is not None and str(value).strip() != "":
         errors.append(
-            ValidationErrorItem(
+            diag_error(
                 stage=DiagnosticStage.VALIDATE,
                 code="INVALID_AVATAR_ID",
                 field="avatarId",
@@ -64,7 +65,7 @@ def _validate_positive_int(field: str) -> FieldValidator:
             return
         if not isinstance(value, int) or value <= 0:
             errors.append(
-                ValidationErrorItem(
+                diag_error(
                     stage=DiagnosticStage.VALIDATE,
                     code="INVALID_INT",
                     field=field,
@@ -87,7 +88,7 @@ def _validate_org_reference(
     if isinstance(value, int):
         if value <= 0:
             errors.append(
-                ValidationErrorItem(
+                diag_error(
                     stage=DiagnosticStage.VALIDATE,
                     code="INVALID_INT",
                     field="organization_id",
@@ -107,7 +108,7 @@ def _validate_org_reference(
                 return
             if parsed <= 0:
                 errors.append(
-                    ValidationErrorItem(
+                    diag_error(
                         stage=DiagnosticStage.VALIDATE,
                         code="INVALID_INT",
                         field="organization_id",
