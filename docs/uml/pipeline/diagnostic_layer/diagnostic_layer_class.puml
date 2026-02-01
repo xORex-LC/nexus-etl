@@ -1,10 +1,10 @@
 @startuml
 title Diagnostic Layer - Class Diagram (Current)
 set namespaceSeparator none
-skinparam classAttributeIconSize 0
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
+skinparam classBorderThickness 2
 skinparam class {
   BackgroundColor #f7e9dc
   BorderColor #d9c2a8
@@ -78,6 +78,11 @@ class CatalogEntry {
 class ErrorCatalog {
   +entries: Map<String, CatalogEntry>
   +strict: bool
+  +register(entry)
+  +register_many(entries)
+  +merge(other, on_conflict)
+  +with_strict(strict)
+  +contains(diag_code)
   +classify(diag_code: String): SystemErrorCode
   +get_entry(diag_code: String): CatalogEntry
 }

@@ -55,15 +55,15 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
             )
 
         raw = record.values
-        raw_id = _normalize(_read_source_value(raw, "raw_id", errors, None, add_error))
-        full_name = _normalize(_read_source_value(raw, "full_name", errors, None, add_error))
-        login = _normalize(_read_source_value(raw, "login", errors, None, add_error))
-        email_or_phone = _normalize(_read_source_value(raw, "email_or_phone", errors, None, add_error))
-        contacts = _normalize(_read_source_value(raw, "contacts", errors, None, add_error))
-        manager = _normalize(_read_source_value(raw, "manager", errors, None, add_error))
-        flags = _normalize(_read_source_value(raw, "flags", errors, None, add_error))
-        employment = _normalize(_read_source_value(raw, "employment", errors, None, add_error))
-        extra = _normalize(_read_source_value(raw, "extra", errors, None, add_error))
+        raw_id = _normalize(_read_source_value(raw, "raw_id", errors, add_error))
+        full_name = _normalize(_read_source_value(raw, "full_name", errors, add_error))
+        login = _normalize(_read_source_value(raw, "login", errors, add_error))
+        email_or_phone = _normalize(_read_source_value(raw, "email_or_phone", errors, add_error))
+        contacts = _normalize(_read_source_value(raw, "contacts", errors, add_error))
+        manager = _normalize(_read_source_value(raw, "manager", errors, add_error))
+        flags = _normalize(_read_source_value(raw, "flags", errors, add_error))
+        employment = _normalize(_read_source_value(raw, "employment", errors, add_error))
+        extra = _normalize(_read_source_value(raw, "extra", errors, add_error))
 
         last_name, first_name, middle_name = _split_full_name(full_name)
         email, phone = _pick_email_phone(email_or_phone, contacts)
@@ -219,7 +219,6 @@ def _read_source_value(
     raw: Mapping[str, str | None],
     field: str,
     errors: list[DiagnosticItem],
-    record_ref: RowRef | None,
     add_error,
 ) -> str | None:
     """

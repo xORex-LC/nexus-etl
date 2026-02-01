@@ -73,11 +73,14 @@ class ValidationRowResult:
         field: str | None = None,
         details: dict[str, Any] | None = None,
     ) -> DiagnosticItem:
-        item = DiagnosticItem(
+        from connector.domain.diagnostics.context import get_factory
+
+        factory = get_factory()
+        item = factory.error(
             stage=stage,
             code=code,
             field=field,
-            message=message or "",
+            message=message,
             record_ref=self.row_ref,
             details=details,
         )

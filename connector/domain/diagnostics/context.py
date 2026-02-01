@@ -3,8 +3,8 @@ from __future__ import annotations
 from contextvars import ContextVar
 from typing import Any
 
-from connector.domain.diagnostics.core_catalog import build_core_catalog
 from connector.domain.diagnostics.factory import DiagnosticFactory
+from connector.domain.diagnostics.exceptions import DiagnosticContextNotConfiguredError
 from connector.domain.models import DiagnosticItem, DiagnosticSeverity, DiagnosticStage, RowRef
 
 _factory_var: ContextVar[DiagnosticFactory | None] = ContextVar("diagnostic_factory", default=None)
@@ -25,8 +25,7 @@ def get_factory() -> DiagnosticFactory:
     """
     factory = _factory_var.get()
     if factory is None:
-        factory = DiagnosticFactory(build_core_catalog(strict=False))
-        _factory_var.set(factory)
+        raise DiagnosticContextNotConfiguredError()
     return factory
 
 
