@@ -15,9 +15,9 @@ from connector.domain.ports.identity_repository import IdentityRepository
 from connector.domain.ports.pending_links_repository import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
-from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error, get_factory
 from connector.domain.diagnostics.translator import Translator
-from connector.domain.diagnostics.context import get_factory
+from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.policies import default_stop_policy
 
 class ImportApplyService:
@@ -118,7 +118,55 @@ class ImportApplyService:
                         if apply_adapter is None:
                             raise ValueError("Apply adapter is not configured")
                         request_spec = apply_adapter.to_request(current_item)
-                        exec_result = self.executor.execute(request_spec)
+                        boundary_errors: list = []
+                        exec_result: ExecutionResult | None = None
+                        with diagnostic_boundary(
+                            stage=DiagnosticStage.APPLY,
+                            translator=translator,
+                            sink=boundary_errors,
+                        ):
+                            exec_result = self.executor.execute(request_spec)
+                        if boundary_errors:
+                            failed += 1
+                            for diag in boundary_errors:
+                                error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
+                            if should_store("FAILED"):
+                                report.add_item(
+                                    status="FAILED",
+                                    row_ref=self._build_row_ref(current_item),
+                                    payload=maskSecretsInObject(self._build_payload(current_item)),
+                                    errors=boundary_errors,
+                                    warnings=[],
+                                    meta=maskSecretsInObject(
+                                        self._build_meta(current_item, None, None, None)
+                                    ),
+                                )
+                            sys_code = translator.system_code_of(boundary_errors[0])
+                            if stop_policy.is_fatal(sys_code):
+                                fatal_error = True
+                            logEvent(logger, logging.ERROR, run_id, "import-apply", "Apply failed: boundary error")
+                            break
+                        if exec_result is None:
+                            failed += 1
+                            if should_store("FAILED"):
+                                report.add_item(
+                                    status="FAILED",
+                                    row_ref=self._build_row_ref(current_item),
+                                    payload=maskSecretsInObject(self._build_payload(current_item)),
+                                    errors=[
+                                        diag_error(
+                                            stage=DiagnosticStage.APPLY,
+                                            code="INTERNAL_ERROR",
+                                            field=None,
+                                            message="empty execution result",
+                                            record_ref=self._build_row_ref(current_item),
+                                        )
+                                    ],
+                                    warnings=[],
+                                    meta=maskSecretsInObject(self._build_meta(current_item, None, None, None)),
+                                )
+                            logEvent(logger, logging.ERROR, run_id, "import-apply", "Apply failed: empty execution result")
+                            break
 
                     if exec_result.ok:
                         status = "OK"
