@@ -78,10 +78,10 @@ EXIT_CODE_MAP: dict[SystemErrorCode, int] = {
     SystemErrorCode.AUTH_FORBIDDEN: 2,
     SystemErrorCode.CACHE_ERROR: 2,
     SystemErrorCode.IO_ERROR: 2,
-    SystemErrorCode.INFRA_TIMEOUT: 3,
-    SystemErrorCode.INFRA_UNAVAILABLE: 3,
-    SystemErrorCode.INTERNAL_ERROR: 4,
-    SystemErrorCode.UNKNOWN_CODE: 4,
+    SystemErrorCode.INFRA_TIMEOUT: 2,
+    SystemErrorCode.INFRA_UNAVAILABLE: 2,
+    SystemErrorCode.INTERNAL_ERROR: 2,
+    SystemErrorCode.UNKNOWN_CODE: 2,
 }
 
 
@@ -105,3 +105,25 @@ def map_system_code(system_code: SystemErrorCode | None) -> str:
     if system_code is None:
         return "SINK_HTTP_ERROR"
     return SYSTEM_TO_DIAG.get(system_code, "SINK_HTTP_ERROR")
+
+
+def resolve_primary_code(
+    codes: set[SystemErrorCode],
+    stop_policy: StopPolicy,
+) -> SystemErrorCode:
+    """
+    Назначение:
+        Выбрать главный SystemErrorCode из множества.
+    """
+    if not codes:
+        return SystemErrorCode.OK
+    if SystemErrorCode.OK in codes and len(codes) == 1:
+        return SystemErrorCode.OK
+    for code in codes:
+        if stop_policy.is_fatal(code):
+            return code
+    if SystemErrorCode.DATA_INVALID in codes:
+        return SystemErrorCode.DATA_INVALID
+    if SystemErrorCode.CONFLICT in codes:
+        return SystemErrorCode.CONFLICT
+    return sorted(codes, key=lambda c: c.value)[0]

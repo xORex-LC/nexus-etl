@@ -51,6 +51,7 @@ class TransformPipeline(Generic[T, N, D]):
             stage=DiagnosticStage.MAP,
             translator=Translator(get_factory().catalog),
             sink=errors,
+            record_ref=collected.row_ref,
         ):
             mapped = self.mapper.map(collected.record)
         if mapped is None:
@@ -84,6 +85,7 @@ class TransformPipeline(Generic[T, N, D]):
             stage=DiagnosticStage.NORMALIZE,
             translator=Translator(get_factory().catalog),
             sink=errors,
+            record_ref=mapped.row_ref,
         ):
             normalized = self.normalizer.normalize(mapped)
         if normalized is None:
@@ -110,6 +112,7 @@ class TransformPipeline(Generic[T, N, D]):
             stage=DiagnosticStage.ENRICH,
             translator=Translator(get_factory().catalog),
             sink=errors,
+            record_ref=normalized.row_ref,
         ):
             enriched = self.enricher.enrich(normalized)
         if enriched is None:

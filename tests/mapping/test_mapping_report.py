@@ -46,7 +46,7 @@ def _run_mapping(records: list[SourceRecord]):
         enricher,
     )
     row_source = records
-    exit_code = usecase.run(
+    result = usecase.run(
         row_source=row_source,
         transformer=transformer,
         dataset="employees",
@@ -54,7 +54,7 @@ def _run_mapping(records: list[SourceRecord]):
         run_id="run-1",
         report=report,
     )
-    return exit_code, report
+    return result, report
 
 
 def test_mapping_reports_missing_match_key():
@@ -72,7 +72,7 @@ def test_mapping_reports_missing_match_key():
             "password=secret;org_id=10;tab=TAB-100",
         ]
     )
-    _exit_code, report = _run_mapping([row])
+    _result, report = _run_mapping([row])
 
     assert report.summary.rows_blocked == 0
     assert report.summary.rows_passed == 1
@@ -94,7 +94,7 @@ def test_mapping_reports_secret_candidates():
             "password=secret;org_id=10;tab=TAB-100",
         ]
     )
-    _exit_code, report = _run_mapping([row])
+    _result, report = _run_mapping([row])
 
     assert report.items[0].status == "OK"
     assert report.items[0].meta["secret_candidate_fields"] == ["password"]
@@ -115,7 +115,7 @@ def test_mapping_reports_mapped_ok():
             "password=secret;org_id=10;tab=TAB-100",
         ]
     )
-    _exit_code, report = _run_mapping([row])
+    _result, report = _run_mapping([row])
 
     assert report.summary.rows_passed == 1
     assert report.summary.rows_blocked == 0

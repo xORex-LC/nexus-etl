@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import logging
 
+from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.diagnostics.system_codes import SystemErrorCode
+
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_status_usecase import CacheStatusUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
@@ -38,7 +41,7 @@ class CacheCommandService:
         retries: int | None = None,
         retry_backoff_seconds: float | None = None,
         dataset: str | None = None,
-    ) -> int:
+    ) -> CommandResult:
         if self.cache_refresh is None:
             raise ValueError("Cache refresh usecase is not configured")
         report.set_meta(dataset=dataset, items_limit=report_items_limit)
@@ -58,20 +61,35 @@ class CacheCommandService:
 
         total = summary.get("total", {})
         failed = int(total.get("failed", 0))
-        report.add_op("cache_refresh", ok=int(total.get("inserted", 0)) + int(total.get("updated", 0)), failed=failed, count=sum(total.values()))
-        return 0 if failed == 0 else 1
+        report.add_op(
+            "cache_refresh",
+            ok=int(total.get("inserted", 0)) + int(total.get("updated", 0)),
+            failed=failed,
+            count=sum(total.values()),
+        )
 
-    def status(self, logger, report, run_id: str, dataset: str | None = None) -> tuple[int, dict]:
+        result = CommandResult(summary=summary)
+        if failed:
+            result.add_code(SystemErrorCode.DATA_INVALID)
+        return result
+
+    def status(
+        self, logger, report, run_id: str, dataset: str | None = None
+    ) -> CommandResult:
         try:
             status = self.cache_status.status(dataset=dataset)
             report.set_meta(dataset=dataset)
             report.set_context("cache_status", {"status": status})
-            return 0, status
+            return CommandResult(summary=status)
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache status failed: {exc}")
-            return 2, {}
+            result = CommandResult(summary={})
+            result.add_code(SystemErrorCode.CACHE_ERROR)
+            return result
 
-    def clear(self, logger, report, run_id: str, dataset: str | None = None) -> tuple[int, dict]:
+    def clear(
+        self, logger, report, run_id: str, dataset: str | None = None
+    ) -> CommandResult:
         try:
             if self.cache_clear is None:
                 raise ValueError("Cache clear usecase is not configured")
@@ -85,10 +103,12 @@ class CacheCommandService:
             )
             report.set_meta(dataset=dataset)
             report.set_context("cache_clear", {"cleared": cleared})
-            return 0, cleared
+            return CommandResult(summary=cleared)
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache clear failed: {exc}")
-            return 2, {}
+            result = CommandResult(summary={})
+            result.add_code(SystemErrorCode.CACHE_ERROR)
+            return result
 
 
 __all__ = ["CacheCommandService"]

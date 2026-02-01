@@ -22,6 +22,8 @@ from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
 from connector.domain.diagnostics import DiagnosticFactory, build_core_catalog, configure
+from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService
@@ -142,6 +144,16 @@ def printRunHeader(runId: str, command: str, settings: Settings, sources: list[s
         f" log_level={settings.log_level} log_json={settings.log_json} "
     )
 
+
+def _result_with(code: SystemErrorCode, summary: dict | None = None) -> CommandResult:
+    result = CommandResult(summary=summary)
+    result.add_code(code)
+    return result
+
+
+def _result_ok(summary: dict | None = None) -> CommandResult:
+    return _result_with(SystemErrorCode.OK, summary=summary)
+
 def runWithReport(
     ctx: typer.Context,
     commandName: str,
@@ -198,7 +210,7 @@ def runWithReport(
     sys.stdout = TeeStream(originalStdout, stdoutLoggerStream)
     sys.stderr = TeeStream(originalStderr, stderrLoggerStream)
 
-    exitCode: int | None = None
+    exit_result: int | CommandResult | None = None
 
     try:
         logEvent(logger, logging.INFO, runId, "core", "Command started")
@@ -210,7 +222,7 @@ def runWithReport(
             except typer.Exit:
                 logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
                 typer.echo("ERROR: missing API settings (see logs/report)", err=True)
-                exitCode = 2
+                exit_result = _result_with(SystemErrorCode.INTERNAL_ERROR)
                 return
 
         if requiresCsv:
@@ -219,10 +231,10 @@ def runWithReport(
             except typer.Exit:
                 logEvent(logger, logging.ERROR, runId, "csv", "CSV is missing or not accessible")
                 typer.echo("ERROR: invalid or missing CSV (see logs/report)", err=True)
-                exitCode = 2
+                exit_result = _result_with(SystemErrorCode.IO_ERROR)
                 return
 
-        exitCode = runner(logger, report)
+        exit_result = runner(logger, report)
 
     finally:
         durationMs = getDurationMs(startMonotonic, time.monotonic())
@@ -239,8 +251,10 @@ def runWithReport(
         sys.stdout = originalStdout
         sys.stderr = originalStderr
 
-        if exitCode is not None:
-            raise typer.Exit(code=exitCode)
+        if exit_result is not None:
+            if hasattr(exit_result, "exit_code"):
+                raise typer.Exit(code=exit_result.exit_code())
+            raise typer.Exit(code=exit_result)
 
 
 def runWithoutReport(
@@ -276,7 +290,7 @@ def runWithoutReport(
     sys.stdout = TeeStream(originalStdout, stdoutLoggerStream)
     sys.stderr = TeeStream(originalStderr, stderrLoggerStream)
 
-    exitCode: int | None = None
+    exit_result: int | CommandResult | None = None
 
     try:
         logEvent(logger, logging.INFO, runId, "core", "Command started")
@@ -288,7 +302,7 @@ def runWithoutReport(
             except typer.Exit:
                 logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
                 typer.echo("ERROR: missing API settings (see logs)", err=True)
-                exitCode = 2
+                exit_result = _result_with(SystemErrorCode.INTERNAL_ERROR)
                 return
 
         if requiresCsv:
@@ -297,10 +311,10 @@ def runWithoutReport(
             except typer.Exit:
                 logEvent(logger, logging.ERROR, runId, "csv", "CSV is missing or not accessible")
                 typer.echo("ERROR: invalid or missing CSV (see logs)", err=True)
-                exitCode = 2
+                exit_result = _result_with(SystemErrorCode.IO_ERROR)
                 return
 
-        exitCode = runner(logger)
+        exit_result = runner(logger)
 
     finally:
         _ = getDurationMs(startMonotonic, time.monotonic())
@@ -308,8 +322,10 @@ def runWithoutReport(
         sys.stdout = originalStdout
         sys.stderr = originalStderr
 
-        if exitCode is not None:
-            raise typer.Exit(code=exitCode)
+        if exit_result is not None:
+            if hasattr(exit_result, "exit_code"):
+                raise typer.Exit(code=exit_result.exit_code())
+            raise typer.Exit(code=exit_result)
 
 def runCacheRefreshCommand(
     ctx: typer.Context,
@@ -327,20 +343,20 @@ def runCacheRefreshCommand(
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
-    def execute(logger, report) -> int:
+    def execute(logger, report):
         try:
             requireApi(settings)
         except typer.Exit:
             logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
             typer.echo("ERROR: missing API settings (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.INTERNAL_ERROR)
         report.set_meta(items_limit=reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit)
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
             typer.echo("ERROR: failed to open cache DB (see logs)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.CACHE_ERROR)
 
         try:
             base_url = f"https://{settings.host}:{settings.port}"
@@ -364,7 +380,7 @@ def runCacheRefreshCommand(
             cache_repo = SqliteCacheRepository(engine, cache_specs)
             if dataset is not None and dataset not in cache_repo.list_datasets():
                 typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
-                return 2
+                return _result_with(SystemErrorCode.CACHE_ERROR)
             reader = AnkeyTargetPagedReader(client)
             adapters = list_cache_sync_adapters()
             identity_keys, identity_id_fields = build_identity_index_plan()
@@ -396,11 +412,11 @@ def runCacheRefreshCommand(
             )
         except ValueError as exc:
             typer.echo(f"ERROR: {exc}", err=True)
-            return 2
+            return _result_with(SystemErrorCode.INTERNAL_ERROR)
         except Exception as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
             typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.INTERNAL_ERROR)
         finally:
             conn.close()
 
@@ -418,13 +434,13 @@ def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> Non
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
-    def execute(logger, report) -> int:
+    def execute(logger, report):
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
             typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.CACHE_ERROR)
 
         try:
             engine = SqliteEngine(conn)
@@ -434,12 +450,14 @@ def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> Non
             cache_repo = SqliteCacheRepository(engine, cache_specs)
             if dataset is not None and dataset not in cache_repo.list_datasets():
                 typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
-                return 2
+                return _result_with(SystemErrorCode.CACHE_ERROR)
             service = CacheCommandService(cache_repo)
-            code, status = service.status(logger, report, runId, dataset=dataset)
-            if code != 0:
+            result = service.status(logger, report, runId, dataset=dataset)
+            exit_code = result.exit_code()
+            status = result.summary or {}
+            if exit_code != 0:
                 typer.echo("ERROR: cache status failed (see logs/report)", err=True)
-                return code
+                return result
             if "by_dataset" in status:
                 schema_version = status.get("schema_version")
                 total = status.get("total")
@@ -452,7 +470,7 @@ def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> Non
                         **status
                     )
                 )
-            return 0
+            return result
         finally:
             conn.close()
 
@@ -470,13 +488,13 @@ def runCacheClearCommand(ctx: typer.Context, dataset: str | None = None) -> None
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
-    def execute(logger, report) -> int:
+    def execute(logger, report):
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
             typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.CACHE_ERROR)
 
         try:
             engine = SqliteEngine(conn)
@@ -486,14 +504,15 @@ def runCacheClearCommand(ctx: typer.Context, dataset: str | None = None) -> None
             cache_repo = SqliteCacheRepository(engine, cache_specs)
             if dataset is not None and dataset not in cache_repo.list_datasets():
                 typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
-                return 2
+                return _result_with(SystemErrorCode.CACHE_ERROR)
             cache_clear = CacheClearUseCase(cache_repo)
             service = CacheCommandService(cache_repo, cache_clear=cache_clear)
-            code, _cleared = service.clear(logger, report, runId, dataset=dataset)
-            if code != 0:
+            result = service.clear(logger, report, runId, dataset=dataset)
+            exit_code = result.exit_code()
+            if exit_code != 0:
                 typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
-                return code
-            return 0
+                return result
+            return result
         finally:
             conn.close()
 
@@ -520,13 +539,13 @@ def runImportPlanCommand(
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
-    def execute(logger) -> int:
+    def execute(logger):
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
             typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.CACHE_ERROR)
 
         include_deleted = includeDeleted if includeDeleted is not None else settings.include_deleted
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
@@ -554,11 +573,11 @@ def runImportPlanCommand(
             )
         except ValueError as exc:
             typer.echo(f"ERROR: {exc}", err=True)
-            return 2
+            return _result_with(SystemErrorCode.INTERNAL_ERROR)
         except Exception as exc:
             logEvent(logger, logging.ERROR, runId, "plan", f"Import plan failed: {exc}")
             typer.echo("ERROR: import plan failed (see logs)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.INTERNAL_ERROR)
         finally:
             conn.close()
 
@@ -586,10 +605,10 @@ def runImportApplyCommand(
     runId = ctx.obj["runId"]
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
-    def execute(logger, report) -> int:
+    def execute(logger, report):
         if not planPath:
             typer.echo("ERROR: --plan is required (apply no longer builds plan from CSV)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.IO_ERROR)
 
         report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
         resource_exists_retries = (
@@ -606,7 +625,7 @@ def runImportApplyCommand(
         except (OSError, ValueError) as exc:
             logEvent(logger, logging.ERROR, runId, "plan", f"Import apply failed: {exc}")
             typer.echo(f"ERROR: import apply failed: {exc}", err=True)
-            return 2
+            return _result_with(SystemErrorCode.IO_ERROR)
 
         dataset_name = plan.meta.dataset
         conn = None
@@ -670,7 +689,7 @@ def runImportApplyCommand(
             identity_id_fields=identity_id_fields,
             pending_repo=pending_repo,
         )
-        exit_code = service.applyPlan(
+        result = service.applyPlan(
             plan=plan,
             logger=logger,
             report=report,
@@ -685,7 +704,7 @@ def runImportApplyCommand(
             report.set_context("apply_runtime", {"retries_used": client.getRetryAttempts()})
         if conn is not None:
             conn.close()
-        return exit_code
+        return result
 
     runWithReport(
         ctx=ctx,
@@ -699,7 +718,7 @@ def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
 
-    def execute(logger, report) -> int:
+    def execute(logger, report):
         baseUrl = f"https://{settings.host}:{settings.port}"
         client = AnkeyApiClient(
             baseUrl=baseUrl,
@@ -718,11 +737,11 @@ def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
             latency_ms = int((time.monotonic() - start) * 1000)
             logEvent(logger, logging.INFO, runId, "api", f"api ok base_url={baseUrl} latency_ms={latency_ms}")
             report.set_context("apply_target", {"target_type": "http"})
-            return 0
+            return _result_ok()
         except ApiError as exc:
             logEvent(logger, logging.ERROR, runId, "api", f"API check failed: {exc}")
             typer.echo("ERROR: API check failed (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.INFRA_UNAVAILABLE)
 
     runWithReport(
         ctx=ctx,
@@ -739,14 +758,14 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
     csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
     dataset_name = settings.dataset_name
 
-    def execute(logger, report) -> int:
+    def execute(logger, report):
         dataset_spec = get_spec(dataset_name)
         try:
             conn = openCacheDb(getCacheDbPath(settings.cache_dir))
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
             typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.CACHE_ERROR)
         try:
             engine = SqliteEngine(conn)
             cache_specs = dataset_spec.build_cache_specs()
@@ -813,7 +832,7 @@ def runMappingCommand(
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_mapped_items = includeMappedItems if includeMappedItems is not None else True
 
-    def execute(logger, report) -> int:
+    def execute(logger, report):
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -823,7 +842,7 @@ def runMappingCommand(
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
             typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.CACHE_ERROR)
         try:
             engine = SqliteEngine(conn)
             cache_specs = dataset_spec.build_cache_specs()
@@ -876,7 +895,7 @@ def runNormalizeCommand(
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_normalized_items = includeNormalizedItems if includeNormalizedItems is not None else True
 
-    def execute(logger, report) -> int:
+    def execute(logger, report):
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -886,7 +905,7 @@ def runNormalizeCommand(
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
             typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.CACHE_ERROR)
         try:
             engine = SqliteEngine(conn)
             cache_specs = dataset_spec.build_cache_specs()
@@ -941,7 +960,7 @@ def runEnrichCommand(
     report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
     include_enriched_items = includeEnrichedItems if includeEnrichedItems is not None else True
 
-    def execute(logger, report) -> int:
+    def execute(logger, report):
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -951,7 +970,7 @@ def runEnrichCommand(
         except sqlite3.Error as exc:
             logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
             typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return 2
+            return _result_with(SystemErrorCode.CACHE_ERROR)
         try:
             engine = SqliteEngine(conn)
             cache_specs = dataset_spec.build_cache_specs()

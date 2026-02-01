@@ -69,7 +69,7 @@ def test_apply_create_uses_secret_provider_when_missing_password():
     plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
     report = make_report()
 
-    code = service.applyPlan(
+    result = service.applyPlan(
         plan=plan,
         logger=DummyLogger(),
         report=report,
@@ -81,7 +81,7 @@ def test_apply_create_uses_secret_provider_when_missing_password():
         resource_exists_retries=0,
     )
 
-    assert code == 0
+    assert result.exit_code() == 0
     assert executor.calls == 1
     assert executor.last_spec is not None
     assert executor.last_spec.payload.get("password") == "secret123"
@@ -96,7 +96,7 @@ def test_apply_create_fails_when_secret_missing():
     plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
     report = make_report()
 
-    code = service.applyPlan(
+    result = service.applyPlan(
         plan=plan,
         logger=DummyLogger(),
         report=report,
@@ -108,7 +108,7 @@ def test_apply_create_fails_when_secret_missing():
         resource_exists_retries=0,
     )
 
-    assert code == 1
+    assert result.exit_code() == 1
     assert executor.calls == 0
     assert report.items, "должна быть записана ошибка"
     diag = report.items[0].diagnostics[0]
@@ -132,7 +132,7 @@ def test_apply_update_does_not_request_secret():
     plan = make_plan("update", base_desired_state(with_password=True), secret_fields=[])
     report = make_report()
 
-    code = service.applyPlan(
+    result = service.applyPlan(
         plan=plan,
         logger=DummyLogger(),
         report=report,
@@ -144,6 +144,6 @@ def test_apply_update_does_not_request_secret():
         resource_exists_retries=0,
     )
 
-    assert code == 0
+    assert result.exit_code() == 0
     assert provider.calls == 0
     assert executor.calls == 1

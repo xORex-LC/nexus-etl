@@ -17,6 +17,8 @@ from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.diagnostics.context import error as diag_error, get_factory
 from connector.domain.diagnostics.translator import Translator
+from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.policies import default_stop_policy
 
@@ -54,7 +56,7 @@ class ImportApplyService:
         dry_run: bool,
         report_items_limit: int,
         resource_exists_retries: int,
-    ) -> int:
+    ) -> CommandResult:
         created = updated = failed = 0
         skipped = getattr(plan.summary, "skipped", 0) if plan and plan.summary else 0
         actions_count = 0
@@ -124,6 +126,7 @@ class ImportApplyService:
                             stage=DiagnosticStage.APPLY,
                             translator=translator,
                             sink=boundary_errors,
+                            record_ref=self._build_row_ref(current_item),
                         ):
                             exec_result = self.executor.execute(request_spec)
                         if boundary_errors:
@@ -284,9 +287,14 @@ class ImportApplyService:
                 "error_stats": error_stats,
             },
         )
+        result = CommandResult()
+        if failed > 0:
+            result.add_code(SystemErrorCode.DATA_INVALID)
         if fatal_error:
-            return 2
-        return 1 if failed > 0 else 0
+            result.add_code(SystemErrorCode.INTERNAL_ERROR)
+        if not result.system_codes:
+            result.add_code(SystemErrorCode.OK)
+        return result
 
     @staticmethod
     def _build_row_ref(item) -> RowRef:

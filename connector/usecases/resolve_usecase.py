@@ -11,6 +11,8 @@ from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.translator import Translator
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.resolver import Resolver
+from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 from connector.domain.transform.result import TransformResult
 
 
@@ -50,7 +52,7 @@ class ResolveUseCase:
         resolver: Resolver,
         dataset: str,
         report,
-    ) -> int:
+    ) -> CommandResult:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         _report_expired(report, resolver.drain_expired(), resolver.settings)
         for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset):
@@ -84,7 +86,12 @@ class ResolveUseCase:
             )
             _report_expired(report, resolver.drain_expired(), resolver.settings)
         _purge_pending(resolver)
-        return 1 if report.summary.errors_total > 0 else 0
+        result = CommandResult()
+        if report.summary.errors_total > 0:
+            result.add_code(SystemErrorCode.CONFLICT)
+        else:
+            result.add_code(SystemErrorCode.OK)
+        return result
 
     def _iter_resolved(
         self,
@@ -112,6 +119,7 @@ class ResolveUseCase:
                 stage=DiagnosticStage.RESOLVE,
                 translator=Translator(get_factory().catalog),
                 sink=boundary_errors,
+                record_ref=matched.row_ref,
             ):
                 resolved_row, errors, warnings = resolver.resolve(
                     matched.row,

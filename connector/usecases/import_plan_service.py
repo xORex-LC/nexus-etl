@@ -19,6 +19,8 @@ from connector.domain.transform.source_record import SourceRecord
 from connector.domain.transform.result import TransformResult
 from connector.domain.planning.match_models import build_fingerprint
 from connector.datasets.registry import get_spec
+from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.diagnostics.system_codes import SystemErrorCode
 
 class ImportPlanService:
     """
@@ -38,7 +40,7 @@ class ImportPlanService:
         report_dir: str,
         vault_file: str | None = None,
         settings=None,
-    ) -> int:
+    ) -> CommandResult:
         generated_at = getNowIso()
 
         dataset_spec = get_spec(dataset)
@@ -147,8 +149,9 @@ class ImportPlanService:
             generated_at=generated_at,
         )
         logEvent(logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
-
-        return 0
+        result = CommandResult()
+        result.add_code(SystemErrorCode.OK)
+        return result
 
 
 def _load_pending_rows(
