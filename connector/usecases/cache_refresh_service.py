@@ -164,6 +164,8 @@ class CacheRefreshUseCase:
                                             code="CACHE_ERROR",
                                             field=None,
                                             message=str(exc),
+                                            # row_ref отсутствует: refresh работает с page/key, а не с конкретной строкой
+                                            record_ref=None,
                                         )
                                     ],
                                     warnings=[],

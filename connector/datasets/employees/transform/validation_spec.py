@@ -20,7 +20,7 @@ FieldValidator = Callable[
 
 def _validate_email(
     value: Any,
-    _: NormalizedEmployeesRow,
+    row: NormalizedEmployeesRow,
     __: ValidationDependencies,
     errors: list[DiagnosticItem],
 ) -> None:
@@ -33,13 +33,14 @@ def _validate_email(
                 code="INVALID_EMAIL",
                 field="email",
                 message="email has invalid format",
+                record_ref=getattr(row, "row_ref", None),
             )
         )
 
 
 def _validate_avatar_id(
     value: Any,
-    _: NormalizedEmployeesRow,
+    row: NormalizedEmployeesRow,
     __: ValidationDependencies,
     errors: list[DiagnosticItem],
 ) -> None:
@@ -50,6 +51,7 @@ def _validate_avatar_id(
                 code="INVALID_AVATAR_ID",
                 field="avatarId",
                 message="avatarId must be empty or null",
+                record_ref=getattr(row, "row_ref", None),
             )
         )
 
@@ -57,7 +59,7 @@ def _validate_avatar_id(
 def _validate_positive_int(field: str) -> FieldValidator:
     def _inner(
         value: Any,
-        _: NormalizedEmployeesRow,
+        row: NormalizedEmployeesRow,
         __: ValidationDependencies,
         errors: list[DiagnosticItem],
     ) -> None:
@@ -70,6 +72,7 @@ def _validate_positive_int(field: str) -> FieldValidator:
                     code="INVALID_INT",
                     field=field,
                     message=f"{field} must be an integer > 0",
+                    record_ref=getattr(row, "row_ref", None),
                 )
             )
 
@@ -78,7 +81,7 @@ def _validate_positive_int(field: str) -> FieldValidator:
 
 def _validate_org_reference(
     value: Any,
-    _: NormalizedEmployeesRow,
+    row: NormalizedEmployeesRow,
     __: ValidationDependencies,
     errors: list[DiagnosticItem],
 ) -> None:
@@ -93,6 +96,7 @@ def _validate_org_reference(
                     code="INVALID_INT",
                     field="organization_id",
                     message="organization_id must be an integer > 0",
+                    record_ref=getattr(row, "row_ref", None),
                 )
             )
         return
@@ -113,6 +117,7 @@ def _validate_org_reference(
                         code="INVALID_INT",
                         field="organization_id",
                         message="organization_id must be an integer > 0",
+                        record_ref=getattr(row, "row_ref", None),
                     )
                 )
 

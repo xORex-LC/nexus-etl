@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.models import DiagnosticStage, DiagnosticItem
+from connector.domain.models import DiagnosticStage, DiagnosticItem, RowRef
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
@@ -39,17 +39,24 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
     def map(self, record: SourceRecord) -> TransformResult[EmployeesRowPublic]:
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
+        row_ref = RowRef(
+            line_no=record.line_no,
+            row_id=record.record_id,
+            identity_primary=None,
+            identity_value=None,
+        )
 
         raw = record.values
-        raw_id = _normalize(_read_source_value(raw, "raw_id", errors))
-        full_name = _normalize(_read_source_value(raw, "full_name", errors))
-        login = _normalize(_read_source_value(raw, "login", errors))
-        email_or_phone = _normalize(_read_source_value(raw, "email_or_phone", errors))
-        contacts = _normalize(_read_source_value(raw, "contacts", errors))
-        manager = _normalize(_read_source_value(raw, "manager", errors))
-        flags = _normalize(_read_source_value(raw, "flags", errors))
-        employment = _normalize(_read_source_value(raw, "employment", errors))
-        extra = _normalize(_read_source_value(raw, "extra", errors))
+        row_ref = None
+        raw_id = _normalize(_read_source_value(raw, "raw_id", errors, row_ref))
+        full_name = _normalize(_read_source_value(raw, "full_name", errors, row_ref))
+        login = _normalize(_read_source_value(raw, "login", errors, row_ref))
+        email_or_phone = _normalize(_read_source_value(raw, "email_or_phone", errors, row_ref))
+        contacts = _normalize(_read_source_value(raw, "contacts", errors, row_ref))
+        manager = _normalize(_read_source_value(raw, "manager", errors, row_ref))
+        flags = _normalize(_read_source_value(raw, "flags", errors, row_ref))
+        employment = _normalize(_read_source_value(raw, "employment", errors, row_ref))
+        extra = _normalize(_read_source_value(raw, "extra", errors, row_ref))
 
         last_name, first_name, middle_name = _split_full_name(full_name)
         email, phone = _pick_email_phone(email_or_phone, contacts)
@@ -205,7 +212,12 @@ def _parse_role(employment: str | None) -> str | None:
     return None
 
 
-def _read_source_value(raw: Mapping[str, str | None], field: str, errors: list[DiagnosticItem]) -> str | None:
+def _read_source_value(
+    raw: Mapping[str, str | None],
+    field: str,
+    errors: list[DiagnosticItem],
+    record_ref: RowRef | None,
+) -> str | None:
     """
     Назначение:
         Прочитать значение из SourceRecord по имени поля или по col_* схеме.
@@ -223,6 +235,7 @@ def _read_source_value(raw: Mapping[str, str | None], field: str, errors: list[D
             code="missing_source_column",
             field=field,
             message=f"Missing source column '{field}'",
+            record_ref=record_ref,
         )
     )
     return None

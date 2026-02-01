@@ -27,7 +27,13 @@ class NormalizerRule:
     validators: tuple[NormalizerValidator, ...] = ()
     required: bool = False
 
-    def apply(self, values: dict[str, Any], errors: list[DiagnosticItem], warnings: list[DiagnosticItem]) -> Any:
+    def apply(
+        self,
+        values: dict[str, Any],
+        errors: list[DiagnosticItem],
+        warnings: list[DiagnosticItem],
+        record_ref,
+    ) -> Any:
         raw = values.get(self.source_key)
         if raw is None:
             if self.required:
@@ -37,6 +43,7 @@ class NormalizerRule:
                         code="REQUIRED_FIELD_MISSING",
                         field=self.source_key,
                         message=f"{self.source_key} is required",
+                        record_ref=record_ref,
                     )
                 )
             return None
@@ -87,14 +94,7 @@ class Normalizer(Generic[T]):
             )
 
         for rule in self.spec.rules:
-            normalized_values[rule.target] = rule.apply(source_values, errors, warnings)
-
-        for err in errors:
-            if err.record_ref is None:
-                err.record_ref = source.row_ref
-        for warn in warnings:
-            if warn.record_ref is None:
-                warn.record_ref = source.row_ref
+            normalized_values[rule.target] = rule.apply(source_values, errors, warnings, source.row_ref)
 
         row = None
         if not errors:

@@ -447,6 +447,7 @@ class Enricher(Generic[T, D]):
                 outcome=EnrichOutcome.FAILED,
                 code="ENRICH_MULTI_TARGET_UNSUPPORTED",
                 message="operation targets must contain exactly one field",
+                record_ref=result.row_ref,
             )
 
         key_values = {}
@@ -458,6 +459,7 @@ class Enricher(Generic[T, D]):
                 outcome=strictness.on_missing_key,
                 code="ENRICH_MISSING_KEY",
                 message="required key is missing",
+                record_ref=result.row_ref,
             )
 
         try:
@@ -469,6 +471,7 @@ class Enricher(Generic[T, D]):
                 code=exc.code,
                 message=exc.message,
                 field=exc.field,
+                record_ref=result.row_ref,
             )
         except Exception as exc:  # noqa: BLE001
             return self._report_by_policy(
@@ -476,6 +479,7 @@ class Enricher(Generic[T, D]):
                 outcome=strictness.on_provider_error,
                 code="ENRICH_PROVIDER_ERROR",
                 message=str(exc),
+                record_ref=result.row_ref,
             )
 
         if not candidates:
@@ -484,6 +488,7 @@ class Enricher(Generic[T, D]):
                 outcome=strictness.on_no_candidates,
                 code="ENRICH_NO_CANDIDATES",
                 message="no candidates available",
+                record_ref=result.row_ref,
             )
 
         decision = self.conflict_resolver.decide(candidates)
@@ -500,6 +505,7 @@ class Enricher(Generic[T, D]):
                 outcome=strictness.on_ambiguous,
                 code="ENRICH_AMBIGUOUS",
                 message="ambiguous candidates",
+                record_ref=result.row_ref,
             )
             report.resolve_hints.append(hint)
             return report
@@ -510,6 +516,7 @@ class Enricher(Generic[T, D]):
                 outcome=strictness.on_no_candidates,
                 code="ENRICH_NO_CANDIDATES",
                 message="no candidates available",
+                record_ref=result.row_ref,
             )
 
         return self._apply_candidates(result, op, decision.selected, merge_policy, tracker)
@@ -731,30 +738,45 @@ class Enricher(Generic[T, D]):
         code: str,
         message: str,
         field: str | None = None,
+        record_ref: RowRef | None = None,
     ) -> OperationReport:
         resolved = outcome if isinstance(outcome, EnrichOutcome) else EnrichOutcome(outcome)
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
         if resolved == EnrichOutcome.FAILED:
-            errors.append(self._make_error(code=code, message=message, field=field))
+            errors.append(self._make_error(code=code, message=message, field=field, record_ref=record_ref))
         elif resolved in (EnrichOutcome.WARNED, EnrichOutcome.NEEDS_RESOLVE):
-            warnings.append(self._make_warning(code=code, message=message, field=field))
+            warnings.append(self._make_warning(code=code, message=message, field=field, record_ref=record_ref))
         return OperationReport(op=op.name, outcome=resolved, warnings=warnings, errors=errors)
 
-    def _make_error(self, code: str, message: str, field: str | None = None) -> DiagnosticItem:
+    def _make_error(
+        self,
+        code: str,
+        message: str,
+        field: str | None = None,
+        record_ref: RowRef | None = None,
+    ) -> DiagnosticItem:
         return diag_error(
             stage=DiagnosticStage.ENRICH,
             code=code,
             field=field,
             message=message,
+            record_ref=record_ref,
         )
 
-    def _make_warning(self, code: str, message: str, field: str | None = None) -> DiagnosticItem:
+    def _make_warning(
+        self,
+        code: str,
+        message: str,
+        field: str | None = None,
+        record_ref: RowRef | None = None,
+    ) -> DiagnosticItem:
         return diag_warning(
             stage=DiagnosticStage.ENRICH,
             code=code,
             field=field,
             message=message,
+            record_ref=record_ref,
         )
 
     def _priority_for(self, source: str) -> int:

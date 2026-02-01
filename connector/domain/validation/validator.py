@@ -88,6 +88,13 @@ class Validator(Generic[T]):
             identity_primary="match_key",
             identity_value=match_key_value or None,
         )
+        if row_ref.identity_primary is None:
+            row_ref = RowRef(
+                line_no=row_ref.line_no,
+                row_id=row_ref.row_id,
+                identity_primary="match_key",
+                identity_value=match_key_value or None,
+            )
         result = ValidationRowResult(
             line_no=enriched.record.line_no,
             match_key=match_key_value,
