@@ -3,6 +3,7 @@ from __future__ import annotations
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.source_record import SourceRecord
 from typing import Mapping
 import re
@@ -32,8 +33,11 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
         Маппинг CSV-строки сотрудников в публичную каноническую форму.
     """
 
-    def __init__(self, spec: EmployeesMappingSpec | None = None) -> None:
+    def __init__(self, spec: EmployeesMappingSpec | None = None, catalog: ErrorCatalog | None = None) -> None:
         self.spec = spec or EmployeesMappingSpec()
+        if catalog is None:
+            raise ValueError("EmployeesSourceMapper requires a diagnostics catalog")
+        self.catalog = catalog
 
     def map(self, record: SourceRecord) -> TransformResult[EmployeesRowPublic]:
         errors: list[DiagnosticItem] = []
@@ -48,6 +52,7 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
 
         def add_error(code: str, message: str | None = None, field: str | None = None):
             return result.add_error(
+                catalog=self.catalog,
                 stage=DiagnosticStage.MAP,
                 code=code,
                 field=field,

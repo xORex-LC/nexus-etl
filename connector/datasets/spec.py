@@ -27,8 +27,8 @@ class TransformBundle:
     normalizer: Normalizer
     enricher: Enricher
 
-    def build_pipeline(self) -> TransformPipeline:
-        return TransformPipeline(self.mapper, self.normalizer, self.enricher)
+    def build_pipeline(self, catalog: ErrorCatalog) -> TransformPipeline:
+        return TransformPipeline(self.mapper, self.normalizer, self.enricher, catalog)
 
 @dataclass
 class ValidationBundle:
@@ -76,8 +76,13 @@ class DatasetSpec(Protocol):
     def build_validation_deps(self, conn, settings) -> ValidationDependencies: ...
     def build_planning_deps(self, conn, settings) -> PlanningDependencies: ...
     def build_enrich_deps(self, conn, settings, secret_store=None): ...
-    def build_transformers(self, deps: ValidationDependencies, enrich_deps) -> TransformBundle: ...
-    def build_validator(self, deps: ValidationDependencies) -> ValidationBundle: ...
+    def build_transformers(
+        self,
+        deps: ValidationDependencies,
+        enrich_deps,
+        catalog: ErrorCatalog,
+    ) -> TransformBundle: ...
+    def build_validator(self, deps: ValidationDependencies, catalog: ErrorCatalog) -> ValidationBundle: ...
     def build_cache_specs(self) -> list[CacheSpec]: ...
     def build_record_source(
         self,

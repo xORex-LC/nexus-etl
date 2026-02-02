@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any, Callable, Generic, Protocol, TypeVar
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets import SecretStoreProtocol
 from connector.domain.transform.match_key import MatchKey
 from connector.domain.transform.enricher_report import EnricherReport
@@ -346,12 +347,14 @@ class Enricher(Generic[T, D]):
         deps: D,
         secret_store: SecretStoreProtocol | None,
         dataset: str,
+        catalog: ErrorCatalog,
         run_id: str | None = None,
     ) -> None:
         self.spec = spec
         self.deps = deps
         self.secret_store = secret_store
         self.dataset = dataset
+        self.catalog = catalog
         self.run_id = run_id
         self.conflict_resolver = ConflictResolver()
         self.merge_engine = MergeEngine(spec.authoritative_sources)
@@ -377,6 +380,7 @@ class Enricher(Generic[T, D]):
         ):
             warnings.append(
                 result.add_warning(
+                    catalog=self.catalog,
                     stage=DiagnosticStage.ENRICH,
                     code="ENRICH_FATAL_POLICY_UNSET",
                     field=None,
@@ -760,6 +764,7 @@ class Enricher(Generic[T, D]):
         field: str | None = None,
     ) -> DiagnosticItem:
         return result.add_error(
+            catalog=self.catalog,
             stage=DiagnosticStage.ENRICH,
             code=code,
             field=field,
@@ -774,6 +779,7 @@ class Enricher(Generic[T, D]):
         field: str | None = None,
     ) -> DiagnosticItem:
         return result.add_warning(
+            catalog=self.catalog,
             stage=DiagnosticStage.ENRICH,
             code=code,
             field=field,
@@ -798,6 +804,7 @@ class Enricher(Generic[T, D]):
         if result.match_key is None:
             errors.append(
                 result.add_error(
+                    catalog=self.catalog,
                     stage=DiagnosticStage.ENRICH,
                     code="MATCH_KEY_MISSING",
                     field="matchKey",
@@ -815,6 +822,7 @@ class Enricher(Generic[T, D]):
         except Exception as exc:  # noqa: BLE001
             errors.append(
                 result.add_error(
+                    catalog=self.catalog,
                     stage=DiagnosticStage.ENRICH,
                     code="SECRET_STORE_ERROR",
                     field=None,

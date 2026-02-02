@@ -8,6 +8,7 @@ from typing import Any
 from connector.common.time import getNowIso
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.models import DiagnosticStage
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol, UpsertResult
@@ -52,6 +53,8 @@ class CacheRefreshUseCase:
         logger,
         report,
         run_id: str,
+        *,
+        catalog: ErrorCatalog,
         include_deleted: bool = False,
         report_items_limit: int = 200,
         api_base_url: str | None = None,
@@ -160,6 +163,7 @@ class CacheRefreshUseCase:
                                     payload=None,
                                     errors=[
                                         diag_error(
+                                            catalog=catalog,
                                             stage=DiagnosticStage.CACHE,
                                             code="CACHE_ERROR",
                                             field=None,

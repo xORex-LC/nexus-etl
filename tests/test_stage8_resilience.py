@@ -10,6 +10,9 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
 from connector.domain.reporting.collector import ReportCollector
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
+from connector.domain.diagnostics.catalog import build_catalog
+
+CATALOG = build_catalog("employees", strict=True)
 
 runner = CliRunner()
 
@@ -168,6 +171,7 @@ def test_import_apply_error_stats():
         dry_run=False,
         report_items_limit=10,
         resource_exists_retries=0,
+        catalog=CATALOG,
     )
     assert result.exit_code() == 1
     assert report.build().context["apply"]["error_stats"].get("SINK_HTTP_ERROR") == 1

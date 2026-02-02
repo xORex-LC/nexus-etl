@@ -13,6 +13,9 @@ from connector.datasets.employees.transform.normalizer_spec import EmployeesNorm
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
 from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
+from connector.domain.diagnostics.catalog import build_catalog
+
+CATALOG = build_catalog("employees", strict=True)
 
 
 def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
@@ -62,10 +65,15 @@ def test_row_validator_parses_valid_row():
         line_no=1,
     )
     mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec())
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    transformer = TransformPipeline(EmployeesSourceMapper(mapping_spec), normalizer, enricher)
-    validator = Validator(EmployeesValidationSpec(), ValidationDependencies())
+    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    transformer = TransformPipeline(
+        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
+        normalizer,
+        enricher,
+        CATALOG,
+    )
+    validator = Validator(EmployeesValidationSpec(), ValidationDependencies(), catalog=CATALOG)
     validated = validator.validate(transformer.enrich(collected))
     entity = validated.row.row if validated.row else None
     result = validated.row.validation if validated.row else None
@@ -78,10 +86,15 @@ def test_row_validator_parses_valid_row():
 def test_row_validator_reports_missing_required():
     collected = _collect([None for _ in range(10)], line_no=1)
     mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec())
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    transformer = TransformPipeline(EmployeesSourceMapper(mapping_spec), normalizer, enricher)
-    validator = Validator(EmployeesValidationSpec(), ValidationDependencies())
+    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    transformer = TransformPipeline(
+        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
+        normalizer,
+        enricher,
+        CATALOG,
+    )
+    validator = Validator(EmployeesValidationSpec(), ValidationDependencies(), catalog=CATALOG)
     validated = validator.validate(transformer.enrich(collected))
     result = validated.row.validation if validated.row else None
 
@@ -106,10 +119,15 @@ def test_row_validator_invalid_email():
         line_no=1,
     )
     mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec())
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    transformer = TransformPipeline(EmployeesSourceMapper(mapping_spec), normalizer, enricher)
-    validator = Validator(EmployeesValidationSpec(), ValidationDependencies())
+    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    transformer = TransformPipeline(
+        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
+        normalizer,
+        enricher,
+        CATALOG,
+    )
+    validator = Validator(EmployeesValidationSpec(), ValidationDependencies(), catalog=CATALOG)
     validated = validator.validate(transformer.enrich(collected))
     result = validated.row.validation if validated.row else None
 
@@ -121,10 +139,15 @@ def test_row_validator_invalid_email():
 def test_row_validator_produces_row_ref_even_with_errors():
     collected = _collect([None for _ in range(10)], line_no=5)
     mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec())
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    transformer = TransformPipeline(EmployeesSourceMapper(mapping_spec), normalizer, enricher)
-    validator = Validator(EmployeesValidationSpec(), ValidationDependencies())
+    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    transformer = TransformPipeline(
+        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
+        normalizer,
+        enricher,
+        CATALOG,
+    )
+    validator = Validator(EmployeesValidationSpec(), ValidationDependencies(), catalog=CATALOG)
     validated = validator.validate(transformer.enrich(collected))
     result = validated.row.validation if validated.row else None
 

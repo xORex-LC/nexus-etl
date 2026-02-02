@@ -5,7 +5,7 @@ from typing import Generic, TypeVar
 from connector.domain.transform.result import TransformResult
 from connector.domain.models import DiagnosticStage
 from connector.domain.diagnostics.boundary import diagnostic_boundary
-from connector.domain.diagnostics.context import get_catalog
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.enricher import Enricher
@@ -26,10 +26,12 @@ class TransformPipeline(Generic[T, N, D]):
         mapper: SourceMapper[T],
         normalizer: Normalizer[N],
         enricher: Enricher[N, D],
+        catalog: ErrorCatalog,
     ) -> None:
         self.mapper = mapper
         self.normalizer = normalizer
         self.enricher = enricher
+        self.catalog = catalog
 
     def map_source(self, collected: TransformResult[None]) -> TransformResult[T]:
         if collected.errors:
@@ -48,7 +50,7 @@ class TransformPipeline(Generic[T, N, D]):
         mapped: TransformResult[T] | None = None
         with diagnostic_boundary(
             stage=DiagnosticStage.MAP,
-            catalog=get_catalog(),
+            catalog=self.catalog,
             sink=errors,
             record_ref=collected.row_ref,
         ):
@@ -82,7 +84,7 @@ class TransformPipeline(Generic[T, N, D]):
         normalized: TransformResult[N] | None = None
         with diagnostic_boundary(
             stage=DiagnosticStage.NORMALIZE,
-            catalog=get_catalog(),
+            catalog=self.catalog,
             sink=errors,
             record_ref=mapped.row_ref,
         ):
@@ -109,7 +111,7 @@ class TransformPipeline(Generic[T, N, D]):
         enriched: TransformResult[N] | None = None
         with diagnostic_boundary(
             stage=DiagnosticStage.ENRICH,
-            catalog=get_catalog(),
+            catalog=self.catalog,
             sink=errors,
             record_ref=normalized.row_ref,
         ):

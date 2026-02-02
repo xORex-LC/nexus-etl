@@ -5,10 +5,10 @@ from dataclasses import asdict
 
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.transform.extractor import Extractor
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.models import RowRef, DiagnosticStage
 from connector.domain.diagnostics.boundary import diagnostic_boundary
-from connector.domain.diagnostics.context import get_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 
@@ -35,6 +35,7 @@ class EnrichUseCase:
         logger: logging.Logger,
         run_id: str,
         report,
+        catalog: ErrorCatalog,
     ) -> CommandResult:
         rows_total = 0
         enriched_ok = 0
@@ -45,7 +46,7 @@ class EnrichUseCase:
 
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
 
-        extractor = Extractor(row_source)
+        extractor = Extractor(row_source, catalog=catalog)
         for collected in extractor.run():
             rows_total += 1
             boundary_errors: list = []
@@ -58,7 +59,7 @@ class EnrichUseCase:
             )
             with diagnostic_boundary(
                 stage=DiagnosticStage.ENRICH,
-                catalog=get_catalog(),
+                catalog=catalog,
                 sink=boundary_errors,
                 record_ref=row_ref,
             ):
@@ -141,12 +142,14 @@ class EnrichUseCase:
         self,
         row_source,
         transformer: TransformPipeline,
+        *,
+        catalog: ErrorCatalog,
     ):
         """
         Назначение:
             Итератор обогащенных строк без ошибок.
         """
-        extractor = Extractor(row_source)
+        extractor = Extractor(row_source, catalog=catalog)
         for collected in extractor.run():
             map_result = transformer.enrich(collected)
             if map_result.errors:
@@ -157,11 +160,13 @@ class EnrichUseCase:
         self,
         row_source,
         transformer: TransformPipeline,
+        *,
+        catalog: ErrorCatalog,
     ):
         """
         Назначение:
             Итератор всех обогащенных строк (включая ошибки).
         """
-        extractor = Extractor(row_source)
+        extractor = Extractor(row_source, catalog=catalog)
         for collected in extractor.run():
             yield transformer.enrich(collected)

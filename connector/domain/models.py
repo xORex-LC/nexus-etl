@@ -100,6 +100,7 @@ class ValidationRowResult:
 
     def add_error(
         self,
+        catalog,
         stage: DiagnosticStage,
         code: str,
         message: str | None = None,
@@ -109,6 +110,7 @@ class ValidationRowResult:
         from connector.domain.diagnostics.context import error as diag_error
 
         item = diag_error(
+            catalog=catalog,
             stage=stage,
             code=code,
             field=field,

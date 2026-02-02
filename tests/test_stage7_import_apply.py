@@ -15,6 +15,9 @@ from connector.domain.reporting.collector import ReportCollector
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
 from connector.main import app
 from connector.infra.http.ankey_client import ApiError
+from connector.domain.diagnostics.catalog import build_catalog
+
+CATALOG = build_catalog("employees", strict=True)
 
 runner = CliRunner()
 
@@ -229,6 +232,7 @@ def test_import_apply_stop_on_first_error():
         dry_run=False,
         report_items_limit=10,
         resource_exists_retries=0,
+        catalog=CATALOG,
     )
     assert result.exit_code() == 1
     assert report.build().summary.ops.get("apply_failed", {}).get("failed") == 1
@@ -304,6 +308,7 @@ def test_import_apply_max_actions_limits_requests():
         dry_run=False,
         report_items_limit=10,
         resource_exists_retries=0,
+        catalog=CATALOG,
     )
     assert len(executor.calls) == 1
 
@@ -357,6 +362,7 @@ def test_import_apply_resource_exists_retries():
         dry_run=False,
         report_items_limit=10,
         resource_exists_retries=1,
+        catalog=CATALOG,
     )
     assert result.exit_code() == 0
     assert report.build().summary.ops.get("create", {}).get("ok") == 1
@@ -554,6 +560,7 @@ def test_apply_report_items_include_dataset():
         dry_run=False,
         report_items_limit=10,
         resource_exists_retries=0,
+        catalog=CATALOG,
     )
     assert result.exit_code() == 1
     built = report.build()

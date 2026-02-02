@@ -6,6 +6,7 @@ import json
 import logging
 
 from connector.domain.models import DiagnosticStage, MatchStatus, DiagnosticItem
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.planning.deps import ResolverSettings
 from connector.domain.planning.identity_keys import format_identity_key
@@ -36,12 +37,14 @@ class Resolver:
         identity_repo: IdentityRepository | None = None,
         pending_repo: PendingLinksRepository | None = None,
         settings: ResolverSettings | None = None,
+        catalog: ErrorCatalog,
     ) -> None:
         self.resolve_rules = resolve_rules
         self.link_rules = link_rules or LinkRules()
         self.identity_repo = identity_repo
         self.pending_repo = pending_repo
         self.settings = settings
+        self.catalog = catalog
         self._last_sweep_at: datetime | None = None
         self._expired: list[PendingLink] = []
 
@@ -108,6 +111,7 @@ class Resolver:
             # Политика: конфликт на этапе match = hard-fail, план не строим.
             errors.append(
                 diag_error(
+                    catalog=self.catalog,
                     stage=DiagnosticStage.RESOLVE,
                     code="RESOLVE_CONFLICT",
                     field=matched.identity.primary,
@@ -152,6 +156,7 @@ class Resolver:
         if not target_id:
             errors.append(
                 diag_error(
+                    catalog=self.catalog,
                     stage=DiagnosticStage.RESOLVE,
                     code="RESOLVE_TARGET_ID_MISSING",
                     field="target_id",
@@ -203,6 +208,7 @@ class Resolver:
         if self.identity_repo is None or self.pending_repo is None:
             errors.append(
                 diag_error(
+                    catalog=self.catalog,
                     stage=DiagnosticStage.RESOLVE,
                     code="RESOLVE_CONFIG_MISSING",
                     field=None,
@@ -252,6 +258,7 @@ class Resolver:
                     self.pending_repo.mark_conflict(pending_id, reason="max attempts reached")
                     errors.append(
                         diag_error(
+                            catalog=self.catalog,
                             stage=DiagnosticStage.RESOLVE,
                             code="RESOLVE_MAX_ATTEMPTS",
                             field=rule.field,
@@ -262,6 +269,7 @@ class Resolver:
                     return pending_created, True
                 warnings.append(
                     diag_warning(
+                        catalog=self.catalog,
                         stage=DiagnosticStage.RESOLVE,
                         code="RESOLVE_PENDING",
                         field=rule.field,

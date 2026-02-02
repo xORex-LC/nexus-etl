@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from connector.domain.models import DiagnosticStage, RowRef
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.sources import RowSource
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
@@ -15,8 +16,9 @@ class Extractor:
         и фиксирует фатальные ошибки источника как EXTRACT-диагностику.
     """
 
-    def __init__(self, source: RowSource) -> None:
+    def __init__(self, source: RowSource, catalog: ErrorCatalog) -> None:
         self.source = source
+        self.catalog = catalog
 
     def run(self) -> Iterable[TransformResult[None]]:
         try:
@@ -43,6 +45,7 @@ class Extractor:
                 match_key=None,
             )
             result.add_error(
+                catalog=self.catalog,
                 stage=DiagnosticStage.EXTRACT,
                 code="SOURCE_ERROR",
                 field=None,

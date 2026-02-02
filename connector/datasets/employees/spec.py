@@ -26,6 +26,7 @@ from connector.infra.cache.repository import SqliteCacheRepository
 from connector.infra.cache.identity_repository import SqliteIdentityRepository
 from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
 from connector.datasets.employees.diagnostic_catalog import build_employees_catalog
+from connector.domain.diagnostics.catalog import ErrorCatalog
 
 class EmployeesSpec(DatasetSpec):
     """
@@ -62,21 +63,27 @@ class EmployeesSpec(DatasetSpec):
             secret_store=secret_store,
         )
 
-    def build_transformers(self, deps: ValidationDependencies, enrich_deps: EmployeesEnrichDependencies) -> TransformBundle:
+    def build_transformers(
+        self,
+        deps: ValidationDependencies,
+        enrich_deps: EmployeesEnrichDependencies,
+        catalog: ErrorCatalog,
+    ) -> TransformBundle:
         _ = deps
         mapping_spec = EmployeesMappingSpec()
-        normalizer = Normalizer(EmployeesNormalizerSpec())
-        mapper = EmployeesSourceMapper(mapping_spec)
+        normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=catalog)
+        mapper = EmployeesSourceMapper(mapping_spec, catalog=catalog)
         enricher = Enricher(
             spec=EmployeesEnricherSpec(),
             deps=enrich_deps,
             secret_store=enrich_deps.secret_store,
             dataset="employees",
+            catalog=catalog,
         )
         return TransformBundle(mapper=mapper, normalizer=normalizer, enricher=enricher)
 
-    def build_validator(self, deps: ValidationDependencies) -> ValidationBundle:
-        validator = Validator(EmployeesValidationSpec(), deps)
+    def build_validator(self, deps: ValidationDependencies, catalog: ErrorCatalog) -> ValidationBundle:
+        validator = Validator(EmployeesValidationSpec(), deps, catalog=catalog)
         return ValidationBundle(validator=validator)
 
     def build_cache_specs(self) -> list:

@@ -9,7 +9,7 @@ from connector.domain.validation.validated_row import ValidationRow
 from connector.domain.transform.result import TransformResult
 from connector.domain.models import RowRef, DiagnosticStage
 from connector.domain.diagnostics.boundary import diagnostic_boundary
-from connector.domain.diagnostics.context import get_catalog
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 
@@ -32,6 +32,8 @@ class ValidateUseCase:
         self,
         enriched_source,
         validator: Validator,
+        *,
+        catalog: ErrorCatalog,
     ):
         """
         Назначение:
@@ -42,7 +44,7 @@ class ValidateUseCase:
             validated = None
             with diagnostic_boundary(
                 stage=DiagnosticStage.VALIDATE,
-                catalog=get_catalog(),
+                catalog=catalog,
                 sink=boundary_errors,
                 record_ref=enriched.row_ref,
             ):
@@ -90,6 +92,7 @@ class ValidateUseCase:
         run_id: str,
         report,
         log_failure,
+        catalog: ErrorCatalog,
     ) -> CommandResult:
         rows_total = 0
         valid_rows = 0
@@ -98,7 +101,7 @@ class ValidateUseCase:
 
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
 
-        for validated in self.iter_validated(enriched_source, validator):
+        for validated in self.iter_validated(enriched_source, validator, catalog=catalog):
             rows_total += 1
             validation_row: ValidationRow | None = validated.row
             validation = validation_row.validation if validation_row else None
@@ -164,12 +167,14 @@ class ValidateUseCase:
         self,
         enriched_source,
         validator: Validator,
+        *,
+        catalog: ErrorCatalog,
     ):
         """
         Назначение:
             Итератор валидированных строк без ошибок (для matcher).
         """
-        for validated in self.iter_validated(enriched_source, validator):
+        for validated in self.iter_validated(enriched_source, validator, catalog=catalog):
             validation_row: ValidationRow | None = validated.row
             if validation_row is None:
                 continue

@@ -8,8 +8,8 @@ from connector.domain.models import DiagnosticStage
 from connector.domain.diagnostics.context import (
     error as diag_error,
     warning as diag_warning,
-    get_catalog,
 )
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.diagnostics.command_result import CommandResult
@@ -36,12 +36,14 @@ class MatchUseCase:
         self,
         validated_source: Iterable[TransformResult],
         matcher: Matcher,
+        *,
+        catalog: ErrorCatalog,
     ):
         """
         Назначение:
             Итератор сопоставленных строк без ошибок (для resolver).
         """
-        for matched in self._iter_matched(validated_source, matcher):
+        for matched in self._iter_matched(validated_source, matcher, catalog=catalog):
             if matched.errors:
                 continue
             if any(w.code == "MATCH_DUPLICATE_SOURCE" for w in matched.warnings):
@@ -54,9 +56,10 @@ class MatchUseCase:
         matcher: Matcher,
         dataset: str,
         report,
+        catalog: ErrorCatalog,
     ) -> CommandResult:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
-        for matched in self._iter_matched(validated_source, matcher):
+        for matched in self._iter_matched(validated_source, matcher, catalog=catalog):
             row = matched.row
             row_ref = row.row_ref if row else None
             status = "FAILED" if matched.errors else "OK"
@@ -81,6 +84,8 @@ class MatchUseCase:
         self,
         validated_source: Iterable[TransformResult],
         matcher: Matcher,
+        *,
+        catalog: ErrorCatalog,
     ):
         seen: dict[str, str] = {}
         for validated in validated_source:
@@ -88,7 +93,7 @@ class MatchUseCase:
             matched: TransformResult[MatchedRow] | None = None
             with diagnostic_boundary(
                 stage=DiagnosticStage.MATCH,
-                catalog=get_catalog(),
+                catalog=catalog,
                 sink=boundary_errors,
                 record_ref=validated.row_ref,
             ):
@@ -116,6 +121,7 @@ class MatchUseCase:
             if identity_value in seen:
                 if seen[identity_value] == fingerprint:
                     warning = diag_warning(
+                        catalog=catalog,
                         stage=DiagnosticStage.MATCH,
                         code="MATCH_DUPLICATE_SOURCE",
                         field=matched.row.identity.primary,
@@ -126,6 +132,7 @@ class MatchUseCase:
                     yield matched
                     continue
                 error = diag_error(
+                    catalog=catalog,
                     stage=DiagnosticStage.MATCH,
                     code="MATCH_CONFLICT_SOURCE",
                     field=matched.row.identity.primary,

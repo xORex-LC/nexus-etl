@@ -11,6 +11,9 @@ from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSp
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.datasets.employees.transform.normalizer_spec import EmployeesNormalizerSpec
 from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
+from connector.domain.diagnostics.catalog import build_catalog
+
+CATALOG = build_catalog("employees", strict=True)
 
 
 def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:
@@ -38,12 +41,13 @@ def _run_mapping(records: list[SourceRecord]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
     mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec())
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
+    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
     transformer = TransformPipeline(
-        EmployeesSourceMapper(mapping_spec),
+        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
         normalizer,
         enricher,
+        CATALOG,
     )
     row_source = records
     result = usecase.run(
@@ -53,6 +57,7 @@ def _run_mapping(records: list[SourceRecord]):
         logger=logging.getLogger("mapping-test"),
         run_id="run-1",
         report=report,
+        catalog=CATALOG,
     )
     return result, report
 

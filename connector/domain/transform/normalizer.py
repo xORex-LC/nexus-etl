@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Callable, Generic, Mapping, TypeVar
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.result import TransformResult
 
 T = TypeVar("T")
@@ -71,8 +72,9 @@ class Normalizer(Generic[T]):
         Ядро нормализатора: применяет правила и строит нормализованную строку.
     """
 
-    def __init__(self, spec: NormalizerSpec[T]) -> None:
+    def __init__(self, spec: NormalizerSpec[T], catalog: ErrorCatalog) -> None:
         self.spec = spec
+        self.catalog = catalog
 
     def normalize(self, source: TransformResult[Any]) -> TransformResult[T]:
         errors: list[DiagnosticItem] = []
@@ -95,6 +97,7 @@ class Normalizer(Generic[T]):
             details: dict[str, Any] | None = None,
         ) -> DiagnosticItem:
             item = collector.add_error(
+                catalog=self.catalog,
                 stage=DiagnosticStage.NORMALIZE,
                 code=code,
                 field=field,
@@ -111,6 +114,7 @@ class Normalizer(Generic[T]):
             details: dict[str, Any] | None = None,
         ) -> DiagnosticItem:
             item = collector.add_warning(
+                catalog=self.catalog,
                 stage=DiagnosticStage.NORMALIZE,
                 code=code,
                 field=field,

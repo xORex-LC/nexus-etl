@@ -10,6 +10,7 @@ from connector.domain.models import (
     DiagnosticItem,
     ValidationRowResult,
 )
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.planning.match_models import MatchedRow, build_fingerprint
 from connector.domain.planning.rules import IdentityRule, MatchingRules, ResolveRules
@@ -31,12 +32,14 @@ class Matcher:
         matching_rules: MatchingRules,
         resolve_rules: ResolveRules,
         include_deleted: bool,
+        catalog: ErrorCatalog,
     ) -> None:
         self.dataset = dataset
         self.cache_repo = cache_repo
         self.matching_rules = matching_rules
         self.resolve_rules = resolve_rules
         self.include_deleted = include_deleted
+        self.catalog = catalog
 
     def match(self, validated: TransformResult[ValidationRow]) -> TransformResult[MatchedRow]:
         validation_row = validated.row
@@ -48,7 +51,15 @@ class Matcher:
                 match_key=validated.match_key,
                 meta=validated.meta,
                 secret_candidates=validated.secret_candidates,
-                errors=[*_make_match_error("MATCH_IDENTITY_MISSING", None, "empty validated row", validated.row_ref)],
+                errors=[
+                    *_make_match_error(
+                        self.catalog,
+                        "MATCH_IDENTITY_MISSING",
+                        None,
+                        "empty validated row",
+                        validated.row_ref,
+                    )
+                ],
                 warnings=[*validated.warnings],
             )
 
@@ -77,7 +88,15 @@ class Matcher:
                 match_key=validated.match_key,
                 meta=validated.meta,
                 secret_candidates=validated.secret_candidates,
-                errors=[*_make_match_error("MATCH_IDENTITY_MISSING", None, "identity value is empty", validation.row_ref)],
+                errors=[
+                    *_make_match_error(
+                        self.catalog,
+                        "MATCH_IDENTITY_MISSING",
+                        None,
+                        "identity value is empty",
+                        validation.row_ref,
+                    )
+                ],
                 warnings=[*validated.warnings],
             )
 
@@ -138,7 +157,12 @@ class Matcher:
                 include_deleted=self.include_deleted,
             )
             if len(candidates) > 1:
-                return identity, None, MatchStatus.NOT_FOUND, _build_conflict_error(candidate, rule.name, validation.row_ref)
+                return (
+                    identity,
+                    None,
+                    MatchStatus.NOT_FOUND,
+                    _build_conflict_error(self.catalog, candidate, rule.name, validation.row_ref),
+                )
             if candidates:
                 identity = candidate
                 existing = candidates[0]
@@ -146,11 +170,17 @@ class Matcher:
                 return identity, existing, match_status, None
 
         if identity is None:
-            return None, None, MatchStatus.NOT_FOUND, _build_identity_error(None, "identity value is empty", validation.row_ref)
+            return None, None, MatchStatus.NOT_FOUND, _build_identity_error(
+                self.catalog,
+                None,
+                "identity value is empty",
+                validation.row_ref,
+            )
         return identity, None, match_status, None
 
 
 def _make_match_error(
+    catalog: ErrorCatalog,
     code: str,
     field: str | None,
     message: str,
@@ -158,6 +188,7 @@ def _make_match_error(
 ) -> list[DiagnosticItem]:
     return [
         diag_error(
+            catalog=catalog,
             stage=DiagnosticStage.MATCH,
             code=code,
             field=field,
@@ -187,11 +218,13 @@ def _ensure_row_ref(validation: ValidationRowResult, identity: Identity, identit
 
 
 def _build_identity_error(
+    catalog: ErrorCatalog,
     identity: Identity | None,
     message: str,
     record_ref: RowRef | None,
 ) -> DiagnosticItem:
     return diag_error(
+        catalog=catalog,
         stage=DiagnosticStage.MATCH,
         code="MATCH_IDENTITY_MISSING",
         field=identity.primary if identity else None,
@@ -201,12 +234,14 @@ def _build_identity_error(
 
 
 def _build_conflict_error(
+    catalog: ErrorCatalog,
     identity: Identity,
     rule_name: str | None = None,
     record_ref: RowRef | None = None,
 ) -> DiagnosticItem:
     suffix = f" ({rule_name})" if rule_name else ""
     return diag_error(
+        catalog=catalog,
         stage=DiagnosticStage.MATCH,
         code="MATCH_CONFLICT_TARGET",
         field=identity.primary,

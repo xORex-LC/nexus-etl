@@ -15,7 +15,8 @@ from connector.domain.ports.identity_repository import IdentityRepository
 from connector.domain.ports.pending_links_repository import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
-from connector.domain.diagnostics.context import error as diag_error, get_catalog
+from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.translator import translate_execution_result, system_code_of
@@ -56,6 +57,7 @@ class ImportApplyService:
         dry_run: bool,
         report_items_limit: int,
         resource_exists_retries: int,
+        catalog: ErrorCatalog,
     ) -> CommandResult:
         created = updated = failed = 0
         skipped = getattr(plan.summary, "skipped", 0) if plan and plan.summary else 0
@@ -68,7 +70,6 @@ class ImportApplyService:
             raise ValueError("Plan meta.dataset is required for apply")
         dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
         apply_adapter = dataset_spec.get_apply_adapter()
-        catalog = get_catalog()
         stop_policy = default_stop_policy()
 
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -94,6 +95,7 @@ class ImportApplyService:
                         payload=None,
                         errors=[
                             diag_error(
+                                catalog=catalog,
                                 stage=DiagnosticStage.APPLY,
                                 code="TARGET_ID_MISSING",
                                 field="target_id",
@@ -158,6 +160,7 @@ class ImportApplyService:
                                     payload=maskSecretsInObject(self._build_payload(current_item)),
                                     errors=[
                                         diag_error(
+                                            catalog=catalog,
                                             stage=DiagnosticStage.APPLY,
                                             code="INTERNAL_ERROR",
                                             field=None,
@@ -239,6 +242,7 @@ class ImportApplyService:
                             payload=maskSecretsInObject(self._build_payload(current_item)),
                             errors=[
                                 diag_error(
+                                    catalog=catalog,
                                     stage=DiagnosticStage.APPLY,
                                     code=err_code,
                                     field=exc.field,
@@ -262,6 +266,7 @@ class ImportApplyService:
                             payload=maskSecretsInObject(self._build_payload(current_item)),
                             errors=[
                                 diag_error(
+                                    catalog=catalog,
                                     stage=DiagnosticStage.APPLY,
                                     code=err_code,
                                     field=None,
