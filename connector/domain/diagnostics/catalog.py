@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from connector.domain.models import DiagnosticSeverity
+from connector.domain.models import DiagnosticItem, DiagnosticSeverity, DiagnosticStage, RowRef
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 
@@ -171,3 +171,59 @@ def build_catalog(dataset: str | None, *, strict: bool) -> ErrorCatalog:
     spec = get_spec(dataset)
     dataset_catalog = spec.get_diagnostic_catalog(strict=strict)
     return core.merge(dataset_catalog, on_conflict="error")
+
+
+def build_error(
+    *,
+    catalog: ErrorCatalog,
+    stage: DiagnosticStage,
+    code: str,
+    field: str | None = None,
+    message: str | None = None,
+    record_ref: RowRef | None = None,
+    details: dict | None = None,
+    severity: DiagnosticSeverity | None = None,
+) -> DiagnosticItem:
+    """
+    Назначение:
+        Создать DiagnosticItem уровня ERROR через ErrorCatalog.
+    """
+    return DiagnosticItem.from_catalog(
+        catalog=catalog,
+        stage=stage,
+        code=code,
+        field=field,
+        message=message,
+        record_ref=record_ref,
+        details=details,
+        severity=severity,
+        default_severity=DiagnosticSeverity.ERROR,
+    )
+
+
+def build_warning(
+    *,
+    catalog: ErrorCatalog,
+    stage: DiagnosticStage,
+    code: str,
+    field: str | None = None,
+    message: str | None = None,
+    record_ref: RowRef | None = None,
+    details: dict | None = None,
+    severity: DiagnosticSeverity | None = None,
+) -> DiagnosticItem:
+    """
+    Назначение:
+        Создать DiagnosticItem уровня WARNING через ErrorCatalog.
+    """
+    return DiagnosticItem.from_catalog(
+        catalog=catalog,
+        stage=stage,
+        code=code,
+        field=field,
+        message=message,
+        record_ref=record_ref,
+        details=details,
+        severity=severity,
+        default_severity=DiagnosticSeverity.WARNING,
+    )

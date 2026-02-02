@@ -5,24 +5,24 @@ skinparam defaultFontName Arial
 skinparam SequenceArrowColor #4b5563
 skinparam SequenceLifeLineBorderColor #9ca3af
 actor Runner as R
-participant "DiagnosticContext" as C
+participant "DiagnosticContext" as Ctx
 participant "diagnostic_boundary(stage)" as B
 participant "StageLogic" as S
-participant "Translator" as T
-participant "DiagnosticFactory" as F
+participant "Translator\n(functions)" as T
+participant "ErrorCatalog" as Cat
 
-R -> C : configure(context)
-R -> B : enter(stage, translator, sink, record_ref)
+R -> Ctx : configure(context or catalog)
+R -> B : enter(stage, catalog, sink, record_ref)
 B -> S : execute(input)
 
 alt OperationError thrown
   S -> B : raise OperationError
-  B -> F : error(stage=e.stage, code=e.code, field=e.field, message=e.message, details=e.details)
-  F --> B : DiagnosticItem
+  B -> Cat : build_error(stage=e.stage, code=e.code, field=e.field, message=e.message, details=e.details)
+  Cat --> B : DiagnosticItem
   B --> R : add error to sink
 else Unexpected Exception
   S -> B : raise Exception
-  B -> T : from_exception(stage, exc, record_ref)
+  B -> T : translate_exception(catalog, stage, exc, record_ref)
   T --> B : DiagnosticItem
   B --> R : add error to sink
 else Success

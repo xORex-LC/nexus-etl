@@ -46,6 +46,39 @@ class DiagnosticItem:
     record_ref: "RowRef" | None = None
     details: dict[str, Any] | None = None
     severity: DiagnosticSeverity | None = None
+
+    @classmethod
+    def from_catalog(
+        cls,
+        *,
+        catalog: Any,
+        stage: DiagnosticStage,
+        code: str,
+        field: str | None = None,
+        message: str | None = None,
+        record_ref: "RowRef" | None = None,
+        details: dict[str, Any] | None = None,
+        severity: DiagnosticSeverity | None = None,
+        default_severity: DiagnosticSeverity = DiagnosticSeverity.ERROR,
+    ) -> "DiagnosticItem":
+        """
+        Назначение:
+            Создать DiagnosticItem, используя записи ErrorCatalog.
+        """
+        resolved_message = catalog.resolve_message(code, message)
+        resolved_severity = catalog.resolve_severity(code, severity, default_severity)
+        catalog.classify(code)
+        return cls(
+            stage=stage,
+            code=code,
+            field=field,
+            message=resolved_message,
+            record_ref=record_ref,
+            details=details,
+            severity=resolved_severity,
+        )
+
+
 @dataclass
 class ValidationRowResult:
     """
@@ -73,10 +106,9 @@ class ValidationRowResult:
         field: str | None = None,
         details: dict[str, Any] | None = None,
     ) -> DiagnosticItem:
-        from connector.domain.diagnostics.context import get_factory
+        from connector.domain.diagnostics.context import error as diag_error
 
-        factory = get_factory()
-        item = factory.error(
+        item = diag_error(
             stage=stage,
             code=code,
             field=field,

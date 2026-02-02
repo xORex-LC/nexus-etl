@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Generic, Iterable, Protocol, TypeVar
+from typing import Any, Callable, Generic, Protocol, TypeVar
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.ports.secrets import SecretStoreProtocol

@@ -3,8 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from connector.domain.models import DiagnosticStage
-
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 __all__ = [

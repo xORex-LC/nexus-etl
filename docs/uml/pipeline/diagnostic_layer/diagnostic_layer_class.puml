@@ -58,6 +58,7 @@ class DiagnosticItem {
   +record_ref: RowRef [0..1]
   +details: Map<String, Any> [0..1]
   +severity: DiagnosticSeverity [0..1]
+  +from_catalog(catalog, stage, code, field, message, details, severity, default_severity)
 }
 
 class TransformResult<T> {
@@ -87,25 +88,16 @@ class ErrorCatalog {
   +get_entry(diag_code: String): CatalogEntry
 }
 
-class DiagnosticFactory {
-  +catalog: ErrorCatalog
-  +error(stage, code, field, message, record_ref, details): DiagnosticItem
-  +warning(stage, code, field, message, record_ref, details): DiagnosticItem
-}
-
 class DiagnosticContext {
   +catalog: ErrorCatalog
-  +factory: DiagnosticFactory
-  +translator: Translator
   +retry_policy: RetryPolicy
   +stop_policy: StopPolicy
   +exit_policy: ExitCodePolicy
-  +from_factory(factory)
   +from_catalog(catalog)
 }
 
 class DiagnosticBoundary {
-  +diagnostic_boundary(stage, translator, sink, record_ref)
+  +diagnostic_boundary(stage, catalog, sink, record_ref)
 }
 
 class OperationError {
@@ -116,10 +108,10 @@ class OperationError {
   +details: Map<String, Any> [0..1]
 }
 
-class Translator {
-  +from_http(stage, status, body, record_ref): DiagnosticItem
-  +from_execution_result(stage, result, record_ref): DiagnosticItem
-  +from_exception(stage, exc, record_ref): DiagnosticItem
+class "translator.py" as TranslatorFns <<module>> {
+  +translate_http(stage, status, body, record_ref): DiagnosticItem
+  +translate_execution_result(stage, result, record_ref): DiagnosticItem
+  +translate_exception(stage, exc, record_ref): DiagnosticItem
   +system_code_of(diag: DiagnosticItem): SystemErrorCode
 }
 
@@ -147,14 +139,12 @@ class DiagnosticPolicies {
 }
 
 ErrorCatalog "1" o-- "*" CatalogEntry
-DiagnosticFactory --> ErrorCatalog
-DiagnosticFactory ..> DiagnosticItem
-Translator --> DiagnosticFactory
-Translator --> DiagnosticPolicies
+TranslatorFns --> ErrorCatalog
+TranslatorFns --> DiagnosticPolicies
 DiagnosticPolicies --> SystemErrorCode
-DiagnosticContext --> DiagnosticFactory
-DiagnosticContext --> Translator
-DiagnosticBoundary --> Translator
+DiagnosticContext --> ErrorCatalog
+DiagnosticBoundary --> TranslatorFns
+DiagnosticBoundary --> ErrorCatalog
 DiagnosticBoundary --> OperationError
 TransformResult --> DiagnosticItem
 DiagnosticItem --> RowRef

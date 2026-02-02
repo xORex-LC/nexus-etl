@@ -8,7 +8,7 @@ from connector.domain.models import DiagnosticStage
 from connector.domain.diagnostics.context import (
     error as diag_error,
     warning as diag_warning,
-    get_translator,
+    get_catalog,
 )
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.planning.match_models import MatchedRow
@@ -88,7 +88,7 @@ class MatchUseCase:
             matched: TransformResult[MatchedRow] | None = None
             with diagnostic_boundary(
                 stage=DiagnosticStage.MATCH,
-                translator=get_translator(),
+                catalog=get_catalog(),
                 sink=boundary_errors,
                 record_ref=validated.row_ref,
             ):

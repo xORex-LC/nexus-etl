@@ -15,9 +15,10 @@ from connector.domain.ports.identity_repository import IdentityRepository
 from connector.domain.ports.pending_links_repository import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
-from connector.domain.diagnostics.context import error as diag_error, get_translator
+from connector.domain.diagnostics.context import error as diag_error, get_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.diagnostics.translator import translate_execution_result, system_code_of
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.policies import default_stop_policy
 
@@ -67,7 +68,7 @@ class ImportApplyService:
             raise ValueError("Plan meta.dataset is required for apply")
         dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
         apply_adapter = dataset_spec.get_apply_adapter()
-        translator = get_translator()
+        catalog = get_catalog()
         stop_policy = default_stop_policy()
 
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -123,7 +124,7 @@ class ImportApplyService:
                         exec_result: ExecutionResult | None = None
                         with diagnostic_boundary(
                             stage=DiagnosticStage.APPLY,
-                            translator=translator,
+                            catalog=catalog,
                             sink=boundary_errors,
                             record_ref=self._build_row_ref(current_item),
                         ):
@@ -143,7 +144,7 @@ class ImportApplyService:
                                         self._build_meta(current_item, None, None, None)
                                     ),
                                 )
-                            sys_code = translator.system_code_of(boundary_errors[0])
+                            sys_code = system_code_of(catalog, boundary_errors[0])
                             if stop_policy.is_fatal(sys_code):
                                 fatal_error = True
                             logEvent(logger, logging.ERROR, run_id, "import-apply", "Apply failed: boundary error")
@@ -204,7 +205,12 @@ class ImportApplyService:
                         continue
 
                     failed += 1
-                    diag = translator.from_execution_result(DiagnosticStage.SINK, exec_result)
+                    diag = translate_execution_result(
+                        catalog=catalog,
+                        stage=DiagnosticStage.SINK,
+                        result=exec_result,
+                        record_ref=self._build_row_ref(current_item),
+                    )
                     error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
                     if should_store("FAILED"):
                         report.add_item(
@@ -217,7 +223,7 @@ class ImportApplyService:
                                 self._build_meta(current_item, exec_result.status_code, exec_result.response_json, exec_result.error_details)
                             ),
                         )
-                    sys_code = translator.system_code_of(diag)
+                    sys_code = system_code_of(catalog, diag)
                     if stop_policy.is_fatal(sys_code):
                         fatal_error = True
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exec_result.error_message}")

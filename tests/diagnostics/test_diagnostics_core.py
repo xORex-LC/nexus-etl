@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from connector.domain.diagnostics import DiagnosticFactory, build_catalog
-from connector.domain.diagnostics.catalog import ErrorCatalog, CatalogEntry
+from connector.domain.diagnostics import build_catalog, build_error
+from connector.domain.diagnostics.catalog import ErrorCatalog, CatalogEntry, build_warning
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.diagnostics.context import get_factory
+from connector.domain.diagnostics.context import get_catalog
 from connector.domain.diagnostics.exceptions import DiagnosticContextNotConfiguredError
-from connector.domain.diagnostics.translator import Translator
+from connector.domain.diagnostics.translator import translate_execution_result
 from connector.domain.models import DiagnosticSeverity, DiagnosticStage, RowRef
 from connector.domain.ports.execution import ExecutionResult
 from connector.domain.transform.result import TransformResult
@@ -15,9 +15,8 @@ from connector.domain.transform.source_record import SourceRecord
 
 def test_factory_strict_unknown_raises() -> None:
     catalog = ErrorCatalog(strict=True)
-    factory = DiagnosticFactory(catalog)
     try:
-        factory.error(DiagnosticStage.VALIDATE, code="UNKNOWN_CODE")
+        build_error(catalog=catalog, stage=DiagnosticStage.VALIDATE, code="UNKNOWN_CODE")
     except UnknownDiagnosticCodeError:
         return
     assert False, "Expected UnknownDiagnosticCodeError for strict catalog"
@@ -25,8 +24,7 @@ def test_factory_strict_unknown_raises() -> None:
 
 def test_factory_permissive_unknown_allows() -> None:
     catalog = ErrorCatalog(strict=False)
-    factory = DiagnosticFactory(catalog)
-    item = factory.error(DiagnosticStage.VALIDATE, code="UNKNOWN_CODE")
+    item = build_error(catalog=catalog, stage=DiagnosticStage.VALIDATE, code="UNKNOWN_CODE")
     assert item.code == "UNKNOWN_CODE"
     assert item.severity == DiagnosticSeverity.ERROR
 
@@ -36,14 +34,12 @@ def test_severity_resolution_prefers_catalog_then_fallback() -> None:
         entries=[CatalogEntry("TEST_WARN", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.WARNING)],
         strict=False,
     )
-    factory = DiagnosticFactory(catalog)
-    item = factory.error(DiagnosticStage.VALIDATE, code="TEST_WARN")
+    item = build_warning(catalog=catalog, stage=DiagnosticStage.VALIDATE, code="TEST_WARN")
     assert item.severity == DiagnosticSeverity.WARNING
 
 
 def test_translator_maps_execution_result() -> None:
     catalog = ErrorCatalog(strict=False)
-    translator = Translator(catalog)
     result = ExecutionResult(
         ok=False,
         status_code=401,
@@ -53,7 +49,7 @@ def test_translator_maps_execution_result() -> None:
         error_reason=None,
         error_details=None,
     )
-    diag = translator.from_execution_result(DiagnosticStage.SINK, result)
+    diag = translate_execution_result(catalog, DiagnosticStage.SINK, result)
     assert diag.code == "SINK_UNAUTHORIZED"
 
 
@@ -69,13 +65,13 @@ def test_transform_result_add_error_attaches_row_ref() -> None:
     assert item.record_ref == row_ref
 
 
-def test_get_factory_requires_configure() -> None:
+def test_get_catalog_requires_configure() -> None:
     from connector.domain.diagnostics import context as diag_context
 
     token = diag_context._context_var.set(None)
     try:
         try:
-            _ = get_factory()
+            _ = get_catalog()
         except DiagnosticContextNotConfiguredError:
             return
         assert False, "Expected DiagnosticContextNotConfiguredError when diagnostics not configured"
@@ -85,16 +81,14 @@ def test_get_factory_requires_configure() -> None:
 
 def test_build_catalog_merges_dataset_codes_in_strict_mode() -> None:
     catalog = build_catalog("employees", strict=True)
-    factory = DiagnosticFactory(catalog)
-    item = factory.error(DiagnosticStage.VALIDATE, code="INVALID_EMAIL")
+    item = build_error(catalog=catalog, stage=DiagnosticStage.VALIDATE, code="INVALID_EMAIL")
     assert item.code == "INVALID_EMAIL"
 
 
 def test_build_catalog_strict_without_dataset_rejects_dataset_code() -> None:
     catalog = build_catalog(None, strict=True)
-    factory = DiagnosticFactory(catalog)
     try:
-        factory.error(DiagnosticStage.VALIDATE, code="INVALID_EMAIL")
+        build_error(catalog=catalog, stage=DiagnosticStage.VALIDATE, code="INVALID_EMAIL")
     except UnknownDiagnosticCodeError:
         return
     assert False, "Expected UnknownDiagnosticCodeError without dataset catalog"
@@ -102,7 +96,6 @@ def test_build_catalog_strict_without_dataset_rejects_dataset_code() -> None:
 
 def test_translator_preserves_infra_timeout_code() -> None:
     catalog = build_catalog(None, strict=True)
-    translator = Translator(catalog)
     result = ExecutionResult(
         ok=False,
         status_code=None,
@@ -112,5 +105,5 @@ def test_translator_preserves_infra_timeout_code() -> None:
         error_reason=None,
         error_details=None,
     )
-    diag = translator.from_execution_result(DiagnosticStage.SINK, result)
+    diag = translate_execution_result(catalog, DiagnosticStage.SINK, result)
     assert diag.code == "SINK_TIMEOUT"

@@ -4,7 +4,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
-from connector.domain.diagnostics.factory import DiagnosticFactory
+from connector.domain.diagnostics.catalog import ErrorCatalog, build_error, build_warning
 from connector.domain.diagnostics.exceptions import DiagnosticContextNotConfiguredError
 from connector.domain.diagnostics.policies import (
     ExitCodePolicy,
@@ -14,7 +14,6 @@ from connector.domain.diagnostics.policies import (
     default_retry_policy,
     default_stop_policy,
 )
-from connector.domain.diagnostics.translator import Translator
 from connector.domain.models import DiagnosticItem, DiagnosticSeverity, DiagnosticStage, RowRef
 
 
@@ -25,30 +24,10 @@ class DiagnosticContext:
         Контекст диагностики для одного run/usecase.
     """
 
-    catalog: Any
-    factory: DiagnosticFactory
-    translator: Translator
+    catalog: ErrorCatalog
     retry_policy: RetryPolicy
     stop_policy: StopPolicy
     exit_policy: ExitCodePolicy
-
-    @classmethod
-    def from_factory(
-        cls,
-        factory: DiagnosticFactory,
-        *,
-        retry_policy: RetryPolicy | None = None,
-        stop_policy: StopPolicy | None = None,
-        exit_policy: ExitCodePolicy | None = None,
-    ) -> "DiagnosticContext":
-        return cls(
-            catalog=factory.catalog,
-            factory=factory,
-            translator=Translator(factory.catalog),
-            retry_policy=retry_policy or default_retry_policy(),
-            stop_policy=stop_policy or default_stop_policy(),
-            exit_policy=exit_policy or default_exit_policy(),
-        )
 
     @classmethod
     def from_catalog(
@@ -59,11 +38,8 @@ class DiagnosticContext:
         stop_policy: StopPolicy | None = None,
         exit_policy: ExitCodePolicy | None = None,
     ) -> "DiagnosticContext":
-        factory = DiagnosticFactory(catalog)
         return cls(
             catalog=catalog,
-            factory=factory,
-            translator=Translator(catalog),
             retry_policy=retry_policy or default_retry_policy(),
             stop_policy=stop_policy or default_stop_policy(),
             exit_policy=exit_policy or default_exit_policy(),
@@ -73,13 +49,13 @@ class DiagnosticContext:
 _context_var: ContextVar[DiagnosticContext | None] = ContextVar("diagnostic_context", default=None)
 
 
-def configure(ctx: DiagnosticContext | DiagnosticFactory) -> DiagnosticContext:
+def configure(ctx: DiagnosticContext | ErrorCatalog) -> DiagnosticContext:
     """
     Назначение:
         Зарегистрировать диагностический контекст в текущем контексте.
     """
-    if isinstance(ctx, DiagnosticFactory):
-        ctx = DiagnosticContext.from_factory(ctx)
+    if isinstance(ctx, ErrorCatalog):
+        ctx = DiagnosticContext.from_catalog(ctx)
     _context_var.set(ctx)
     return ctx
 
@@ -97,20 +73,12 @@ def get_context(ctx: DiagnosticContext | None = None) -> DiagnosticContext:
     return context
 
 
-def get_factory(ctx: DiagnosticContext | None = None) -> DiagnosticFactory:
+def get_catalog(ctx: DiagnosticContext | None = None) -> ErrorCatalog:
     """
     Назначение:
-        Получить фабрику диагностик из текущего контекста.
+        Получить каталог диагностик из текущего контекста.
     """
-    return get_context(ctx).factory
-
-
-def get_translator(ctx: DiagnosticContext | None = None) -> Translator:
-    """
-    Назначение:
-        Получить translator из текущего контекста.
-    """
-    return get_context(ctx).translator
+    return get_context(ctx).catalog
 
 
 def error(
@@ -127,7 +95,8 @@ def error(
     Назначение:
         Создать DiagnosticItem (error) через текущую фабрику.
     """
-    return get_factory(ctx).error(
+    return build_error(
+        catalog=get_catalog(ctx),
         stage=stage,
         code=code,
         field=field,
@@ -152,7 +121,8 @@ def warning(
     Назначение:
         Создать DiagnosticItem (warning) через текущую фабрику.
     """
-    return get_factory(ctx).warning(
+    return build_warning(
+        catalog=get_catalog(ctx),
         stage=stage,
         code=code,
         field=field,
