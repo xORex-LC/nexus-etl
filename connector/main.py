@@ -21,7 +21,7 @@ from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
-from connector.domain.diagnostics import DiagnosticFactory, build_catalog, configure
+from connector.domain.diagnostics import build_catalog, configure
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
@@ -344,7 +344,7 @@ def runCacheRefreshCommand(
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report):
-        configure(DiagnosticFactory(build_catalog(dataset, strict=settings.diagnostics_strict)))
+        configure(build_catalog(dataset, strict=settings.diagnostics_strict))
         try:
             requireApi(settings)
         except typer.Exit:
@@ -436,7 +436,7 @@ def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> Non
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report):
-        configure(DiagnosticFactory(build_catalog(dataset, strict=settings.diagnostics_strict)))
+        configure(build_catalog(dataset, strict=settings.diagnostics_strict))
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -491,7 +491,7 @@ def runCacheClearCommand(ctx: typer.Context, dataset: str | None = None) -> None
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report):
-        configure(DiagnosticFactory(build_catalog(dataset, strict=settings.diagnostics_strict)))
+        configure(build_catalog(dataset, strict=settings.diagnostics_strict))
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -544,7 +544,7 @@ def runImportPlanCommand(
 
     def execute(logger):
         dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
-        configure(DiagnosticFactory(build_catalog(dataset_name, strict=settings.diagnostics_strict)))
+        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -632,7 +632,7 @@ def runImportApplyCommand(
             return _result_with(SystemErrorCode.IO_ERROR)
 
         dataset_name = plan.meta.dataset
-        configure(DiagnosticFactory(build_catalog(dataset_name, strict=settings.diagnostics_strict)))
+        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
         conn = None
         identity_repo = None
         pending_repo = None
@@ -764,7 +764,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
     dataset_name = settings.dataset_name
 
     def execute(logger, report):
-        configure(DiagnosticFactory(build_catalog(dataset_name, strict=settings.diagnostics_strict)))
+        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
         dataset_spec = get_spec(dataset_name)
         try:
             conn = openCacheDb(getCacheDbPath(settings.cache_dir))
@@ -839,7 +839,7 @@ def runMappingCommand(
     include_mapped_items = includeMappedItems if includeMappedItems is not None else True
 
     def execute(logger, report):
-        configure(DiagnosticFactory(build_catalog(dataset_name, strict=settings.diagnostics_strict)))
+        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -903,7 +903,7 @@ def runNormalizeCommand(
     include_normalized_items = includeNormalizedItems if includeNormalizedItems is not None else True
 
     def execute(logger, report):
-        configure(DiagnosticFactory(build_catalog(dataset_name, strict=settings.diagnostics_strict)))
+        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -969,7 +969,7 @@ def runEnrichCommand(
     include_enriched_items = includeEnrichedItems if includeEnrichedItems is not None else True
 
     def execute(logger, report):
-        configure(DiagnosticFactory(build_catalog(dataset_name, strict=settings.diagnostics_strict)))
+        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -1118,7 +1118,7 @@ def main(
     loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
 
     # default catalog uses core only; per-command dataset catalogs will override as needed
-    configure(DiagnosticFactory(build_catalog(None, strict=loaded.settings.diagnostics_strict)))
+    configure(build_catalog(None, strict=loaded.settings.diagnostics_strict))
 
     ensureDir(loaded.settings.log_dir)
     ensureDir(loaded.settings.report_dir)

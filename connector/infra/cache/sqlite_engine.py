@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Iterator
 
 
 class SqliteEngine:

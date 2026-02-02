@@ -6,7 +6,7 @@ from typing import Iterable
 
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, MatchStatus, RowRef
-from connector.domain.diagnostics.context import error as diag_error, get_translator
+from connector.domain.diagnostics.context import error as diag_error, get_catalog
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.resolver import Resolver
@@ -116,7 +116,7 @@ class ResolveUseCase:
             warnings: list = []
             with diagnostic_boundary(
                 stage=DiagnosticStage.RESOLVE,
-                translator=get_translator(),
+                catalog=get_catalog(),
                 sink=boundary_errors,
                 record_ref=matched.row_ref,
             ):

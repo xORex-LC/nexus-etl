@@ -42,7 +42,7 @@ class TransformResult(Generic[T]):
     ) -> DiagnosticItem:
         """
         Назначение:
-            Добавить диагностическую ошибку через DiagnosticFactory.
+            Добавить диагностическую ошибку через diagnostics context.
         """
         item = diag_error(
             stage=stage,
@@ -65,7 +65,7 @@ class TransformResult(Generic[T]):
     ) -> DiagnosticItem:
         """
         Назначение:
-            Добавить диагностическое предупреждение через DiagnosticFactory.
+            Добавить диагностическое предупреждение через diagnostics context.
         """
         item = diag_warning(
             stage=stage,

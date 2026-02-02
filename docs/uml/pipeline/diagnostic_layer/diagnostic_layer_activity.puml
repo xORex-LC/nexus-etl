@@ -9,7 +9,7 @@ start
 if (Using boundary?) then (yes)
   :Raise OperationError or Exception;
   :DiagnosticBoundary catches;
-  :Translator -> DiagnosticItem;
+  :translate_* / DiagnosticItem.from_catalog -> DiagnosticItem;
 else (no)
   :Call diagnostics.error/warning
   :DiagnosticContext (explicit or fallback);

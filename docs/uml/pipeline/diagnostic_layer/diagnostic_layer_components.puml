@@ -17,9 +17,8 @@ component "SinkCatalog\n(HTTP/API)" as sink
 component "DatasetCatalog\n(Employees)" as emp
 
 component "ErrorCatalog" as catalog
-component "DiagnosticFactory" as factory
 component "DiagnosticContext" as ctx
-component "Translator" as translator
+component "Translator\n(functions)" as translator
 component "DiagnosticPolicies" as policy
 component "DiagnosticBoundary" as boundary
 
@@ -33,11 +32,9 @@ src --> catalog
 sink --> catalog
 emp --> catalog
 
-catalog --> factory
-factory --> ctx
-catalog --> translator
-policy --> translator
-
-translator --> boundary
-ctx --> boundary
+ctx --> catalog
+translator --> catalog
+translator --> policy
+boundary --> translator
+boundary --> ctx
 @enduml
