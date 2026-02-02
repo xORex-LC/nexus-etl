@@ -7,7 +7,7 @@ skinparam ActivityBorderColor #d9c2a8
 start
 :Stage code detects issue;
 if (Using boundary?) then (yes)
-  :Raise OperationError or Exception;
+  :Raise Exception;
   :DiagnosticBoundary catches;
   :translate_* / DiagnosticItem.from_catalog -> DiagnosticItem;
 else (no)

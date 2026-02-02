@@ -4,7 +4,6 @@ import uuid
 from dataclasses import dataclass
 
 from connector.domain.transform.enricher import (
-    EnrichOperationError,
     EnrichOperationType,
     EnrichOutcome,
     EnricherSpec,
@@ -31,11 +30,7 @@ def _build_match_key(result, deps) -> dict[str, str] | None:
     try:
         match_key = build_delimited_match_key(spec.get_match_key_parts(result.row), strict=True)
     except MatchKeyError as exc:
-        raise EnrichOperationError(
-            code="MATCH_KEY_MISSING",
-            message="match_key cannot be built",
-            field="matchKey",
-        ) from exc
+        return None
     return {"match_key": match_key.value}
 
 
@@ -68,11 +63,7 @@ def _target_id_generator(result, deps) -> str | None:
             return candidate
     if policy.generator is None:
         if policy.mode == TargetIdMode.REQUIRED:
-            raise EnrichOperationError(
-                code="TARGET_ID_MISSING",
-                message="target_id is required",
-                field=policy.field_name,
-            )
+            return None
         return None
     return policy.generator()
 
@@ -130,6 +121,8 @@ class EmployeesEnricherSpec(EnricherSpec[NormalizedEmployeesRow, EmployeesEnrich
             run_when_errors=RunWhenErrors.ALWAYS,
             strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
             compute=_build_match_key,
+            missing_error_code="MATCH_KEY_MISSING",
+            error_field="matchKey",
         ),
         EnrichmentOperation(
             name="target_id",

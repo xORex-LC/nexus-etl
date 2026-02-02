@@ -1,0 +1,32 @@
+@startuml
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam ActivityBackgroundColor #f7e9dc
+skinparam ActivityBorderColor #d9c2a8
+
+start
+:Create ReportCollector (run_id, command);
+if (config sources?) then (yes)
+  :set_context("config");
+endif
+:set_meta(dataset/items_limit/app_version/git_rev);
+
+repeat
+  :add_item(status, row_ref, payload, errors, warnings, meta);
+  :update summary counters;
+  if (items_limit reached?) then (yes)
+    :items_truncated = true;
+  endif
+repeat while (more rows?) is (yes)
+
+if (need ops counters?) then (yes)
+  :add_op(name, ok, failed, count);
+endif
+
+:finalizeReport (duration, log paths);
+:finish() -> status derived (SUCCESS/PARTIAL/FAILED);
+:build() -> ReportEnvelope;
+:writeReportJson (serialize + save);
+stop
+@enduml

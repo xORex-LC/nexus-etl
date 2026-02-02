@@ -15,12 +15,7 @@ R -> Ctx : configure(context or catalog)
 R -> B : enter(stage, catalog, sink, record_ref)
 B -> S : execute(input)
 
-alt OperationError thrown
-  S -> B : raise OperationError
-  B -> Cat : build_error(stage=e.stage, code=e.code, field=e.field, message=e.message, details=e.details)
-  Cat --> B : DiagnosticItem
-  B --> R : add error to sink
-else Unexpected Exception
+alt Unexpected Exception
   S -> B : raise Exception
   B -> T : translate_exception(catalog, stage, exc, record_ref)
   T --> B : DiagnosticItem

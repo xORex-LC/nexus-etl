@@ -4,7 +4,6 @@ from .normalizer import Normalizer, NormalizerRule, NormalizerSpec
 from .enricher import (
     EnrichContext,
     EnrichEvent,
-    EnrichOperationError,
     EnrichOperationType,
     EnrichOutcome,
     Enricher,
@@ -34,7 +33,6 @@ __all__ = [
     "Enricher",
     "EnrichContext",
     "EnrichEvent",
-    "EnrichOperationError",
     "EnrichOperationType",
     "EnrichOutcome",
     "Enricher",
