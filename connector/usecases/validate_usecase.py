@@ -6,7 +6,10 @@ from dataclasses import asdict
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.validation.validator import Validator
 from connector.domain.validation.validated_row import ValidationRow
-from connector.domain.models import RowRef
+from connector.domain.transform.result import TransformResult
+from connector.domain.models import RowRef, DiagnosticStage
+from connector.domain.diagnostics.boundary import diagnostic_boundary
+from connector.domain.diagnostics.context import get_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 
@@ -35,7 +38,39 @@ class ValidateUseCase:
             Итератор валидированных строк без формирования отчета.
         """
         for enriched in enriched_source:
-            validated = validator.validate(enriched)
+            boundary_errors: list = []
+            validated = None
+            with diagnostic_boundary(
+                stage=DiagnosticStage.VALIDATE,
+                catalog=get_catalog(),
+                sink=boundary_errors,
+                record_ref=enriched.row_ref,
+            ):
+                validated = validator.validate(enriched)
+            if boundary_errors:
+                yield TransformResult(
+                    record=enriched.record,
+                    row=None,
+                    row_ref=enriched.row_ref,
+                    match_key=enriched.match_key,
+                    meta=enriched.meta,
+                    secret_candidates=enriched.secret_candidates,
+                    errors=[*enriched.errors, *boundary_errors],
+                    warnings=[*enriched.warnings],
+                )
+                continue
+            if validated is None:
+                yield TransformResult(
+                    record=enriched.record,
+                    row=None,
+                    row_ref=enriched.row_ref,
+                    match_key=enriched.match_key,
+                    meta=enriched.meta,
+                    secret_candidates=enriched.secret_candidates,
+                    errors=[*enriched.errors],
+                    warnings=[*enriched.warnings],
+                )
+                continue
             validation_row = validated.row
             if validation_row is None:
                 yield validated

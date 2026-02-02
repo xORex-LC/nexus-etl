@@ -6,7 +6,9 @@ from dataclasses import asdict
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.transform.extractor import Extractor
 from connector.domain.transform.pipeline import TransformPipeline
-from connector.domain.models import RowRef
+from connector.domain.models import RowRef, DiagnosticStage
+from connector.domain.diagnostics.boundary import diagnostic_boundary
+from connector.domain.diagnostics.context import get_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 
@@ -46,7 +48,45 @@ class NormalizeUseCase:
         extractor = Extractor(row_source)
         for collected in extractor.run():
             rows_total += 1
-            map_result = transformer.normalize_only(collected)
+            boundary_errors: list = []
+            map_result = None
+            row_ref = collected.row_ref or RowRef(
+                line_no=collected.record.line_no,
+                row_id=collected.record.record_id,
+                identity_primary=None,
+                identity_value=None,
+            )
+            with diagnostic_boundary(
+                stage=DiagnosticStage.NORMALIZE,
+                catalog=get_catalog(),
+                sink=boundary_errors,
+                record_ref=row_ref,
+            ):
+                map_result = transformer.normalize_only(collected)
+            if boundary_errors:
+                normalize_failed += 1
+                report.add_item(
+                    status="FAILED",
+                    row_ref=row_ref,
+                    payload=None,
+                    errors=boundary_errors,
+                    warnings=[],
+                    meta={"match_key": None, "secret_candidate_fields": []},
+                    store=True,
+                )
+                continue
+            if map_result is None:
+                normalize_failed += 1
+                report.add_item(
+                    status="FAILED",
+                    row_ref=row_ref,
+                    payload=None,
+                    errors=[],
+                    warnings=[],
+                    meta={"match_key": None, "secret_candidate_fields": []},
+                    store=True,
+                )
+                continue
 
             has_errors = len(map_result.errors) > 0
             status = "FAILED" if has_errors else "OK"
@@ -64,12 +104,7 @@ class NormalizeUseCase:
                 vault_candidates_fields_total += len(secret_fields)
 
             should_store = status == "FAILED" or self.include_normalized_items
-            row_ref = map_result.row_ref or RowRef(
-                line_no=collected.record.line_no,
-                row_id=collected.record.record_id,
-                identity_primary=None,
-                identity_value=None,
-            )
+            row_ref = map_result.row_ref or row_ref
             row_payload = asdict(map_result.row) if should_store and map_result.row is not None else None
             report.add_item(
                 status=status,
