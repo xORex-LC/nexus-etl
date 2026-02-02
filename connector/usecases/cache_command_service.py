@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_status_usecase import CacheStatusUseCase

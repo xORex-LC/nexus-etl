@@ -20,7 +20,7 @@ from connector.domain.transform.result import TransformResult
 from connector.domain.planning.match_models import build_fingerprint
 from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 
 class ImportPlanService:
     """

@@ -11,7 +11,8 @@ if (Using boundary?) then (yes)
   :DiagnosticBoundary catches;
   :Translator -> DiagnosticItem;
 else (no)
-  :Call DiagnosticContext.error/warning;
+  :Call diagnostics.error/warning
+  :DiagnosticContext (explicit or fallback);
 endif
 :ErrorCatalog validates diag_code (strict/permissive);
 :Lookup CatalogEntry (diag_code -> system_code, defaults);

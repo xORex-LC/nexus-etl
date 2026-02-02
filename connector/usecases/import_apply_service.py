@@ -15,10 +15,9 @@ from connector.domain.ports.identity_repository import IdentityRepository
 from connector.domain.ports.pending_links_repository import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
-from connector.domain.diagnostics.context import error as diag_error, get_factory
-from connector.domain.diagnostics.translator import Translator
+from connector.domain.diagnostics.context import error as diag_error, get_translator
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.policies import default_stop_policy
 
@@ -68,7 +67,7 @@ class ImportApplyService:
             raise ValueError("Plan meta.dataset is required for apply")
         dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
         apply_adapter = dataset_spec.get_apply_adapter()
-        translator = Translator(get_factory().catalog)
+        translator = get_translator()
         stop_policy = default_stop_policy()
 
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)

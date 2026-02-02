@@ -6,13 +6,12 @@ from typing import Iterable
 
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, MatchStatus, RowRef
-from connector.domain.diagnostics.context import error as diag_error, get_factory
+from connector.domain.diagnostics.context import error as diag_error, get_translator
 from connector.domain.diagnostics.boundary import diagnostic_boundary
-from connector.domain.diagnostics.translator import Translator
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.resolver import Resolver
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.transform.result import TransformResult
 
 
@@ -117,7 +116,7 @@ class ResolveUseCase:
             warnings: list = []
             with diagnostic_boundary(
                 stage=DiagnosticStage.RESOLVE,
-                translator=Translator(get_factory().catalog),
+                translator=get_translator(),
                 sink=boundary_errors,
                 record_ref=matched.row_ref,
             ):

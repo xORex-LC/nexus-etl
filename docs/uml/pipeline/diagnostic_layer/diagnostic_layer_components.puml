@@ -20,8 +20,7 @@ component "ErrorCatalog" as catalog
 component "DiagnosticFactory" as factory
 component "DiagnosticContext" as ctx
 component "Translator" as translator
-component "HttpMapping" as httpmap
-component "Policies\n(Retry/Stop/Exit + map_system_code)" as policy
+component "DiagnosticPolicies" as policy
 component "DiagnosticBoundary" as boundary
 
 boot --> core
@@ -37,8 +36,6 @@ emp --> catalog
 catalog --> factory
 factory --> ctx
 catalog --> translator
-httpmap --> translator
-catalog --> policy
 policy --> translator
 
 translator --> boundary

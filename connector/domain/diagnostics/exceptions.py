@@ -23,7 +23,7 @@ class DiagnosticContextNotConfiguredError(RuntimeError):
     """
 
     def __init__(self) -> None:
-        super().__init__("DiagnosticFactory is not configured. Call diagnostics.configure(...) first.")
+        super().__init__("DiagnosticContext is not configured. Call diagnostics.configure(...) first.")
 
 
 @dataclass

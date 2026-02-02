@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.infra.artifacts.plan_reader import readPlanFile
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
 from connector.domain.mappers.user_payload import buildUserUpsertPayload
 from connector.domain.planning.plan_builder import PlanBuilder

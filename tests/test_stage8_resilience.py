@@ -6,7 +6,7 @@ from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
 from connector.main import app
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.execution import ExecutionResult, RequestSpec
 from connector.domain.reporting.collector import ReportCollector
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter

@@ -5,8 +5,7 @@ from typing import Generic, TypeVar
 from connector.domain.transform.result import TransformResult
 from connector.domain.models import DiagnosticStage
 from connector.domain.diagnostics.boundary import diagnostic_boundary
-from connector.domain.diagnostics.context import get_factory
-from connector.domain.diagnostics.translator import Translator
+from connector.domain.diagnostics.context import get_translator
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.enricher import Enricher
@@ -49,7 +48,7 @@ class TransformPipeline(Generic[T, N, D]):
         mapped: TransformResult[T] | None = None
         with diagnostic_boundary(
             stage=DiagnosticStage.MAP,
-            translator=Translator(get_factory().catalog),
+            translator=get_translator(),
             sink=errors,
             record_ref=collected.row_ref,
         ):
@@ -83,7 +82,7 @@ class TransformPipeline(Generic[T, N, D]):
         normalized: TransformResult[N] | None = None
         with diagnostic_boundary(
             stage=DiagnosticStage.NORMALIZE,
-            translator=Translator(get_factory().catalog),
+            translator=get_translator(),
             sink=errors,
             record_ref=mapped.row_ref,
         ):
@@ -110,7 +109,7 @@ class TransformPipeline(Generic[T, N, D]):
         enriched: TransformResult[N] | None = None
         with diagnostic_boundary(
             stage=DiagnosticStage.ENRICH,
-            translator=Translator(get_factory().catalog),
+            translator=get_translator(),
             sink=errors,
             record_ref=normalized.row_ref,
         ):
