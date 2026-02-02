@@ -8,45 +8,26 @@ from pathlib import Path
 
 import typer
 
-from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
-from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.sqlite_engine import SqliteEngine
-from connector.infra.cache.repository import SqliteCacheRepository
-from connector.infra.cache.identity_repository import SqliteIdentityRepository
-from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
-from connector.infra.cache.schema import ensure_cache_ready
-from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
-from connector.usecases.cache_command_service import CacheCommandService
-from connector.usecases.cache_refresh_service import CacheRefreshUseCase
-from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
-from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
-from connector.usecases.import_apply_service import ImportApplyService
-from connector.usecases.import_plan_service import ImportPlanService
-from connector.usecases.enrich_usecase import EnrichUseCase
-from connector.usecases.mapping_usecase import MappingUseCase
-from connector.usecases.normalize_usecase import NormalizeUseCase
-from connector.usecases.validate_usecase import ValidateUseCase
-from connector.infra.artifacts.plan_reader import readPlanFile
+from connector.delivery.commands import import_plan as import_plan_command
+from connector.delivery.commands import import_apply as import_apply_command
+from connector.delivery.commands import validate as validate_command
+from connector.delivery.commands import mapping as mapping_command
+from connector.delivery.commands import normalize as normalize_command
+from connector.delivery.commands import enrich as enrich_command
+from connector.delivery.commands import cache_refresh as cache_refresh_command
+from connector.delivery.commands import cache_status as cache_status_command
+from connector.delivery.commands import cache_clear as cache_clear_command
+from connector.delivery.commands import check_api as check_api_command
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.common.sanitize import maskSecret
 from connector.common.time import getDurationMs
 from connector.common.run_id import generate_run_id
-from connector.domain.validation.validator import logValidationFailure
-from connector.domain.validation.deps import ValidationDependencies
-from connector.datasets.registry import build_identity_index_plan, get_spec, resolve_dataset_name
-from connector.datasets.cache_registry import list_cache_sync_adapters, list_cache_specs
-from connector.infra.secrets import (
-    NullSecretProvider,
-    PromptSecretProvider,
-    CompositeSecretProvider,
-    FileVaultSecretStore,
-)
-from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.datasets.registry import resolve_dataset_name
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
@@ -341,86 +322,22 @@ def runCacheRefreshCommand(
 ) -> None:
     settings: Settings = ctx.obj["settings"]
     runId = ctx.obj["runId"]
-    cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report):
-        catalog = build_catalog(dataset, strict=settings.diagnostics_strict)
-        try:
-            requireApi(settings)
-        except typer.Exit:
-            logEvent(logger, logging.ERROR, runId, "config", "Missing API settings")
-            typer.echo("ERROR: missing API settings (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.INTERNAL_ERROR)
-        report.set_meta(items_limit=reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit)
-        try:
-            conn = openCacheDb(cacheDbPath)
-        except sqlite3.Error as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-            typer.echo("ERROR: failed to open cache DB (see logs)", err=True)
-            return _result_with(SystemErrorCode.CACHE_ERROR)
-
-        try:
-            base_url = f"https://{settings.host}:{settings.port}"
-            client = AnkeyApiClient(
-                baseUrl=base_url,
-                username=settings.api_username or "",
-                password=settings.api_password or "",
-                timeoutSeconds=timeoutSeconds or settings.timeout_seconds,
-                tlsSkipVerify=settings.tls_skip_verify,
-                caFile=settings.ca_file,
-                retries=retries or settings.retries,
-                retryBackoffSeconds=retryBackoffSeconds or settings.retry_backoff_seconds,
-                transport=apiTransport,
-            )
-            client.resetRetryAttempts()
-
-            engine = SqliteEngine(conn)
-            cache_specs = list_cache_specs()
-            ensure_cache_ready(engine, cache_specs)
-
-            cache_repo = SqliteCacheRepository(engine, cache_specs)
-            if dataset is not None and dataset not in cache_repo.list_datasets():
-                typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
-                return _result_with(SystemErrorCode.CACHE_ERROR)
-            reader = AnkeyTargetPagedReader(client)
-            adapters = list_cache_sync_adapters()
-            identity_keys, identity_id_fields = build_identity_index_plan()
-            identity_repo = SqliteIdentityRepository(engine)
-            pending_repo = SqlitePendingLinksRepository(engine)
-            cache_refresh = CacheRefreshUseCase(
-                reader,
-                cache_repo,
-                adapters,
-                identity_repo=identity_repo,
-                identity_keys=identity_keys,
-                identity_id_fields=identity_id_fields,
-                pending_repo=pending_repo,
-            )
-            service = CacheCommandService(cache_repo, cache_refresh)
-
-            return service.refresh(
-                page_size=pageSize or settings.page_size,
-                max_pages=maxPages or settings.max_pages,
-                logger=logger,
-                report=report,
-                run_id=runId,
-                include_deleted=includeDeleted if includeDeleted is not None else settings.include_deleted,
-                report_items_limit=reportItemsLimit or settings.report_items_limit,
-                api_base_url=base_url,
-                retries=retries or settings.retries,
-                retry_backoff_seconds=retryBackoffSeconds or settings.retry_backoff_seconds,
-                dataset=dataset,
-                catalog=catalog,
-            )
-        except ValueError as exc:
-            typer.echo(f"ERROR: {exc}", err=True)
-            return _result_with(SystemErrorCode.INTERNAL_ERROR)
-        except Exception as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Cache refresh failed: {exc}")
-            typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.INTERNAL_ERROR)
-        finally:
-            conn.close()
+        return cache_refresh_command.run(
+            ctx=ctx,
+            page_size=pageSize,
+            max_pages=maxPages,
+            timeout_seconds=timeoutSeconds,
+            retries=retries,
+            retry_backoff_seconds=retryBackoffSeconds,
+            api_transport=apiTransport,
+            include_deleted=includeDeleted,
+            report_items_limit=reportItemsLimit,
+            dataset=dataset,
+            logger=logger,
+            report=report,
+        )
 
     runWithReport(
         ctx=ctx,
@@ -432,49 +349,13 @@ def runCacheRefreshCommand(
     )
 
 def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> None:
-    settings: Settings = ctx.obj["settings"]
-    runId = ctx.obj["runId"]
-    cacheDbPath = getCacheDbPath(settings.cache_dir)
-
     def execute(logger, report):
-        try:
-            conn = openCacheDb(cacheDbPath)
-        except sqlite3.Error as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.CACHE_ERROR)
-
-        try:
-            engine = SqliteEngine(conn)
-            cache_specs = list_cache_specs()
-            ensure_cache_ready(engine, cache_specs)
-
-            cache_repo = SqliteCacheRepository(engine, cache_specs)
-            if dataset is not None and dataset not in cache_repo.list_datasets():
-                typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
-                return _result_with(SystemErrorCode.CACHE_ERROR)
-            service = CacheCommandService(cache_repo)
-            result = service.status(logger, report, runId, dataset=dataset)
-            exit_code = result.exit_code()
-            status = result.summary or {}
-            if exit_code != 0:
-                typer.echo("ERROR: cache status failed (see logs/report)", err=True)
-                return result
-            if "by_dataset" in status:
-                schema_version = status.get("schema_version")
-                total = status.get("total")
-                typer.echo(f"schema_version={schema_version} total={total}")
-                for name, info in status["by_dataset"].items():
-                    typer.echo(f"{name}: count={info.get('count')} meta={info.get('meta')}")
-            else:
-                typer.echo(
-                    "schema_version={schema_version} dataset={dataset} counts={counts} meta={meta}".format(
-                        **status
-                    )
-                )
-            return result
-        finally:
-            conn.close()
+        return cache_status_command.run(
+            ctx=ctx,
+            dataset=dataset,
+            logger=logger,
+            report=report,
+        )
 
     runWithReport(
         ctx=ctx,
@@ -486,37 +367,13 @@ def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> Non
     )
 
 def runCacheClearCommand(ctx: typer.Context, dataset: str | None = None) -> None:
-    settings: Settings = ctx.obj["settings"]
-    runId = ctx.obj["runId"]
-    cacheDbPath = getCacheDbPath(settings.cache_dir)
-
     def execute(logger, report):
-        try:
-            conn = openCacheDb(cacheDbPath)
-        except sqlite3.Error as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.CACHE_ERROR)
-
-        try:
-            engine = SqliteEngine(conn)
-            cache_specs = list_cache_specs()
-            ensure_cache_ready(engine, cache_specs)
-
-            cache_repo = SqliteCacheRepository(engine, cache_specs)
-            if dataset is not None and dataset not in cache_repo.list_datasets():
-                typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
-                return _result_with(SystemErrorCode.CACHE_ERROR)
-            cache_clear = CacheClearUseCase(cache_repo)
-            service = CacheCommandService(cache_repo, cache_clear=cache_clear)
-            result = service.clear(logger, report, runId, dataset=dataset)
-            exit_code = result.exit_code()
-            if exit_code != 0:
-                typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
-                return result
-            return result
-        finally:
-            conn.close()
+        return cache_clear_command.run(
+            ctx=ctx,
+            dataset=dataset,
+            logger=logger,
+            report=report,
+        )
 
     runWithReport(
         ctx=ctx,
@@ -537,51 +394,17 @@ def runImportPlanCommand(
     dataset: str | None,
     vaultFile: str | None,
 ) -> None:
-    settings: Settings = ctx.obj["settings"]
-    runId = ctx.obj["runId"]
-    cacheDbPath = getCacheDbPath(settings.cache_dir)
-
     def execute(logger):
-        dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
-        try:
-            conn = openCacheDb(cacheDbPath)
-        except sqlite3.Error as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.CACHE_ERROR)
-
-        include_deleted = includeDeleted if includeDeleted is not None else settings.include_deleted
-        report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-        csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-
-        try:
-            engine = SqliteEngine(conn)
-            cache_specs = list_cache_specs()
-            ensure_cache_ready(engine, cache_specs)
-
-            service = ImportPlanService()
-            return service.run(
-                conn=conn,
-                csv_path=csvPath or "",
-                csv_has_header=csv_has_header,
-                include_deleted=include_deleted,
-                settings=settings,
-                dataset=dataset_name,
-                logger=logger,
-                run_id=runId,
-                report_items_limit=report_items_limit,
-                report_dir=settings.report_dir,
-                vault_file=vaultFile,
-            )
-        except ValueError as exc:
-            typer.echo(f"ERROR: {exc}", err=True)
-            return _result_with(SystemErrorCode.INTERNAL_ERROR)
-        except Exception as exc:
-            logEvent(logger, logging.ERROR, runId, "plan", f"Import plan failed: {exc}")
-            typer.echo("ERROR: import plan failed (see logs)", err=True)
-            return _result_with(SystemErrorCode.INTERNAL_ERROR)
-        finally:
-            conn.close()
+        return import_plan_command.run(
+            ctx=ctx,
+            csv_path=csvPath,
+            csv_has_header=csvHasHeader,
+            include_deleted=includeDeleted,
+            report_items_limit=reportItemsLimit,
+            dataset=dataset,
+            vault_file=vaultFile,
+            logger=logger,
+        )
 
     runWithoutReport(
         ctx=ctx,
@@ -603,112 +426,20 @@ def runImportApplyCommand(
     secretsFrom: str | None,
     vaultFile: str | None,
 ) -> None:
-    settings: Settings = ctx.obj["settings"]
-    runId = ctx.obj["runId"]
-    cacheDbPath = getCacheDbPath(settings.cache_dir)
-
     def execute(logger, report):
-        if not planPath:
-            typer.echo("ERROR: --plan is required (apply no longer builds plan from CSV)", err=True)
-            return _result_with(SystemErrorCode.IO_ERROR)
-
-        report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-        resource_exists_retries = (
-            resourceExistsRetries if resourceExistsRetries is not None else settings.resource_exists_retries
-        )
-        stop_on_first_error = (
-            stopOnFirstError if stopOnFirstError is not None else settings.stop_on_first_error
-        )
-        max_actions = maxActions if maxActions is not None else settings.max_actions
-        dry_run = dryRun if dryRun is not None else settings.dry_run
-
-        try:
-            plan = readPlanFile(planPath or "")
-        except (OSError, ValueError) as exc:
-            logEvent(logger, logging.ERROR, runId, "plan", f"Import apply failed: {exc}")
-            typer.echo(f"ERROR: import apply failed: {exc}", err=True)
-            return _result_with(SystemErrorCode.IO_ERROR)
-
-        dataset_name = plan.meta.dataset
-        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
-        conn = None
-        identity_repo = None
-        pending_repo = None
-        identity_keys: dict[str, set[str]] = {}
-        identity_id_fields: dict[str, str] = {}
-        try:
-            conn = openCacheDb(cacheDbPath)
-            engine = SqliteEngine(conn)
-            cache_specs = list_cache_specs()
-            ensure_cache_ready(engine, cache_specs)
-            identity_repo = SqliteIdentityRepository(engine)
-            pending_repo = SqlitePendingLinksRepository(engine)
-            identity_keys, identity_id_fields = build_identity_index_plan()
-        except sqlite3.Error as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-        except Exception as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to init identity index: {exc}")
-
-        baseUrl = f"https://{settings.host}:{settings.port}"
-        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
-        report.set_context(
-            "apply",
-            {
-                "plan_path": planPath or plan.meta.plan_path,
-                "include_deleted": plan.meta.include_deleted,
-                "stop_on_first_error": stop_on_first_error,
-                "max_actions": max_actions,
-                "dry_run": dry_run,
-                "resource_exists_retries": resource_exists_retries,
-                "retries": settings.retries,
-                "retry_backoff_seconds": settings.retry_backoff_seconds,
-            },
-        )
-
-        report.summary.planned_create = plan.summary.planned_create if plan.summary else 0
-        report.summary.planned_update = plan.summary.planned_update if plan.summary else 0
-        report.summary.skipped = plan.summary.skipped if plan.summary else 0
-        report.summary.failed = plan.summary.failed_rows if plan.summary else 0
-
-        client = AnkeyApiClient(
-            baseUrl=f"https://{settings.host}:{settings.port}",
-            username=settings.api_username or "",
-            password=settings.api_password or "",
-            timeoutSeconds=settings.timeout_seconds,
-            tlsSkipVerify=settings.tls_skip_verify,
-            caFile=settings.ca_file,
-            retries=settings.retries,
-            retryBackoffSeconds=settings.retry_backoff_seconds,
-        )
-        client.resetRetryAttempts()
-        secrets_provider = build_secret_provider(secretsFrom, vaultFile)
-        executor = AnkeyRequestExecutor(client)
-        service = ImportApplyService(
-            executor,
-            secrets=secrets_provider,
-            spec_resolver=get_spec,
-            identity_repo=identity_repo,
-            identity_keys=identity_keys,
-            identity_id_fields=identity_id_fields,
-            pending_repo=pending_repo,
-        )
-        result = service.applyPlan(
-            plan=plan,
+        return import_apply_command.run(
+            ctx=ctx,
+            plan_path=planPath,
+            stop_on_first_error=stopOnFirstError,
+            max_actions=maxActions,
+            dry_run=dryRun,
+            report_items_limit=reportItemsLimit,
+            resource_exists_retries=resourceExistsRetries,
+            secrets_from=secretsFrom,
+            vault_file=vaultFile,
             logger=logger,
             report=report,
-            run_id=runId,
-            stop_on_first_error=stop_on_first_error,
-            max_actions=max_actions,
-            dry_run=dry_run,
-            report_items_limit=report_items_limit,
-            resource_exists_retries=resource_exists_retries,
-            catalog=catalog,
         )
-        if hasattr(client, "getRetryAttempts"):
-            report.set_context("apply_runtime", {"retries_used": client.getRetryAttempts()})
-        if conn is not None:
-            conn.close()
-        return result
 
     runWithReport(
         ctx=ctx,
@@ -719,33 +450,13 @@ def runImportApplyCommand(
         runner=execute,
     )
 def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
-    settings: Settings = ctx.obj["settings"]
-    runId = ctx.obj["runId"]
-
     def execute(logger, report):
-        baseUrl = f"https://{settings.host}:{settings.port}"
-        client = AnkeyApiClient(
-            baseUrl=baseUrl,
-            username=settings.api_username or "",
-            password=settings.api_password or "",
-            timeoutSeconds=settings.timeout_seconds,
-            tlsSkipVerify=settings.tls_skip_verify,
-            caFile=settings.ca_file,
-            retries=settings.retries,
-            retryBackoffSeconds=settings.retry_backoff_seconds,
-            transport=apiTransport,
+        return check_api_command.run(
+            ctx=ctx,
+            api_transport=apiTransport,
+            logger=logger,
+            report=report,
         )
-        try:
-            start = time.monotonic()
-            client.getJson("/ankey/managed/user", {"page": 1, "rows": 1, "_queryFilter": "true"})
-            latency_ms = int((time.monotonic() - start) * 1000)
-            logEvent(logger, logging.INFO, runId, "api", f"api ok base_url={baseUrl} latency_ms={latency_ms}")
-            report.set_context("apply_target", {"target_type": "http"})
-            return _result_ok()
-        except ApiError as exc:
-            logEvent(logger, logging.ERROR, runId, "api", f"API check failed: {exc}")
-            typer.echo("ERROR: API check failed (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.INFRA_UNAVAILABLE)
 
     runWithReport(
         ctx=ctx,
@@ -757,63 +468,14 @@ def runCheckApiCommand(ctx: typer.Context, apiTransport=None) -> None:
     )
 
 def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bool | None) -> None:
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-    dataset_name = settings.dataset_name
-
     def execute(logger, report):
-        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
-        dataset_spec = get_spec(dataset_name)
-        try:
-            conn = openCacheDb(getCacheDbPath(settings.cache_dir))
-        except sqlite3.Error as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.CACHE_ERROR)
-        try:
-            engine = SqliteEngine(conn)
-            cache_specs = dataset_spec.build_cache_specs()
-            ensure_cache_ready(engine, cache_specs)
-
-            deps = dataset_spec.build_validation_deps(conn, settings)
-            enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps, catalog)
-            transformer = transform_bundle.build_pipeline(catalog)
-            validator_bundle = dataset_spec.build_validator(deps, catalog)
-            validator = validator_bundle.validator
-            report_items_limit = settings.report_items_limit
-            report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
-            row_source = dataset_spec.build_record_source(
-                csv_path=csvPath,
-                csv_has_header=csv_has_header,
-            )
-
-            enrich_usecase = EnrichUseCase(
-                report_items_limit=report_items_limit,
-                include_enriched_items=False,
-            )
-            enriched_ok = enrich_usecase.iter_enriched_ok(
-                row_source=row_source,
-                transformer=transformer,
-                catalog=catalog,
-            )
-            validate_usecase = ValidateUseCase(
-                report_items_limit=report_items_limit,
-                include_valid_items=False,
-            )
-            return validate_usecase.run(
-                enriched_source=enriched_ok,
-                validator=validator,
-                dataset=dataset_name,
-                logger=logger,
-                run_id=runId,
-                report=report,
-                log_failure=logValidationFailure,
-                catalog=catalog,
-            )
-        finally:
-            conn.close()
+        return validate_command.run(
+            ctx=ctx,
+            csv_path=csvPath,
+            csv_has_header=csvHasHeader,
+            logger=logger,
+            report=report,
+        )
 
     runWithReport(
         ctx=ctx,
@@ -832,53 +494,17 @@ def runMappingCommand(
     reportItemsLimit: int | None,
     includeMappedItems: bool | None,
 ) -> None:
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-    dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
-    report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-    include_mapped_items = includeMappedItems if includeMappedItems is not None else True
-
     def execute(logger, report):
-        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
-        deps = ValidationDependencies()
-        dataset_spec = get_spec(dataset_name)
-        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
-
-        try:
-            conn = openCacheDb(getCacheDbPath(settings.cache_dir))
-        except sqlite3.Error as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.CACHE_ERROR)
-        try:
-            engine = SqliteEngine(conn)
-            cache_specs = dataset_spec.build_cache_specs()
-            ensure_cache_ready(engine, cache_specs)
-
-            enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps, catalog)
-            transformer = transform_bundle.build_pipeline(catalog)
-
-            row_source = dataset_spec.build_record_source(
-                csv_path=csvPath,
-                csv_has_header=csv_has_header,
-            )
-            usecase = MappingUseCase(
-                report_items_limit=report_items_limit,
-                include_mapped_items=include_mapped_items,
-            )
-            return usecase.run(
-                row_source=row_source,
-                transformer=transformer,
-                dataset=dataset_name,
-                logger=logger,
-                run_id=runId,
-                report=report,
-                catalog=catalog,
-            )
-        finally:
-            conn.close()
+        return mapping_command.run(
+            ctx=ctx,
+            csv_path=csvPath,
+            csv_has_header=csvHasHeader,
+            dataset=dataset,
+            report_items_limit=reportItemsLimit,
+            include_mapped_items=includeMappedItems,
+            logger=logger,
+            report=report,
+        )
 
     runWithReport(
         ctx=ctx,
@@ -897,53 +523,17 @@ def runNormalizeCommand(
     reportItemsLimit: int | None,
     includeNormalizedItems: bool | None,
 ) -> None:
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-    dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
-    report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-    include_normalized_items = includeNormalizedItems if includeNormalizedItems is not None else True
-
     def execute(logger, report):
-        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
-        deps = ValidationDependencies()
-        dataset_spec = get_spec(dataset_name)
-        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
-
-        try:
-            conn = openCacheDb(getCacheDbPath(settings.cache_dir))
-        except sqlite3.Error as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.CACHE_ERROR)
-        try:
-            engine = SqliteEngine(conn)
-            cache_specs = dataset_spec.build_cache_specs()
-            ensure_cache_ready(engine, cache_specs)
-
-            enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps, catalog)
-            transformer = transform_bundle.build_pipeline(catalog)
-
-            row_source = dataset_spec.build_record_source(
-                csv_path=csvPath,
-                csv_has_header=csv_has_header,
-            )
-            usecase = NormalizeUseCase(
-                report_items_limit=report_items_limit,
-                include_normalized_items=include_normalized_items,
-            )
-            return usecase.run(
-                row_source=row_source,
-                transformer=transformer,
-                dataset=dataset_name,
-                logger=logger,
-                run_id=runId,
-                report=report,
-                catalog=catalog,
-            )
-        finally:
-            conn.close()
+        return normalize_command.run(
+            ctx=ctx,
+            csv_path=csvPath,
+            csv_has_header=csvHasHeader,
+            dataset=dataset,
+            report_items_limit=reportItemsLimit,
+            include_normalized_items=includeNormalizedItems,
+            logger=logger,
+            report=report,
+        )
 
     runWithReport(
         ctx=ctx,
@@ -964,54 +554,18 @@ def runEnrichCommand(
     includeEnrichedItems: bool | None,
     vaultFile: str | None,
 ) -> None:
-    runId = ctx.obj["runId"]
-    settings: Settings = ctx.obj["settings"]
-    csv_has_header = csvHasHeader if csvHasHeader is not None else settings.csv_has_header
-    dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
-    report_items_limit = reportItemsLimit if reportItemsLimit is not None else settings.report_items_limit
-    include_enriched_items = includeEnrichedItems if includeEnrichedItems is not None else True
-
     def execute(logger, report):
-        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
-        deps = ValidationDependencies()
-        dataset_spec = get_spec(dataset_name)
-        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
-
-        try:
-            conn = openCacheDb(getCacheDbPath(settings.cache_dir))
-        except sqlite3.Error as exc:
-            logEvent(logger, logging.ERROR, runId, "cache", f"Failed to open cache DB: {exc}")
-            typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-            return _result_with(SystemErrorCode.CACHE_ERROR)
-        try:
-            engine = SqliteEngine(conn)
-            cache_specs = dataset_spec.build_cache_specs()
-            ensure_cache_ready(engine, cache_specs)
-
-            secret_store = FileVaultSecretStore(vaultFile) if vaultFile else None
-            enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
-            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps, catalog)
-            transformer = transform_bundle.build_pipeline(catalog)
-
-            row_source = dataset_spec.build_record_source(
-                csv_path=csvPath,
-                csv_has_header=csv_has_header,
-            )
-            usecase = EnrichUseCase(
-                report_items_limit=report_items_limit,
-                include_enriched_items=include_enriched_items,
-            )
-            return usecase.run(
-                row_source=row_source,
-                transformer=transformer,
-                dataset=dataset_name,
-                logger=logger,
-                run_id=runId,
-                report=report,
-                catalog=catalog,
-            )
-        finally:
-            conn.close()
+        return enrich_command.run(
+            ctx=ctx,
+            csv_path=csvPath,
+            csv_has_header=csvHasHeader,
+            dataset=dataset,
+            report_items_limit=reportItemsLimit,
+            include_enriched_items=includeEnrichedItems,
+            vault_file=vaultFile,
+            logger=logger,
+            report=report,
+        )
 
     runWithReport(
         ctx=ctx,
@@ -1022,28 +576,6 @@ def runEnrichCommand(
         runner=execute,
     )
 
-
-def build_secret_provider(source: str | None, vault_file: str | None) -> SecretProviderProtocol:
-    """
-    Назначение:
-        Фабрика провайдера секретов для apply.
-    Контракт:
-        - source None/\"none\" -> NullSecretProvider
-        - source \"prompt\" -> PromptSecretProvider
-        - source \"vault\" -> CompositeSecretProvider(FileVault -> Prompt)
-        - любое другое значение: NullSecretProvider (по умолчанию)
-    """
-    if not source or source == "none":
-        return NullSecretProvider()
-    if source == "prompt":
-        return PromptSecretProvider()
-    if source == "vault":
-        if not vault_file:
-            return PromptSecretProvider()
-        from connector.infra.secrets import FileVaultSecretProvider
-
-        return CompositeSecretProvider([FileVaultSecretProvider(vault_file), PromptSecretProvider()])
-    return NullSecretProvider()
 
 @app.callback()
 def main(

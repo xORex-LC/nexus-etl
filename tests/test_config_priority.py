@@ -1,7 +1,7 @@
 import httpx
 from typer.testing import CliRunner
 from connector.main import app
-import connector.main as cli_module
+import connector.delivery.commands.check_api as check_api_command
 from connector.infra.http.ankey_client import AnkeyApiClient
 
 runner = CliRunner()
@@ -31,7 +31,8 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
         kwargs["transport"] = transport
         return AnkeyApiClient(*args, **kwargs)
 
-    monkeypatch.setattr(cli_module, "AnkeyApiClient", factory)
+    # main.py no longer exposes AnkeyApiClient; patch delivery command directly
+    monkeypatch.setattr(check_api_command, "AnkeyApiClient", factory)
     result = runner.invoke(
         app,
         ["--config", str(cfg), "--host", "3.3.3.3", "--port", "3333", "--api-username", "cli_user", "--api-password", "cli_pass", "check-api"],
