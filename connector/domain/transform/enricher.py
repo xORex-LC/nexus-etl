@@ -172,17 +172,16 @@ class EnrichContext:
     as_of: Any | None = None
 
 
-class EnrichOperationError(Exception):
+@dataclass(frozen=True)
+class _EnrichOpError:
     """
     Назначение:
-        Управляемая ошибка внутри операции enrich с кодом.
+        Внутреннее представление ошибки операции enrich без исключений.
     """
 
-    def __init__(self, code: str, message: str, field: str | None = None) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.field = field
+    code: str
+    message: str
+    field: str | None = None
 
 
 class CandidateProvider(Protocol, Generic[T, D]):
@@ -460,27 +459,26 @@ class Enricher(Generic[T, D]):
                 message="required key is missing",
             )
 
-        try:
-            candidates = self._collect_candidates(ctx, result, op, key_values)
-        except EnrichOperationError as exc:
+        candidates, op_error = self._collect_candidates(ctx, result, op, key_values)
+        if op_error is not None:
             return self._report_by_policy(
                 result=result,
                 op=op,
                 outcome=strictness.on_provider_error,
-                code=exc.code,
-                message=exc.message,
-                field=exc.field,
+                code=op_error.code,
+                message=op_error.message,
+                field=op_error.field,
             )
-        except Exception as exc:  # noqa: BLE001
-            return self._report_by_policy(
-                result=result,
-                op=op,
-                outcome=strictness.on_provider_error,
-                code="ENRICH_PROVIDER_ERROR",
-                message=str(exc),
-            )
-
         if not candidates:
+            if op.op_type == EnrichOperationType.COMPUTE and op.missing_error_code:
+                return self._report_by_policy(
+                    result=result,
+                    op=op,
+                    outcome=strictness.on_provider_error,
+                    code=op.missing_error_code,
+                    message="computed value is missing",
+                    field=op.error_field,
+                )
             return self._report_by_policy(
                 result=result,
                 op=op,
@@ -525,16 +523,23 @@ class Enricher(Generic[T, D]):
         result: TransformResult[T],
         op: EnrichmentOperation[T, D],
         key_values: dict[str, Any],
-    ) -> list[CandidateValue]:
+    ) -> tuple[list[CandidateValue], _EnrichOpError | None]:
         if op.op_type == EnrichOperationType.COMPUTE:
             if op.compute is None:
-                return []
-            values = op.compute(result, self.deps)
+                return [], None
+            try:
+                values = op.compute(result, self.deps)
+            except Exception as exc:  # noqa: BLE001
+                return [], _EnrichOpError(
+                    code="ENRICH_PROVIDER_ERROR",
+                    message=str(exc),
+                    field=op.error_field,
+                )
             if not values:
-                return []
+                return [], None
             target = op.targets[0]
             if target not in values:
-                return []
+                return [], None
             return [
                 CandidateValue(
                     field=target,
@@ -542,7 +547,7 @@ class Enricher(Generic[T, D]):
                     source="computed",
                     priority=self._priority_for("computed"),
                 )
-            ]
+            ], None
         if op.op_type == EnrichOperationType.GENERATE:
             return self._generate_candidates(result, op)
 
@@ -553,7 +558,7 @@ class Enricher(Generic[T, D]):
             if fetched:
                 for candidate in fetched:
                     if candidate.field != target:
-                        raise EnrichOperationError(
+                        return [], _EnrichOpError(
                             code="ENRICH_TARGET_MISMATCH",
                             message="candidate field does not match operation target",
                             field=candidate.field,
@@ -568,27 +573,27 @@ class Enricher(Generic[T, D]):
                             evidence=candidate.evidence,
                         )
                     candidates.append(candidate)
-        return candidates
+        return candidates, None
 
     def _generate_candidates(
         self,
         result: TransformResult[T],
         op: EnrichmentOperation[T, D],
-    ) -> list[CandidateValue]:
+    ) -> tuple[list[CandidateValue], _EnrichOpError | None]:
         if op.generator is None:
-            return []
+            return [], None
         attempts = 0
         max_attempts = max(1, op.max_attempts)
         while attempts < max_attempts:
             candidate = op.generator(result, self.deps)
             if candidate is None or candidate == "":
                 if op.missing_error_code:
-                    raise EnrichOperationError(
+                    return [], _EnrichOpError(
                         code=op.missing_error_code,
                         message="required value is missing",
                         field=op.error_field,
                     )
-                return []
+                return [], None
             if op.postprocess is not None:
                 candidate = op.postprocess(candidate)
             if op.exists is not None:
@@ -602,7 +607,7 @@ class Enricher(Generic[T, D]):
                                 source="generated",
                                 priority=self._priority_for("generated"),
                             )
-                        ]
+                        ], None
                     candidate = None
                     attempts += 1
                     continue
@@ -613,14 +618,14 @@ class Enricher(Generic[T, D]):
                     source="generated",
                     priority=self._priority_for("generated"),
                 )
-            ]
+            ], None
         if op.conflict_error_code:
-            raise EnrichOperationError(
+            return [], _EnrichOpError(
                 code=op.conflict_error_code,
                 message="unable to generate unique value",
                 field=op.error_field,
             )
-        return []
+        return [], None
 
     def _apply_candidates(
         self,
@@ -835,5 +840,4 @@ __all__ = [
     "EnrichEvent",
     "OperationReport",
     "KeyRegistry",
-    "EnrichOperationError",
 ]

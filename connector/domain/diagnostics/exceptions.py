@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.models import DiagnosticStage, RowRef
-
 
 class UnknownDiagnosticCodeError(ValueError):
     """
@@ -24,21 +22,6 @@ class DiagnosticContextNotConfiguredError(RuntimeError):
 
     def __init__(self) -> None:
         super().__init__("DiagnosticContext is not configured. Call diagnostics.configure(...) first.")
-
-
-@dataclass
-class OperationError(Exception):
-    """
-    Назначение:
-        Управляемое исключение, конвертируемое в DiagnosticItem на boundary.
-    """
-
-    stage: DiagnosticStage
-    code: str
-    message: str
-    field: str | None = None
-    record_ref: RowRef | None = None
-    details: dict | None = None
 
 
 @dataclass

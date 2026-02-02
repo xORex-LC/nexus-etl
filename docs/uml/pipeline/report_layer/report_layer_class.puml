@@ -1,0 +1,91 @@
+@startuml
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+class ReportCollector {
+  +meta: ReportMeta
+  +summary: ReportSummary
+  +items: List<ReportItem>
+  +context: Map<String, Any>
+  +status: String [0..1]
+  +set_meta(dataset, items_limit, app_version, git_rev)
+  +set_context(name, value)
+  +add_op(name, ok, failed, count)
+  +add_item(status, row_ref, payload, errors, warnings, meta, store)
+  +finish(finished_at, duration_ms)
+  +build(): ReportEnvelope
+}
+
+class ReportMeta {
+  +run_id: String
+  +dataset: String [0..1]
+  +command: String
+  +started_at: String
+  +finished_at: String [0..1]
+  +duration_ms: Int [0..1]
+  +items_limit: Int [0..1]
+  +items_truncated: Bool
+  +app_version: String [0..1]
+  +git_rev: String [0..1]
+}
+
+class ReportSummary {
+  +rows_total: Int
+  +rows_passed: Int
+  +rows_blocked: Int
+  +rows_with_warnings: Int
+  +errors_total: Int
+  +warnings_total: Int
+  +by_stage: Map<String, Map<String, Int>>
+  +ops: Map<String, Map<String, Int>>
+}
+
+class ReportItem {
+  +status: String
+  +row_ref: RowRef [0..1]
+  +payload: Map<String, Any> [0..1]
+  +diagnostics: List<ReportDiagnostic>
+  +meta: Map<String, Any>
+}
+
+class ReportDiagnostic {
+  +severity: String
+  +stage: DiagnosticStage
+  +code: String
+  +field: String [0..1]
+  +message: String
+  +rule: String [0..1]
+}
+
+class ReportEnvelope {
+  +status: String
+  +meta: ReportMeta
+  +summary: ReportSummary
+  +items: List<ReportItem>
+  +context: Map<String, Any>
+}
+
+class ReportWriter <<module>> {
+  +createEmptyReport(runId, command, configSources): ReportCollector
+  +finalizeReport(report, durationMs, logFile, cacheDir, reportDir)
+  +writeReportJson(report, reportDir, fileBaseName): String
+}
+
+ReportCollector --> ReportMeta
+ReportCollector --> ReportSummary
+ReportCollector --> ReportItem
+ReportItem --> ReportDiagnostic
+ReportItem --> RowRef
+ReportEnvelope --> ReportMeta
+ReportEnvelope --> ReportSummary
+ReportEnvelope --> ReportItem
+ReportCollector --> ReportEnvelope : build()
+ReportWriter --> ReportCollector
+
+@enduml

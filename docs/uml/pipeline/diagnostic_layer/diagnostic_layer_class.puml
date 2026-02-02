@@ -100,14 +100,6 @@ class DiagnosticBoundary {
   +diagnostic_boundary(stage, catalog, sink, record_ref)
 }
 
-class OperationError {
-  +stage: DiagnosticStage
-  +code: String
-  +message: String
-  +field: String [0..1]
-  +details: Map<String, Any> [0..1]
-}
-
 class "translator.py" as TranslatorFns <<module>> {
   +translate_http(stage, status, body, record_ref): DiagnosticItem
   +translate_execution_result(stage, result, record_ref): DiagnosticItem
@@ -145,10 +137,8 @@ DiagnosticPolicies --> SystemErrorCode
 DiagnosticContext --> ErrorCatalog
 DiagnosticBoundary --> TranslatorFns
 DiagnosticBoundary --> ErrorCatalog
-DiagnosticBoundary --> OperationError
 TransformResult --> DiagnosticItem
 DiagnosticItem --> RowRef
-OperationError ..> DiagnosticStage
 RetryPolicy ..> SystemErrorCode
 StopPolicy ..> SystemErrorCode
 ExitCodePolicy ..> SystemErrorCode

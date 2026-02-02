@@ -1,0 +1,29 @@
+@startuml
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam SequenceArrowColor #4b5563
+skinparam SequenceLifeLineBorderColor #9ca3af
+
+actor UseCase as U
+participant "ReportWriter\n(createEmptyReport)" as W
+participant "ReportCollector" as C
+participant "ReportEnvelope" as E
+participant "FileSystem" as FS
+
+U -> W : createEmptyReport(run_id, command, configSources)
+W --> C : ReportCollector
+U -> C : set_meta(dataset, items_limit, app_version, git_rev)
+U -> C : add_item(status, row_ref, payload, errors, warnings, meta)
+U -> C : add_op(name, ok, failed, count)
+U -> W : finalizeReport(report, durationMs, logFile, cacheDir, reportDir)
+W -> C : finish(duration_ms)
+U -> C : build()
+C --> U : ReportEnvelope
+U -> W : writeReportJson(report, reportDir, fileBaseName)
+W -> C : build() + asdict_report()
+W -> FS : write report JSON
+FS --> W : path
+W --> U : reportPath
+
+@enduml

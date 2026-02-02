@@ -20,7 +20,7 @@ component "ErrorCatalog" as catalog
 component "DiagnosticContext" as ctx
 component "Translator\n(functions)" as translator
 component "DiagnosticPolicies" as policy
-component "DiagnosticBoundary" as boundary
+component "DiagnosticBoundary" as boundary\
 
 boot --> core
 boot --> src
