@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from connector.common.sanitize import maskSecretsInObject, truncateText
-from connector.domain.diagnostics.system_codes import SystemErrorCode
-from connector.domain.diagnostics.http_mapping import map_http_status
+from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.diagnostics.policies import map_http_status
 from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol, RequestSpec
 from connector.infra.http.ankey_client import ApiError, AnkeyApiClient
 

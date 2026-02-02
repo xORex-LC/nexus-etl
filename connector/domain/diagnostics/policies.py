@@ -1,8 +1,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+
+class SystemErrorCode(str, Enum):
+    """
+    Назначение:
+        Небольшая таксономия системных кодов для политик (retry/stop/exit).
+    """
+
+    OK = "OK"
+    UNKNOWN_CODE = "UNKNOWN_CODE"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+    DATA_INVALID = "DATA_INVALID"
+    AUTH_UNAUTHORIZED = "AUTH_UNAUTHORIZED"
+    AUTH_FORBIDDEN = "AUTH_FORBIDDEN"
+    CONFLICT = "CONFLICT"
+    INFRA_TIMEOUT = "INFRA_TIMEOUT"
+    INFRA_UNAVAILABLE = "INFRA_UNAVAILABLE"
+    IO_ERROR = "IO_ERROR"
+    CACHE_ERROR = "CACHE_ERROR"
 
 
 @dataclass(frozen=True)
@@ -108,6 +126,27 @@ def map_system_code(system_code: SystemErrorCode | None) -> str:
     if system_code is None:
         return "SINK_HTTP_ERROR"
     return SYSTEM_TO_DIAG.get(system_code, "SINK_HTTP_ERROR")
+
+
+def map_http_status(status_code: int | None) -> SystemErrorCode:
+    """
+    Назначение:
+        Преобразовать HTTP-статус в SystemErrorCode.
+    """
+    explicit = {
+        401: SystemErrorCode.AUTH_UNAUTHORIZED,
+        403: SystemErrorCode.AUTH_FORBIDDEN,
+        409: SystemErrorCode.CONFLICT,
+    }
+    if status_code in explicit:
+        return explicit[status_code]
+    if status_code is None:
+        return SystemErrorCode.INTERNAL_ERROR
+    if 400 <= status_code < 500:
+        return SystemErrorCode.DATA_INVALID
+    if status_code >= 500:
+        return SystemErrorCode.INFRA_UNAVAILABLE
+    return SystemErrorCode.INTERNAL_ERROR
 
 
 def resolve_primary_code(

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from connector.domain.models import DiagnosticSeverity
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 
 
@@ -147,3 +147,27 @@ class ErrorCatalog:
         if entry and entry.default_message:
             return entry.default_message
         return diag_code
+
+
+def build_catalog(dataset: str | None, *, strict: bool) -> ErrorCatalog:
+    """
+    Назначение:
+        Собрать итоговый каталог диагностик (core + dataset).
+
+    Контракт:
+        - dataset=None -> только core каталог.
+        - dataset указан -> core + dataset catalog.
+        - strict режим применяется единообразно.
+
+    Ошибки/исключения:
+        - ValueError при конфликте кодов (on_conflict=error).
+    """
+    from connector.domain.diagnostics.core_catalog import build_core_catalog
+    from connector.datasets.registry import get_spec
+
+    core = build_core_catalog(strict=strict)
+    if dataset is None:
+        return core
+    spec = get_spec(dataset)
+    dataset_catalog = spec.get_diagnostic_catalog(strict=strict)
+    return core.merge(dataset_catalog, on_conflict="error")

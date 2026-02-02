@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.policies import map_system_code
-from connector.domain.diagnostics.http_mapping import map_http_status
+from connector.domain.diagnostics.policies import map_http_status
 from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.diagnostics.factory import DiagnosticFactory
 from connector.domain.ports.execution import ExecutionResult

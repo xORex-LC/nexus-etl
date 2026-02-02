@@ -3,7 +3,7 @@ from __future__ import annotations
 from connector.domain.diagnostics import DiagnosticFactory, build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog, CatalogEntry
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.context import get_factory
 from connector.domain.diagnostics.exceptions import DiagnosticContextNotConfiguredError
 from connector.domain.diagnostics.translator import Translator
@@ -72,7 +72,7 @@ def test_transform_result_add_error_attaches_row_ref() -> None:
 def test_get_factory_requires_configure() -> None:
     from connector.domain.diagnostics import context as diag_context
 
-    token = diag_context._factory_var.set(None)
+    token = diag_context._context_var.set(None)
     try:
         try:
             _ = get_factory()
@@ -80,7 +80,7 @@ def test_get_factory_requires_configure() -> None:
             return
         assert False, "Expected DiagnosticContextNotConfiguredError when diagnostics not configured"
     finally:
-        diag_context._factory_var.reset(token)
+        diag_context._context_var.reset(token)
 
 
 def test_build_catalog_merges_dataset_codes_in_strict_mode() -> None:

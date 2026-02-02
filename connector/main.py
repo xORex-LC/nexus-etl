@@ -23,7 +23,7 @@ from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
 from connector.domain.diagnostics import DiagnosticFactory, build_catalog, configure
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.import_plan_service import ImportPlanService

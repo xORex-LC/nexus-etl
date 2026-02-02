@@ -8,7 +8,7 @@ from connector.domain.transform.extractor import Extractor
 from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.models import RowRef
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 
 
 class MappingUseCase:

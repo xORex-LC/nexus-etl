@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.domain.diagnostics.catalog import CatalogEntry, ErrorCatalog
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import DiagnosticSeverity
 
 

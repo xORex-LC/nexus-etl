@@ -5,12 +5,15 @@ from typing import Iterable
 
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage
-from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning, get_factory
+from connector.domain.diagnostics.context import (
+    error as diag_error,
+    warning as diag_warning,
+    get_translator,
+)
 from connector.domain.diagnostics.boundary import diagnostic_boundary
-from connector.domain.diagnostics.translator import Translator
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.matcher import Matcher
 from connector.domain.transform.result import TransformResult
 
@@ -85,7 +88,7 @@ class MatchUseCase:
             matched: TransformResult[MatchedRow] | None = None
             with diagnostic_boundary(
                 stage=DiagnosticStage.MATCH,
-                translator=Translator(get_factory().catalog),
+                translator=get_translator(),
                 sink=boundary_errors,
                 record_ref=validated.row_ref,
             ):

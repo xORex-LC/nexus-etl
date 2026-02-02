@@ -10,7 +10,7 @@ from connector.domain.diagnostics.policies import (
     default_stop_policy,
     resolve_primary_code,
 )
-from connector.domain.diagnostics.system_codes import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import DiagnosticItem
 
 
@@ -28,18 +28,10 @@ class CommandResult:
     def add_code(self, code: SystemErrorCode) -> None:
         self.system_codes.add(code)
 
-    def add_codes(self, codes: Iterable[SystemErrorCode]) -> None:
-        for code in codes:
-            self.system_codes.add(code)
-
     def add_diagnostics(self, diagnostics: Iterable[DiagnosticItem], catalog) -> None:
         for item in diagnostics:
             self.diagnostics.append(item)
             self.system_codes.add(catalog.classify(item.code))
-
-    def merge(self, other: "CommandResult") -> None:
-        self.system_codes.update(other.system_codes)
-        self.diagnostics.extend(other.diagnostics)
 
     def primary_code(self, stop_policy: StopPolicy | None = None) -> SystemErrorCode:
         return resolve_primary_code(self.system_codes, stop_policy or default_stop_policy())

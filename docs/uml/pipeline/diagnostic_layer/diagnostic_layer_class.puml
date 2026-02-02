@@ -1,5 +1,5 @@
 @startuml
-title Diagnostic Layer - Class Diagram (Current)
+title Diagnostic Layer - Class Diagram (Simplified)
 set namespaceSeparator none
 skinparam backgroundColor white
 skinparam linetype ortho
@@ -94,14 +94,18 @@ class DiagnosticFactory {
 }
 
 class DiagnosticContext {
-  +configure(factory: DiagnosticFactory)
-  +get_factory(): DiagnosticFactory
-  +error(...): DiagnosticItem
-  +warning(...): DiagnosticItem
+  +catalog: ErrorCatalog
+  +factory: DiagnosticFactory
+  +translator: Translator
+  +retry_policy: RetryPolicy
+  +stop_policy: StopPolicy
+  +exit_policy: ExitCodePolicy
+  +from_factory(factory)
+  +from_catalog(catalog)
 }
 
 class DiagnosticBoundary {
-  +diagnostic_boundary(stage, translator, sink)
+  +diagnostic_boundary(stage, translator, sink, record_ref)
 }
 
 class OperationError {
@@ -113,19 +117,15 @@ class OperationError {
 }
 
 class Translator {
-  +from_http(stage, status, body): DiagnosticItem
-  +from_execution_result(stage, result): DiagnosticItem
-  +from_exception(stage, exc): DiagnosticItem
+  +from_http(stage, status, body, record_ref): DiagnosticItem
+  +from_execution_result(stage, result, record_ref): DiagnosticItem
+  +from_exception(stage, exc, record_ref): DiagnosticItem
   +system_code_of(diag: DiagnosticItem): SystemErrorCode
-}
-
-class HttpMapping {
-  +map_http_status(status: int): SystemErrorCode
 }
 
 class RetryPolicy {
   +should_retry(sys: SystemErrorCode, attempt: int): bool
-  +max_attempts(): int
+  +max_attempts: int
 }
 
 class StopPolicy {
@@ -137,21 +137,23 @@ class ExitCodePolicy {
   +exit_code(sys: SystemErrorCode): int
 }
 
-class PolicyTable {
+class DiagnosticPolicies {
+  +map_http_status(status: int): SystemErrorCode
+  +map_system_code(system_code): String
+  +resolve_primary_code(codes, stop_policy): SystemErrorCode
   +default_retry_policy()
   +default_stop_policy()
   +default_exit_policy()
-  +map_system_code(system_code)
 }
 
 ErrorCatalog "1" o-- "*" CatalogEntry
 DiagnosticFactory --> ErrorCatalog
 DiagnosticFactory ..> DiagnosticItem
 Translator --> DiagnosticFactory
-Translator --> PolicyTable
-PolicyTable --> SystemErrorCode
-HttpMapping --> SystemErrorCode
+Translator --> DiagnosticPolicies
+DiagnosticPolicies --> SystemErrorCode
 DiagnosticContext --> DiagnosticFactory
+DiagnosticContext --> Translator
 DiagnosticBoundary --> Translator
 DiagnosticBoundary --> OperationError
 TransformResult --> DiagnosticItem
