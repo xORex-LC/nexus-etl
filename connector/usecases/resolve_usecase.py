@@ -6,7 +6,8 @@ from typing import Iterable
 
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, MatchStatus, RowRef
-from connector.domain.diagnostics.context import error as diag_error, get_catalog
+from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.resolver import Resolver
@@ -35,12 +36,13 @@ class ResolveUseCase:
         resolver: Resolver,
         *,
         dataset: str | None = None,
+        catalog: ErrorCatalog,
     ):
         """
         Назначение:
             Итератор разрешённых строк без ошибок (для plan).
         """
-        for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset):
+        for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset, catalog=catalog):
             if resolved.errors:
                 continue
             yield resolved
@@ -51,10 +53,11 @@ class ResolveUseCase:
         resolver: Resolver,
         dataset: str,
         report,
+        catalog: ErrorCatalog,
     ) -> CommandResult:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
-        _report_expired(report, resolver.drain_expired(), resolver.settings)
-        for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset):
+        _report_expired(report, resolver.drain_expired(), resolver.settings, catalog)
+        for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset, catalog=catalog):
             row = resolved.row
             if row is None:
                 status = _resolve_status(resolved)
@@ -83,7 +86,7 @@ class ResolveUseCase:
                 meta={"op": row.op if row else None},
                 store=status == "FAILED" or self.include_resolved_items,
             )
-            _report_expired(report, resolver.drain_expired(), resolver.settings)
+            _report_expired(report, resolver.drain_expired(), resolver.settings, catalog)
         _purge_pending(resolver)
         result = CommandResult()
         if report.summary.errors_total > 0:
@@ -98,6 +101,7 @@ class ResolveUseCase:
         resolver: Resolver,
         *,
         dataset: str | None = None,
+        catalog: ErrorCatalog,
     ):
         matched_rows: list[TransformResult[MatchedRow]] = []
         for matched in matched_source:
@@ -116,7 +120,7 @@ class ResolveUseCase:
             warnings: list = []
             with diagnostic_boundary(
                 stage=DiagnosticStage.RESOLVE,
-                catalog=get_catalog(),
+                catalog=catalog,
                 sink=boundary_errors,
                 record_ref=matched.row_ref,
             ):
@@ -187,12 +191,13 @@ def _resolve_status(item: TransformResult) -> str | None:
     return None
 
 
-def _report_expired(report, expired, settings) -> None:
+def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
     mode = getattr(settings, "pending_on_expire", "error") if settings is not None else "error"
     if mode == "skip":
         return
     for item in expired:
         error = diag_error(
+            catalog=catalog,
             stage=DiagnosticStage.RESOLVE,
             code="RESOLVE_EXPIRED",
             field=item.field,

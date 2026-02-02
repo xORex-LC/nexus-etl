@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem, ValidationRowResult
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validated_row import ValidationRow
 from connector.domain.transform.result import TransformResult
@@ -12,7 +13,7 @@ from connector.domain.transform.result import TransformResult
 T = TypeVar("T")
 
 
-ValidationRule = Callable[[T, ValidationRowResult, ValidationDependencies], None]
+ValidationRule = Callable[[T, ValidationRowResult, ValidationDependencies, Callable[..., DiagnosticItem]], None]
 
 
 class ValidationSpec(Generic[T]):
@@ -45,13 +46,14 @@ class FieldRule(Generic[T]):
         row: T,
         result: ValidationRowResult,
         deps: ValidationDependencies,
+        add_error: Callable[..., DiagnosticItem],
     ) -> None:
         value = getattr(row, self.attr, None)
         is_empty = value is None or (isinstance(value, str) and value.strip() == "")
         if self.required and is_empty:
             secret_value = result.secret_candidates.get(self.attr)
             if secret_value is None or str(secret_value).strip() == "":
-                result.add_error(
+                add_error(
                     stage=DiagnosticStage.VALIDATE,
                     code="REQUIRED_FIELD_MISSING",
                     field=self.field,
@@ -59,7 +61,7 @@ class FieldRule(Generic[T]):
                 )
                 return
         for validator in self.validators:
-            validator(value, row, deps, result.add_error)
+            validator(value, row, deps, add_error)
 
 
 class Validator(Generic[T]):
@@ -68,9 +70,10 @@ class Validator(Generic[T]):
         Валидирует обогащенный TransformResult по правилам ValidationSpec.
     """
 
-    def __init__(self, spec: ValidationSpec[T], deps: ValidationDependencies) -> None:
+    def __init__(self, spec: ValidationSpec[T], deps: ValidationDependencies, catalog: ErrorCatalog) -> None:
         self.spec = spec
         self.deps = deps
+        self.catalog = catalog
 
     def validate(self, enriched: TransformResult[T]) -> TransformResult[ValidationRow[T]]:
         row = enriched.row
@@ -102,11 +105,26 @@ class Validator(Generic[T]):
             warnings=[],
         )
         if row is not None and not result.errors:
+            def add_error(
+                stage: DiagnosticStage,
+                code: str,
+                message: str | None = None,
+                field: str | None = None,
+                details: dict[str, Any] | None = None,
+            ) -> DiagnosticItem:
+                return result.add_error(
+                    catalog=self.catalog,
+                    stage=stage,
+                    code=code,
+                    message=message,
+                    field=field,
+                    details=details,
+                )
             for rule in self.spec.rules:
                 if hasattr(rule, "apply"):
-                    rule.apply(row, result, self.deps)
+                    rule.apply(row, result, self.deps, add_error)
                 else:
-                    rule(row, result, self.deps)
+                    rule(row, result, self.deps, add_error)
         for err in result.errors:
             if err.record_ref is None:
                 err.record_ref = row_ref

@@ -21,7 +21,7 @@ from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.config.config import Settings, loadSettings
-from connector.domain.diagnostics import build_catalog, configure
+from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
@@ -344,7 +344,7 @@ def runCacheRefreshCommand(
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report):
-        configure(build_catalog(dataset, strict=settings.diagnostics_strict))
+        catalog = build_catalog(dataset, strict=settings.diagnostics_strict)
         try:
             requireApi(settings)
         except typer.Exit:
@@ -410,6 +410,7 @@ def runCacheRefreshCommand(
                 retries=retries or settings.retries,
                 retry_backoff_seconds=retryBackoffSeconds or settings.retry_backoff_seconds,
                 dataset=dataset,
+                catalog=catalog,
             )
         except ValueError as exc:
             typer.echo(f"ERROR: {exc}", err=True)
@@ -436,7 +437,6 @@ def runCacheStatusCommand(ctx: typer.Context, dataset: str | None = None) -> Non
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report):
-        configure(build_catalog(dataset, strict=settings.diagnostics_strict))
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -491,7 +491,6 @@ def runCacheClearCommand(ctx: typer.Context, dataset: str | None = None) -> None
     cacheDbPath = getCacheDbPath(settings.cache_dir)
 
     def execute(logger, report):
-        configure(build_catalog(dataset, strict=settings.diagnostics_strict))
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -544,7 +543,6 @@ def runImportPlanCommand(
 
     def execute(logger):
         dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
-        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
         try:
             conn = openCacheDb(cacheDbPath)
         except sqlite3.Error as exc:
@@ -632,7 +630,7 @@ def runImportApplyCommand(
             return _result_with(SystemErrorCode.IO_ERROR)
 
         dataset_name = plan.meta.dataset
-        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
+        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
         conn = None
         identity_repo = None
         pending_repo = None
@@ -704,6 +702,7 @@ def runImportApplyCommand(
             dry_run=dry_run,
             report_items_limit=report_items_limit,
             resource_exists_retries=resource_exists_retries,
+            catalog=catalog,
         )
         if hasattr(client, "getRetryAttempts"):
             report.set_context("apply_runtime", {"retries_used": client.getRetryAttempts()})
@@ -764,7 +763,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
     dataset_name = settings.dataset_name
 
     def execute(logger, report):
-        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
+        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
         dataset_spec = get_spec(dataset_name)
         try:
             conn = openCacheDb(getCacheDbPath(settings.cache_dir))
@@ -779,9 +778,9 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
 
             deps = dataset_spec.build_validation_deps(conn, settings)
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
-            transformer = transform_bundle.build_pipeline()
-            validator_bundle = dataset_spec.build_validator(deps)
+            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps, catalog)
+            transformer = transform_bundle.build_pipeline(catalog)
+            validator_bundle = dataset_spec.build_validator(deps, catalog)
             validator = validator_bundle.validator
             report_items_limit = settings.report_items_limit
             report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -797,6 +796,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
             enriched_ok = enrich_usecase.iter_enriched_ok(
                 row_source=row_source,
                 transformer=transformer,
+                catalog=catalog,
             )
             validate_usecase = ValidateUseCase(
                 report_items_limit=report_items_limit,
@@ -810,6 +810,7 @@ def runValidateCommand(ctx: typer.Context, csvPath: str | None, csvHasHeader: bo
                 run_id=runId,
                 report=report,
                 log_failure=logValidationFailure,
+                catalog=catalog,
             )
         finally:
             conn.close()
@@ -839,7 +840,7 @@ def runMappingCommand(
     include_mapped_items = includeMappedItems if includeMappedItems is not None else True
 
     def execute(logger, report):
-        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
+        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -856,8 +857,8 @@ def runMappingCommand(
             ensure_cache_ready(engine, cache_specs)
 
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
-            transformer = transform_bundle.build_pipeline()
+            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps, catalog)
+            transformer = transform_bundle.build_pipeline(catalog)
 
             row_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
@@ -874,6 +875,7 @@ def runMappingCommand(
                 logger=logger,
                 run_id=runId,
                 report=report,
+                catalog=catalog,
             )
         finally:
             conn.close()
@@ -903,7 +905,7 @@ def runNormalizeCommand(
     include_normalized_items = includeNormalizedItems if includeNormalizedItems is not None else True
 
     def execute(logger, report):
-        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
+        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -920,8 +922,8 @@ def runNormalizeCommand(
             ensure_cache_ready(engine, cache_specs)
 
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
-            transformer = transform_bundle.build_pipeline()
+            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps, catalog)
+            transformer = transform_bundle.build_pipeline(catalog)
 
             row_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
@@ -938,6 +940,7 @@ def runNormalizeCommand(
                 logger=logger,
                 run_id=runId,
                 report=report,
+                catalog=catalog,
             )
         finally:
             conn.close()
@@ -969,7 +972,7 @@ def runEnrichCommand(
     include_enriched_items = includeEnrichedItems if includeEnrichedItems is not None else True
 
     def execute(logger, report):
-        configure(build_catalog(dataset_name, strict=settings.diagnostics_strict))
+        catalog = build_catalog(dataset_name, strict=settings.diagnostics_strict)
         deps = ValidationDependencies()
         dataset_spec = get_spec(dataset_name)
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
@@ -987,8 +990,8 @@ def runEnrichCommand(
 
             secret_store = FileVaultSecretStore(vaultFile) if vaultFile else None
             enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
-            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps)
-            transformer = transform_bundle.build_pipeline()
+            transform_bundle = dataset_spec.build_transformers(deps, enrich_deps, catalog)
+            transformer = transform_bundle.build_pipeline(catalog)
 
             row_source = dataset_spec.build_record_source(
                 csv_path=csvPath,
@@ -1005,6 +1008,7 @@ def runEnrichCommand(
                 logger=logger,
                 run_id=runId,
                 report=report,
+                catalog=catalog,
             )
         finally:
             conn.close()
@@ -1116,9 +1120,6 @@ def main(
         "diagnostics_strict": strictDiagnostics,
     }
     loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
-
-    # default catalog uses core only; per-command dataset catalogs will override as needed
-    configure(build_catalog(None, strict=loaded.settings.diagnostics_strict))
 
     ensureDir(loaded.settings.log_dir)
     ensureDir(loaded.settings.report_dir)

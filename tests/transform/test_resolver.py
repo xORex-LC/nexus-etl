@@ -8,6 +8,7 @@ from connector.domain.planning.identity_keys import format_identity_key
 from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.resolver import Resolver
 from connector.domain.planning.rules import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
+from connector.domain.diagnostics.catalog import build_catalog
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.identity_repository import SqliteIdentityRepository
@@ -23,6 +24,7 @@ def _make_engine() -> SqliteEngine:
 
 
 def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[Resolver, SqlitePendingLinksRepository]:
+    catalog = build_catalog("employees", strict=True)
     identity_repo = SqliteIdentityRepository(engine)
     pending_repo = SqlitePendingLinksRepository(engine)
     link_rules = LinkRules(
@@ -44,6 +46,7 @@ def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[Re
         identity_repo=identity_repo,
         pending_repo=pending_repo,
         settings=settings,
+        catalog=catalog,
     )
     return resolver, pending_repo
 

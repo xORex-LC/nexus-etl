@@ -6,6 +6,9 @@ from connector.usecases.import_apply_service import ImportApplyService
 from connector.infra.secrets.dict_provider import DictSecretProvider
 from connector.infra.secrets.null_provider import NullSecretProvider
 from connector.domain.ports.execution import ExecutionResult, RequestSpec, RequestExecutorProtocol
+from connector.domain.diagnostics.catalog import build_catalog
+
+CATALOG = build_catalog("employees", strict=True)
 
 
 class DummyExecutor(RequestExecutorProtocol):
@@ -79,6 +82,7 @@ def test_apply_create_uses_secret_provider_when_missing_password():
         dry_run=False,
         report_items_limit=10,
         resource_exists_retries=0,
+        catalog=CATALOG,
     )
 
     assert result.exit_code() == 0
@@ -106,6 +110,7 @@ def test_apply_create_fails_when_secret_missing():
         dry_run=False,
         report_items_limit=10,
         resource_exists_retries=0,
+        catalog=CATALOG,
     )
 
     assert result.exit_code() == 1
@@ -142,6 +147,7 @@ def test_apply_update_does_not_request_secret():
         dry_run=False,
         report_items_limit=10,
         resource_exists_retries=0,
+        catalog=CATALOG,
     )
 
     assert result.exit_code() == 0

@@ -10,6 +10,9 @@ from connector.domain.transform.source_record import SourceRecord
 from connector.domain.validation.validated_row import ValidationRow
 from connector.datasets.employees.load.matching_rules import build_matching_rules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
+from connector.domain.diagnostics.catalog import build_catalog
+
+CATALOG = build_catalog("employees", strict=True)
 
 
 @dataclass
@@ -90,6 +93,7 @@ def test_matcher_uses_fallback_identity_when_primary_missing():
         matching_rules=matching_rules,
         resolve_rules=resolve_rules,
         include_deleted=False,
+        catalog=CATALOG,
     )
 
     validation = _make_validation(match_key="", usr_org_tab_num="TAB-1")
@@ -119,6 +123,7 @@ def test_matcher_returns_conflict_when_fallback_has_multiple_candidates():
         matching_rules=matching_rules,
         resolve_rules=resolve_rules,
         include_deleted=False,
+        catalog=CATALOG,
     )
 
     validation = _make_validation(match_key="", usr_org_tab_num="TAB-1")

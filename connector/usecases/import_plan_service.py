@@ -21,6 +21,7 @@ from connector.domain.planning.match_models import build_fingerprint
 from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.diagnostics.catalog import build_catalog
 
 class ImportPlanService:
     """
@@ -44,6 +45,8 @@ class ImportPlanService:
         generated_at = getNowIso()
 
         dataset_spec = get_spec(dataset)
+        strict = getattr(settings, "diagnostics_strict", False)
+        catalog = build_catalog(dataset, strict=strict)
         validation_deps = dataset_spec.build_validation_deps(conn, settings)
         secret_store = None
         if vault_file:
@@ -56,9 +59,9 @@ class ImportPlanService:
             csv_path=csv_path,
             csv_has_header=csv_has_header,
         )
-        transform_bundle = dataset_spec.build_transformers(validation_deps, enrich_deps)
-        transformer = transform_bundle.build_pipeline()
-        validator_bundle = dataset_spec.build_validator(validation_deps)
+        transform_bundle = dataset_spec.build_transformers(validation_deps, enrich_deps, catalog)
+        transformer = transform_bundle.build_pipeline(catalog)
+        validator_bundle = dataset_spec.build_validator(validation_deps, catalog)
         validator = validator_bundle.validator
         enrich_usecase = EnrichUseCase(
             report_items_limit=report_items_limit,
@@ -67,6 +70,7 @@ class ImportPlanService:
         enriched_ok = enrich_usecase.iter_enriched_ok(
             row_source=row_source,
             transformer=transformer,
+            catalog=catalog,
         )
         validate_usecase = ValidateUseCase(
             report_items_limit=report_items_limit,
@@ -75,6 +79,7 @@ class ImportPlanService:
         validated_rows = validate_usecase.iter_validated_ok(
             enriched_source=enriched_ok,
             validator=validator,
+            catalog=catalog,
         )
         matching_rules = dataset_spec.build_matching_rules()
         resolve_rules = dataset_spec.build_resolve_rules()
@@ -93,6 +98,7 @@ class ImportPlanService:
             matching_rules=matching_rules,
             resolve_rules=resolve_rules,
             include_deleted=include_deleted,
+            catalog=catalog,
         )
         match_usecase = MatchUseCase(
             report_items_limit=report_items_limit,
@@ -102,6 +108,7 @@ class ImportPlanService:
             match_usecase.iter_matched_ok(
                 validated_source=validated_rows,
                 matcher=matcher,
+                catalog=catalog,
             )
         )
 
@@ -120,6 +127,7 @@ class ImportPlanService:
             identity_repo=planning_deps.identity_repo,
             pending_repo=planning_deps.pending_repo,
             settings=planning_deps.resolver_settings,
+            catalog=catalog,
         )
         resolve_usecase = ResolveUseCase(
             report_items_limit=report_items_limit,
@@ -129,6 +137,7 @@ class ImportPlanService:
             matched_source=matched_rows,
             resolver=resolver,
             dataset=dataset,
+            catalog=catalog,
         )
 
         use_case = PlanUseCase()

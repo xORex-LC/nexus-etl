@@ -1,6 +1,6 @@
 from connector.domain.diagnostics.catalog import CatalogEntry, ErrorCatalog, build_catalog
 from connector.domain.diagnostics.core_catalog import build_core_catalog
-from connector.domain.diagnostics.context import DiagnosticContext, configure, error, get_catalog, warning
+from connector.domain.diagnostics.context import error, warning
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 from connector.domain.diagnostics.catalog import build_error, build_warning
@@ -20,10 +20,7 @@ __all__ = [
     "build_catalog",
     "build_core_catalog",
     "UnknownDiagnosticCodeError",
-    "DiagnosticContext",
-    "configure",
     "error",
-    "get_catalog",
     "warning",
     "build_error",
     "build_warning",

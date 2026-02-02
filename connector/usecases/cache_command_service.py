@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
@@ -41,6 +42,7 @@ class CacheCommandService:
         retries: int | None = None,
         retry_backoff_seconds: float | None = None,
         dataset: str | None = None,
+        catalog: ErrorCatalog | None = None,
     ) -> CommandResult:
         if self.cache_refresh is None:
             raise ValueError("Cache refresh usecase is not configured")
@@ -57,6 +59,7 @@ class CacheCommandService:
             retries=retries,
             retry_backoff_seconds=retry_backoff_seconds,
             dataset=dataset,
+            catalog=catalog,
         )
 
         total = summary.get("total", {})

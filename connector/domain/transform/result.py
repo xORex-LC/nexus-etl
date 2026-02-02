@@ -6,6 +6,7 @@ from typing import Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.match_key import MatchKey
 from connector.domain.transform.source_record import SourceRecord
 
@@ -34,6 +35,7 @@ class TransformResult(Generic[T]):
 
     def add_error(
         self,
+        catalog: ErrorCatalog,
         stage: DiagnosticStage,
         code: str,
         message: str | None = None,
@@ -42,9 +44,10 @@ class TransformResult(Generic[T]):
     ) -> DiagnosticItem:
         """
         Назначение:
-            Добавить диагностическую ошибку через diagnostics context.
+            Добавить диагностическую ошибку через ErrorCatalog.
         """
         item = diag_error(
+            catalog=catalog,
             stage=stage,
             code=code,
             field=field,
@@ -57,6 +60,7 @@ class TransformResult(Generic[T]):
 
     def add_warning(
         self,
+        catalog: ErrorCatalog,
         stage: DiagnosticStage,
         code: str,
         message: str | None = None,
@@ -65,9 +69,10 @@ class TransformResult(Generic[T]):
     ) -> DiagnosticItem:
         """
         Назначение:
-            Добавить диагностическое предупреждение через diagnostics context.
+            Добавить диагностическое предупреждение через ErrorCatalog.
         """
         item = diag_warning(
+            catalog=catalog,
             stage=stage,
             code=code,
             field=field,

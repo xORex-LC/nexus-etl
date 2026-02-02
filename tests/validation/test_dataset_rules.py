@@ -11,6 +11,9 @@ from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSp
 from connector.datasets.employees.transform.normalizer_spec import EmployeesNormalizerSpec
 from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
 from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
+from connector.domain.diagnostics.catalog import build_catalog
+
+CATALOG = build_catalog("employees", strict=True)
 
 
 def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
@@ -44,10 +47,15 @@ class _DummyEnrichDeps:
 
 def make_employee(values: list[str | None], deps: ValidationDependencies):
     mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec())
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees")
-    transformer = TransformPipeline(EmployeesSourceMapper(mapping_spec), normalizer, enricher)
-    validator = Validator(EmployeesValidationSpec(), deps)
+    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    transformer = TransformPipeline(
+        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
+        normalizer,
+        enricher,
+        CATALOG,
+    )
+    validator = Validator(EmployeesValidationSpec(), deps, catalog=CATALOG)
     validated = validator.validate(transformer.enrich(_collect(values, line_no=1)))
     entity = validated.row.row if validated.row else None
     result = validated.row.validation if validated.row else None

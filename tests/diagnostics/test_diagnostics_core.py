@@ -4,8 +4,6 @@ from connector.domain.diagnostics import build_catalog, build_error
 from connector.domain.diagnostics.catalog import ErrorCatalog, CatalogEntry, build_warning
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.diagnostics.context import get_catalog
-from connector.domain.diagnostics.exceptions import DiagnosticContextNotConfiguredError
 from connector.domain.diagnostics.translator import translate_execution_result
 from connector.domain.models import DiagnosticSeverity, DiagnosticStage, RowRef
 from connector.domain.ports.execution import ExecutionResult
@@ -54,6 +52,7 @@ def test_translator_maps_execution_result() -> None:
 
 
 def test_transform_result_add_error_attaches_row_ref() -> None:
+    catalog = build_catalog("employees", strict=True)
     row_ref = RowRef(line_no=1, row_id="row:1", identity_primary=None, identity_value=None)
     result = TransformResult(
         record=SourceRecord(line_no=1, record_id="row:1", values={}),
@@ -61,22 +60,12 @@ def test_transform_result_add_error_attaches_row_ref() -> None:
         row_ref=row_ref,
         match_key=None,
     )
-    item = result.add_error(stage=DiagnosticStage.VALIDATE, code="REQUIRED_FIELD_MISSING")
+    item = result.add_error(
+        catalog=catalog,
+        stage=DiagnosticStage.VALIDATE,
+        code="REQUIRED_FIELD_MISSING",
+    )
     assert item.record_ref == row_ref
-
-
-def test_get_catalog_requires_configure() -> None:
-    from connector.domain.diagnostics import context as diag_context
-
-    token = diag_context._context_var.set(None)
-    try:
-        try:
-            _ = get_catalog()
-        except DiagnosticContextNotConfiguredError:
-            return
-        assert False, "Expected DiagnosticContextNotConfiguredError when diagnostics not configured"
-    finally:
-        diag_context._context_var.reset(token)
 
 
 def test_build_catalog_merges_dataset_codes_in_strict_mode() -> None:
