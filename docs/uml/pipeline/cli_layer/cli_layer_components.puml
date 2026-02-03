@@ -1,0 +1,30 @@
+@startuml
+set namespaceSeparator none
+skinparam componentStyle rectangle
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam componentBorderThickness 2
+skinparam component {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+component "CliApp\n(Typer)" as app
+component "Runtime" as runtime
+component "Command Handlers" as handlers
+component "Bootstrap" as bootstrap
+component "UseCases" as usecases
+component "ReportWriter" as report
+component "Ports/Infra" as infra
+
+app --> runtime
+app --> handlers
+handlers --> runtime
+handlers --> bootstrap
+handlers --> usecases
+usecases --> infra
+runtime --> report
+runtime --> handlers
+
+@enduml

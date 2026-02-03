@@ -1,0 +1,36 @@
+@startuml
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam SequenceArrowColor #4b5563
+skinparam SequenceLifeLineBorderColor #9ca3af
+
+actor Operator as U
+participant "CliApp" as A
+participant "Runtime" as R
+participant "Requirements" as Q
+participant "CommandHandler" as H
+participant "Bootstrap" as B
+participant "UseCase" as UC
+participant "ReportWriter" as W
+
+U -> A : run command
+A -> R : run_with_report(ctx, requirements, handler)
+R -> Q : validate(ctx, opts)
+Q --> R : ok/error
+alt requirements ok
+  R -> H : handle(ctx, opts)
+  H -> B : build resources
+  B --> H : resources
+  H -> UC : run(...)
+  UC --> H : result/summary
+  H --> R : CommandResult
+  R -> W : finalizeReport(...)
+  W --> R : report path
+else requirements failed
+  R -> W : finalizeReport(error)
+end
+R --> A : exit code
+A --> U : exit
+
+@enduml
