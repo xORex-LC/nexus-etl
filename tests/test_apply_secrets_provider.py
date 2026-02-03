@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.domain.reporting.collector import ReportCollector
 from connector.usecases.import_apply_service import ImportApplyService

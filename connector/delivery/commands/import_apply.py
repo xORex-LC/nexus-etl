@@ -1,92 +1,85 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 import sqlite3
 
 import typer
 
+from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.bootstrap import (
+    build_cache,
+    build_identity_repos,
+    build_api_client,
+    build_api_executor,
+    build_diagnostics_catalog,
+    build_secret_provider,
+)
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.datasets.registry import build_identity_index_plan, get_spec
-from connector.delivery.bootstrap import build_diagnostics_catalog
 from connector.infra.artifacts.plan_reader import readPlanFile
-from connector.infra.cache.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.identity_repository import SqliteIdentityRepository
-from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
-from connector.infra.cache.schema import ensure_cache_ready
-from connector.infra.cache.sqlite_engine import SqliteEngine
-from connector.infra.http.ankey_client import AnkeyApiClient
-from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.logging.setup import logEvent
-from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
 from connector.usecases.import_apply_service import ImportApplyService
-from connector.datasets.cache_registry import list_cache_specs
 
 
-def run(
-    *,
-    ctx: typer.Context,
-    plan_path: str | None,
-    stop_on_first_error: bool | None,
-    max_actions: int | None,
-    dry_run: bool | None,
-    report_items_limit: int | None,
-    resource_exists_retries: int | None,
-    secrets_from: str | None,
-    vault_file: str | None,
-    logger,
-    report,
-) -> CommandResult:
-    settings = ctx.obj["settings"]
-    run_id = ctx.obj["runId"]
-    cache_db_path = getCacheDbPath(settings.cache_dir)
+@dataclass(frozen=True)
+class Options:
+    plan_path: str | None = None
+    stop_on_first_error: bool | None = None
+    max_actions: int | None = None
+    dry_run: bool | None = None
+    report_items_limit: int | None = None
+    resource_exists_retries: int | None = None
+    secrets_from: str | None = None
+    vault_file: str | None = None
 
-    if not plan_path:
+
+def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+    settings = ctx.settings
+    run_id = ctx.run_id
+
+    if not opts.plan_path:
         typer.echo("ERROR: --plan is required (apply no longer builds plan from CSV)", err=True)
         return _result_with(SystemErrorCode.IO_ERROR)
 
-    report_items_limit = report_items_limit if report_items_limit is not None else settings.report_items_limit
+    report_items_limit = opts.report_items_limit if opts.report_items_limit is not None else settings.report_items_limit
     resource_exists_retries = (
-        resource_exists_retries if resource_exists_retries is not None else settings.resource_exists_retries
+        opts.resource_exists_retries if opts.resource_exists_retries is not None else settings.resource_exists_retries
     )
-    stop_on_first_error = stop_on_first_error if stop_on_first_error is not None else settings.stop_on_first_error
-    max_actions = max_actions if max_actions is not None else settings.max_actions
-    dry_run = dry_run if dry_run is not None else settings.dry_run
+    stop_on_first_error = opts.stop_on_first_error if opts.stop_on_first_error is not None else settings.stop_on_first_error
+    max_actions = opts.max_actions if opts.max_actions is not None else settings.max_actions
+    dry_run = opts.dry_run if opts.dry_run is not None else settings.dry_run
 
     try:
-        plan = readPlanFile(plan_path or "")
+        plan = readPlanFile(opts.plan_path or "")
     except (OSError, ValueError) as exc:
-        logEvent(logger, logging.ERROR, run_id, "plan", f"Import apply failed: {exc}")
+        logEvent(ctx.logger, logging.ERROR, run_id, "plan", f"Import apply failed: {exc}")
         typer.echo(f"ERROR: import apply failed: {exc}", err=True)
         return _result_with(SystemErrorCode.IO_ERROR)
 
     dataset_name = plan.meta.dataset
-    catalog = build_diagnostics_catalog(dataset_name, strict=settings.diagnostics_strict)
+    catalog = ctx.catalog or build_diagnostics_catalog(dataset_name, strict=settings.diagnostics_strict)
     conn = None
     identity_repo = None
     pending_repo = None
     identity_keys: dict[str, set[str]] = {}
     identity_id_fields: dict[str, str] = {}
     try:
-        conn = openCacheDb(cache_db_path)
-        engine = SqliteEngine(conn)
-        cache_specs = list_cache_specs()
-        ensure_cache_ready(engine, cache_specs)
-        identity_repo = SqliteIdentityRepository(engine)
-        pending_repo = SqlitePendingLinksRepository(engine)
+        conn, engine, _cache_repo, _cache_specs = build_cache(settings)
+        identity_repo, pending_repo = build_identity_repos(engine)
         identity_keys, identity_id_fields = build_identity_index_plan()
     except sqlite3.Error as exc:
-        logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
+        logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
     except Exception as exc:
-        logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to init identity index: {exc}")
+        logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to init identity index: {exc}")
 
     base_url = f"https://{settings.host}:{settings.port}"
     report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
     report.set_context(
         "apply",
         {
-            "plan_path": plan_path or plan.meta.plan_path,
+            "plan_path": opts.plan_path or plan.meta.plan_path,
             "include_deleted": plan.meta.include_deleted,
             "stop_on_first_error": stop_on_first_error,
             "max_actions": max_actions,
@@ -103,19 +96,10 @@ def run(
     report.summary.skipped = plan.summary.skipped if plan.summary else 0
     report.summary.failed = plan.summary.failed_rows if plan.summary else 0
 
-    client = AnkeyApiClient(
-        baseUrl=base_url,
-        username=settings.api_username or "",
-        password=settings.api_password or "",
-        timeoutSeconds=settings.timeout_seconds,
-        tlsSkipVerify=settings.tls_skip_verify,
-        caFile=settings.ca_file,
-        retries=settings.retries,
-        retryBackoffSeconds=settings.retry_backoff_seconds,
-    )
+    client = build_api_client(settings)
     client.resetRetryAttempts()
-    secrets_provider = build_secret_provider(secrets_from, vault_file)
-    executor = AnkeyRequestExecutor(client)
+    secrets_provider = build_secret_provider(opts.secrets_from, opts.vault_file)
+    executor = build_api_executor(client)
     service = ImportApplyService(
         executor,
         secrets=secrets_provider,
@@ -127,7 +111,7 @@ def run(
     )
     result = service.applyPlan(
         plan=plan,
-        logger=logger,
+        logger=ctx.logger,
         report=report,
         run_id=run_id,
         stop_on_first_error=stop_on_first_error,
@@ -144,33 +128,10 @@ def run(
     return result
 
 
-def build_secret_provider(source: str | None, vault_file: str | None) -> SecretProviderProtocol:
-    """
-    Назначение:
-        Фабрика провайдера секретов для apply.
-    Контракт:
-        - source None/"none" -> NullSecretProvider
-        - source "prompt" -> PromptSecretProvider
-        - source "vault" -> CompositeSecretProvider(FileVault -> Prompt)
-        - любое другое значение: NullSecretProvider (по умолчанию)
-    """
-    if not source or source == "none":
-        return NullSecretProvider()
-    if source == "prompt":
-        return PromptSecretProvider()
-    if source == "vault":
-        if not vault_file:
-            return PromptSecretProvider()
-        from connector.infra.secrets import FileVaultSecretProvider
-
-        return CompositeSecretProvider([FileVaultSecretProvider(vault_file), PromptSecretProvider()])
-    return NullSecretProvider()
-
-
 def _result_with(code: SystemErrorCode) -> CommandResult:
     result = CommandResult()
     result.add_code(code)
     return result
 
 
-__all__ = ["run"]
+__all__ = ["handler", "Options"]
