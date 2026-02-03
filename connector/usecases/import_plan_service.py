@@ -59,8 +59,7 @@ class ImportPlanService:
             csv_path=csv_path,
             csv_has_header=csv_has_header,
         )
-        transform_bundle = dataset_spec.build_transformers(validation_deps, enrich_deps, catalog)
-        transformer = transform_bundle.build_pipeline(catalog)
+        transformer = dataset_spec.build_pipeline(validation_deps, enrich_deps, catalog)
         validator_bundle = dataset_spec.build_validator(validation_deps, catalog)
         validator = validator_bundle.validator
         enrich_usecase = EnrichUseCase(
@@ -81,9 +80,7 @@ class ImportPlanService:
             validator=validator,
             catalog=catalog,
         )
-        matching_rules = dataset_spec.build_matching_rules()
-        resolve_rules = dataset_spec.build_resolve_rules()
-        link_rules = dataset_spec.build_link_rules()
+        planning_bundle = dataset_spec.build_planning_bundle()
         cache_repo = planning_deps.cache_repo
         if cache_repo is None:
             raise ValueError("planning cache_repo is not configured")
@@ -95,8 +92,8 @@ class ImportPlanService:
         matcher = Matcher(
             dataset=dataset,
             cache_repo=cache_repo,
-            matching_rules=matching_rules,
-            resolve_rules=resolve_rules,
+            matching_rules=planning_bundle.matching_rules,
+            resolve_rules=planning_bundle.resolve_rules,
             include_deleted=include_deleted,
             catalog=catalog,
         )
@@ -117,13 +114,13 @@ class ImportPlanService:
             pending_repo=planning_deps.pending_repo,
             cache_repo=cache_repo,
             include_deleted=include_deleted,
-            ignored_fields=matching_rules.ignored_fields,
+            ignored_fields=planning_bundle.matching_rules.ignored_fields,
         )
         matched_rows.extend(pending_rows)
 
         resolver = Resolver(
-            resolve_rules,
-            link_rules,
+            planning_bundle.resolve_rules,
+            planning_bundle.link_rules,
             identity_repo=planning_deps.identity_repo,
             pending_repo=planning_deps.pending_repo,
             settings=planning_deps.resolver_settings,

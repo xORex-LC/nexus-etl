@@ -7,12 +7,15 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.context import CommandContext
-from connector.delivery.cli.bootstrap import build_cache, build_dataset_spec, build_diagnostics_catalog
+from connector.delivery.cli.bootstrap import (
+    build_cache,
+    build_dataset_spec,
+    build_diagnostics_catalog,
+    build_pipeline_context,
+)
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.logging.setup import logEvent
-from connector.usecases.enrich_usecase import EnrichUseCase
-from connector.usecases.validate_usecase import ValidateUseCase
 from connector.usecases.match_usecase import MatchUseCase
 from connector.usecases.resolve_usecase import ResolveUseCase
 from connector.domain.planning.matcher import Matcher
@@ -53,43 +56,19 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     try:
         conn, _engine, _cache_repo, _cache_specs = build_cache(settings)
 
-        validation_deps = dataset_spec.build_validation_deps(conn, settings)
-        enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=None)
-        planning_deps = dataset_spec.build_planning_deps(conn, settings)
-
-        transform_bundle = dataset_spec.build_transformers(validation_deps, enrich_deps, catalog)
-        transformer = transform_bundle.build_pipeline(catalog)
-        validator_bundle = dataset_spec.build_validator(validation_deps, catalog)
-        validator = validator_bundle.validator
-
-        row_source = dataset_spec.build_record_source(
-            csv_path=opts.csv_path,
+        pipeline_ctx = build_pipeline_context(
+            dataset_spec=dataset_spec,
+            dataset_name=dataset_name,
+            conn=conn,
+            settings=settings,
+            catalog=catalog,
+            csv_path=opts.csv_path or "",
             csv_has_header=csv_has_header_value,
         )
+        planning_deps = pipeline_ctx.planning_deps
+        validated_rows = pipeline_ctx.iter_validated_ok()
 
-        enrich_usecase = EnrichUseCase(
-            report_items_limit=report_items_limit_value,
-            include_enriched_items=False,
-        )
-        enriched_ok = enrich_usecase.iter_enriched_ok(
-            row_source=row_source,
-            transformer=transformer,
-            catalog=catalog,
-        )
-
-        validate_usecase = ValidateUseCase(
-            report_items_limit=report_items_limit_value,
-            include_valid_items=False,
-        )
-        validated_rows = validate_usecase.iter_validated_ok(
-            enriched_source=enriched_ok,
-            validator=validator,
-            catalog=catalog,
-        )
-
-        matching_rules = dataset_spec.build_matching_rules()
-        resolve_rules = dataset_spec.build_resolve_rules()
-        link_rules = dataset_spec.build_link_rules()
+        planning_bundle = dataset_spec.build_planning_bundle()
 
         cache_repo = planning_deps.cache_repo
         if cache_repo is None:
@@ -102,8 +81,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         matcher = Matcher(
             dataset=dataset_name,
             cache_repo=cache_repo,
-            matching_rules=matching_rules,
-            resolve_rules=resolve_rules,
+            matching_rules=planning_bundle.matching_rules,
+            resolve_rules=planning_bundle.resolve_rules,
             include_deleted=include_deleted_value,
             catalog=catalog,
         )
@@ -118,8 +97,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
 
         resolver = Resolver(
-            resolve_rules,
-            link_rules,
+            planning_bundle.resolve_rules,
+            planning_bundle.link_rules,
             identity_repo=planning_deps.identity_repo,
             pending_repo=planning_deps.pending_repo,
             settings=planning_deps.resolver_settings,

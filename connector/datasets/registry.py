@@ -41,7 +41,7 @@ def build_identity_index_plan(
     keys_by_dataset: dict[str, set[str]] = {}
     id_field_by_dataset: dict[str, str] = {}
     for spec in list_specs(secrets=secrets):
-        rules: LinkRules = spec.build_link_rules()
+        rules: LinkRules = spec.build_planning_bundle().link_rules
         for field_rule in rules.fields:
             dataset = field_rule.target_dataset
             if dataset in id_field_by_dataset and id_field_by_dataset[dataset] != field_rule.target_id_field:
