@@ -2,8 +2,10 @@
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
-skinparam SequenceArrowColor #4b5563
-skinparam SequenceLifeLineBorderColor #9ca3af
+skinparam component {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 actor Runner as R
 participant "DiagnosticContext" as Ctx
 participant "diagnostic_boundary(stage)" as B

@@ -1,0 +1,23 @@
+@startuml
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam ActivityBackgroundColor #f7e9dc
+skinparam ActivityBorderColor #d9c2a8
+skinparam ActivityBorderThickness 2
+
+start
+:Parse CLI args;
+:Build CommandContext;
+:Validate requirements
+(cheap checks);
+if (requirements ok?) then (yes)
+  :Run handler via runtime;
+  :UseCase executes;
+  :Collect report items;
+  :Finalize report + exit code;
+else (no)
+  :Emit diagnostics;
+endif
+stop
+@enduml

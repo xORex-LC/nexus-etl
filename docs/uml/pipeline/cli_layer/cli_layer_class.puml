@@ -1,0 +1,73 @@
+@startuml
+title CLI/Delivery Layer - Class Diagram (Simplified)
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam classBorderThickness 2
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+class CliApp <<module>> {
+  +register_commands()
+}
+
+class Runtime <<module>> {
+  +run_with_report(ctx, requirements, handler)
+  +run_without_report(ctx, requirements, handler)
+}
+
+class CommandContext {
+  +run_id: String
+  +settings: Settings
+  +logger: Logger
+  +catalog: DiagnosticCatalog
+  +paths: Paths
+  +strict: Bool
+}
+
+class CommandResult {
+  +status: String
+  +summary: Map<String, Int>
+  +items: List<ReportItem>
+  +diagnostics: List<DiagnosticItem>
+}
+
+class Requirements {
+  +requires_dataset: Bool
+  +requires_cache: Bool
+  +requires_api: Bool
+  +requires_secrets: Bool
+  +validate(ctx, opts)
+}
+
+class Bootstrap <<module>> {
+  +build_dataset(name)
+  +build_cache(settings)
+  +build_api(settings)
+  +build_secrets(settings)
+}
+
+class CommandHandler <<module>> {
+  +handle(ctx, opts): CommandResult
+}
+
+class UseCase <<usecase>> {
+  +run(...)
+}
+
+class ReportWriter <<module>>
+
+CliApp --> CommandHandler
+CliApp --> Runtime
+CommandHandler --> UseCase
+CommandHandler --> CommandResult
+Runtime --> CommandContext
+Runtime --> Requirements
+Runtime --> ReportWriter
+Runtime --> CommandResult
+CommandHandler --> Bootstrap
+
+@enduml
