@@ -7,10 +7,14 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.context import CommandContext
-from connector.delivery.cli.bootstrap import build_cache, build_dataset_spec, build_diagnostics_catalog
+from connector.delivery.cli.bootstrap import (
+    build_cache,
+    build_dataset_spec,
+    build_diagnostics_catalog,
+    build_pipeline_context,
+)
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.validation.deps import ValidationDependencies
 from connector.infra.logging.setup import logEvent
 from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
 from connector.usecases.enrich_usecase import EnrichUseCase
@@ -35,7 +39,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     )
     include_enriched_items_value = opts.include_enriched_items if opts.include_enriched_items is not None else True
 
-    deps = ValidationDependencies()
     dataset_name, dataset_spec = build_dataset_spec(opts.dataset, settings)
     catalog = ctx.catalog or build_diagnostics_catalog(dataset_name, strict=settings.diagnostics_strict)
     report.set_meta(dataset=dataset_name, items_limit=report_items_limit_value)
@@ -44,21 +47,23 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     try:
         conn, _engine, _cache_repo, _cache_specs = build_cache(settings)
         secret_store = FileVaultSecretStore(opts.vault_file) if opts.vault_file else None
-        enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
-        transform_bundle = dataset_spec.build_transformers(deps, enrich_deps, catalog)
-        transformer = transform_bundle.build_pipeline(catalog)
-
-        row_source = dataset_spec.build_record_source(
-            csv_path=opts.csv_path,
+        pipeline_ctx = build_pipeline_context(
+            dataset_spec=dataset_spec,
+            dataset_name=dataset_name,
+            conn=conn,
+            settings=settings,
+            catalog=catalog,
+            csv_path=opts.csv_path or "",
             csv_has_header=csv_has_header_value,
+            secret_store=secret_store,
         )
         usecase = EnrichUseCase(
             report_items_limit=report_items_limit_value,
             include_enriched_items=include_enriched_items_value,
         )
         return usecase.run(
-            row_source=row_source,
-            transformer=transformer,
+            row_source=pipeline_ctx.row_source,
+            transformer=pipeline_ctx.transformer,
             dataset=dataset_name,
             logger=ctx.logger,
             run_id=run_id,

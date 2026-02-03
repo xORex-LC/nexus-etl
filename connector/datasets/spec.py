@@ -10,25 +10,11 @@ from connector.domain.validation.validator import Validator
 from connector.domain.planning.deps import PlanningDependencies
 from connector.domain.planning.rules import LinkRules, MatchingRules, ResolveRules
 from connector.domain.ports.execution import RequestSpec, ExecutionResult
-from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.transform.source_record import SourceRecord
 from connector.infra.cache.cache_spec import CacheSpec
-
-@dataclass
-class TransformBundle:
-    """
-    Назначение:
-        Набор трансформеров для конкретного датасета.
-    """
-    mapper: SourceMapper
-    normalizer: Normalizer
-    enricher: Enricher
-
-    def build_pipeline(self, catalog: ErrorCatalog) -> TransformPipeline:
-        return TransformPipeline(self.mapper, self.normalizer, self.enricher, catalog)
 
 @dataclass
 class ValidationBundle:
@@ -37,6 +23,18 @@ class ValidationBundle:
         Валидатор для конкретного датасета.
     """
     validator: Validator
+
+
+@dataclass(frozen=True)
+class PlanningBundle:
+    """
+    Назначение:
+        Набор правил для planning (match/resolve/link).
+    """
+
+    matching_rules: MatchingRules
+    resolve_rules: ResolveRules
+    link_rules: LinkRules
 
 class ApplyAdapter(Protocol):
     """
@@ -76,12 +74,12 @@ class DatasetSpec(Protocol):
     def build_validation_deps(self, conn, settings) -> ValidationDependencies: ...
     def build_planning_deps(self, conn, settings) -> PlanningDependencies: ...
     def build_enrich_deps(self, conn, settings, secret_store=None): ...
-    def build_transformers(
+    def build_pipeline(
         self,
         deps: ValidationDependencies,
         enrich_deps,
         catalog: ErrorCatalog,
-    ) -> TransformBundle: ...
+    ) -> TransformPipeline: ...
     def build_validator(self, deps: ValidationDependencies, catalog: ErrorCatalog) -> ValidationBundle: ...
     def build_cache_specs(self) -> list[CacheSpec]: ...
     def build_record_source(
@@ -89,9 +87,7 @@ class DatasetSpec(Protocol):
         csv_path: str,
         csv_has_header: bool,
     ) -> Iterable[SourceRecord]: ...
-    def build_matching_rules(self) -> MatchingRules: ...
-    def build_resolve_rules(self) -> ResolveRules: ...
-    def build_link_rules(self) -> LinkRules: ...
+    def build_planning_bundle(self) -> PlanningBundle: ...
     def get_report_adapter(self) -> ReportAdapter: ...
     def get_apply_adapter(self) -> ApplyAdapter: ...
     def get_diagnostic_catalog(self, strict: bool) -> ErrorCatalog: ...
