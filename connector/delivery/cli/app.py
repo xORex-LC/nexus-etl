@@ -19,8 +19,10 @@ from connector.delivery.commands import (
     enrich as enrich_command,
     import_apply as import_apply_command,
     import_plan as import_plan_command,
+    match as match_command,
     mapping as mapping_command,
     normalize as normalize_command,
+    resolve as resolve_command,
     validate as validate_command,
 )
 
@@ -171,6 +173,39 @@ def mapping(
     )
 
 
+@app.command("match")
+def match(
+    ctx: typer.Context,
+    csv: str | None = cli_options.CSV_PATH,
+    csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
+    dataset: str | None = cli_options.DATASET,
+    reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
+    includeMatchedItems: bool | None = typer.Option(
+        None,
+        "--include-matched-items/--no-include-matched-items",
+        help="Include matched rows in report items",
+        show_default=True,
+    ),
+    includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
+):
+    opts = match_command.Options(
+        csv_path=csv,
+        csv_has_header=csvHasHeader,
+        dataset=dataset,
+        report_items_limit=reportItemsLimit,
+        include_matched_items=includeMatchedItems,
+        include_deleted=includeDeleted,
+    )
+    command_ctx = _build_ctx(ctx, dataset)
+    run_with_report(
+        ctx=command_ctx,
+        command_name="match",
+        opts=opts,
+        handler=match_command.handler,
+        requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
+    )
+
+
 @app.command("normalize")
 def normalize(
     ctx: typer.Context,
@@ -198,6 +233,39 @@ def normalize(
         command_name="normalize",
         opts=opts,
         handler=normalize_command.handler,
+        requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
+    )
+
+
+@app.command("resolve")
+def resolve(
+    ctx: typer.Context,
+    csv: str | None = cli_options.CSV_PATH,
+    csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
+    dataset: str | None = cli_options.DATASET,
+    reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
+    includeResolvedItems: bool | None = typer.Option(
+        None,
+        "--include-resolved-items/--no-include-resolved-items",
+        help="Include resolved rows in report items",
+        show_default=True,
+    ),
+    includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
+):
+    opts = resolve_command.Options(
+        csv_path=csv,
+        csv_has_header=csvHasHeader,
+        dataset=dataset,
+        report_items_limit=reportItemsLimit,
+        include_resolved_items=includeResolvedItems,
+        include_deleted=includeDeleted,
+    )
+    command_ctx = _build_ctx(ctx, dataset)
+    run_with_report(
+        ctx=command_ctx,
+        command_name="resolve",
+        opts=opts,
+        handler=resolve_command.handler,
         requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
     )
 

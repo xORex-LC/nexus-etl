@@ -100,8 +100,8 @@ class TransformPipeline(Generic[T, N, D]):
                 errors=errors,
                 warnings=warnings,
             )
-        normalized.errors = [*errors, *normalized.errors]
-        normalized.warnings = [*warnings, *normalized.warnings]
+        # Normalizer already propagates upstream diagnostics into the result.
+        # Re-adding them here would duplicate errors/warnings.
         return normalized
 
     def enrich(self, collected: TransformResult[None]) -> TransformResult[N]:
@@ -127,6 +127,6 @@ class TransformPipeline(Generic[T, N, D]):
                 errors=errors,
                 warnings=warnings,
             )
-        enriched.errors = [*errors, *enriched.errors]
-        enriched.warnings = [*warnings, *enriched.warnings]
+        # Enricher already carries upstream diagnostics in the result.
+        # Re-adding them here would duplicate errors/warnings.
         return enriched

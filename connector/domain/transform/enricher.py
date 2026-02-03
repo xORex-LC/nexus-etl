@@ -411,8 +411,9 @@ class Enricher(Generic[T, D]):
             if warn.record_ref is None:
                 warn.record_ref = result.row_ref
 
-        result.errors = [*result.errors, *errors]
-        result.warnings = [*result.warnings, *warnings]
+        # Все DiagnosticItem создаются через result.add_error/add_warning,
+        # поэтому они уже добавлены в result.errors/warnings.
+        # Повторное объединение приводит к дублям.
         result.meta["enrich_summary"] = summary.as_dict()
         return result
 
