@@ -1,5 +1,3 @@
-import pytest
-
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validator import Validator
 from connector.domain.transform.result import TransformResult

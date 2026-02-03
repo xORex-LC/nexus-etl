@@ -26,9 +26,12 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
 
     # CLI overrides env
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"items": []}))
+    captured: dict[str, object] = {}
 
     def factory(*args, **kwargs):
         kwargs["transport"] = transport
+        captured["args"] = args
+        captured["kwargs"] = kwargs
         return AnkeyApiClient(*args, **kwargs)
 
     # main.py no longer exposes AnkeyApiClient; patch delivery command directly
@@ -38,5 +41,6 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
         ["--config", str(cfg), "--host", "3.3.3.3", "--port", "3333", "--api-username", "cli_user", "--api-password", "cli_pass", "check-api"],
     )
     assert result.exit_code == 0
-    assert "host=3.3.3.3 port=3333 api_username=cli_user" in result.stdout
-    assert "api_password=***" in result.stdout
+    assert captured["kwargs"]["baseUrl"] == "https://3.3.3.3:3333"
+    assert captured["kwargs"]["username"] == "cli_user"
+    assert captured["kwargs"]["password"] == "cli_pass"

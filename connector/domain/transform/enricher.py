@@ -642,14 +642,14 @@ class Enricher(Generic[T, D]):
         if candidate is None:
             return OperationReport(op=op.name, outcome=EnrichOutcome.SKIPPED)
         events: list[EnrichEvent] = []
-        for field in op.targets:
-            current = self._get_field_value(result, field)
-            if tracker.has_writer(field):
+        for target_field in op.targets:
+            current = self._get_field_value(result, target_field)
+            if tracker.has_writer(target_field):
                 if not self.merge_engine.should_apply(current, candidate, merge_policy):
                     events.append(
                         EnrichEvent(
                             op=op.name,
-                            field=field,
+                            field=target_field,
                             before=current,
                             after=current,
                             source=candidate.source,
@@ -665,7 +665,7 @@ class Enricher(Generic[T, D]):
                 events.append(
                     EnrichEvent(
                         op=op.name,
-                        field=field,
+                        field=target_field,
                         before=current,
                         after=current,
                         source=candidate.source,
@@ -674,12 +674,12 @@ class Enricher(Generic[T, D]):
                     )
                 )
                 continue
-            self._set_field_value(result, field, candidate.value)
-            tracker.register(field, op.name)
+            self._set_field_value(result, target_field, candidate.value)
+            tracker.register(target_field, op.name)
             events.append(
                 EnrichEvent(
                     op=op.name,
-                    field=field,
+                    field=target_field,
                     before=current,
                     after=candidate.value,
                     source=candidate.source,

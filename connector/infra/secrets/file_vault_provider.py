@@ -79,7 +79,6 @@ class FileVaultSecretProvider(SecretProviderProtocol):
             return None
         rows = _read_rows(self._path)
         best = None
-        best_run = None
         for row in rows:
             if row.get("dataset") != dataset:
                 continue
@@ -90,10 +89,8 @@ class FileVaultSecretProvider(SecretProviderProtocol):
             row_run = row.get("run_id") or None
             if run_id and row_run == run_id:
                 best = row
-                best_run = row_run
                 break
             best = row
-            best_run = row_run
         if best is None:
             return None
         return best.get("value")

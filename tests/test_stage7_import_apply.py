@@ -14,7 +14,6 @@ from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.reporting.collector import ReportCollector
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
 from connector.main import app
-from connector.infra.http.ankey_client import ApiError
 from connector.domain.diagnostics.catalog import build_catalog
 
 CATALOG = build_catalog("employees", strict=True)

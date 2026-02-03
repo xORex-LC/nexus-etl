@@ -23,13 +23,13 @@ class EmployeesApplyAdapter(ApplyAdapter):
 
     def to_request(self, item: PlanItem) -> RequestSpec:
         payload_source = dict(item.desired_state)
-        for field in item.secret_fields:
-            if payload_source.get(field):
+        for secret_field in item.secret_fields:
+            if payload_source.get(secret_field):
                 continue
             secret = (
                 self.secrets.get_secret(
                     dataset=self.dataset,
-                    field=field,
+                    field=secret_field,
                     row_id=item.row_id,
                     line_no=item.line_no,
                     source_ref=item.source_ref,
@@ -41,12 +41,12 @@ class EmployeesApplyAdapter(ApplyAdapter):
             if not secret:
                 raise MissingRequiredSecretError(
                     dataset=self.dataset,
-                    field=field,
+                    field=secret_field,
                     row_id=item.row_id,
                     line_no=item.line_no,
                     target_id=item.target_id,
                 )
-            payload_source[field] = secret
+            payload_source[secret_field] = secret
 
         payload = buildUserUpsertPayload(payload_source)
         return RequestSpec.put(

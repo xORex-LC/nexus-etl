@@ -29,7 +29,7 @@ def _build_match_key(result, deps) -> dict[str, str] | None:
     spec = EmployeesMappingSpec()
     try:
         match_key = build_delimited_match_key(spec.get_match_key_parts(result.row), strict=True)
-    except MatchKeyError as exc:
+    except MatchKeyError:
         return None
     return {"match_key": match_key.value}
 
