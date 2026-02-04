@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.domain.planning.plan_models import Operation, PlanItem, PlanSummary
-from connector.domain.planning.match_models import ResolvedRow, ResolveOp
+from connector.domain.transform.match_models import ResolvedRow, ResolveOp
 
 @dataclass
 class PlanBuildResult:

@@ -8,22 +8,22 @@ import logging
 from connector.domain.models import DiagnosticStage, MatchStatus, DiagnosticItem
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
-from connector.domain.planning.deps import ResolverSettings
-from connector.domain.planning.identity_keys import format_identity_key
-from connector.domain.planning.match_models import (
+from connector.domain.transform.resolve_deps import ResolverSettings
+from connector.domain.transform.identity_keys import format_identity_key
+from connector.domain.transform.match_models import (
     MatchedRow,
     ResolvedRow,
     ResolveOp,
     build_fingerprint_for_keys,
 )
-from connector.domain.planning.rules import LinkFieldRule, LinkRules, ResolveRules
+from connector.domain.transform.rules import LinkFieldRule, LinkRules, ResolveRules
 from connector.domain.ports.identity_repository import IdentityRepository
 from connector.domain.ports.pending_links_repository import PendingLink, PendingLinksRepository
 
 logger = logging.getLogger(__name__)
 
 
-class Resolver:
+class LookupEnricher:
     """
     Назначение/ответственность:
         Принятие решения по операции и формирование данных для плана.

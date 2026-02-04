@@ -12,14 +12,14 @@ from connector.domain.models import (
 )
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
-from connector.domain.planning.match_models import MatchedRow, build_fingerprint
-from connector.domain.planning.rules import IdentityRule, MatchingRules, ResolveRules
+from connector.domain.transform.match_models import MatchedRow, build_fingerprint
+from connector.domain.transform.rules import IdentityRule, MatchingRules, ResolveRules
 from connector.domain.ports.cache_repository import CacheRepositoryProtocol
 from connector.domain.transform.result import TransformResult
 from connector.domain.validation.validated_row import ValidationRow
 
 
-class Matcher:
+class DeduplicationTransform:
     """
     Назначение/ответственность:
         Сопоставление валидированной строки с кэшем/target без принятия решений.
@@ -51,16 +51,16 @@ class Matcher:
                 match_key=validated.match_key,
                 meta=validated.meta,
                 secret_candidates=validated.secret_candidates,
-                errors=[
-                    *_make_match_error(
+                errors=(
+                    _make_match_error(
                         self.catalog,
                         "MATCH_IDENTITY_MISSING",
                         None,
                         "empty validated row",
                         validated.row_ref,
-                    )
-                ],
-                warnings=[*validated.warnings],
+                    ),
+                ),
+                warnings=validated.warnings,
             )
 
         row = validation_row.row
@@ -75,8 +75,8 @@ class Matcher:
                 match_key=validated.match_key,
                 meta=validated.meta,
                 secret_candidates=validated.secret_candidates,
-                errors=[error],
-                warnings=[*validated.warnings],
+                errors=(error,),
+                warnings=validated.warnings,
             )
 
         identity_value = identity.primary_value if identity else None
@@ -88,16 +88,16 @@ class Matcher:
                 match_key=validated.match_key,
                 meta=validated.meta,
                 secret_candidates=validated.secret_candidates,
-                errors=[
-                    *_make_match_error(
+                errors=(
+                    _make_match_error(
                         self.catalog,
                         "MATCH_IDENTITY_MISSING",
                         None,
                         "identity value is empty",
                         validation.row_ref,
-                    )
-                ],
-                warnings=[*validated.warnings],
+                    ),
+                ),
+                warnings=validated.warnings,
             )
 
         desired_state = self.resolve_rules.build_desired_state(row, validation)
@@ -130,8 +130,8 @@ class Matcher:
             match_key=validated.match_key,
             meta=validated.meta,
             secret_candidates=validated.secret_candidates,
-            errors=[*validated.errors],
-            warnings=[*validated.warnings],
+            errors=validated.errors,
+            warnings=validated.warnings,
         )
 
     def _match_identity(
@@ -185,17 +185,15 @@ def _make_match_error(
     field: str | None,
     message: str,
     record_ref: RowRef | None,
-) -> list[DiagnosticItem]:
-    return [
-        diag_error(
-            catalog=catalog,
-            stage=DiagnosticStage.MATCH,
-            code=code,
-            field=field,
-            message=message,
-            record_ref=record_ref,
-        )
-    ]
+) -> DiagnosticItem:
+    return diag_error(
+        catalog=catalog,
+        stage=DiagnosticStage.MATCH,
+        code=code,
+        field=field,
+        message=message,
+        record_ref=record_ref,
+    )
 
 
 def _ensure_row_ref(validation: ValidationRowResult, identity: Identity, identity_value: str) -> RowRef:
