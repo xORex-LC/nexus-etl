@@ -1,17 +1,12 @@
 import logging
-
-from connector.domain.transform.enricher import Enricher
-from connector.domain.transform.normalizer import Normalizer
-from connector.domain.transform.pipeline import TransformPipeline
 from connector.domain.transform.source_record import SourceRecord
-from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
 from connector.infra.artifacts.report_writer import createEmptyReport
 from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.usecases.mapping_usecase import MappingUseCase
-from connector.datasets.employees.transform.normalizer_spec import EmployeesNormalizerSpec
 from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
 from connector.domain.diagnostics.catalog import build_catalog
+from connector.domain.transform.stages import MapStage
 
 CATALOG = build_catalog("employees", strict=True)
 
@@ -24,35 +19,15 @@ def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:
         values=mapped,
     )
 
-class _DummyEnrichDeps:
-    identity_lookup = None
-
-    def find_user_by_target_id(self, _target_id: str):
-        return None
-
-    def find_user_by_usr_org_tab_num(self, _tab_num: str):
-        return None
-
-    def find_org_by_ouid(self, _ouid: int):
-        return {"_ouid": _ouid}
-
-
 def _run_mapping(records: list[SourceRecord]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
     mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
-    transformer = TransformPipeline(
-        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
-        normalizer,
-        enricher,
-        CATALOG,
-    )
+    map_stage = MapStage(EmployeesSourceMapper(mapping_spec, catalog=CATALOG), CATALOG)
     row_source = records
     result = usecase.run(
         row_source=row_source,
-        transformer=transformer,
+        map_stage=map_stage,
         dataset="employees",
         logger=logging.getLogger("mapping-test"),
         run_id="run-1",

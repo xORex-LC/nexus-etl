@@ -4,7 +4,7 @@ from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.enricher import Enricher
-from connector.domain.transform.pipeline import TransformPipeline
+from connector.domain.transform.stages import MapStage, NormalizeStage, EnrichStage, StagePipeline
 from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.transform.normalizer_spec import EmployeesNormalizerSpec
@@ -46,6 +46,19 @@ class _DummyEnrichDeps:
     def find_org_by_ouid(self, _ouid: int):
         return {"_ouid": _ouid}
 
+def _build_pipeline() -> StagePipeline:
+    mapping_spec = EmployeesMappingSpec()
+    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
+    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    mapper = EmployeesSourceMapper(mapping_spec, catalog=CATALOG)
+    return StagePipeline(
+        [
+            MapStage(mapper, CATALOG),
+            NormalizeStage(normalizer, CATALOG),
+            EnrichStage(enricher, CATALOG),
+        ]
+    )
+
 def test_row_validator_parses_valid_row():
     collected = _collect(
         [
@@ -62,17 +75,10 @@ def test_row_validator_parses_valid_row():
         ],
         line_no=1,
     )
-    mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
-    transformer = TransformPipeline(
-        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
-        normalizer,
-        enricher,
-        CATALOG,
-    )
+    pipeline = _build_pipeline()
     validator = Validator(EmployeesValidationSpec(), ValidationDependencies(), catalog=CATALOG)
-    validated = validator.validate(transformer.enrich(collected))
+    enriched = next(iter(pipeline.run([collected])))
+    validated = validator.validate(enriched)
     entity = validated.row.row if validated.row else None
     result = validated.row.validation if validated.row else None
 
@@ -83,17 +89,10 @@ def test_row_validator_parses_valid_row():
 
 def test_row_validator_reports_missing_required():
     collected = _collect([None for _ in range(10)], line_no=1)
-    mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
-    transformer = TransformPipeline(
-        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
-        normalizer,
-        enricher,
-        CATALOG,
-    )
+    pipeline = _build_pipeline()
     validator = Validator(EmployeesValidationSpec(), ValidationDependencies(), catalog=CATALOG)
-    validated = validator.validate(transformer.enrich(collected))
+    enriched = next(iter(pipeline.run([collected])))
+    validated = validator.validate(enriched)
     result = validated.row.validation if validated.row else None
 
     assert not result.valid
@@ -116,17 +115,10 @@ def test_row_validator_invalid_email():
         ],
         line_no=1,
     )
-    mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
-    transformer = TransformPipeline(
-        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
-        normalizer,
-        enricher,
-        CATALOG,
-    )
+    pipeline = _build_pipeline()
     validator = Validator(EmployeesValidationSpec(), ValidationDependencies(), catalog=CATALOG)
-    validated = validator.validate(transformer.enrich(collected))
+    enriched = next(iter(pipeline.run([collected])))
+    validated = validator.validate(enriched)
     result = validated.row.validation if validated.row else None
 
     assert not result.valid
@@ -136,17 +128,10 @@ def test_row_validator_invalid_email():
 
 def test_row_validator_produces_row_ref_even_with_errors():
     collected = _collect([None for _ in range(10)], line_no=5)
-    mapping_spec = EmployeesMappingSpec()
-    normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
-    enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
-    transformer = TransformPipeline(
-        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
-        normalizer,
-        enricher,
-        CATALOG,
-    )
+    pipeline = _build_pipeline()
     validator = Validator(EmployeesValidationSpec(), ValidationDependencies(), catalog=CATALOG)
-    validated = validator.validate(transformer.enrich(collected))
+    enriched = next(iter(pipeline.run([collected])))
+    validated = validator.validate(enriched)
     result = validated.row.validation if validated.row else None
 
     assert result.row_ref is not None

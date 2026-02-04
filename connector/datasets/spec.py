@@ -10,9 +10,7 @@ from connector.domain.validation.validator import Validator
 from connector.domain.planning.deps import PlanningDependencies
 from connector.domain.planning.rules import LinkRules, MatchingRules, ResolveRules
 from connector.domain.ports.execution import RequestSpec, ExecutionResult
-from connector.domain.transform.enricher import Enricher
-from connector.domain.transform.normalizer import Normalizer
-from connector.domain.transform.pipeline import TransformPipeline
+from connector.domain.transform.stages import MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.source_record import SourceRecord
 from connector.infra.cache.cache_spec import CacheSpec
 
@@ -74,12 +72,12 @@ class DatasetSpec(Protocol):
     def build_validation_deps(self, conn, settings) -> ValidationDependencies: ...
     def build_planning_deps(self, conn, settings) -> PlanningDependencies: ...
     def build_enrich_deps(self, conn, settings, secret_store=None): ...
-    def build_pipeline(
+    def build_transform_stages(
         self,
         deps: ValidationDependencies,
         enrich_deps,
         catalog: ErrorCatalog,
-    ) -> TransformPipeline: ...
+    ) -> tuple[MapStage, NormalizeStage, EnrichStage]: ...
     def build_validator(self, deps: ValidationDependencies, catalog: ErrorCatalog) -> ValidationBundle: ...
     def build_cache_specs(self) -> list[CacheSpec]: ...
     def build_record_source(

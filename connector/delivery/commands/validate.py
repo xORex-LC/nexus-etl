@@ -14,6 +14,8 @@ from connector.delivery.cli.bootstrap import (
     build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.transform.extractor import Extractor
+from connector.domain.transform.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.logging.setup import logEvent
 from connector.usecases.validate_usecase import ValidateUseCase
@@ -57,8 +59,17 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             report_items_limit=report_items_limit,
             include_valid_items=False,
         )
+        enrich_pipeline = StagePipeline(
+            [
+                pipeline_ctx.map_stage,
+                pipeline_ctx.normalize_stage,
+                pipeline_ctx.enrich_stage,
+            ]
+        )
         return validate_usecase.run(
-            enriched_source=pipeline_ctx.iter_enriched_ok(),
+            enriched_source=enrich_pipeline.run(
+                Extractor(pipeline_ctx.row_source, catalog=pipeline_ctx.catalog).run()
+            ),
             validator=pipeline_ctx.validator,
             dataset=dataset_name,
             logger=ctx.logger,

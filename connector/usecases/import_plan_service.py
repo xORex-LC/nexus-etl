@@ -6,8 +6,9 @@ from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
-from connector.usecases.enrich_usecase import EnrichUseCase
-from connector.usecases.validate_usecase import ValidateUseCase
+from connector.domain.transform.extractor import Extractor
+from connector.domain.transform.iterators import iter_ok
+from connector.domain.transform.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
 from connector.usecases.match_usecase import MatchUseCase
 from connector.usecases.resolve_usecase import ResolveUseCase
 from connector.domain.planning.matcher import Matcher
@@ -59,26 +60,32 @@ class ImportPlanService:
             csv_path=csv_path,
             csv_has_header=csv_has_header,
         )
-        transformer = dataset_spec.build_pipeline(validation_deps, enrich_deps, catalog)
+        map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
+            validation_deps,
+            enrich_deps,
+            catalog,
+        )
         validator_bundle = dataset_spec.build_validator(validation_deps, catalog)
         validator = validator_bundle.validator
-        enrich_usecase = EnrichUseCase(
-            report_items_limit=report_items_limit,
-            include_enriched_items=False,
+        extractor = Extractor(row_source, catalog=catalog)
+        stage_pipeline = StagePipeline(
+            [
+                map_stage,
+                normalize_stage,
+                enrich_stage,
+                ValidateStage(validator, catalog),
+            ]
         )
-        enriched_ok = enrich_usecase.iter_enriched_ok(
-            row_source=row_source,
-            transformer=transformer,
-            catalog=catalog,
-        )
-        validate_usecase = ValidateUseCase(
-            report_items_limit=report_items_limit,
-            include_valid_items=False,
-        )
-        validated_rows = validate_usecase.iter_validated_ok(
-            enriched_source=enriched_ok,
-            validator=validator,
-            catalog=catalog,
+
+        def _should_skip_invalid(item):
+            validation_row = item.row
+            if validation_row is None:
+                return True
+            return bool(validation_row.validation.errors)
+
+        validated_rows = iter_ok(
+            stage_pipeline.run(extractor.run()),
+            should_skip=_should_skip_invalid,
         )
         planning_bundle = dataset_spec.build_planning_bundle()
         cache_repo = planning_deps.cache_repo
@@ -102,10 +109,13 @@ class ImportPlanService:
             include_matched_items=False,
         )
         matched_rows = list(
-            match_usecase.iter_matched_ok(
-                validated_source=validated_rows,
-                matcher=matcher,
-                catalog=catalog,
+            iter_ok(
+                match_usecase.iter_matched(
+                    validated_source=validated_rows,
+                    matcher=matcher,
+                    catalog=catalog,
+                ),
+                should_skip=lambda r: any(w.code == "MATCH_DUPLICATE_SOURCE" for w in r.warnings),
             )
         )
 
@@ -130,11 +140,13 @@ class ImportPlanService:
             report_items_limit=report_items_limit,
             include_resolved_items=False,
         )
-        resolved_rows = resolve_usecase.iter_resolved_ok(
-            matched_source=matched_rows,
-            resolver=resolver,
-            dataset=dataset,
-            catalog=catalog,
+        resolved_rows = iter_ok(
+            resolve_usecase.iter_resolved(
+                matched_source=matched_rows,
+                resolver=resolver,
+                dataset=dataset,
+                catalog=catalog,
+            )
         )
 
         use_case = PlanUseCase()
