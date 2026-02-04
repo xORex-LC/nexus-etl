@@ -5,6 +5,7 @@ from typing import Any, Callable, Generic, Mapping, TypeVar
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import ErrorCatalog
+from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.transform.result import TransformResult
 
 T = TypeVar("T")
@@ -81,28 +82,20 @@ class Normalizer(Generic[T]):
         warnings: list[DiagnosticItem] = []
         normalized_values: dict[str, Any] = {}
 
-        collector = TransformResult(
-            record=source.record,
-            row=None,
-            row_ref=source.row_ref,
-            match_key=source.match_key,
-            meta=source.meta,
-            secret_candidates=source.secret_candidates,
-        )
-
         def add_error(
             code: str,
             message: str | None = None,
             field: str | None = None,
             details: dict[str, Any] | None = None,
         ) -> DiagnosticItem:
-            item = collector.add_error(
-                catalog=self.catalog,
+            item = diag_error(
                 stage=DiagnosticStage.NORMALIZE,
                 code=code,
                 field=field,
                 message=message,
+                record_ref=source.row_ref,
                 details=details,
+                catalog=self.catalog,
             )
             errors.append(item)
             return item
@@ -113,13 +106,14 @@ class Normalizer(Generic[T]):
             field: str | None = None,
             details: dict[str, Any] | None = None,
         ) -> DiagnosticItem:
-            item = collector.add_warning(
-                catalog=self.catalog,
+            item = diag_warning(
                 stage=DiagnosticStage.NORMALIZE,
                 code=code,
                 field=field,
                 message=message,
+                record_ref=source.row_ref,
                 details=details,
+                catalog=self.catalog,
             )
             warnings.append(item)
             return item
@@ -133,8 +127,8 @@ class Normalizer(Generic[T]):
                 match_key=source.match_key,
                 meta=source.meta,
                 secret_candidates=source.secret_candidates,
-                errors=[*source.errors],
-                warnings=[*source.warnings],
+                errors=source.errors,
+                warnings=source.warnings,
             )
 
         for rule in self.spec.rules:
@@ -157,8 +151,8 @@ class Normalizer(Generic[T]):
             match_key=source.match_key,
             meta=source.meta,
             secret_candidates=source.secret_candidates,
-            errors=[*source.errors, *errors],
-            warnings=[*source.warnings, *warnings],
+            errors=(*source.errors, *errors),
+            warnings=(*source.warnings, *warnings),
         )
 
 
