@@ -30,7 +30,7 @@ def test_employees_source_mapper_builds_secrets():
     )
     result = EmployeesSourceMapper(catalog=CATALOG).map(record)
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.match_key is None
     assert result.secret_candidates.get("password") == "secret"
     assert result.row.email == "user@example.com"

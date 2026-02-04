@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from connector.domain.models import MatchStatus, RowRef, ValidationRowResult
-from connector.domain.planning.matcher import Matcher
-from connector.domain.planning.rules import ResolveRules
+from connector.domain.transform.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.rules import ResolveRules
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.domain.validation.validated_row import ValidationRow
@@ -87,7 +87,7 @@ def test_matcher_uses_fallback_identity_when_primary_missing():
             ("usr_org_tab_num", "TAB-1"): [{"_id": "u-1", "usr_org_tab_num": "TAB-1"}],
         },
     )
-    matcher = Matcher(
+    matcher = DeduplicationTransform(
         dataset="employees",
         cache_repo=cache_repo,
         matching_rules=matching_rules,
@@ -117,7 +117,7 @@ def test_matcher_returns_conflict_when_fallback_has_multiple_candidates():
             ],
         },
     )
-    matcher = Matcher(
+    matcher = DeduplicationTransform(
         dataset="employees",
         cache_repo=cache_repo,
         matching_rules=matching_rules,

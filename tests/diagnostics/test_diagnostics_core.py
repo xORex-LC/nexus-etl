@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from connector.domain.diagnostics import build_catalog, build_error
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.diagnostics.catalog import ErrorCatalog, CatalogEntry, build_warning
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -60,12 +61,14 @@ def test_transform_result_add_error_attaches_row_ref() -> None:
         row_ref=row_ref,
         match_key=None,
     )
-    item = result.add_error(
+    item = diag_error(
         catalog=catalog,
         stage=DiagnosticStage.VALIDATE,
         code="REQUIRED_FIELD_MISSING",
+        record_ref=row_ref,
     )
-    assert item.record_ref == row_ref
+    result = result.with_added_errors([item])
+    assert result.errors[0].record_ref == row_ref
 
 
 def test_build_catalog_merges_dataset_codes_in_strict_mode() -> None:

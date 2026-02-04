@@ -87,7 +87,7 @@ def test_enricher_builds_match_key_and_generates_values():
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
     result = enricher.enrich(_build_result(row))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.match_key is not None
     assert result.match_key.value == "Doe|John|M|100"
     assert result.row.target_id is not None
@@ -143,14 +143,15 @@ def test_enricher_runs_only_allowed_ops_on_error():
         usr_org_tab_num=None,
         target_id=None,
     )
-    result = _build_result(row)
-    result.errors.append(
-        DiagnosticItem(
-            stage=DiagnosticStage.MAP,
-            code="DUMMY_ERROR",
-            field=None,
-            message="upstream error",
-        )
+    result = _build_result(row).with_added_errors(
+        [
+            DiagnosticItem(
+                stage=DiagnosticStage.MAP,
+                code="DUMMY_ERROR",
+                field=None,
+                message="upstream error",
+            )
+        ]
     )
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
     enriched = enricher.enrich(result)
@@ -192,7 +193,7 @@ def test_enricher_writes_secrets_to_store():
     )
     result = enricher.enrich(_build_result(row, {"password": "secret"}))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert secret_store.calls
     dataset, match_key, secrets, run_id = secret_store.calls[0]
     assert dataset == "employees"

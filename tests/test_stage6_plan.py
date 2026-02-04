@@ -9,7 +9,7 @@ from connector.datasets.cache_registry import list_cache_specs
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.repository import SqliteCacheRepository
 from connector.infra.cache.identity_repository import SqliteIdentityRepository
-from connector.domain.planning.identity_keys import format_identity_key
+from connector.domain.transform.identity_keys import format_identity_key
 from connector.main import app
 
 runner = CliRunner()
