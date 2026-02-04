@@ -138,8 +138,8 @@ class Validator(Generic[T]):
             match_key=enriched.match_key,
             meta=enriched.meta,
             secret_candidates=enriched.secret_candidates,
-            errors=result.errors,
-            warnings=[],
+            errors=tuple(result.errors),
+            warnings=tuple(result.warnings),
         )
 
 

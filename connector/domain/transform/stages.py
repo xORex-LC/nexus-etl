@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from typing import Iterable, Protocol, Sequence, TypeVar
+from typing import Callable, Iterable, Protocol, Sequence, TypeVar
 
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.models import DiagnosticStage
+from connector.domain.models import DiagnosticStage, MatchStatus
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.transform.result import TransformResult
+from connector.domain.transform.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.lookup_enricher import LookupEnricher
+from connector.domain.transform.match_models import MatchedRow
 from connector.domain.validation.validator import Validator
 
 T = TypeVar("T")
@@ -36,8 +39,68 @@ class StagePipeline:
     def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult]:
         current = source
         for stage in self.stages:
+            if getattr(stage, "_is_batched", False):
+                batches = _buffer_into_batches(
+                    current,
+                    batch_size=getattr(stage, "_batch_size", 1000),
+                    key=getattr(stage, "_batch_key", None),
+                )
+                current = _run_batched(stage, batches)
+                continue
             current = stage.run(current)
         return current
+
+
+def batched(batch_size: int = 1000, key: Callable | None = None):
+    """
+    Назначение/ответственность:
+        Декоратор-маркер для стадий, которым нужен батч входных данных.
+    """
+
+    def decorator(stage_cls):
+        stage_cls._is_batched = True
+        stage_cls._batch_size = batch_size
+        stage_cls._batch_key = key
+        return stage_cls
+
+    return decorator
+
+
+def _buffer_into_batches(
+    stream: Iterable[TransformResult],
+    *,
+    batch_size: int,
+    key: Callable | None = None,
+) -> Iterable[list[TransformResult]]:
+    if batch_size <= 0:
+        batch_size = 1
+    if key is None:
+        batch: list[TransformResult] = []
+        for item in stream:
+            batch.append(item)
+            if len(batch) >= batch_size:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
+        return
+    buckets: dict[object, list[TransformResult]] = {}
+    for item in stream:
+        bucket_key = key(item)
+        bucket = buckets.setdefault(bucket_key, [])
+        bucket.append(item)
+        if len(bucket) >= batch_size:
+            yield bucket
+            buckets[bucket_key] = []
+    for bucket in buckets.values():
+        if bucket:
+            yield bucket
+
+
+def _run_batched(stage: TransformStageProcessor, batches: Iterable[list[TransformResult]]) -> Iterable[TransformResult]:
+    for batch in batches:
+        for item in stage.run(batch):
+            yield item
 
 
 class MapStage:
@@ -53,48 +116,33 @@ class MapStage:
     def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult]:
         for collected in source:
             if collected.errors:
-                yield TransformResult(
-                    record=collected.record,
-                    row=None,
-                    row_ref=collected.row_ref,
-                    match_key=collected.match_key,
-                    meta=collected.meta,
-                    secret_candidates=collected.secret_candidates,
-                    errors=[*collected.errors],
-                    warnings=[*collected.warnings],
-                )
+                builder = collected.as_builder()
+                builder.set_row(None)
+                yield builder.build()
                 continue
 
-            errors = [*collected.errors]
-            warnings = [*collected.warnings]
+            boundary_errors: list = []
             mapped: TransformResult | None = None
             with diagnostic_boundary(
                 stage=DiagnosticStage.MAP,
                 catalog=self.catalog,
-                sink=errors,
+                sink=boundary_errors,
                 record_ref=collected.row_ref,
             ):
                 mapped = self.mapper.map(collected.record)
             if mapped is None:
-                yield TransformResult(
-                    record=collected.record,
-                    row=None,
-                    row_ref=collected.row_ref,
-                    match_key=collected.match_key,
-                    meta=dict(collected.meta) if collected.meta else None,
-                    secret_candidates=dict(collected.secret_candidates),
-                    errors=errors,
-                    warnings=warnings,
-                )
+                builder = collected.as_builder()
+                builder.set_row(None)
+                for err in boundary_errors:
+                    builder.add_error_item(err)
+                yield builder.build()
                 continue
+            builder = mapped.as_builder()
             if collected.meta:
-                if mapped.meta:
-                    mapped.meta = {**collected.meta, **mapped.meta}
-                else:
-                    mapped.meta = dict(collected.meta)
-            mapped.errors = [*errors, *mapped.errors]
-            mapped.warnings = [*warnings, *mapped.warnings]
-            yield mapped
+                builder.meta = {**collected.meta, **builder.meta}
+            builder.errors = [*collected.errors, *boundary_errors, *builder.errors]
+            builder.warnings = [*collected.warnings, *builder.warnings]
+            yield builder.build()
 
 
 class NormalizeStage:
@@ -112,29 +160,26 @@ class NormalizeStage:
             if collected.errors:
                 yield collected
                 continue
-            errors = [*collected.errors]
-            warnings = [*collected.warnings]
+            boundary_errors: list = []
             normalized: TransformResult | None = None
             with diagnostic_boundary(
                 stage=DiagnosticStage.NORMALIZE,
                 catalog=self.catalog,
-                sink=errors,
+                sink=boundary_errors,
                 record_ref=collected.row_ref,
             ):
                 normalized = self.normalizer.normalize(collected)
             if normalized is None:
-                yield TransformResult(
-                    record=collected.record,
-                    row=None,
-                    row_ref=collected.row_ref,
-                    match_key=collected.match_key,
-                    meta=dict(collected.meta) if collected.meta else None,
-                    secret_candidates=dict(collected.secret_candidates),
-                    errors=errors,
-                    warnings=warnings,
-                )
+                builder = collected.as_builder()
+                builder.set_row(None)
+                for err in boundary_errors:
+                    builder.add_error_item(err)
+                yield builder.build()
                 continue
-            yield normalized
+            builder = normalized.as_builder()
+            for err in boundary_errors:
+                builder.add_error_item(err)
+            yield builder.build()
 
 
 class EnrichStage:
@@ -149,29 +194,26 @@ class EnrichStage:
 
     def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult]:
         for collected in source:
-            errors = [*collected.errors]
-            warnings = [*collected.warnings]
+            boundary_errors: list = []
             enriched: TransformResult | None = None
             with diagnostic_boundary(
                 stage=DiagnosticStage.ENRICH,
                 catalog=self.catalog,
-                sink=errors,
+                sink=boundary_errors,
                 record_ref=collected.row_ref,
             ):
                 enriched = self.enricher.enrich(collected)
             if enriched is None:
-                yield TransformResult(
-                    record=collected.record,
-                    row=None,
-                    row_ref=collected.row_ref,
-                    match_key=collected.match_key,
-                    meta=dict(collected.meta) if collected.meta else None,
-                    secret_candidates=dict(collected.secret_candidates),
-                    errors=errors,
-                    warnings=warnings,
-                )
+                builder = collected.as_builder()
+                builder.set_row(None)
+                for err in boundary_errors:
+                    builder.add_error_item(err)
+                yield builder.build()
                 continue
-            yield enriched
+            builder = enriched.as_builder()
+            for err in boundary_errors:
+                builder.add_error_item(err)
+            yield builder.build()
 
 
 class ValidateStage:
@@ -196,28 +238,16 @@ class ValidateStage:
             ):
                 validated = self.validator.validate(enriched)
             if boundary_errors:
-                yield TransformResult(
-                    record=enriched.record,
-                    row=None,
-                    row_ref=enriched.row_ref,
-                    match_key=enriched.match_key,
-                    meta=enriched.meta,
-                    secret_candidates=enriched.secret_candidates,
-                    errors=[*enriched.errors, *boundary_errors],
-                    warnings=[*enriched.warnings],
-                )
+                builder = enriched.as_builder()
+                builder.set_row(None)
+                for err in boundary_errors:
+                    builder.add_error_item(err)
+                yield builder.build()
                 continue
             if validated is None:
-                yield TransformResult(
-                    record=enriched.record,
-                    row=None,
-                    row_ref=enriched.row_ref,
-                    match_key=enriched.match_key,
-                    meta=enriched.meta,
-                    secret_candidates=enriched.secret_candidates,
-                    errors=[*enriched.errors],
-                    warnings=[*enriched.warnings],
-                )
+                builder = enriched.as_builder()
+                builder.set_row(None)
+                yield builder.build()
                 continue
             validation_row = validated.row
             if validation_row is None:
@@ -225,6 +255,128 @@ class ValidateStage:
                 continue
             validation = validation_row.validation
             if not validation.errors:
-                validated.errors = validation.errors
-                validated.warnings = validation.warnings
+                builder = validated.as_builder()
+                builder.errors = list(validation.errors)
+                builder.warnings = list(validation.warnings)
+                yield builder.build()
+                continue
             yield validated
+
+
+class MatchStage:
+    """
+    Назначение/ответственность:
+        Стадия match (validated -> matched).
+    """
+
+    def __init__(self, matcher: DeduplicationTransform, catalog: ErrorCatalog) -> None:
+        self.matcher = matcher
+        self.catalog = catalog
+
+    def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult[MatchedRow]]:
+        for validated in source:
+            boundary_errors: list = []
+            matched: TransformResult[MatchedRow] | None = None
+            with diagnostic_boundary(
+                stage=DiagnosticStage.MATCH,
+                catalog=self.catalog,
+                sink=boundary_errors,
+                record_ref=validated.row_ref,
+            ):
+                matched = self.matcher.match(validated)
+            if matched is None:
+                builder = validated.as_builder()
+                builder.set_row(None)
+                for err in boundary_errors:
+                    builder.add_error_item(err)
+                yield builder.build()
+                continue
+            if boundary_errors:
+                builder = matched.as_builder()
+                for err in boundary_errors:
+                    builder.add_error_item(err)
+                yield builder.build()
+                continue
+            yield matched
+
+
+class ResolveStage:
+    """
+    Назначение/ответственность:
+        Стадия resolve (matched -> resolved).
+    """
+
+    def __init__(self, resolver: LookupEnricher, catalog: ErrorCatalog) -> None:
+        self.resolver = resolver
+        self.catalog = catalog
+
+    def run(
+        self,
+        source: Iterable[TransformResult[MatchedRow]],
+        *,
+        dataset: str | None = None,
+    ) -> Iterable[TransformResult]:
+        matched_rows: list[TransformResult[MatchedRow]] = []
+        for matched in source:
+            matched_rows.append(matched)
+
+        batch_index = _build_batch_index(matched_rows, self.resolver, dataset)
+        target_id_map = _build_target_id_map(matched_rows)
+
+        for matched in matched_rows:
+            if matched.row is None:
+                yield matched  # type: ignore[return-value]
+                continue
+            boundary_errors: list = []
+            resolved_row = None
+            errors: list = []
+            warnings: list = []
+            with diagnostic_boundary(
+                stage=DiagnosticStage.RESOLVE,
+                catalog=self.catalog,
+                sink=boundary_errors,
+                record_ref=matched.row_ref,
+            ):
+                resolved_row, errors, warnings = self.resolver.resolve(
+                    matched.row,
+                    target_id_map=target_id_map,
+                    meta=matched.meta,
+                    batch_index=batch_index,
+                )
+            if boundary_errors:
+                errors = [*errors, *boundary_errors]
+            yield TransformResult(
+                record=matched.record,
+                row=resolved_row,
+                row_ref=matched.row_ref,
+                match_key=matched.match_key,
+                meta=matched.meta,
+                secret_candidates=matched.secret_candidates,
+                errors=tuple(errors),
+                warnings=tuple(warnings),
+            )
+
+
+def _build_target_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for item in matched_rows:
+        row = item.row
+        if row is None:
+            continue
+        if row.match_status == MatchStatus.MATCHED and row.existing:
+            target_id = row.existing.get("_id")
+        else:
+            target_id = row.target_id
+        if target_id:
+            mapping[row.identity.primary_value] = str(target_id)
+    return mapping
+
+
+def _build_batch_index(
+    matched_rows: list[TransformResult[MatchedRow]],
+    resolver: LookupEnricher,
+    dataset: str | None,
+) -> dict[str, dict[str, list[str]]]:
+    if dataset is None:
+        return {}
+    return resolver.build_batch_index(matched_rows, dataset)

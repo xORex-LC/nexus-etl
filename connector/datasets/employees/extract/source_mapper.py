@@ -4,6 +4,7 @@ from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.ports.sources import SourceMapper
 from connector.domain.transform.result import TransformResult
 from connector.domain.diagnostics.catalog import ErrorCatalog
+from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.transform.source_record import SourceRecord
 from typing import Mapping
 import re
@@ -42,21 +43,14 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
     def map(self, record: SourceRecord) -> TransformResult[EmployeesRowPublic]:
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
-        result = TransformResult(
-            record=record,
-            row=None,
-            # RowRef будет рассчитан позже на этапах enrich/validate.
-            row_ref=None,
-            match_key=None,
-        )
-
         def add_error(code: str, message: str | None = None, field: str | None = None):
-            return result.add_error(
+            return diag_error(
                 catalog=self.catalog,
                 stage=DiagnosticStage.MAP,
                 code=code,
                 field=field,
                 message=message,
+                record_ref=None,
             )
 
         raw = record.values
@@ -104,12 +98,17 @@ class EmployeesSourceMapper(SourceMapper[EmployeesRowPublic]):
                 if match_key_value:
                     link_keys["manager_id"] = {"match_key": match_key_value}
 
-        result.row = row
-        result.meta = {"link_keys": link_keys} if link_keys else {}
-        result.secret_candidates = secret_candidates
-        result.errors = errors
-        result.warnings = warnings
-        return result
+        meta = {"link_keys": link_keys} if link_keys else {}
+        return TransformResult(
+            record=record,
+            row=row,
+            row_ref=None,
+            match_key=None,
+            meta=meta,
+            secret_candidates=secret_candidates,
+            errors=tuple(errors),
+            warnings=tuple(warnings),
+        )
 
 
 _EMAIL_RE = re.compile(r"[^\s,;|]+@[^\s,;|]+")
