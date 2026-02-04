@@ -20,8 +20,8 @@ from connector.domain.transform.iterators import iter_ok
 from connector.infra.logging.setup import logEvent
 from connector.usecases.match_usecase import MatchUseCase
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.domain.planning.matcher import Matcher
-from connector.domain.planning.resolver import Resolver
+from connector.domain.transform.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.lookup_enricher import LookupEnricher
 
 
 @dataclass(frozen=True)
@@ -89,7 +89,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         if planning_deps.pending_repo is None:
             raise ValueError("planning pending_repo is not configured")
 
-        matcher = Matcher(
+        matcher = DeduplicationTransform(
             dataset=dataset_name,
             cache_repo=cache_repo,
             matching_rules=planning_bundle.matching_rules,
@@ -110,7 +110,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             should_skip=lambda r: any(w.code == "MATCH_DUPLICATE_SOURCE" for w in r.warnings),
         )
 
-        resolver = Resolver(
+        resolver = LookupEnricher(
             planning_bundle.resolve_rules,
             planning_bundle.link_rules,
             identity_repo=planning_deps.identity_repo,

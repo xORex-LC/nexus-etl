@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.planning.rules import ResolveRules
+from connector.domain.transform.rules import ResolveRules
 from connector.datasets.employees.load.projector import EmployeesProjector
 from connector.datasets.employees.load.diff_policy import EmployeesDiffPolicy
 from connector.domain.models import ValidationRowResult

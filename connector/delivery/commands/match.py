@@ -19,7 +19,7 @@ from connector.domain.transform.extractor import Extractor
 from connector.domain.transform.iterators import iter_ok
 from connector.infra.logging.setup import logEvent
 from connector.usecases.match_usecase import MatchUseCase
-from connector.domain.planning.matcher import Matcher
+from connector.domain.transform.deduplication_transform import DeduplicationTransform
 
 
 @dataclass(frozen=True)
@@ -83,7 +83,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         if cache_repo is None:
             raise ValueError("planning cache_repo is not configured")
 
-        matcher = Matcher(
+        matcher = DeduplicationTransform(
             dataset=dataset_name,
             cache_repo=cache_repo,
             matching_rules=planning_bundle.matching_rules,

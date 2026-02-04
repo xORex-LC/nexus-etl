@@ -6,11 +6,11 @@ from typing import Iterable
 from connector.domain.models import DiagnosticStage, MatchStatus, RowRef
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.planning.resolver import Resolver
+from connector.domain.transform.lookup_enricher import LookupEnricher
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.transform.result_processor import PlanningResultProcessor
-from connector.domain.planning.stages import ResolveStage
+from connector.domain.transform.stages import ResolveStage
 
 
 class ResolveUseCase:
@@ -30,7 +30,7 @@ class ResolveUseCase:
     def iter_resolved(
         self,
         matched_source: Iterable[TransformResult],
-        resolver: Resolver,
+        resolver: LookupEnricher,
         *,
         dataset: str | None = None,
         catalog: ErrorCatalog,
@@ -44,7 +44,7 @@ class ResolveUseCase:
     def run(
         self,
         matched_source: Iterable[TransformResult],
-        resolver: Resolver,
+        resolver: LookupEnricher,
         dataset: str,
         report,
         catalog: ErrorCatalog,
@@ -74,7 +74,7 @@ class ResolveUseCase:
     def _iter_resolved(
         self,
         matched_source: Iterable[TransformResult],
-        resolver: Resolver,
+        resolver: LookupEnricher,
         *,
         dataset: str | None = None,
         catalog: ErrorCatalog,
@@ -84,7 +84,7 @@ class ResolveUseCase:
             yield resolved
 
 
-def _purge_pending(resolver: Resolver) -> None:
+def _purge_pending(resolver: LookupEnricher) -> None:
     # Чистим обработанные pending-записи по retention, если включено.
     settings = resolver.settings
     if settings is None:

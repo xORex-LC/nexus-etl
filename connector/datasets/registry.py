@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.datasets.spec import DatasetSpec
-from connector.domain.planning.rules import LinkRules
+from connector.domain.transform.rules import LinkRules
 from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.datasets.employees.spec import make_employees_spec
 
