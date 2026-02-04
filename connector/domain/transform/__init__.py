@@ -1,5 +1,5 @@
 from .match_key import MatchKey, MatchKeyError, build_delimited_match_key
-from .result import TransformResult
+from .result import TransformResult, TransformResultBuilder
 from .normalizer import Normalizer, NormalizerRule, NormalizerSpec
 from .enricher import (
     EnrichContext,
@@ -20,6 +20,8 @@ from .enricher import (
 from .enricher_report import EnricherReport
 from .source_record import SourceRecord
 from .target_id import TargetIdMode, TargetIdPolicy
+from .deduplication_transform import DeduplicationTransform
+from .lookup_enricher import LookupEnricher
 
 __all__ = [
     "MatchKey",
@@ -27,6 +29,7 @@ __all__ = [
     "build_delimited_match_key",
     "SourceRecord",
     "TransformResult",
+    "TransformResultBuilder",
     "Normalizer",
     "NormalizerRule",
     "NormalizerSpec",
@@ -48,4 +51,6 @@ __all__ = [
     "EnricherReport",
     "TargetIdMode",
     "TargetIdPolicy",
+    "DeduplicationTransform",
+    "LookupEnricher",
 ]
