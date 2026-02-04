@@ -15,6 +15,8 @@ from connector.delivery.cli.bootstrap import (
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.transform.extractor import Extractor
+from connector.domain.transform.iterators import iter_ok
 from connector.infra.logging.setup import logEvent
 from connector.usecases.match_usecase import MatchUseCase
 from connector.usecases.resolve_usecase import ResolveUseCase
@@ -52,6 +54,12 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         opts.include_resolved_items if opts.include_resolved_items is not None else False
     )
 
+    def _should_skip_invalid(item):
+        validation_row = item.row
+        if validation_row is None:
+            return True
+        return bool(validation_row.validation.errors)
+
     conn = None
     try:
         conn, _engine, _cache_repo, _cache_specs = build_cache(settings)
@@ -66,7 +74,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             csv_has_header=csv_has_header_value,
         )
         planning_deps = pipeline_ctx.planning_deps
-        validated_rows = pipeline_ctx.iter_validated_ok()
+        validated_rows = iter_ok(
+            pipeline_ctx.stage_pipeline.run(Extractor(pipeline_ctx.row_source, catalog=pipeline_ctx.catalog).run()),
+            should_skip=_should_skip_invalid,
+        )
 
         planning_bundle = dataset_spec.build_planning_bundle()
 
@@ -90,10 +101,13 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             report_items_limit=report_items_limit_value,
             include_matched_items=False,
         )
-        matched_rows = match_usecase.iter_matched_ok(
-            validated_source=validated_rows,
-            matcher=matcher,
-            catalog=catalog,
+        matched_rows = iter_ok(
+            match_usecase.iter_matched(
+                validated_source=validated_rows,
+                matcher=matcher,
+                catalog=catalog,
+            ),
+            should_skip=lambda r: any(w.code == "MATCH_DUPLICATE_SOURCE" for w in r.warnings),
         )
 
         resolver = Resolver(

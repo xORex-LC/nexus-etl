@@ -2,7 +2,7 @@ from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validator import Validator
-from connector.domain.transform.pipeline import TransformPipeline
+from connector.domain.transform.stages import MapStage, NormalizeStage, EnrichStage, StagePipeline
 from connector.domain.transform.result import TransformResult
 from connector.domain.transform.source_record import SourceRecord
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
@@ -49,14 +49,17 @@ def make_employee(values: list[str | None], deps: ValidationDependencies):
     mapping_spec = EmployeesMappingSpec()
     normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=CATALOG)
     enricher = Enricher(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
-    transformer = TransformPipeline(
-        EmployeesSourceMapper(mapping_spec, catalog=CATALOG),
-        normalizer,
-        enricher,
-        CATALOG,
+    mapper = EmployeesSourceMapper(mapping_spec, catalog=CATALOG)
+    pipeline = StagePipeline(
+        [
+            MapStage(mapper, CATALOG),
+            NormalizeStage(normalizer, CATALOG),
+            EnrichStage(enricher, CATALOG),
+        ]
     )
     validator = Validator(EmployeesValidationSpec(), deps, catalog=CATALOG)
-    validated = validator.validate(transformer.enrich(_collect(values, line_no=1)))
+    enriched = next(iter(pipeline.run([_collect(values, line_no=1)])))
+    validated = validator.validate(enriched)
     entity = validated.row.row if validated.row else None
     result = validated.row.validation if validated.row else None
     return entity, result

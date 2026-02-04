@@ -11,12 +11,10 @@ from connector.domain.ports.secrets import SecretProviderProtocol
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.cache_registry import list_cache_specs
 from connector.datasets.spec import DatasetSpec, ValidationBundle
-from connector.domain.transform.pipeline import TransformPipeline
+from connector.domain.transform.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
 from connector.domain.transform.result import TransformResult
 from connector.domain.validation.validator import Validator
 from connector.domain.planning.deps import PlanningDependencies
-from connector.usecases.enrich_usecase import EnrichUseCase
-from connector.usecases.validate_usecase import ValidateUseCase
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.sqlite_engine import SqliteEngine
@@ -146,32 +144,15 @@ class PipelineContext:
     dataset_name: str
     catalog: ErrorCatalog
     row_source: Iterable
-    transformer: TransformPipeline
+    map_stage: MapStage
+    normalize_stage: NormalizeStage
+    enrich_stage: EnrichStage
     validator: Validator
+    stage_pipeline: StagePipeline
     planning_deps: PlanningDependencies
     report_items_limit: int
 
-    def iter_enriched_ok(self) -> Iterable[TransformResult]:
-        enrich_uc = EnrichUseCase(
-            report_items_limit=self.report_items_limit,
-            include_enriched_items=False,
-        )
-        return enrich_uc.iter_enriched_ok(
-            row_source=self.row_source,
-            transformer=self.transformer,
-            catalog=self.catalog,
-        )
-
-    def iter_validated_ok(self) -> Iterable[TransformResult]:
-        validate_uc = ValidateUseCase(
-            report_items_limit=self.report_items_limit,
-            include_valid_items=False,
-        )
-        return validate_uc.iter_validated_ok(
-            enriched_source=self.iter_enriched_ok(),
-            validator=self.validator,
-            catalog=self.catalog,
-        )
+    # NOTE: iter_*_ok вынесены наружу через iter_ok(stage_pipeline.run(...))
 
 
 def build_pipeline_context(
@@ -193,19 +174,35 @@ def build_pipeline_context(
     enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
     planning_deps = dataset_spec.build_planning_deps(conn, settings)
 
-    transformer = dataset_spec.build_pipeline(validation_deps, enrich_deps, catalog)
+    map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
+        validation_deps,
+        enrich_deps,
+        catalog,
+    )
 
     validation_bundle: ValidationBundle = dataset_spec.build_validator(validation_deps, catalog)
     validator = validation_bundle.validator
 
     row_source = dataset_spec.build_record_source(csv_path=csv_path, csv_has_header=csv_has_header)
 
+    stage_pipeline = StagePipeline(
+        [
+            map_stage,
+            normalize_stage,
+            enrich_stage,
+            ValidateStage(validator, catalog),
+        ]
+    )
+
     return PipelineContext(
         dataset_name=dataset_name,
         catalog=catalog,
         row_source=row_source,
-        transformer=transformer,
+        map_stage=map_stage,
+        normalize_stage=normalize_stage,
+        enrich_stage=enrich_stage,
         validator=validator,
+        stage_pipeline=stage_pipeline,
         planning_deps=planning_deps,
         report_items_limit=settings.report_items_limit,
     )

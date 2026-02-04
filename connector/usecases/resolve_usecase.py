@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
-from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, MatchStatus, RowRef
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.diagnostics.boundary import diagnostic_boundary
-from connector.domain.planning.match_models import MatchedRow
 from connector.domain.planning.resolver import Resolver
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.result_processor import PlanningResultProcessor
+from connector.domain.planning.stages import ResolveStage
 
 
 class ResolveUseCase:
@@ -30,7 +27,7 @@ class ResolveUseCase:
         self.report_items_limit = report_items_limit
         self.include_resolved_items = include_resolved_items
 
-    def iter_resolved_ok(
+    def iter_resolved(
         self,
         matched_source: Iterable[TransformResult],
         resolver: Resolver,
@@ -40,12 +37,9 @@ class ResolveUseCase:
     ):
         """
         Назначение:
-            Итератор разрешённых строк без ошибок (для plan).
+            Итератор разрешённых строк (для plan).
         """
-        for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset, catalog=catalog):
-            if resolved.errors:
-                continue
-            yield resolved
+        return self._iter_resolved(matched_source, resolver, dataset=dataset, catalog=catalog)
 
     def run(
         self,
@@ -57,42 +51,24 @@ class ResolveUseCase:
     ) -> CommandResult:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         _report_expired(report, resolver.drain_expired(), resolver.settings, catalog)
+        processor = PlanningResultProcessor(
+            report=report,
+            include_items=self.include_resolved_items,
+            context_key="resolve",
+            ok_label="resolved_ok",
+            failed_label="resolve_failed",
+            meta_builder=lambda r: {"op": r.row.op if r.row else None},
+            should_skip=lambda r: _resolve_status(r) is None and r.row is None,
+        )
+
         for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset, catalog=catalog):
-            row = resolved.row
-            if row is None:
-                status = _resolve_status(resolved)
-                if status is None:
-                    continue
-                _count_special_ops(report, resolved.errors, resolved.warnings)
-                report.add_item(
-                    status=status,
-                    row_ref=resolved.row_ref,
-                    payload=None,
-                    errors=resolved.errors,
-                    warnings=resolved.warnings,
-                    meta={"op": None},
-                    store=True,
-                )
-                continue
-            status = "FAILED" if resolved.errors else "OK"
-            payload = asdict(row) if self.include_resolved_items and row is not None else None
             _count_special_ops(report, resolved.errors, resolved.warnings)
-            report.add_item(
-                status=status,
-                row_ref=row.row_ref if row else None,
-                payload=maskSecretsInObject(payload) if payload else None,
-                errors=resolved.errors,
-                warnings=resolved.warnings,
-                meta={"op": row.op if row else None},
-                store=status == "FAILED" or self.include_resolved_items,
-            )
+            processor.process(resolved)
             _report_expired(report, resolver.drain_expired(), resolver.settings, catalog)
         _purge_pending(resolver)
-        result = CommandResult()
+        result = processor.finalize()
         if report.summary.errors_total > 0:
             result.add_code(SystemErrorCode.CONFLICT)
-        else:
-            result.add_code(SystemErrorCode.OK)
         return result
 
     def _iter_resolved(
@@ -103,70 +79,9 @@ class ResolveUseCase:
         dataset: str | None = None,
         catalog: ErrorCatalog,
     ):
-        matched_rows: list[TransformResult[MatchedRow]] = []
-        for matched in matched_source:
-            matched_rows.append(matched)
-
-        batch_index = _build_batch_index(matched_rows, resolver, dataset)
-        target_id_map = _build_target_id_map(matched_rows)
-
-        for matched in matched_rows:
-            if matched.row is None:
-                yield matched  # type: ignore[return-value]
-                continue
-            boundary_errors: list = []
-            resolved_row = None
-            errors: list = []
-            warnings: list = []
-            with diagnostic_boundary(
-                stage=DiagnosticStage.RESOLVE,
-                catalog=catalog,
-                sink=boundary_errors,
-                record_ref=matched.row_ref,
-            ):
-                resolved_row, errors, warnings = resolver.resolve(
-                    matched.row,
-                    target_id_map=target_id_map,
-                    meta=matched.meta,
-                    batch_index=batch_index,
-                )
-            if boundary_errors:
-                errors = [*errors, *boundary_errors]
-            yield TransformResult(
-                record=matched.record,
-                row=resolved_row,
-                row_ref=matched.row_ref,
-                match_key=matched.match_key,
-                meta=matched.meta,
-                secret_candidates=matched.secret_candidates,
-                errors=errors,
-                warnings=warnings,
-            )
-
-
-def _build_target_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dict[str, str]:
-    mapping: dict[str, str] = {}
-    for item in matched_rows:
-        row = item.row
-        if row is None:
-            continue
-        if row.match_status == MatchStatus.MATCHED and row.existing:
-            target_id = row.existing.get("_id")
-        else:
-            target_id = row.target_id
-        if target_id:
-            mapping[row.identity.primary_value] = str(target_id)
-    return mapping
-
-
-def _build_batch_index(
-    matched_rows: list[TransformResult[MatchedRow]],
-    resolver: Resolver,
-    dataset: str | None,
-) -> dict[str, dict[str, list[str]]]:
-    if dataset is None:
-        return {}
-    return resolver.build_batch_index(matched_rows, dataset)
+        stage = ResolveStage(resolver, catalog)
+        for resolved in stage.run(matched_source, dataset=dataset):
+            yield resolved
 
 
 def _purge_pending(resolver: Resolver) -> None:

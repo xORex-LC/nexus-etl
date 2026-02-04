@@ -17,7 +17,7 @@ from connector.datasets.employees.transform.enricher_spec import EmployeesEnrich
 from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
-from connector.domain.transform.pipeline import TransformPipeline
+from connector.domain.transform.stages import MapStage, NormalizeStage, EnrichStage
 from connector.domain.validation.validator import Validator
 from connector.infra.sources.csv_reader import CsvRecordSource
 from connector.datasets.employees.load.cache_spec import employees_cache_spec
@@ -64,12 +64,12 @@ class EmployeesSpec(DatasetSpec):
             secret_store=secret_store,
         )
 
-    def build_pipeline(
+    def build_transform_stages(
         self,
         deps: ValidationDependencies,
         enrich_deps: EmployeesEnrichDependencies,
         catalog: ErrorCatalog,
-    ) -> TransformPipeline:
+    ) -> tuple[MapStage, NormalizeStage, EnrichStage]:
         _ = deps
         mapping_spec = EmployeesMappingSpec()
         normalizer = Normalizer(EmployeesNormalizerSpec(), catalog=catalog)
@@ -81,7 +81,11 @@ class EmployeesSpec(DatasetSpec):
             dataset="employees",
             catalog=catalog,
         )
-        return TransformPipeline(mapper, normalizer, enricher, catalog)
+        return (
+            MapStage(mapper, catalog),
+            NormalizeStage(normalizer, catalog),
+            EnrichStage(enricher, catalog),
+        )
 
     def build_validator(self, deps: ValidationDependencies, catalog: ErrorCatalog) -> ValidationBundle:
         validator = Validator(EmployeesValidationSpec(), deps, catalog=catalog)
