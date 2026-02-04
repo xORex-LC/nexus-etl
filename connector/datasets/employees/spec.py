@@ -3,7 +3,7 @@ from __future__ import annotations
 from connector.datasets.spec import DatasetSpec, PlanningBundle, ValidationBundle
 from connector.datasets.employees.load.reporting import employees_report_adapter
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
-from connector.domain.planning.deps import PlanningDependencies, ResolverSettings
+from connector.domain.transform.resolve_deps import PlanningDependencies, ResolverSettings
 from connector.datasets.employees.load.matching_rules import build_matching_rules
 from connector.datasets.employees.load.link_rules import build_link_rules
 from connector.datasets.employees.load.resolve_rules import build_resolve_rules

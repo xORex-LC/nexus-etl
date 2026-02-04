@@ -11,14 +11,14 @@ from connector.domain.transform.iterators import iter_ok
 from connector.domain.transform.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
 from connector.usecases.match_usecase import MatchUseCase
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.domain.planning.matcher import Matcher
-from connector.domain.planning.resolver import Resolver
+from connector.domain.transform.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.lookup_enricher import LookupEnricher
 import json
-from connector.domain.planning.match_models import MatchedRow
+from connector.domain.transform.match_models import MatchedRow
 from connector.domain.models import Identity, MatchStatus, RowRef
 from connector.domain.transform.source_record import SourceRecord
 from connector.domain.transform.result import TransformResult
-from connector.domain.planning.match_models import build_fingerprint
+from connector.domain.transform.match_models import build_fingerprint
 from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -96,7 +96,7 @@ class ImportPlanService:
         if planning_deps.pending_repo is None:
             raise ValueError("planning pending_repo is not configured")
 
-        matcher = Matcher(
+        matcher = DeduplicationTransform(
             dataset=dataset,
             cache_repo=cache_repo,
             matching_rules=planning_bundle.matching_rules,
@@ -128,7 +128,7 @@ class ImportPlanService:
         )
         matched_rows.extend(pending_rows)
 
-        resolver = Resolver(
+        resolver = LookupEnricher(
             planning_bundle.resolve_rules,
             planning_bundle.link_rules,
             identity_repo=planning_deps.identity_repo,

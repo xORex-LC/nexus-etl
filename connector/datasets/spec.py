@@ -7,8 +7,8 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validator import Validator
-from connector.domain.planning.deps import PlanningDependencies
-from connector.domain.planning.rules import LinkRules, MatchingRules, ResolveRules
+from connector.domain.transform.resolve_deps import PlanningDependencies
+from connector.domain.transform.rules import LinkRules, MatchingRules, ResolveRules
 from connector.domain.ports.execution import RequestSpec, ExecutionResult
 from connector.domain.transform.stages import MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.source_record import SourceRecord

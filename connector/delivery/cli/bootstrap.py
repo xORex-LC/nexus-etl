@@ -14,7 +14,7 @@ from connector.datasets.spec import DatasetSpec, ValidationBundle
 from connector.domain.transform.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
 from connector.domain.transform.result import TransformResult
 from connector.domain.validation.validator import Validator
-from connector.domain.planning.deps import PlanningDependencies
+from connector.domain.transform.resolve_deps import PlanningDependencies
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.sqlite_engine import SqliteEngine

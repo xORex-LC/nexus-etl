@@ -8,13 +8,13 @@ from connector.domain.diagnostics.context import (
     warning as diag_warning,
 )
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.planning.match_models import MatchedRow
+from connector.domain.transform.match_models import MatchedRow
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.planning.matcher import Matcher
+from connector.domain.transform.deduplication_transform import DeduplicationTransform
 from connector.domain.transform.result_processor import PlanningResultProcessor
 from connector.domain.transform.result import TransformResult
-from connector.domain.planning.stages import MatchStage
+from connector.domain.transform.stages import MatchStage
 
 
 class MatchUseCase:
@@ -34,7 +34,7 @@ class MatchUseCase:
     def iter_matched(
         self,
         validated_source: Iterable[TransformResult],
-        matcher: Matcher,
+        matcher: DeduplicationTransform,
         *,
         catalog: ErrorCatalog,
     ):
@@ -47,7 +47,7 @@ class MatchUseCase:
     def run(
         self,
         validated_source: Iterable[TransformResult],
-        matcher: Matcher,
+        matcher: DeduplicationTransform,
         dataset: str,
         report,
         catalog: ErrorCatalog,
@@ -74,7 +74,7 @@ class MatchUseCase:
     def _iter_matched(
         self,
         validated_source: Iterable[TransformResult],
-        matcher: Matcher,
+        matcher: DeduplicationTransform,
         *,
         catalog: ErrorCatalog,
     ):
@@ -97,8 +97,7 @@ class MatchUseCase:
                         message="duplicate row in source batch",
                         record_ref=matched.row.row_ref,
                     )
-                    matched.warnings.append(warning)
-                    yield matched
+                    yield matched.with_added_warnings([warning])
                     continue
                 error = diag_error(
                     catalog=catalog,
@@ -108,8 +107,7 @@ class MatchUseCase:
                     message="conflicting rows in source batch",
                     record_ref=matched.row.row_ref,
                 )
-                matched.errors.append(error)
-                yield matched
+                yield matched.with_added_errors([error])
                 continue
 
             seen[identity_value] = fingerprint

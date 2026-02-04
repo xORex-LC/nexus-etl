@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from connector.domain.planning.plan_builder import PlanBuilder, PlanBuildResult
-from connector.domain.planning.match_models import ResolveOp
+from connector.domain.transform.match_models import ResolveOp
 
 @dataclass
 class PlanUseCase:
