@@ -26,6 +26,8 @@
 - generate_if_missing (uuid, short id, шаблон)
 - lookup (cache, справочники)
 - template (строить значение из полей)
+- allow_if (условия запуска в виде DSL‑операции)
+- lookup templates (preset‑шаблоны для однотипных lookup‑правил)
 
 ### Validate
 - required
@@ -88,3 +90,20 @@ validate:
 - Зафиксировать минимальный набор правил.
 - Оценить трудозатраты на движок.
 - Сделать прототип на одном датасете.
+
+## Lookup templates (кратко)
+В enrich можно добавить укороченную форму:
+```yaml
+enrich:
+  lookup_templates:
+    manager_by_full_name:
+      lookup: find_user_by_full_name
+      value_path: _id
+      ops: [trim, split_name]
+  lookup:
+    - name: manager_id
+      target: manager_id
+      source: manager_full_name
+      template: manager_by_full_name
+```
+При загрузке YAML шаблон разворачивается в полноценное правило.
