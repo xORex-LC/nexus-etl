@@ -1,0 +1,8 @@
+datasets:
+  employees:
+    mapping: employees.mapping.yaml
+    normalize: employees.normalize.yaml
+    enrich: employees.enrich.yaml
+    validate: employees.validate.yaml
+    match: employees.match.yaml
+    resolve: employees.resolve.yaml

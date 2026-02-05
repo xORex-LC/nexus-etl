@@ -1,0 +1,47 @@
+dataset: employees
+enrich:
+  match_key:
+    fields: [last_name, first_name, middle_name, personnel_number]
+    strict: true
+  secrets:
+    fields: [password]
+  generate:
+    - name: target_id
+      target: target_id
+      source: target_id
+      ops:
+        - op: trim
+        - op: default_uuid
+      exists: find_user_by_target_id
+      max_attempts: 3
+      merge: recompute_always
+      missing_error_code: TARGET_ID_MISSING
+      conflict_error_code: TARGET_ID_CONFLICT
+      error_field: target_id
+    - name: usr_org_tab_num
+      target: usr_org_tab_num
+      source: usr_org_tab_num
+      ops:
+        - op: trim
+        - op: default_prefixed_uuid
+          args:
+            prefix: "TAB-"
+      exists: find_user_by_usr_org_tab_num
+      allow_if:
+        op: equals_path
+        args:
+          left: match_key
+          right: existing.match_key
+      max_attempts: 3
+      merge: recompute_always
+      conflict_error_code: USR_ORG_TAB_CONFLICT
+      error_field: usrOrgTabNum
+    - name: password
+      target: password
+      source: password
+      ops:
+        - op: trim
+        - op: default_uuid
+      merge: fill_only_if_empty
+      on_error: warn
+  lookup: []

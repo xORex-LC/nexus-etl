@@ -1,0 +1,4 @@
+dataset: employees
+match:
+  identity_rules: []
+  ignored_fields: []
