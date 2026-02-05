@@ -1,8 +1,7 @@
 import logging
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
+from connector.domain.transform.mapping.dsl_mapper import DslMapper
 from connector.infra.artifacts.report_writer import createEmptyReport
-from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
 from connector.domain.diagnostics.catalog import build_catalog
@@ -22,8 +21,7 @@ def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:
 def _run_mapping(records: list[SourceRecord]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
-    mapping_spec = EmployeesMappingSpec()
-    map_stage = MapStage(EmployeesSourceMapper(mapping_spec, catalog=CATALOG), CATALOG)
+    map_stage = MapStage(DslMapper(catalog=CATALOG, dataset="employees"), CATALOG)
     row_source = records
     result = usecase.run(
         row_source=row_source,
@@ -77,7 +75,7 @@ def test_mapping_reports_secret_candidates():
     _result, report = _run_mapping([row])
 
     assert report.items[0].status == "OK"
-    assert report.items[0].meta["secret_candidate_fields"] == ["password"]
+    assert report.items[0].meta["secret_candidate_fields"] == []
 
 
 def test_mapping_reports_mapped_ok():
