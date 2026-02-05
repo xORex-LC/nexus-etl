@@ -1,12 +1,12 @@
 import logging
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.core.source_record import SourceRecord
 from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
 from connector.infra.artifacts.report_writer import createEmptyReport
 from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.domain.transform.stages import MapStage
+from connector.domain.transform.stages.stages import MapStage
 
 CATALOG = build_catalog("employees", strict=True)
 

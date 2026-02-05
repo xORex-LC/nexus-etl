@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from connector.domain.transform.extractor import Extractor
+from connector.domain.transform.core.extractor import Extractor
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.transform.result_processor import TransformResultProcessor
-from connector.domain.transform.stages import NormalizeStage
+from connector.domain.transform.core.result_processor import TransformResultProcessor
+from connector.domain.transform.stages.stages import NormalizeStage
 
 
 class NormalizeUseCase:

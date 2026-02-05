@@ -8,7 +8,7 @@ from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem, Val
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validated_row import ValidationRow
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.core.result import TransformResult
 
 T = TypeVar("T")
 

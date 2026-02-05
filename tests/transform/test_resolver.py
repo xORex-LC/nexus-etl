@@ -3,11 +3,11 @@ from __future__ import annotations
 import sqlite3
 
 from connector.domain.models import MatchStatus, RowRef, Identity
-from connector.domain.transform.resolve_deps import ResolverSettings
-from connector.domain.transform.identity_keys import format_identity_key
-from connector.domain.transform.match_models import MatchedRow
-from connector.domain.transform.lookup_enricher import LookupEnricher
-from connector.domain.transform.rules import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
+from connector.domain.transform.matching.resolve_deps import ResolverSettings
+from connector.domain.transform.matching.identity_keys import format_identity_key
+from connector.domain.transform.matching.match_models import MatchedRow
+from connector.domain.transform.matching.lookup_enricher import LookupEnricher
+from connector.domain.transform.matching.rules import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.schema import ensure_cache_ready

@@ -6,7 +6,7 @@ from typing import Any, Callable, Generic, Mapping, TypeVar
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.core.result import TransformResult
 
 T = TypeVar("T")
 U = TypeVar("U")

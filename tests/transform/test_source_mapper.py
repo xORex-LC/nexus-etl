@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from connector.domain.models import RowRef
-from connector.domain.ports.sources import SourceMapper
-from connector.domain.transform.result import TransformResult
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.ports.transform.sources import SourceMapper
+from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.diagnostics import build_catalog
 from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
 

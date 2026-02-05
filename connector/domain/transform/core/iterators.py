@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable, Iterable, TypeVar
 
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.core.result import TransformResult
 
 T = TypeVar("T")
 

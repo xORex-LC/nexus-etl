@@ -7,14 +7,14 @@ from typing import Any, Iterable
 from connector.config.config import Settings
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.cache_registry import list_cache_specs
 from connector.datasets.spec import DatasetSpec, ValidationBundle
-from connector.domain.transform.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
+from connector.domain.transform.core.result import TransformResult
 from connector.domain.validation.validator import Validator
-from connector.domain.transform.resolve_deps import PlanningDependencies
+from connector.domain.transform.matching.resolve_deps import PlanningDependencies
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.sqlite_engine import SqliteEngine

@@ -1,7 +1,7 @@
 @startuml
-title Resolver - Class Diagram
+title LookupEnricher - Class Diagram
 
-class Resolver {
+class LookupEnricher {
   - resolve_rules: ResolveRules
   - link_rules: LinkRules
   - identity_repo: IdentityRepository
@@ -98,13 +98,13 @@ class TransformResult<T> {
   + warnings
 }
 
-Resolver --> ResolveRules
-Resolver --> LinkRules
-Resolver --> IdentityRepository
-Resolver --> PendingLinksRepository
-Resolver --> ResolverSettings
-Resolver ..> MatchedRow
-Resolver ..> ResolvedRow
+LookupEnricher --> ResolveRules
+LookupEnricher --> LinkRules
+LookupEnricher --> IdentityRepository
+LookupEnricher --> PendingLinksRepository
+LookupEnricher --> ResolverSettings
+LookupEnricher ..> MatchedRow
+LookupEnricher ..> ResolvedRow
 TransformResult <|-- "TransformResult[ResolvedRow]"
 TransformResult <|-- "TransformResult[MatchedRow]"
 LinkRules o-- LinkFieldRule

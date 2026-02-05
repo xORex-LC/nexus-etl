@@ -5,13 +5,13 @@ from typing import Callable, Iterable, Protocol, Sequence, TypeVar
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.models import DiagnosticStage, MatchStatus
-from connector.domain.ports.sources import SourceMapper
+from connector.domain.ports.transform.sources import SourceMapper
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
-from connector.domain.transform.result import TransformResult
-from connector.domain.transform.deduplication_transform import DeduplicationTransform
-from connector.domain.transform.lookup_enricher import LookupEnricher
-from connector.domain.transform.match_models import MatchedRow
+from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.matching.lookup_enricher import LookupEnricher
+from connector.domain.transform.matching.match_models import MatchedRow
 from connector.domain.validation.validator import Validator
 
 T = TypeVar("T")

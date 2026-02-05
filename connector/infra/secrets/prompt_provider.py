@@ -3,7 +3,7 @@ from __future__ import annotations
 import getpass
 from typing import Dict, Tuple
 
-from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol
 
 Key = Tuple[str, str, str | None, int | None]
 

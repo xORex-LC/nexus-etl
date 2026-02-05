@@ -14,8 +14,8 @@ from connector.delivery.cli.bootstrap import (
     build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.transform.extractor import Extractor
-from connector.domain.transform.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
+from connector.domain.transform.core.extractor import Extractor
+from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.logging.setup import logEvent
 from connector.usecases.validate_usecase import ValidateUseCase

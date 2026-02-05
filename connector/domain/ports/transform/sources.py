@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from typing import Iterable, Protocol, TypeVar, Generic
-from connector.domain.transform.source_record import SourceRecord
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.core.source_record import SourceRecord
+from connector.domain.transform.core.result import TransformResult
 
 T = TypeVar("T")
 

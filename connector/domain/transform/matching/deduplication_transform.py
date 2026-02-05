@@ -12,10 +12,10 @@ from connector.domain.models import (
 )
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
-from connector.domain.transform.match_models import MatchedRow, build_fingerprint
-from connector.domain.transform.rules import IdentityRule, MatchingRules, ResolveRules
-from connector.domain.ports.cache_repository import CacheRepositoryProtocol
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.matching.match_models import MatchedRow, build_fingerprint
+from connector.domain.transform.matching.rules import IdentityRule, MatchingRules, ResolveRules
+from connector.domain.ports.cache.repository import CacheRepositoryProtocol
+from connector.domain.transform.core.result import TransformResult
 from connector.domain.validation.validated_row import ValidationRow
 
 

@@ -14,8 +14,8 @@ from connector.domain.transform.enricher import (
     RunWhenErrors,
     StrictnessPolicy,
 )
-from connector.domain.transform.match_key import MatchKeyError, build_delimited_match_key
-from connector.domain.transform.target_id import TargetIdMode, TargetIdPolicy
+from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
+from connector.domain.transform.ids.target_id import TargetIdMode, TargetIdPolicy
 from connector.domain.validation.row_rules import normalize_whitespace
 from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies

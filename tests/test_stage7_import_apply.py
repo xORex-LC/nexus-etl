@@ -8,8 +8,8 @@ from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.ports.execution import ExecutionResult, RequestSpec
-from connector.domain.mappers.user_payload import buildUserUpsertPayload
+from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
+from connector.datasets.employees.load.user_payload import buildUserUpsertPayload
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.reporting.collector import ReportCollector
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
@@ -494,7 +494,7 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
 
 
 def test_plan_builder_does_not_emit_dataset_in_items():
-    from connector.domain.transform.match_models import ResolvedRow, ResolveOp
+    from connector.domain.transform.matching.match_models import ResolvedRow, ResolveOp
     from connector.domain.models import Identity, RowRef
 
     builder = PlanBuilder()

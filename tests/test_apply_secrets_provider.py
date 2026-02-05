@@ -3,7 +3,7 @@ from connector.domain.reporting.collector import ReportCollector
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.infra.secrets.dict_provider import DictSecretProvider
 from connector.infra.secrets.null_provider import NullSecretProvider
-from connector.domain.ports.execution import ExecutionResult, RequestSpec, RequestExecutorProtocol
+from connector.domain.ports.target.execution import ExecutionResult, RequestSpec, RequestExecutorProtocol
 from connector.domain.diagnostics.catalog import build_catalog
 
 CATALOG = build_catalog("employees", strict=True)

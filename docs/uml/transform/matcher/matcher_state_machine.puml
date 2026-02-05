@@ -1,5 +1,5 @@
 @startuml
-title Matcher - State Machine Diagram
+title DeduplicationTransform - State Machine Diagram
 
 [*] --> Input
 Input --> MissingInput : validation row missing

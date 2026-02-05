@@ -15,11 +15,11 @@ from connector.delivery.cli.bootstrap import (
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.transform.extractor import Extractor
-from connector.domain.transform.iterators import iter_ok
+from connector.domain.transform.core.extractor import Extractor
+from connector.domain.transform.core.iterators import iter_ok
 from connector.infra.logging.setup import logEvent
 from connector.usecases.match_usecase import MatchUseCase
-from connector.domain.transform.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
 
 
 @dataclass(frozen=True)

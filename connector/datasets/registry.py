@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from connector.datasets.spec import DatasetSpec
-from connector.domain.transform.rules import LinkRules
-from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.domain.transform.matching.rules import LinkRules
+from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.datasets.employees.spec import make_employees_spec
 
 _registry: dict[str, callable] = {"employees": make_employees_spec}

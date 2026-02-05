@@ -5,9 +5,9 @@ from typing import Iterable
 from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
-from connector.domain.ports.sources import RowSource
-from connector.domain.transform.result import TransformResult
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.ports.transform.sources import RowSource
+from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.core.source_record import SourceRecord
 
 
 class Extractor:

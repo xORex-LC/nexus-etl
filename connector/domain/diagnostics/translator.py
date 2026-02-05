@@ -5,7 +5,7 @@ from typing import Any
 from connector.domain.diagnostics.catalog import ErrorCatalog, build_error
 from connector.domain.diagnostics.policies import SystemErrorCode, map_http_status, map_system_code
 from connector.domain.models import DiagnosticItem, DiagnosticStage
-from connector.domain.ports.execution import ExecutionResult
+from connector.domain.ports.target.execution import ExecutionResult
 
 
 def translate_exception(

@@ -7,12 +7,12 @@ from connector.infra.logging.setup import logEvent
 from connector.domain.planning.plan_models import Plan
 from connector.datasets.registry import get_spec
 from connector.datasets.spec import DatasetSpec
-from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol
-from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
-from connector.domain.transform.identity_keys import format_identity_key
-from connector.domain.ports.identity_repository import IdentityRepository
-from connector.domain.ports.pending_links_repository import PendingLinksRepository
+from connector.domain.transform.matching.identity_keys import format_identity_key
+from connector.domain.ports.cache.identity import IdentityRepository
+from connector.domain.ports.cache.pending_links import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.diagnostics.context import error as diag_error

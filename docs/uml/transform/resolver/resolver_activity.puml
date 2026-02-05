@@ -1,5 +1,5 @@
 @startuml
-title Resolver.resolve - Activity Diagram
+title LookupEnricher.resolve - Activity Diagram
 
 start
 :maybe_sweep_expired;

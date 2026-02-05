@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from connector.domain.models import MatchStatus, RowRef, ValidationRowResult
-from connector.domain.transform.deduplication_transform import DeduplicationTransform
-from connector.domain.transform.rules import ResolveRules
-from connector.domain.transform.result import TransformResult
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.matching.rules import ResolveRules
+from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.validation.validated_row import ValidationRow
 from connector.datasets.employees.load.matching_rules import build_matching_rules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow

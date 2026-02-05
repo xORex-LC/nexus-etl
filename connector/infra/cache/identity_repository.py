@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.ports.identity_repository import IdentityRepository
+from connector.domain.ports.cache.identity import IdentityRepository
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
 
