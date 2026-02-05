@@ -60,6 +60,8 @@ class FieldRule(Generic[T]):
         value = getattr(row, self.attr, None)
         is_empty = value is None or (isinstance(value, str) and value.strip() == "")
         if self.required and is_empty:
+            if self.attr in result.secret_fields:
+                return
             secret_value = result.secret_candidates.get(self.attr)
             if secret_value is None or str(secret_value).strip() == "":
                 add_error(
@@ -112,6 +114,13 @@ class Validator(Generic[T]):
                 identity_primary="match_key",
                 identity_value=match_key_value or None,
             )
+        meta_secret_fields = enriched.meta.get("secret_fields") if enriched.meta else None
+        secret_fields: list[str] = []
+        if isinstance(meta_secret_fields, (list, tuple, set)):
+            secret_fields = [str(item) for item in meta_secret_fields if item]
+        if not secret_fields and enriched.secret_candidates:
+            secret_fields = list(enriched.secret_candidates.keys())
+
         result = ValidationRowResult(
             line_no=enriched.record.line_no,
             match_key=match_key_value,
@@ -119,6 +128,7 @@ class Validator(Generic[T]):
             usr_org_tab_num=getattr(row, "usr_org_tab_num", None),
             row_ref=row_ref,
             secret_candidates=enriched.secret_candidates,
+            secret_fields=secret_fields,
             errors=[*enriched.errors],
             warnings=[],
         )

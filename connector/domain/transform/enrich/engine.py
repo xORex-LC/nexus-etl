@@ -5,179 +5,33 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable, Generic, Protocol, TypeVar
+from dataclasses import dataclass
+from typing import Any, Generic, TypeVar
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.ports.secrets.provider import SecretStoreProtocol
-from connector.domain.transform.ids.match_key import MatchKey
-from connector.domain.transform.enricher_report import EnricherReport
 from connector.domain.transform.core.result import TransformResult, TransformResultBuilder
+from connector.domain.transform.ids.match_key import MatchKey
+from connector.domain.transform.enrich.models import (
+    CandidateValue,
+    EnrichContext,
+    EnrichEvent,
+    EnrichOutcome,
+    EnrichOperationType,
+    MergePolicy,
+    OperationReport,
+    ResolveHint,
+    RunWhenErrors,
+    StrictnessPolicy,
+)
+from connector.domain.transform.enrich.report import EnricherReport
+from connector.domain.transform.enrich.resolver import ConflictResolver, MergeEngine, _FieldMutationTracker
+from connector.domain.transform.enrich.spec import EnricherSpec, EnrichmentOperation
 
 T = TypeVar("T")
 D = TypeVar("D")
-
-
-class EnrichOutcome(str, Enum):
-    """
-    Назначение:
-        Стандартные исходы операции enrich.
-    """
-
-    APPLIED = "APPLIED"
-    SKIPPED = "SKIPPED"
-    WARNED = "WARNED"
-    FAILED = "FAILED"
-    NEEDS_RESOLVE = "NEEDS_RESOLVE"
-
-
-class RunWhenErrors(str, Enum):
-    """
-    Назначение:
-        Политика запуска операции при наличии ошибок до enrich.
-    """
-
-    NEVER = "NEVER"
-    ONLY_NON_FATAL = "ONLY_NON_FATAL"
-    ALWAYS = "ALWAYS"
-
-
-class EnrichOperationType(str, Enum):
-    """
-    Назначение:
-        Тип операции enrich.
-    """
-
-    COMPUTE = "COMPUTE"
-    FILL_MISSING = "FILL_MISSING"
-    LOOKUP = "LOOKUP"
-    GENERATE = "GENERATE"
-    MEMBERSHIP = "MEMBERSHIP"
-
-
-class MergeMode(str, Enum):
-    """
-    Назначение:
-        Режим слияния значений поля.
-    """
-
-    FILL_ONLY_IF_EMPTY = "fill_only_if_empty"
-    RECOMPUTE_ALWAYS = "recompute_always"
-    OVERRIDE_IF_EMPTY = "override_if_empty"
-    OVERRIDE_IF_AUTHORITATIVE = "override_if_authoritative"
-    NEVER_OVERRIDE = "never_override"
-
-
-@dataclass(frozen=True)
-class MergePolicy:
-    """
-    Назначение:
-        Политика слияния значений поля.
-    """
-
-    mode: str = MergeMode.FILL_ONLY_IF_EMPTY
-
-
-@dataclass(frozen=True)
-class StrictnessPolicy:
-    """
-    Назначение:
-        Политика реакции на ключевые ситуации enrich.
-    """
-
-    on_missing_key: str = EnrichOutcome.SKIPPED
-    on_no_candidates: str = EnrichOutcome.SKIPPED
-    on_ambiguous: str = EnrichOutcome.NEEDS_RESOLVE
-    on_provider_error: str = EnrichOutcome.WARNED
-
-
-@dataclass(frozen=True)
-class CandidateValue:
-    """
-    Назначение:
-        Унифицированное представление кандидата для enrich.
-    """
-
-    field: str
-    value: Any
-    source: str
-    priority: int | None = None
-    confidence: float | None = None
-    evidence: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class CandidateDecision:
-    """
-    Назначение:
-        Результат разрешения конфликтов кандидатов.
-    """
-
-    status: str
-    selected: CandidateValue | None
-    candidates: list[CandidateValue]
-    reason: str | None = None
-
-
-@dataclass(frozen=True)
-class EnrichEvent:
-    """
-    Назначение:
-        Аудит изменения поля в enrich.
-    """
-
-    op: str
-    field: str
-    before: Any
-    after: Any
-    source: str
-    decision: str
-    outcome: str
-
-
-@dataclass(frozen=True)
-class ResolveHint:
-    """
-    Назначение:
-        Подсказка для resolver при неоднозначности.
-    """
-
-    field: str
-    lookup_key: dict[str, Any]
-    reason: str
-    candidates: list[dict[str, Any]]
-    suggested_policy: str | None = None
-
-
-@dataclass
-class OperationReport:
-    """
-    Назначение:
-        Результат выполнения одной операции enrich.
-    """
-
-    op: str
-    outcome: EnrichOutcome
-    events: list[EnrichEvent] = field(default_factory=list)
-    resolve_hints: list[ResolveHint] = field(default_factory=list)
-    warnings: list[DiagnosticItem] = field(default_factory=list)
-    errors: list[DiagnosticItem] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class EnrichContext:
-    """
-    Назначение:
-        Контекст выполнения enrich (run-level).
-    """
-
-    dataset: str
-    run_id: str | None = None
-    as_of: Any | None = None
-
 
 @dataclass(frozen=True)
 class _EnrichOpError:
@@ -191,157 +45,7 @@ class _EnrichOpError:
     field: str | None = None
 
 
-class CandidateProvider(Protocol, Generic[T, D]):
-    """
-    Назначение:
-        Контракт источника кандидатов для enrich.
-    """
-
-    name: str
-
-    def fetch(
-        self,
-        ctx: EnrichContext,
-        result: TransformResult[T],
-        deps: D,
-        key_values: dict[str, Any],
-    ) -> list[CandidateValue]:
-        ...
-
-
-KeyBuilder = Callable[[TransformResult[T]], Any]
-
-
-@dataclass(frozen=True)
-class KeyRegistry(Generic[T]):
-    """
-    Назначение:
-        Реестр ключей enrich (key_name -> builder).
-    """
-
-    builders: dict[str, KeyBuilder[T]]
-
-    def resolve(self, key: str, result: TransformResult[T]) -> Any | None:
-        builder = self.builders.get(key)
-        if builder is None:
-            if result.row is not None and hasattr(result.row, key):
-                return getattr(result.row, key)
-            if result.meta:
-                return result.meta.get(key)
-            return None
-        return builder(result)
-
-
-@dataclass(frozen=True)
-class EnrichmentOperation(Generic[T, D]):
-    """
-    Назначение:
-        Декларативная спецификация операции enrich.
-    """
-
-    name: str
-    op_type: EnrichOperationType
-    targets: tuple[str, ...]
-    required_keys: tuple[str, ...] = ()
-    providers: tuple[CandidateProvider[T, D], ...] = ()
-    merge_policy: MergePolicy | None = None
-    strictness: StrictnessPolicy | None = None
-    run_when_errors: RunWhenErrors = RunWhenErrors.NEVER
-    compute: Callable[[TransformResult[T], D], dict[str, Any] | None] | None = None
-    generator: Callable[[TransformResult[T], D], Any] | None = None
-    exists: Callable[[D, Any], Any] | None = None
-    allow_if: Callable[[TransformResult[T], Any], bool] | None = None
-    max_attempts: int = 3
-    postprocess: Callable[[Any], Any] | None = None
-    missing_error_code: str | None = None
-    conflict_error_code: str | None = None
-    error_field: str | None = None
-
-
-@dataclass(frozen=True)
-class EnricherSpec(Generic[T, D]):
-    """
-    Назначение:
-        Спецификация enrich для датасета.
-    """
-
-    operations: tuple[EnrichmentOperation[T, D], ...]
-    key_registry: KeyRegistry[T]
-    field_semantics: dict[str, str] = field(default_factory=dict)
-    source_priorities: dict[str, int] = field(default_factory=dict)
-    default_merge_policy: MergePolicy = MergePolicy()
-    default_strictness: StrictnessPolicy = StrictnessPolicy()
-    authoritative_sources: set[str] = field(default_factory=lambda: {"sink_cache"})
-    is_fatal_error: Callable[[DiagnosticItem], bool] | None = None
-    stop_on_failed: bool = False
-
-
-class _FieldMutationTracker:
-    """
-    Назначение:
-        Отслеживание конфликтов между операциями по одному полю.
-    """
-
-    def __init__(self) -> None:
-        self._writers: dict[str, str] = {}
-
-    def has_writer(self, field: str) -> bool:
-        return field in self._writers
-
-    def register(self, field: str, op_name: str) -> None:
-        self._writers[field] = op_name
-
-    def last_writer(self, field: str) -> str | None:
-        return self._writers.get(field)
-
-
-class ConflictResolver:
-    """
-    Назначение:
-        Разрешение конфликтов между кандидатами.
-    """
-
-    def decide(self, candidates: list[CandidateValue]) -> CandidateDecision:
-        if not candidates:
-            return CandidateDecision(status="NONE", selected=None, candidates=[], reason="no_candidates")
-        if len(candidates) == 1:
-            return CandidateDecision(status="SELECTED", selected=candidates[0], candidates=candidates)
-        sorted_candidates = sorted(
-            candidates,
-            key=lambda cand: (
-                -((cand.priority if cand.priority is not None else 0)),
-                -(cand.confidence or 0.0),
-            ),
-        )
-        top = sorted_candidates[0]
-        if len(sorted_candidates) > 1:
-            second = sorted_candidates[1]
-            if top.priority == second.priority and (top.confidence or 0.0) == (second.confidence or 0.0):
-                return CandidateDecision(status="AMBIGUOUS", selected=None, candidates=sorted_candidates)
-        return CandidateDecision(status="SELECTED", selected=top, candidates=sorted_candidates)
-
-
-class MergeEngine:
-    """
-    Назначение:
-        Применение merge-политики к полю.
-    """
-
-    def __init__(self, authoritative_sources: set[str]) -> None:
-        self.authoritative_sources = authoritative_sources
-
-    def should_apply(self, current: Any, candidate: CandidateValue, policy: MergePolicy) -> bool:
-        handlers = {
-            MergeMode.RECOMPUTE_ALWAYS: lambda: True,
-            MergeMode.NEVER_OVERRIDE: lambda: False,
-            MergeMode.OVERRIDE_IF_AUTHORITATIVE: lambda: candidate.source in self.authoritative_sources,
-            MergeMode.OVERRIDE_IF_EMPTY: lambda: current is None or current == "",
-        }
-        handler = handlers.get(policy.mode, handlers[MergeMode.OVERRIDE_IF_EMPTY])
-        return handler()
-
-
-class Enricher(Generic[T, D]):
+class EnricherEngine(Generic[T, D]):
     """
     Назначение:
         Ядро обогащения: применяет операции и сохраняет секреты.
@@ -566,7 +270,14 @@ class Enricher(Generic[T, D]):
         candidates: list[CandidateValue] = []
         target = op.targets[0]
         for provider in op.providers:
-            fetched = provider.fetch(ctx, result, self.deps, key_values)
+            try:
+                fetched = provider.fetch(ctx, result, self.deps, key_values)
+            except Exception as exc:  # noqa: BLE001
+                return [], _EnrichOpError(
+                    code="ENRICH_PROVIDER_ERROR",
+                    message=str(exc),
+                    field=op.error_field,
+                )
             if fetched:
                 for candidate in fetched:
                     if candidate.field != target:
@@ -807,8 +518,6 @@ class Enricher(Generic[T, D]):
     ) -> None:
         if not builder.secret_candidates:
             return
-        if self.secret_store is None:
-            return
         if builder.match_key is None:
             builder.add_error_item(
                 self._make_error(
@@ -819,38 +528,43 @@ class Enricher(Generic[T, D]):
                 )
             )
             return
-        try:
-            self.secret_store.put_many(
-                dataset=self.dataset,
-                match_key=builder.match_key.value,
-                secrets=builder.secret_candidates,
-                run_id=self.run_id,
-            )
-        except Exception as exc:  # noqa: BLE001
-            builder.add_error_item(
-                self._make_error(
-                    builder,
-                    code="SECRET_STORE_ERROR",
-                    message=str(exc),
+        if self.secret_store is not None:
+            try:
+                self.secret_store.put_many(
+                    dataset=self.dataset,
+                    match_key=builder.match_key.value,
+                    secrets=builder.secret_candidates,
+                    run_id=self.run_id,
                 )
-            )
+            except Exception as exc:  # noqa: BLE001
+                builder.add_error_item(
+                    self._make_error(
+                        builder,
+                        code="SECRET_STORE_ERROR",
+                        message=str(exc),
+                    )
+                )
+
+        secret_fields = list(builder.secret_candidates.keys())
+        builder.meta["secret_fields"] = secret_fields
+        self._clear_secret_fields(builder, secret_fields)
+        builder.secret_candidates = {}
+
+    def _clear_secret_fields(
+        self,
+        builder: TransformResultBuilder[T],
+        secret_fields: list[str],
+    ) -> None:
+        row = builder.row
+        if row is None:
+            return
+        for field in secret_fields:
+            if isinstance(row, dict):
+                if field in row:
+                    row[field] = None
+                continue
+            if hasattr(row, field):
+                setattr(row, field, None)
 
 
-__all__ = [
-    "CandidateProvider",
-    "CandidateValue",
-    "EnrichOutcome",
-    "Enricher",
-    "EnricherSpec",
-    "EnrichmentOperation",
-    "EnrichOperationType",
-    "EnrichContext",
-    "MergePolicy",
-    "MergeMode",
-    "RunWhenErrors",
-    "StrictnessPolicy",
-    "ResolveHint",
-    "EnrichEvent",
-    "OperationReport",
-    "KeyRegistry",
-]
+__all__ = ["EnricherEngine"]

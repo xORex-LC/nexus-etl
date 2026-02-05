@@ -18,6 +18,8 @@ def build_core_catalog(*, strict: bool) -> ErrorCatalog:
     entries = [
         CatalogEntry("SOURCE_ERROR", SystemErrorCode.IO_ERROR, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("missing_source_column", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
+        CatalogEntry("DSL_OP_UNKNOWN", SystemErrorCode.INTERNAL_ERROR, severity=DiagnosticSeverity.ERROR),
+        CatalogEntry("DSL_OP_FAILED", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("REQUIRED_FIELD_MISSING", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("MATCH_IDENTITY_MISSING", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("MATCH_CONFLICT_TARGET", SystemErrorCode.CONFLICT, severity=DiagnosticSeverity.ERROR),

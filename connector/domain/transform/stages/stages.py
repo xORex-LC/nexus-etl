@@ -11,8 +11,8 @@ from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.models import DiagnosticStage, MatchStatus
 from connector.domain.ports.transform.sources import SourceMapper
-from connector.domain.transform.enricher import Enricher
-from connector.domain.transform.normalizer import Normalizer
+from connector.domain.transform.enrich import EnricherEngine
+from connector.domain.transform.normalize import DslNormalizer
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
@@ -176,7 +176,7 @@ class NormalizeStage:
         Стадия normalize (mapped -> normalized).
     """
 
-    def __init__(self, normalizer: Normalizer, catalog: ErrorCatalog) -> None:
+    def __init__(self, normalizer: DslNormalizer, catalog: ErrorCatalog) -> None:
         self.normalizer = normalizer
         self.catalog = catalog
 
@@ -213,7 +213,7 @@ class EnrichStage:
         Стадия enrich (normalized -> enriched).
     """
 
-    def __init__(self, enricher: Enricher, catalog: ErrorCatalog) -> None:
+    def __init__(self, enricher: EnricherEngine, catalog: ErrorCatalog) -> None:
         self.enricher = enricher
         self.catalog = catalog
 
