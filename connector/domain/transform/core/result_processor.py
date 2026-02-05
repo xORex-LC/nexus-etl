@@ -87,10 +87,15 @@ class TransformResultProcessor:
             self.warnings_rows += 1
 
         secret_fields: list[str] = []
-        if result and result.secret_candidates:
-            secret_fields = list(result.secret_candidates.keys())
-            self.vault_candidates_rows += 1
-            self.vault_candidates_fields_total += len(secret_fields)
+        if result:
+            meta_secret_fields = result.meta.get("secret_fields") if result.meta else None
+            if isinstance(meta_secret_fields, (list, tuple, set)):
+                secret_fields = [str(item) for item in meta_secret_fields if item]
+            elif result.secret_candidates:
+                secret_fields = list(result.secret_candidates.keys())
+            if secret_fields:
+                self.vault_candidates_rows += 1
+                self.vault_candidates_fields_total += len(secret_fields)
 
         should_store = status == "FAILED" or self.include_items
 

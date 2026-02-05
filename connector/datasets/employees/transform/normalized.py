@@ -9,6 +9,7 @@ class NormalizedEmployeesRow:
     Назначение:
         Нормализованная строка employees (типизированные значения).
     """
+    # TODO(DSL): Transitional typed row. Remove when all stages use DSL/JSON schemas end-to-end.
 
     email: str | None
     last_name: str | None
