@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Контракты и правила матчинга/резолва.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Доменные порты для доступа к секретам.
+"""
+
 from __future__ import annotations
 
 from typing import Protocol

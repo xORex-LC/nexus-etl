@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Построение match_key для записей.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

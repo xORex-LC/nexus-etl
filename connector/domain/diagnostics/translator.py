@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Перевод внешних ошибок (HTTP/исключения) в DiagnosticItem.
+"""
+
 from __future__ import annotations
 
 from typing import Any

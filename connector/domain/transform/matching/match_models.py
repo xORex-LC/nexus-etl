@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Модели матчинга и результатов сопоставления.
+"""
+
 from __future__ import annotations
 
 import hashlib

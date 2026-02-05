@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Зависимости resolve-стадии.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

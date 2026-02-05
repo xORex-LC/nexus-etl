@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Модели плана для apply.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

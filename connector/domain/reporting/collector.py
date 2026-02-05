@@ -1,10 +1,15 @@
+"""
+Назначение:
+    Сборщик отчётов и подсчёт сводной статистики.
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Any, Iterable, Mapping
 
 from connector.common.time import getNowIso
-from connector.domain.models import DiagnosticStage, RowRef, DiagnosticItem
+from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.reporting.models import (
     ReportDiagnostic,
     ReportEnvelope,
@@ -64,11 +69,19 @@ class ReportCollector:
         status: str,
         row_ref: RowRef | None = None,
         payload: Mapping[str, Any] | None = None,
-        errors: Iterable[DiagnosticItem] | None = None,
-        warnings: Iterable[DiagnosticItem] | None = None,
+        errors: Iterable[ReportDiagnostic] | None = None,
+        warnings: Iterable[ReportDiagnostic] | None = None,
         meta: dict[str, Any] | None = None,
         store: bool = True,
     ) -> None:
+        """
+        Назначение:
+            Добавить элемент отчёта и обновить summary.
+
+        Алгоритм:
+            - Обновляет счётчики по статусу/diagnostics.
+            - Учитывает items_limit и выставляет items_truncated.
+        """
         error_list = list(errors or [])
         warning_list = list(warnings or [])
 
@@ -83,7 +96,7 @@ class ReportCollector:
         self._count_diagnostics(error_list, warning_list)
 
         if store and self._should_store_item(status):
-            diagnostics = self._build_diagnostics(error_list, warning_list)
+            diagnostics = [*error_list, *warning_list]
             self.items.append(
                 ReportItem(
                     status=status,
@@ -126,8 +139,8 @@ class ReportCollector:
 
     def _count_diagnostics(
         self,
-        errors: list[DiagnosticItem],
-        warnings: list[DiagnosticItem],
+        errors: list[ReportDiagnostic],
+        warnings: list[ReportDiagnostic],
     ) -> None:
         self.summary.errors_total += len(errors)
         self.summary.warnings_total += len(warnings)
@@ -141,29 +154,7 @@ class ReportCollector:
         entry = self.summary.by_stage.setdefault(key, {"errors_total": 0, "warnings_total": 0})
         entry[field] += 1
 
-    def _build_diagnostics(
-        self,
-        errors: list[DiagnosticItem],
-        warnings: list[DiagnosticItem],
-    ) -> list[ReportDiagnostic]:
-        diagnostics: list[ReportDiagnostic] = []
-        for err in errors:
-            diagnostics.append(self._from_error(err, fallback_severity="error"))
-        for warn in warnings:
-            diagnostics.append(self._from_error(warn, fallback_severity="warning"))
-        return diagnostics
-
-    @staticmethod
-    def _from_error(item: DiagnosticItem, fallback_severity: str) -> ReportDiagnostic:
-        severity = item.severity.value if getattr(item, "severity", None) is not None else fallback_severity
-        return ReportDiagnostic(
-            severity=severity,
-            stage=item.stage,
-            code=item.code,
-            field=item.field,
-            message=item.message,
-            rule=getattr(item, "rule", None),
-        )
+    # Diagnostics are provided by the caller in report-ready form.
 
 
 def asdict_report(envelope: ReportEnvelope) -> dict[str, Any]:

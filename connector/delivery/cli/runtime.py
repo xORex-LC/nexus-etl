@@ -13,6 +13,7 @@ import typer
 from connector.common.time import getDurationMs
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.reporting.collector import ReportCollector
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
@@ -293,23 +294,25 @@ def _apply_cli_result_to_report(report: ReportCollector, result: Any) -> None:
         return
 
     for item in result.items:
+        report_errors, report_warnings = split_report_diagnostics(item.get("errors"), item.get("warnings"))
         report.add_item(
             status=item.get("status", "OK"),
             row_ref=item.get("row_ref"),
             payload=item.get("payload"),
-            errors=item.get("errors"),
-            warnings=item.get("warnings"),
+            errors=report_errors,
+            warnings=report_warnings,
             meta=item.get("meta"),
             store=item.get("store", True),
         )
 
     if result.errors or result.warnings:
+        report_errors, report_warnings = split_report_diagnostics(result.errors, result.warnings)
         report.add_item(
             status="FAILED" if result.errors else "OK",
             row_ref=None,
             payload=None,
-            errors=result.errors,
-            warnings=result.warnings,
+            errors=report_errors,
+            warnings=report_warnings,
             meta={},
         )
 

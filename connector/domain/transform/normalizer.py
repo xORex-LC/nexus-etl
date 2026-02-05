@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Нормализация mapped-данных по правилам датасета.
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, is_dataclass
@@ -37,6 +42,10 @@ class NormalizerRule:
         add_error: Callable[..., DiagnosticItem],
         add_warning: Callable[..., DiagnosticItem],
     ) -> Any:
+        """
+        Назначение:
+            Применить правило нормализации к одному полю.
+        """
         raw = values.get(self.source_key)
         if raw is None:
             if self.required:
@@ -78,6 +87,15 @@ class Normalizer(Generic[T]):
         self.catalog = catalog
 
     def normalize(self, source: TransformResult[Any]) -> TransformResult[T]:
+        """
+        Назначение:
+            Нормализовать строку и вернуть TransformResult.
+
+        Алгоритм:
+            - Применяет правила к полям источника.
+            - Накапливает ошибки/предупреждения.
+            - Строит нормализованную строку при отсутствии ошибок.
+        """
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
         normalized_values: dict[str, Any] = {}

@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Модель валидированной строки.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Базовый каталог диагностик ядра.
+"""
+
 from __future__ import annotations
 
 from connector.domain.diagnostics.catalog import CatalogEntry, ErrorCatalog

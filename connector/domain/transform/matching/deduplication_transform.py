@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Сопоставление записей внутри источника и с кэшем.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -42,6 +47,15 @@ class DeduplicationTransform:
         self.catalog = catalog
 
     def match(self, validated: TransformResult[ValidationRow]) -> TransformResult[MatchedRow]:
+        """
+        Назначение:
+            Построить MatchedRow по валидированной строке.
+
+        Алгоритм:
+            - Определяет identity по правилам.
+            - Ищет кандидатов в кэше.
+            - Формирует desired_state и fingerprint.
+        """
         validation_row = validated.row
         if validation_row is None or validation_row.row is None:
             return TransformResult(
@@ -139,6 +153,14 @@ class DeduplicationTransform:
         row: Any,
         validation: ValidationRowResult,
     ) -> tuple[Identity | None, dict[str, Any] | None, MatchStatus, DiagnosticItem | None]:
+        """
+        Назначение:
+            Выбрать identity и найденную запись из кэша.
+
+        Алгоритм:
+            - Перебирает правила identity (в приоритете явно заданные).
+            - Возвращает конфликт при множественных кандидатах.
+        """
         identity: Identity | None = None
         existing: dict[str, Any] | None = None
         match_status = MatchStatus.NOT_FOUND
@@ -186,6 +208,10 @@ def _make_match_error(
     message: str,
     record_ref: RowRef | None,
 ) -> DiagnosticItem:
+    """
+    Назначение:
+        Сформировать диагностическую ошибку match-стадии.
+    """
     return diag_error(
         catalog=catalog,
         stage=DiagnosticStage.MATCH,
@@ -197,6 +223,10 @@ def _make_match_error(
 
 
 def _ensure_row_ref(validation: ValidationRowResult, identity: Identity, identity_value: str) -> RowRef:
+    """
+    Назначение:
+        Гарантировать row_ref с актуальным identity.
+    """
     row_ref = validation.row_ref
     if row_ref is None:
         return RowRef(
@@ -221,6 +251,10 @@ def _build_identity_error(
     message: str,
     record_ref: RowRef | None,
 ) -> DiagnosticItem:
+    """
+    Назначение:
+        Ошибка отсутствия identity.
+    """
     return diag_error(
         catalog=catalog,
         stage=DiagnosticStage.MATCH,
@@ -237,6 +271,10 @@ def _build_conflict_error(
     rule_name: str | None = None,
     record_ref: RowRef | None = None,
 ) -> DiagnosticItem:
+    """
+    Назначение:
+        Ошибка конфликта identity (несколько кандидатов).
+    """
     suffix = f" ({rule_name})" if rule_name else ""
     return diag_error(
         catalog=catalog,
@@ -249,6 +287,10 @@ def _build_conflict_error(
 
 
 def _iter_identity_rules(matching_rules: MatchingRules) -> tuple[IdentityRule, ...]:
+    """
+    Назначение:
+        Вернуть список правил identity с fallback на build_identity.
+    """
     if matching_rules.identity_rules:
         return matching_rules.identity_rules
     return (

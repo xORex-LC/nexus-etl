@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Resolve-стадия: связывание и обогащение по lookup.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -58,6 +63,10 @@ class LookupEnricher:
         matched_rows: list,
         dataset: str,
     ) -> dict[str, dict[str, list[str]]]:
+        """
+        Назначение:
+            Построить индекс resolved id по identity-ключам в пределах батча.
+        """
         key_names, id_field = _collect_batch_keys(self.link_rules, dataset)
         if not key_names:
             return {}
@@ -102,6 +111,16 @@ class LookupEnricher:
         meta: dict[str, Any] | None = None,
         batch_index: dict[str, dict[str, list[str]]] | None = None,
     ) -> tuple[ResolvedRow | None, list[DiagnosticItem], list[DiagnosticItem]]:
+        """
+        Назначение:
+            Принять решение по операции (create/update/skip) и вернуть ResolvedRow.
+
+        Алгоритм:
+            - Проверяет конфликты match-стадии.
+            - Применяет merge_policy для desired_state.
+            - Разрешает ссылки через lookup (pending при необходимости).
+            - Определяет target_id и решает операцию.
+        """
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
 
@@ -203,6 +222,13 @@ class LookupEnricher:
         meta: dict[str, Any] | None,
         batch_index: dict[str, dict[str, list[str]]] | None,
     ) -> tuple[bool, bool]:
+        """
+        Назначение:
+            Разрешить связи (foreign keys) по правилам LinkRules.
+
+        Возвращает:
+            (pending_created, should_stop).
+        """
         if not self.link_rules.fields:
             return False
         if self.identity_repo is None or self.pending_repo is None:
@@ -287,6 +313,10 @@ class LookupEnricher:
 
 
 def _resolve_target_id(matched: MatchedRow, target_id_map: dict[str, str]) -> str | None:
+    """
+    Назначение:
+        Вычислить target_id с учётом match-статуса и batch-map.
+    """
     if matched.match_status == MatchStatus.MATCHED:
         existing_id = matched.existing.get("_id") if matched.existing else None
         return str(existing_id) if existing_id is not None else None
@@ -294,6 +324,10 @@ def _resolve_target_id(matched: MatchedRow, target_id_map: dict[str, str]) -> st
 
 
 def _decide_op(matched: MatchedRow, desired_state: dict[str, Any], rules: ResolveRules) -> tuple[str, dict[str, Any]]:
+    """
+    Назначение:
+        Определить операцию и diff (если нужно).
+    """
     if matched.match_status == MatchStatus.NOT_FOUND:
         return ResolveOp.CREATE, {}
     if _can_skip_with_fingerprint(matched, desired_state, rules):
@@ -388,6 +422,10 @@ def _resolve_with_rules(
     identity_repo: IdentityRepository,
     batch_index: dict[str, dict[str, list[str]]] | None,
 ) -> tuple[str | None, str | None, str | None]:
+    """
+    Назначение:
+        Попытаться найти целевую запись по ключам связи.
+    """
     used_lookup = None
     for key in rule.resolve_keys:
         value = key_values.get(key.name)
@@ -424,6 +462,10 @@ def _apply_dedup_rules(
     identity_repo: IdentityRepository,
     batch_index: dict[str, dict[str, list[str]]] | None,
 ) -> list[str]:
+    """
+    Назначение:
+        Сузить список кандидатов по дедуп-правилам.
+    """
     if not rule.dedup_rules:
         return candidates
     remaining = set(candidates)
@@ -458,6 +500,10 @@ def _lookup_candidates(
     dataset: str,
     lookup_key: str,
 ) -> list[str]:
+    """
+    Назначение:
+        Получить кандидатов из batch_index или репозитория.
+    """
     batch_hits = []
     if batch_index:
         batch_hits = batch_index.get(dataset, {}).get(lookup_key, [])
@@ -505,6 +551,10 @@ def _should_skip_int(rule: LinkFieldRule) -> bool:
 
 
 def _collect_batch_keys(link_rules: LinkRules, dataset: str) -> tuple[set[str], str]:
+    """
+    Назначение:
+        Собрать ключи, нужные для batch-индекса.
+    """
     keys: set[str] = set()
     id_field = "_id"
     for rule in link_rules.fields:
@@ -547,6 +597,10 @@ def _serialize_pending_payload(
     desired_state: dict[str, Any],
     meta: dict[str, Any] | None,
 ) -> str:
+    """
+    Назначение:
+        Сериализовать pending-пейлоад в JSON.
+    """
     payload = {
         "identity": {
             "primary": matched.identity.primary,

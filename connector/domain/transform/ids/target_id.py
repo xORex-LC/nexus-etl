@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Генерация target_id/идентификаторов sink.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

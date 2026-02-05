@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Boundary для нормализации исключений в диагностические события.
+"""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
