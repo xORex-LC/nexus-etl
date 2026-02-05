@@ -7,7 +7,7 @@ from connector.domain.ports.transform.sources import SourceMapper
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.diagnostics import build_catalog
-from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
+from connector.domain.transform.mapping.dsl_mapper import DslMapper
 
 CATALOG = build_catalog("employees", strict=True)
 
@@ -28,12 +28,14 @@ def test_employees_source_mapper_builds_secrets():
             "extra": "password=secret;org_id=20;tab=TAB-100",
         },
     )
-    result = EmployeesSourceMapper(catalog=CATALOG).map(record)
+    result = DslMapper(catalog=CATALOG, dataset="employees").map(record)
 
     assert result.errors == ()
     assert result.match_key is None
-    assert result.secret_candidates.get("password") == "secret"
-    assert result.row.email == "user@example.com"
+    assert result.secret_candidates == {}
+    assert result.row is not None
+    assert result.row.get("password") == "secret"
+    assert result.row["email"] == "user@example.com"
     assert result.row_ref is None
 
 
@@ -54,7 +56,7 @@ def test_employees_source_mapper_does_not_add_match_key_errors():
             "extra": "password=secret;org_id=20;tab=TAB-100",
         },
     )
-    result = EmployeesSourceMapper(catalog=CATALOG).map(record)
+    result = DslMapper(catalog=CATALOG, dataset="employees").map(record)
 
     codes = {issue.code for issue in result.errors}
     assert "MATCH_KEY_MISSING" not in codes
