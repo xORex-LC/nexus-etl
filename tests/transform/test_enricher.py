@@ -14,8 +14,8 @@ from connector.domain.transform.enricher import (
     StrictnessPolicy,
     EnrichOutcome,
 )
-from connector.domain.transform.result import TransformResult
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.core.source_record import SourceRecord
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.models import DiagnosticStage, DiagnosticItem

@@ -8,13 +8,13 @@ from connector.domain.diagnostics.context import (
     warning as diag_warning,
 )
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.transform.match_models import MatchedRow
+from connector.domain.transform.matching.match_models import MatchedRow
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.transform.deduplication_transform import DeduplicationTransform
-from connector.domain.transform.result_processor import PlanningResultProcessor
-from connector.domain.transform.result import TransformResult
-from connector.domain.transform.stages import MatchStage
+from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.core.result_processor import PlanningResultProcessor
+from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.stages.stages import MatchStage
 
 
 class MatchUseCase:

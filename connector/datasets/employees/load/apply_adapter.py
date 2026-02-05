@@ -4,9 +4,9 @@ import uuid
 from dataclasses import dataclass, field
 
 from connector.datasets.spec import ApplyAdapter
-from connector.domain.ports.execution import RequestSpec, ExecutionResult
-from connector.domain.mappers.user_payload import buildUserUpsertPayload
-from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.domain.ports.target.execution import RequestSpec, ExecutionResult
+from connector.datasets.employees.load.user_payload import buildUserUpsertPayload
+from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
 from connector.domain.planning.plan_models import PlanItem
 

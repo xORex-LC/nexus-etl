@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.ports.pending_links_repository import (
+from connector.domain.ports.cache.pending_links import (
     PendingLink,
     PendingLinksRepository,
     PendingRow,

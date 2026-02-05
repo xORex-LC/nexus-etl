@@ -7,10 +7,10 @@ from typing import Any, Callable, Generic, Protocol, TypeVar
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
-from connector.domain.ports.secrets import SecretStoreProtocol
-from connector.domain.transform.match_key import MatchKey
+from connector.domain.ports.secrets.provider import SecretStoreProtocol
+from connector.domain.transform.ids.match_key import MatchKey
 from connector.domain.transform.enricher_report import EnricherReport
-from connector.domain.transform.result import TransformResult, TransformResultBuilder
+from connector.domain.transform.core.result import TransformResult, TransformResultBuilder
 
 T = TypeVar("T")
 D = TypeVar("D")

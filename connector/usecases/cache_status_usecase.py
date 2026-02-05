@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.ports.cache_repository import CacheRepositoryProtocol
+from connector.domain.ports.cache.repository import CacheRepositoryProtocol
 
 
 class CacheStatusUseCase:

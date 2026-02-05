@@ -1,8 +1,8 @@
 @startuml
-title Resolver.resolve - Sequence Diagram
+title LookupEnricher.resolve - Sequence Diagram
 
 actor "ResolveUseCase" as RU
-participant "Resolver" as R
+participant "LookupEnricher" as R
 participant "IdentityRepo" as IR
 participant "PendingRepo" as PR
 

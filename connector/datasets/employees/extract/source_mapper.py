@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
-from connector.domain.ports.sources import SourceMapper
-from connector.domain.transform.result import TransformResult
+from connector.domain.ports.transform.sources import SourceMapper
+from connector.domain.transform.core.result import TransformResult
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.core.source_record import SourceRecord
 from typing import Mapping
 import re
 from connector.datasets.employees.extract.models import EmployeesRowPublic

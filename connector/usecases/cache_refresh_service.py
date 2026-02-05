@@ -10,11 +10,11 @@ from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.models import DiagnosticStage
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
-from connector.domain.transform.identity_keys import format_identity_key
-from connector.domain.ports.cache_repository import CacheRepositoryProtocol, UpsertResult
-from connector.domain.ports.identity_repository import IdentityRepository
-from connector.domain.ports.pending_links_repository import PendingLinksRepository
-from connector.domain.ports.target_read import TargetPagedReaderProtocol
+from connector.domain.transform.matching.identity_keys import format_identity_key
+from connector.domain.ports.cache.repository import CacheRepositoryProtocol, UpsertResult
+from connector.domain.ports.cache.identity import IdentityRepository
+from connector.domain.ports.cache.pending_links import PendingLinksRepository
+from connector.domain.ports.target.read import TargetPagedReaderProtocol
 from connector.infra.logging.setup import logEvent
 
 

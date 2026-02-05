@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.domain.models import Identity, ValidationRowResult
-from connector.domain.transform.rules import IdentityRule, MatchingRules
+from connector.domain.transform.matching.rules import IdentityRule, MatchingRules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 

@@ -6,19 +6,19 @@ from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
-from connector.domain.transform.extractor import Extractor
-from connector.domain.transform.iterators import iter_ok
-from connector.domain.transform.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
+from connector.domain.transform.core.extractor import Extractor
+from connector.domain.transform.core.iterators import iter_ok
+from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
 from connector.usecases.match_usecase import MatchUseCase
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.domain.transform.deduplication_transform import DeduplicationTransform
-from connector.domain.transform.lookup_enricher import LookupEnricher
+from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.matching.lookup_enricher import LookupEnricher
 import json
-from connector.domain.transform.match_models import MatchedRow
+from connector.domain.transform.matching.match_models import MatchedRow
 from connector.domain.models import Identity, MatchStatus, RowRef
-from connector.domain.transform.source_record import SourceRecord
-from connector.domain.transform.result import TransformResult
-from connector.domain.transform.match_models import build_fingerprint
+from connector.domain.transform.core.source_record import SourceRecord
+from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.matching.match_models import build_fingerprint
 from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode

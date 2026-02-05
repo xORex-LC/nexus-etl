@@ -6,11 +6,11 @@ from typing import Iterable
 from connector.domain.models import DiagnosticStage, MatchStatus, RowRef
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.transform.lookup_enricher import LookupEnricher
+from connector.domain.transform.matching.lookup_enricher import LookupEnricher
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.transform.result_processor import PlanningResultProcessor
-from connector.domain.transform.stages import ResolveStage
+from connector.domain.transform.core.result_processor import PlanningResultProcessor
+from connector.domain.transform.stages.stages import ResolveStage
 
 
 class ResolveUseCase:

@@ -4,12 +4,12 @@ import logging
 
 from connector.domain.validation.validator import Validator
 from connector.domain.validation.validated_row import ValidationRow
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.core.result import TransformResult
 from connector.domain.models import RowRef
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.transform.result_processor import TransformResultProcessor
-from connector.domain.transform.stages import ValidateStage
+from connector.domain.transform.core.result_processor import TransformResultProcessor
+from connector.domain.transform.stages.stages import ValidateStage
 
 
 class ValidateUseCase:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.transform.rules import LinkFieldRule, LinkKeyRule, LinkRules
+from connector.domain.transform.matching.rules import LinkFieldRule, LinkKeyRule, LinkRules
 
 
 def build_link_rules() -> LinkRules:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol
 
 
 class CompositeSecretProvider(SecretProviderProtocol):

@@ -1,7 +1,7 @@
 @startuml
-title Matcher - Class Diagram
+title DeduplicationTransform - Class Diagram
 
-class Matcher {
+class DeduplicationTransform {
   - dataset: str
   - cache_repo: CacheRepositoryProtocol
   - matching_rules: MatchingRules
@@ -76,11 +76,11 @@ class TransformResult<T> {
   + warnings
 }
 
-Matcher --> MatchingRules
-Matcher --> ResolveRules
-Matcher --> CacheRepositoryProtocol
-Matcher ..> MatchedRow
-Matcher ..> ValidationRow
+DeduplicationTransform --> MatchingRules
+DeduplicationTransform --> ResolveRules
+DeduplicationTransform --> CacheRepositoryProtocol
+DeduplicationTransform ..> MatchedRow
+DeduplicationTransform ..> ValidationRow
 MatchingRules o-- IdentityRule
 ValidationRow --> ValidationRowResult
 MatchedRow --> Identity

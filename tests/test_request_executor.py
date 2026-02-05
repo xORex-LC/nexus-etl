@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.ports.execution import RequestSpec
+from connector.domain.ports.target.execution import RequestSpec
 from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.http.ankey_client import ApiError
 

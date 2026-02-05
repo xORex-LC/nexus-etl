@@ -5,7 +5,7 @@ from typing import Any
 from connector.common.sanitize import maskSecretsInObject, truncateText
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.policies import map_http_status
-from connector.domain.ports.execution import ExecutionResult, RequestExecutorProtocol, RequestSpec
+from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol, RequestSpec
 from connector.infra.http.ankey_client import ApiError, AnkeyApiClient
 
 

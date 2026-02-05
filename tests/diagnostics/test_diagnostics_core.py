@@ -7,9 +7,9 @@ from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.translator import translate_execution_result
 from connector.domain.models import DiagnosticSeverity, DiagnosticStage, RowRef
-from connector.domain.ports.execution import ExecutionResult
-from connector.domain.transform.result import TransformResult
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.ports.target.execution import ExecutionResult
+from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.core.source_record import SourceRecord
 
 
 def test_factory_strict_unknown_raises() -> None:

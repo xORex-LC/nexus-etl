@@ -3,13 +3,13 @@ from __future__ import annotations
 from connector.datasets.spec import DatasetSpec, PlanningBundle, ValidationBundle
 from connector.datasets.employees.load.reporting import employees_report_adapter
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
-from connector.domain.transform.resolve_deps import PlanningDependencies, ResolverSettings
+from connector.domain.transform.matching.resolve_deps import PlanningDependencies, ResolverSettings
 from connector.datasets.employees.load.matching_rules import build_matching_rules
 from connector.datasets.employees.load.link_rules import build_link_rules
 from connector.datasets.employees.load.resolve_rules import build_resolve_rules
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
-from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.transform.normalizer_spec import EmployeesNormalizerSpec
@@ -17,7 +17,7 @@ from connector.datasets.employees.transform.enricher_spec import EmployeesEnrich
 from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
 from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
-from connector.domain.transform.stages import MapStage, NormalizeStage, EnrichStage
+from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage
 from connector.domain.validation.validator import Validator
 from connector.infra.sources.csv_reader import CsvRecordSource
 from connector.datasets.employees.load.cache_spec import employees_cache_spec

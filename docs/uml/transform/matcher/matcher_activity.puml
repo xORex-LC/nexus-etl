@@ -1,5 +1,5 @@
 @startuml
-title Matcher - Activity Diagram
+title DeduplicationTransform - Activity Diagram
 
 start
 :Input TransformResult[ValidationRow];

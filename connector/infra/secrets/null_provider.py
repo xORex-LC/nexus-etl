@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.ports.secrets import SecretProviderProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol
 
 
 class NullSecretProvider(SecretProviderProtocol):

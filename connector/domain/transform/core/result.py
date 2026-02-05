@@ -5,8 +5,8 @@ from types import MappingProxyType
 from typing import Any, Generic, Iterable, Mapping, TypeVar
 
 from connector.domain.models import RowRef, DiagnosticItem
-from connector.domain.transform.match_key import MatchKey
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.ids.match_key import MatchKey
+from connector.domain.transform.core.source_record import SourceRecord
 
 T = TypeVar("T")
 

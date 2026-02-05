@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.ports.cache_repository import CacheRepositoryProtocol
-from connector.domain.ports.identity_repository import IdentityRepository
-from connector.domain.ports.pending_links_repository import PendingLinksRepository
+from connector.domain.ports.cache.repository import CacheRepositoryProtocol
+from connector.domain.ports.cache.identity import IdentityRepository
+from connector.domain.ports.cache.pending_links import PendingLinksRepository
 
 
 @dataclass(frozen=True)

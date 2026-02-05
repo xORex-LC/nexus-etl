@@ -7,7 +7,7 @@ from connector.common.sanitize import maskSecretsInObject
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import RowRef, DiagnosticItem
-from connector.domain.transform.result import TransformResult
+from connector.domain.transform.core.result import TransformResult
 
 
 class TransformResultProcessor:

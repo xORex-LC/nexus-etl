@@ -2,9 +2,9 @@ from connector.domain.transform.enricher import Enricher
 from connector.domain.transform.normalizer import Normalizer
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validator import Validator
-from connector.domain.transform.stages import MapStage, NormalizeStage, EnrichStage, StagePipeline
-from connector.domain.transform.result import TransformResult
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage, StagePipeline
+from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.core.source_record import SourceRecord
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.extract.source_mapper import EmployeesSourceMapper
 from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec

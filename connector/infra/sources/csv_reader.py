@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from typing import Iterable
 
-from connector.domain.transform.source_record import SourceRecord
+from connector.domain.transform.core.source_record import SourceRecord
 from connector.infra.sources.csv_utils import CsvFormatError, parseNull
 
 

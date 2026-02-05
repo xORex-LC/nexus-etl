@@ -45,3 +45,16 @@ def build_delimited_match_key(
     if strict and any(part == "" for part in normalized):
         raise MatchKeyError("match_key parts are incomplete")
     return MatchKey(value=delimiter.join(normalized))
+
+
+def build_match_key(
+    parts: Iterable[str | None],
+    *,
+    delimiter: str = "|",
+    strict: bool = False,
+) -> MatchKey:
+    """
+    Назначение:
+        Совместимый алиас для построения match_key.
+    """
+    return build_delimited_match_key(parts, delimiter=delimiter, strict=strict)

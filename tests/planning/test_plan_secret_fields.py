@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from connector.domain.planning.plan_builder import PlanBuilder
-from connector.domain.transform.match_models import ResolvedRow, ResolveOp
+from connector.domain.transform.matching.match_models import ResolvedRow, ResolveOp
 from connector.domain.models import Identity, RowRef
 from connector.infra.artifacts.plan_reader import readPlanFile
 

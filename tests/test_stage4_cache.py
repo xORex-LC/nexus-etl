@@ -9,7 +9,7 @@ from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.datasets.cache_registry import list_cache_specs
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.repository import SqliteCacheRepository
-from connector.domain.ports.cache_repository import UpsertResult
+from connector.domain.ports.cache.repository import UpsertResult
 from connector.main import app
 from connector.infra.http.ankey_client import AnkeyApiClient
 

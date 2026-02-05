@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Iterable
 
 from connector.common.time import getNowIso
-from connector.domain.ports.secrets import SecretProviderProtocol, SecretStoreProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 
 
 _FIELDNAMES = ["dataset", "field", "match_key", "value", "run_id", "updated_at"]

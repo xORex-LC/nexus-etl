@@ -1,39 +1,39 @@
 @startuml
-title Matcher - Sequence Diagram
+title DeduplicationTransform - Sequence Diagram
 
 actor Caller
-participant Matcher
+participant DeduplicationTransform
 participant MatchingRules
 participant "IdentityRule" as Rule
 participant CacheRepo
 participant ResolveRules
 
-Caller -> Matcher: match(TransformResult[ValidationRow])
-Matcher -> MatchingRules: get identity_rules
+Caller -> DeduplicationTransform: match(TransformResult[ValidationRow])
+DeduplicationTransform -> MatchingRules: get identity_rules
 loop for each rule
-  Matcher -> Rule: build_identity(row, validation)
+  DeduplicationTransform -> Rule: build_identity(row, validation)
   alt identity.primary_value empty
-    Matcher -> Matcher: skip rule
+    DeduplicationTransform -> DeduplicationTransform: skip rule
   else
-    Matcher -> CacheRepo: find(dataset, {primary: value})
+    DeduplicationTransform -> CacheRepo: find(dataset, {primary: value})
     alt candidates_many
-      Matcher -> Matcher: emit MATCH_CONFLICT_TARGET
-      Matcher --> Caller: TransformResult.errors
+      DeduplicationTransform -> DeduplicationTransform: emit MATCH_CONFLICT_TARGET
+      DeduplicationTransform --> Caller: TransformResult.errors
     else candidates_one
-      Matcher -> Matcher: select identity + existing
+      DeduplicationTransform -> DeduplicationTransform: select identity + existing
     else
-      Matcher -> Matcher: remember identity (fallback)
+      DeduplicationTransform -> DeduplicationTransform: remember identity (fallback)
     end
   end
 end
 alt identity missing
-  Matcher -> Matcher: emit MATCH_IDENTITY_MISSING
-  Matcher --> Caller: TransformResult.errors
+  DeduplicationTransform -> DeduplicationTransform: emit MATCH_IDENTITY_MISSING
+  DeduplicationTransform --> Caller: TransformResult.errors
 end
-Matcher -> ResolveRules: build_desired_state(row, validation)
-Matcher -> Matcher: build_fingerprint(desired_state)
-Matcher -> Matcher: build_links (optional)
-Matcher -> Matcher: build RowRef
-Matcher --> Caller: TransformResult[MatchedRow]
+DeduplicationTransform -> ResolveRules: build_desired_state(row, validation)
+DeduplicationTransform -> DeduplicationTransform: build_fingerprint(desired_state)
+DeduplicationTransform -> DeduplicationTransform: build_links (optional)
+DeduplicationTransform -> DeduplicationTransform: build RowRef
+DeduplicationTransform --> Caller: TransformResult[MatchedRow]
 
 @enduml
