@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Вспомогательные структуры для отчётов enricher.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

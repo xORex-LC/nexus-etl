@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from connector.domain.models import DiagnosticStage, MatchStatus, RowRef
-from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
+from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
 from connector.domain.diagnostics.command_result import CommandResult
@@ -111,7 +112,7 @@ def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
     if mode == "skip":
         return
     for item in expired:
-        error = diag_error(
+        diag = (diag_warning if mode == "report_only" else diag_error)(
             catalog=catalog,
             stage=DiagnosticStage.RESOLVE,
             code="RESOLVE_EXPIRED",
@@ -124,13 +125,17 @@ def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
                 identity_value=None,
             ),
         )
+        report_errors, report_warnings = split_report_diagnostics(
+            [] if mode == "report_only" else [diag],
+            [diag] if mode == "report_only" else [],
+        )
         if mode == "report_only":
             report.add_item(
                 status="OK",
-                row_ref=error.record_ref,
+                row_ref=diag.record_ref,
                 payload=None,
-                errors=[],
-                warnings=[error],
+                errors=report_errors,
+                warnings=report_warnings,
                 meta={
                     "pending_id": item.pending_id,
                     "lookup_key": item.lookup_key,
@@ -141,10 +146,10 @@ def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
             continue
         report.add_item(
             status="FAILED",
-            row_ref=error.record_ref,
+            row_ref=diag.record_ref,
             payload=None,
-            errors=[error],
-            warnings=[],
+            errors=report_errors,
+            warnings=report_warnings,
             meta={
                 "pending_id": item.pending_id,
                 "lookup_key": item.lookup_key,

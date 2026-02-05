@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Политики системных кодов и маппинг статусов.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

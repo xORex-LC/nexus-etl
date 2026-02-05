@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Сборка плана import-операций.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

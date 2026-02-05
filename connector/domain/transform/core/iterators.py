@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Итераторы для фильтрации/разделения потоков результатов.
+"""
+
 from __future__ import annotations
 
 from typing import Callable, Iterable, TypeVar

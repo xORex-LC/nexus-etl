@@ -10,6 +10,7 @@ from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.models import DiagnosticStage
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.transform.matching.identity_keys import format_identity_key
 from connector.domain.ports.cache.repository import CacheRepositoryProtocol, UpsertResult
 from connector.domain.ports.cache.identity import IdentityRepository
@@ -157,11 +158,8 @@ class CacheRefreshUseCase:
                             except Exception as exc:
                                 stats["failed"] += 1
                                 logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to upsert {key}: {exc}")
-                                report.add_item(
-                                    status="FAILED",
-                                    row_ref=None,
-                                    payload=None,
-                                    errors=[
+                                report_errors, report_warnings = split_report_diagnostics(
+                                    [
                                         diag_error(
                                             catalog=catalog,
                                             stage=DiagnosticStage.CACHE,
@@ -172,7 +170,14 @@ class CacheRefreshUseCase:
                                             record_ref=None,
                                         )
                                     ],
-                                    warnings=[],
+                                    [],
+                                )
+                                report.add_item(
+                                    status="FAILED",
+                                    row_ref=None,
+                                    payload=None,
+                                    errors=report_errors,
+                                    warnings=report_warnings,
                                     meta={
                                         "dataset": adapter.dataset,
                                         "key": key,

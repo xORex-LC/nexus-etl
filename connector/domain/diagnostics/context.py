@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Фабрики диагностик с поддержкой record_ref.
+"""
+
 from __future__ import annotations
 
 from typing import Any

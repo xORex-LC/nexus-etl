@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Extract-стадия: чтение источника в SourceRecord.
+"""
+
 from __future__ import annotations
 
 from typing import Iterable
@@ -22,6 +27,14 @@ class Extractor:
         self.catalog = catalog
 
     def run(self) -> Iterable[TransformResult[None]]:
+        """
+        Назначение:
+            Считать источник и обернуть записи в TransformResult.
+
+        Алгоритм:
+            - Каждую запись источника возвращает как TransformResult без row.
+            - Любая ошибка источника фиксируется как EXTRACT‑ошибка.
+        """
         try:
             for record in self.source:
                 yield TransformResult(

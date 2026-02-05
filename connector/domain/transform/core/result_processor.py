@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Единая обработка TransformResult для отчётов и статистики.
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -7,6 +12,7 @@ from connector.common.sanitize import maskSecretsInObject
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import RowRef, DiagnosticItem
+from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.transform.core.result import TransformResult
 
 
@@ -57,6 +63,12 @@ class TransformResultProcessor:
         """
         Назначение:
             Обрабатывает одну запись с единым правилом фильтрации/репортинга.
+
+        Алгоритм:
+            - Вычисляет итоговый статус (OK/FAILED).
+            - Обновляет счётчики summary.
+            - Строит payload и report-диагностику.
+            - Добавляет элемент в отчёт при необходимости.
         """
         self.rows_total += 1
 
@@ -102,12 +114,13 @@ class TransformResultProcessor:
                 else:
                     row_payload = maskSecretsInObject(payload_obj)
 
+        report_errors, report_warnings = split_report_diagnostics(eff_errors, eff_warnings)
         self.report.add_item(
             status=status,
             row_ref=effective_row_ref,
             payload=row_payload,
-            errors=eff_errors,
-            warnings=eff_warnings,
+            errors=report_errors,
+            warnings=report_warnings,
             meta={
                 "match_key": result.match_key.value if result and result.match_key else None,
                 "secret_candidate_fields": secret_fields,
@@ -177,6 +190,15 @@ class PlanningResultProcessor(TransformResultProcessor):
         errors_override: list[DiagnosticItem] | None = None,
         warnings_override: list[DiagnosticItem] | None = None,
     ) -> None:
+        """
+        Назначение:
+            Обработать planning-результат с учётом meta/skip-логики.
+
+        Алгоритм:
+            - Опционально пропускает result по should_skip.
+            - Строит payload и meta через meta_builder.
+            - Добавляет item в отчёт согласно include_items.
+        """
         if result is None:
             return super().process(
                 result,
@@ -227,12 +249,13 @@ class PlanningResultProcessor(TransformResultProcessor):
 
         meta = self.meta_builder(result) or {}
 
+        report_errors, report_warnings = split_report_diagnostics(eff_errors, eff_warnings)
         self.report.add_item(
             status=status,
             row_ref=effective_row_ref,
             payload=row_payload,
-            errors=eff_errors,
-            warnings=eff_warnings,
+            errors=report_errors,
+            warnings=report_warnings,
             meta=meta,
             store=should_store,
         )

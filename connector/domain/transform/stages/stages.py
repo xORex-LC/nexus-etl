@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Стадии конвейера data transform (map/normalize/enrich/validate/match/resolve).
+"""
+
 from __future__ import annotations
 
 from typing import Callable, Iterable, Protocol, Sequence, TypeVar
@@ -37,6 +42,14 @@ class StagePipeline:
         self.stages = stages
 
     def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult]:
+        """
+        Назначение:
+            Прогнать поток результатов через цепочку стадий.
+
+        Алгоритм:
+            - Последовательно передаёт поток в каждую стадию.
+            - Для batched-стадий буферизует вход в чанки.
+        """
         current = source
         for stage in self.stages:
             if getattr(stage, "_is_batched", False):
@@ -72,6 +85,14 @@ def _buffer_into_batches(
     batch_size: int,
     key: Callable | None = None,
 ) -> Iterable[list[TransformResult]]:
+    """
+    Назначение:
+        Буферизовать поток в батчи.
+
+    Алгоритм:
+        - Без key: фиксированный размер батча.
+        - С key: шардирование по ключу с ограничением размера.
+    """
     if batch_size <= 0:
         batch_size = 1
     if key is None:
@@ -98,6 +119,10 @@ def _buffer_into_batches(
 
 
 def _run_batched(stage: TransformStageProcessor, batches: Iterable[list[TransformResult]]) -> Iterable[TransformResult]:
+    """
+    Назначение:
+        Прокрутить батчи через стадию и развернуть обратно в поток.
+    """
     for batch in batches:
         for item in stage.run(batch):
             yield item
@@ -358,6 +383,14 @@ class ResolveStage:
 
 
 def _build_target_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dict[str, str]:
+    """
+    Назначение:
+        Построить карту identity->target_id для resolve-стадии.
+
+    Алгоритм:
+        - Для matched берём _id из existing.
+        - Иначе используем target_id из matched-строки.
+    """
     mapping: dict[str, str] = {}
     for item in matched_rows:
         row = item.row
@@ -377,6 +410,10 @@ def _build_batch_index(
     resolver: LookupEnricher,
     dataset: str | None,
 ) -> dict[str, dict[str, list[str]]]:
+    """
+    Назначение:
+        Подготовить индекс батча для resolve-правил.
+    """
     if dataset is None:
         return {}
     return resolver.build_batch_index(matched_rows, dataset)

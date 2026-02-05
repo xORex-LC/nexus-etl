@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Каталог диагностических кодов и фабрики DiagnosticItem.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

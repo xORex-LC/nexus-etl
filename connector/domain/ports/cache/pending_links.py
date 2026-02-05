@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Доменные порты кэша.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

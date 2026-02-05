@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Результат выполнения команды и агрегация системных кодов.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

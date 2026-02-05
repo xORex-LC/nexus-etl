@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Обогащение данных (кэш/справочники/генераторы).
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -361,6 +366,16 @@ class Enricher(Generic[T, D]):
         self.merge_engine = MergeEngine(spec.authoritative_sources)
 
     def enrich(self, result: TransformResult[T]) -> TransformResult[T]:
+        """
+        Назначение:
+            Выполнить операции enrich и вернуть обновлённый TransformResult.
+
+        Алгоритм:
+            - Создаёт builder и контекст выполнения.
+            - Последовательно применяет операции по правилам spec.
+            - Сохраняет события/резолв‑подсказки в meta.
+            - Пишет секреты в secret_store (если есть).
+        """
         if result.row is None:
             return result
 

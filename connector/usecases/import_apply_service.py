@@ -16,6 +16,7 @@ from connector.domain.ports.cache.pending_links import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -89,11 +90,8 @@ class ImportApplyService:
             if not item.target_id:
                 failed += 1
                 if should_store("FAILED"):
-                    report.add_item(
-                        status="FAILED",
-                        row_ref=self._build_row_ref(item),
-                        payload=None,
-                        errors=[
+                    report_errors, report_warnings = self._split_diagnostics(
+                        [
                             diag_error(
                                 catalog=catalog,
                                 stage=DiagnosticStage.APPLY,
@@ -103,7 +101,14 @@ class ImportApplyService:
                                 record_ref=self._build_row_ref(item),
                             )
                         ],
-                        warnings=[],
+                        [],
+                    )
+                    report.add_item(
+                        status="FAILED",
+                        row_ref=self._build_row_ref(item),
+                        payload=None,
+                        errors=report_errors,
+                        warnings=report_warnings,
                         meta=maskSecretsInObject(self._build_meta(item, None, None, None)),
                     )
                 if stop_on_first_error:
@@ -136,12 +141,13 @@ class ImportApplyService:
                             for diag in boundary_errors:
                                 error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
                             if should_store("FAILED"):
+                                report_errors, report_warnings = self._split_diagnostics(boundary_errors, [])
                                 report.add_item(
                                     status="FAILED",
                                     row_ref=self._build_row_ref(current_item),
                                     payload=maskSecretsInObject(self._build_payload(current_item)),
-                                    errors=boundary_errors,
-                                    warnings=[],
+                                    errors=report_errors,
+                                    warnings=report_warnings,
                                     meta=maskSecretsInObject(
                                         self._build_meta(current_item, None, None, None)
                                     ),
@@ -154,11 +160,8 @@ class ImportApplyService:
                         if exec_result is None:
                             failed += 1
                             if should_store("FAILED"):
-                                report.add_item(
-                                    status="FAILED",
-                                    row_ref=self._build_row_ref(current_item),
-                                    payload=maskSecretsInObject(self._build_payload(current_item)),
-                                    errors=[
+                                report_errors, report_warnings = self._split_diagnostics(
+                                    [
                                         diag_error(
                                             catalog=catalog,
                                             stage=DiagnosticStage.APPLY,
@@ -168,7 +171,14 @@ class ImportApplyService:
                                             record_ref=self._build_row_ref(current_item),
                                         )
                                     ],
-                                    warnings=[],
+                                    [],
+                                )
+                                report.add_item(
+                                    status="FAILED",
+                                    row_ref=self._build_row_ref(current_item),
+                                    payload=maskSecretsInObject(self._build_payload(current_item)),
+                                    errors=report_errors,
+                                    warnings=report_warnings,
                                     meta=maskSecretsInObject(self._build_meta(current_item, None, None, None)),
                                 )
                             logEvent(logger, logging.ERROR, run_id, "import-apply", "Apply failed: empty execution result")
@@ -216,12 +226,13 @@ class ImportApplyService:
                     )
                     error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
                     if should_store("FAILED"):
+                        report_errors, report_warnings = self._split_diagnostics([diag], [])
                         report.add_item(
                             status="FAILED",
                             row_ref=self._build_row_ref(current_item),
                             payload=maskSecretsInObject(self._build_payload(current_item)),
-                            errors=[diag],
-                            warnings=[],
+                            errors=report_errors,
+                            warnings=report_warnings,
                             meta=maskSecretsInObject(
                                 self._build_meta(current_item, exec_result.status_code, exec_result.response_json, exec_result.error_details)
                             ),
@@ -236,11 +247,8 @@ class ImportApplyService:
                     err_code = exc.code
                     error_stats[err_code] = error_stats.get(err_code, 0) + 1
                     if should_store("FAILED"):
-                        report.add_item(
-                            status="FAILED",
-                            row_ref=self._build_row_ref(current_item),
-                            payload=maskSecretsInObject(self._build_payload(current_item)),
-                            errors=[
+                        report_errors, report_warnings = self._split_diagnostics(
+                            [
                                 diag_error(
                                     catalog=catalog,
                                     stage=DiagnosticStage.APPLY,
@@ -250,7 +258,14 @@ class ImportApplyService:
                                     record_ref=self._build_row_ref(current_item),
                                 )
                             ],
-                            warnings=[],
+                            [],
+                        )
+                        report.add_item(
+                            status="FAILED",
+                            row_ref=self._build_row_ref(current_item),
+                            payload=maskSecretsInObject(self._build_payload(current_item)),
+                            errors=report_errors,
+                            warnings=report_warnings,
                             meta=maskSecretsInObject(self._build_meta(current_item, None, None, None)),
                         )
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
@@ -260,11 +275,8 @@ class ImportApplyService:
                     err_code = "UNEXPECTED_ERROR"
                     error_stats[err_code] = error_stats.get(err_code, 0) + 1
                     if should_store("FAILED"):
-                        report.add_item(
-                            status="FAILED",
-                            row_ref=self._build_row_ref(current_item),
-                            payload=maskSecretsInObject(self._build_payload(current_item)),
-                            errors=[
+                        report_errors, report_warnings = self._split_diagnostics(
+                            [
                                 diag_error(
                                     catalog=catalog,
                                     stage=DiagnosticStage.APPLY,
@@ -274,7 +286,14 @@ class ImportApplyService:
                                     record_ref=self._build_row_ref(current_item),
                                 )
                             ],
-                            warnings=[],
+                            [],
+                        )
+                        report.add_item(
+                            status="FAILED",
+                            row_ref=self._build_row_ref(current_item),
+                            payload=maskSecretsInObject(self._build_payload(current_item)),
+                            errors=report_errors,
+                            warnings=report_warnings,
                             meta=maskSecretsInObject(self._build_meta(current_item, None, None, None)),
                         )
                     logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
@@ -315,6 +334,10 @@ class ImportApplyService:
             identity_primary=None,
             identity_value=None,
         )
+
+    @staticmethod
+    def _split_diagnostics(errors, warnings):
+        return split_report_diagnostics(errors, warnings)
 
     @staticmethod
     def _build_payload(item) -> dict[str, Any]:

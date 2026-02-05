@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Валидация подготовленных данных.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -48,6 +53,10 @@ class FieldRule(Generic[T]):
         deps: ValidationDependencies,
         add_error: Callable[..., DiagnosticItem],
     ) -> None:
+        """
+        Назначение:
+            Применить валидаторы к одному полю.
+        """
         value = getattr(row, self.attr, None)
         is_empty = value is None or (isinstance(value, str) and value.strip() == "")
         if self.required and is_empty:
@@ -76,6 +85,15 @@ class Validator(Generic[T]):
         self.catalog = catalog
 
     def validate(self, enriched: TransformResult[T]) -> TransformResult[ValidationRow[T]]:
+        """
+        Назначение:
+            Применить набор правил валидации к обогащённой строке.
+
+        Алгоритм:
+            - Собирает ValidationRowResult с базовыми данными/секретами.
+            - Прогоняет правила, копит ошибки/предупреждения.
+            - Возвращает TransformResult[ValidationRow].
+        """
         row = enriched.row
         if row is None and not enriched.errors:
             raise ValueError("Validation received empty row without errors")

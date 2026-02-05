@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Политики построения identity-ключей.
+"""
+
 from __future__ import annotations
 
 

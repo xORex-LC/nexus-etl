@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Диагностический слой домена.
+"""
+
 from connector.domain.diagnostics.catalog import CatalogEntry, ErrorCatalog, build_catalog
 from connector.domain.diagnostics.core_catalog import build_core_catalog
 from connector.domain.diagnostics.context import error, warning

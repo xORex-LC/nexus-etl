@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Доменные порты для transform-источников и справочников.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Protocol
