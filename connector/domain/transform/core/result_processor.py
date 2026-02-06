@@ -118,6 +118,9 @@ class TransformResultProcessor:
                     row_payload = maskSecretsInObject(asdict(payload_obj))
                 else:
                     row_payload = maskSecretsInObject(payload_obj)
+            if row_payload is not None and isinstance(row_payload, dict) and secret_fields:
+                for field in secret_fields:
+                    row_payload[field] = "***"
 
         report_errors, report_warnings = split_report_diagnostics(eff_errors, eff_warnings)
         self.report.add_item(
@@ -251,6 +254,11 @@ class PlanningResultProcessor(TransformResultProcessor):
                     row_payload = maskSecretsInObject(asdict(payload_obj))
                 else:
                     row_payload = maskSecretsInObject(payload_obj)
+            if row_payload is not None and isinstance(row_payload, dict) and result.meta:
+                secret_fields = result.meta.get("secret_fields")
+                if isinstance(secret_fields, (list, tuple, set)):
+                    for field in secret_fields:
+                        row_payload[field] = "***"
 
         meta = self.meta_builder(result) or {}
 

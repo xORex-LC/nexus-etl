@@ -17,6 +17,7 @@ from connector.domain.transform.dsl.specs import (
     ValidationSpec,
     MatchSpec,
     ResolveSpec,
+    SinkSpec,
 )
 
 
@@ -94,6 +95,17 @@ def load_resolve_spec_for_dataset(dataset: str) -> ResolveSpec:
     resolve_path = _resolve_registry_path(registry, dataset, "resolve")
     raw = _read_yaml(resolve_path)
     return ResolveSpec.model_validate(raw)
+
+
+def load_sink_spec_for_dataset(dataset: str) -> SinkSpec:
+    """
+    Назначение:
+        Загрузить sink-модель по имени датасета из datasets/registry.yml.
+    """
+    registry = _load_registry()
+    sink_path = _resolve_registry_path(registry, dataset, "sink")
+    raw = _read_yaml(sink_path)
+    return SinkSpec.model_validate(raw)
 
 
 def _read_yaml(path: str | Path) -> dict[str, Any]:

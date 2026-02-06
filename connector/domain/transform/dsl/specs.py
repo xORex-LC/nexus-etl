@@ -111,6 +111,41 @@ class MappingSpec(BaseModel):
     mapping: MappingBlock
 
 
+class SinkFieldSpec(BaseModel):
+    """
+    Назначение:
+        Декларативное описание поля sink-модели.
+    """
+
+    name: str
+    type: Literal["string", "int", "float", "bool", "object", "list"]
+    required: bool = False
+    nullable: bool = False
+    target: str | None = None
+    generated: bool = False
+
+
+class SinkBlock(BaseModel):
+    """
+    Назначение:
+        Корневая секция sink-модели.
+    """
+
+    fields: list[SinkFieldSpec] = Field(default_factory=list)
+    system_fields: list[SinkFieldSpec] = Field(default_factory=list)
+    allow_extra: bool = True
+
+
+class SinkSpec(BaseModel):
+    """
+    Назначение:
+        Декларативная sink-модель для датасета.
+    """
+
+    dataset: str
+    sink: SinkBlock
+
+
 class NormalizeRule(BaseModel):
     """
     Назначение:

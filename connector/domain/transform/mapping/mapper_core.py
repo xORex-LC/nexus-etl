@@ -9,13 +9,16 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.dsl.engine import TransformationEngine
 from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
-from connector.domain.transform.dsl.specs import MappingRule, MetaRule, MappingSpec
+from connector.domain.transform.dsl.diagnostics import append_dsl_issues
+from connector.domain.transform.dsl.helpers import apply_ops
+from connector.domain.transform.common.values import read_value
+from connector.domain.transform.dsl.specs import MappingRule, MetaRule, MappingSpec, SinkSpec
+from connector.domain.transform.common.sink_schema import validate_sink_row
 
 
 @dataclass
@@ -37,10 +40,17 @@ class MapperCore:
         Применить mapping-правила DSL к SourceRecord.
     """
 
-    def __init__(self, spec: MappingSpec, engine: TransformationEngine) -> None:
+    def __init__(
+        self,
+        spec: MappingSpec,
+        engine: TransformationEngine,
+        *,
+        sink_spec: SinkSpec | None = None,
+    ) -> None:
         self.spec = spec
         self.engine = engine
         self._source_index = {name: idx for idx, name in enumerate(spec.source_columns or [])}
+        self.sink_spec = sink_spec
 
     def map_record(self, record: SourceRecord, *, catalog: ErrorCatalog) -> TransformResult[Mapping[str, Any]]:
         """
@@ -75,6 +85,7 @@ class MapperCore:
 
         # post-validate результата mapping
         self._validate_schema(row, errors, warnings, catalog, record)
+        self._validate_sink(row, errors, warnings, catalog, record)
 
         # meta rules
         if not errors:
@@ -131,9 +142,9 @@ class MapperCore:
                     )
                 )
         if rule.ops:
-            result = self.engine.apply(value, rule.ops)
-            issues.extend(result.issues)
-            return result.value, issues
+            resolved, op_issues = apply_ops(self.engine, value, rule.ops)
+            issues.extend(op_issues)
+            return resolved, issues
         return value, issues
 
     def _resolve_meta_value(
@@ -143,15 +154,15 @@ class MapperCore:
         rule: MetaRule,
     ) -> tuple[Any, list[DslIssue]]:
         if rule.sources:
-            values = [self._read_value(record, row, name) for name in rule.sources]
+            values = [read_value(record_values=record.values, row_values=row, path=name) for name in rule.sources]
             value = values
         elif rule.source:
-            value = self._read_value(record, row, rule.source)
+            value = read_value(record_values=record.values, row_values=row, path=rule.source)
         else:
             value = None
         if rule.ops:
-            result = self.engine.apply(value, rule.ops)
-            return result.value, list(result.issues)
+            resolved, op_issues = apply_ops(self.engine, value, rule.ops)
+            return resolved, list(op_issues)
         return value, []
 
     def _read_source(self, record: SourceRecord, name: str | None) -> tuple[Any, bool]:
@@ -166,15 +177,6 @@ class MapperCore:
             if alt in raw:
                 return raw.get(alt), True
         return None, False
-
-    def _read_value(self, record: SourceRecord, row: Mapping[str, Any], name: str) -> Any:
-        if name.startswith("row."):
-            key = name.split("row.", 1)[1]
-            return row.get(key)
-        if name.startswith("record."):
-            key = name.split("record.", 1)[1]
-            return record.values.get(key)
-        return record.values.get(name)
 
     def _assign_targets(
         self,
@@ -246,6 +248,28 @@ class MapperCore:
                     ),
                 )
 
+    def _validate_sink(
+        self,
+        row: Mapping[str, Any],
+        errors: list[DiagnosticItem],
+        warnings: list[DiagnosticItem],
+        catalog: ErrorCatalog,
+        record: SourceRecord,
+    ) -> None:
+        if self.sink_spec is None:
+            return
+        issues = validate_sink_row(row, self.sink_spec, check_types=False)
+        if issues:
+            append_dsl_issues(
+                errors=errors,
+                warnings=warnings,
+                issues=issues,
+                stage=DiagnosticStage.MAP,
+                catalog=catalog,
+                record_ref=None,
+                on_error="warn",
+            )
+
     def _append_issues(
         self,
         issues: Iterable[DslIssue],
@@ -255,8 +279,15 @@ class MapperCore:
         catalog: ErrorCatalog,
         record: SourceRecord,
     ) -> None:
-        for issue in issues:
-            self._append_issue(errors, warnings, rule, catalog, record, issue)
+        append_dsl_issues(
+            errors=errors,
+            warnings=warnings,
+            issues=issues,
+            stage=DiagnosticStage.MAP,
+            catalog=catalog,
+            record_ref=None,
+            on_error=getattr(rule, "on_error", "error"),
+        )
 
     def _append_meta_issues(
         self,
@@ -267,44 +298,14 @@ class MapperCore:
         catalog: ErrorCatalog,
         record: SourceRecord,
     ) -> None:
-        for issue in issues:
-            self._append_issue(errors, warnings, rule, catalog, record, issue)
-
-    def _append_issue(
-        self,
-        errors: list[DiagnosticItem],
-        warnings: list[DiagnosticItem],
-        rule: MappingRule | MetaRule | None,
-        catalog: ErrorCatalog,
-        record: SourceRecord,
-        issue: DslIssue,
-    ) -> None:
-        as_warning = issue.severity == DslSeverity.WARNING
-        if rule is not None and getattr(rule, "on_error", "error") == "warn":
-            as_warning = True
-        if as_warning:
-            warnings.append(
-                diag_warning(
-                    stage=DiagnosticStage.MAP,
-                    code=issue.code,
-                    field=issue.field,
-                    message=issue.message,
-                    details=issue.details,
-                    record_ref=None,
-                    catalog=catalog,
-                )
-            )
-            return
-        errors.append(
-            diag_error(
-                stage=DiagnosticStage.MAP,
-                code=issue.code,
-                field=issue.field,
-                message=issue.message,
-                details=issue.details,
-                record_ref=None,
-                catalog=catalog,
-            )
+        append_dsl_issues(
+            errors=errors,
+            warnings=warnings,
+            issues=issues,
+            stage=DiagnosticStage.MAP,
+            catalog=catalog,
+            record_ref=None,
+            on_error=getattr(rule, "on_error", "error"),
         )
 
     def _set_meta(self, meta: dict[str, Any], path: str, value: Any) -> None:

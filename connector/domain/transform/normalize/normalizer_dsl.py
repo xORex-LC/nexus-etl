@@ -8,7 +8,7 @@ from __future__ import annotations
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.dsl.engine import TransformationEngine
 from connector.domain.transform.dsl.registry import OperationRegistry
-from connector.domain.transform.dsl.specs import NormalizeSpec
+from connector.domain.transform.dsl.specs import NormalizeSpec, SinkSpec
 from connector.domain.transform.normalize.normalizer_core import NormalizerCore, RowBuilder
 
 
@@ -36,11 +36,13 @@ class NormalizerDsl:
         spec: NormalizeSpec,
         *,
         catalog: ErrorCatalog,
+        sink_spec: SinkSpec | None = None,
         row_builder: RowBuilder | None = None,
     ) -> NormalizerCore:
         return NormalizerCore(
             spec,
             engine=self.engine,
             catalog=catalog,
+            sink_spec=sink_spec,
             row_builder=row_builder,
         )
