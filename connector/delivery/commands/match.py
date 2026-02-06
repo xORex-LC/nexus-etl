@@ -24,7 +24,6 @@ from connector.domain.transform.matching.deduplication_transform import Deduplic
 
 @dataclass(frozen=True)
 class Options:
-    csv_path: str | None = None
     csv_has_header: bool | None = None
     dataset: str | None = None
     report_items_limit: int | None = None
@@ -68,7 +67,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             conn=conn,
             settings=settings,
             catalog=catalog,
-            csv_path=opts.csv_path or "",
             csv_has_header=csv_has_header_value,
         )
         planning_deps = pipeline_ctx.planning_deps

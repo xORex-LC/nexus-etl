@@ -32,7 +32,6 @@ class ImportPlanService:
     def run(
         self,
         conn,
-        csv_path: str,
         csv_has_header: bool,
         include_deleted: bool,
         dataset: str,
@@ -57,7 +56,6 @@ class ImportPlanService:
         enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
         planning_deps = dataset_spec.build_planning_deps(conn, settings)
         row_source = dataset_spec.build_record_source(
-            csv_path=csv_path,
             csv_has_header=csv_has_header,
         )
         map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
@@ -154,7 +152,7 @@ class ImportPlanService:
             resolved_row_source=resolved_rows,
         )
         plan_meta = {
-            "csv_path": csv_path,
+            "csv_path": None,
             "include_deleted": include_deleted,
             "dataset": dataset,
         }

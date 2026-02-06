@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+import os
 
 from connector.domain.transform.dsl.specs import (
     MappingSpec,
+    SourceSpec,
     NormalizeSpec,
     EnrichSpec,
     ValidationSpec,
@@ -39,6 +41,38 @@ def load_mapping_spec_for_dataset(dataset: str) -> MappingSpec:
     registry = _load_registry()
     mapping_path = _resolve_registry_path(registry, dataset, "mapping")
     return load_mapping_spec(mapping_path)
+
+
+def load_source_spec_for_dataset(dataset: str) -> SourceSpec:
+    """
+    Назначение:
+        Загрузить source DSL по имени датасета из datasets/registry.yml.
+    """
+    registry = _load_registry()
+    source_path = _resolve_registry_path(registry, dataset, "source")
+    raw = _read_yaml(source_path)
+    return SourceSpec.model_validate(raw)
+
+
+def resolve_source_location(spec: SourceSpec) -> str:
+    """
+    Назначение:
+        Разрешить путь/локацию источника из source-spec.
+
+    Алгоритм:
+        - Если задан `location_ref`, берём значение из env.
+        - Если env-переменная пуста, fallback на `location`.
+        - Если итоговое значение пустое, бросаем ValueError.
+    """
+    ref = spec.source.location_ref
+    if ref:
+        ref_value = os.getenv(ref)
+        if ref_value and ref_value.strip():
+            return ref_value.strip()
+    location = spec.source.location
+    if location and location.strip():
+        return location.strip()
+    raise ValueError("source location is not configured (location_ref/location)")
 
 
 def load_normalize_spec_for_dataset(dataset: str) -> NormalizeSpec:

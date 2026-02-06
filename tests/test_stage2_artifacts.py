@@ -4,7 +4,7 @@ from connector.main import app
 
 runner = CliRunner()
 
-def test_import_requires_csv(tmp_path: Path):
+def test_import_requires_subcommand(tmp_path: Path):
     logDir = tmp_path / "logs"
     reportDir = tmp_path / "reports"
     cacheDir = tmp_path / "cache"
@@ -27,7 +27,7 @@ def test_import_requires_csv(tmp_path: Path):
 
     assert result.exit_code == 2
 
-    # Требование --csv
+    # Нужен подкомандный сценарий (import plan/apply)
     assert "Usage: root import" in (result.stdout + result.stderr)
 
     # Секрет не должен светиться ни в stdout, ни в stderr

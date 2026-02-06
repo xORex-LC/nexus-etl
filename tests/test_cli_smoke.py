@@ -11,7 +11,7 @@ def test_help_shows_commands():
     assert "check-api" in result.stdout
     assert "cache" in result.stdout
 
-def test_import_requires_csv():
+def test_import_requires_subcommand():
     result = runner.invoke(
         app,
         ["--host", "1.2.3.4", "--port", "5456", "--api-username", "user", "--api-password", "pass", "import"],
@@ -19,6 +19,6 @@ def test_import_requires_csv():
     assert result.exit_code == 2
     assert "Usage: root import" in result.stdout
 
-def test_validate_requires_csv():
+def test_validate_requires_configured_source():
     result = runner.invoke(app, ["validate"])
     assert result.exit_code == 2

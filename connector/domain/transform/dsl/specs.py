@@ -111,6 +111,43 @@ class MappingSpec(BaseModel):
     mapping: MappingBlock
 
 
+class SourceFieldSpec(BaseModel):
+    """
+    Назначение:
+        Декларативное описание поля входного источника.
+    """
+
+    name: str
+    type: Literal["string", "int", "float", "bool", "object", "list"] | None = None
+    required: bool = False
+    nullable: bool = True
+    aliases: list[str] = Field(default_factory=list)
+
+
+class SourceConfig(BaseModel):
+    """
+    Назначение:
+        Декларативная конфигурация источника датасета.
+    """
+
+    type: Literal["file", "db", "api"]
+    format: str | None = None
+    location: str | None = None
+    location_ref: str | None = None
+    options: dict[str, Any] = Field(default_factory=dict)
+    fields: list[SourceFieldSpec] = Field(default_factory=list)
+
+
+class SourceSpec(BaseModel):
+    """
+    Назначение:
+        Декларативная спецификация extract-источника датасета.
+    """
+
+    dataset: str
+    source: SourceConfig
+
+
 class SinkFieldSpec(BaseModel):
     """
     Назначение:
