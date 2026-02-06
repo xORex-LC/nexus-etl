@@ -14,14 +14,13 @@ from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.dsl.engine import TransformationEngine
 from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
-from connector.domain.transform.dsl.registry import OperationRegistry
 from connector.domain.transform.dsl.specs import NormalizeRule, NormalizeSpec
 
 T = TypeVar("T")
 RowBuilder = Callable[[dict[str, Any]], T]
 
 
-class DslNormalizer(Generic[T]):
+class NormalizerCore(Generic[T]):
     """
     Назначение/ответственность:
         Применяет DSL-правила нормализации к mapped-строке.
@@ -31,14 +30,14 @@ class DslNormalizer(Generic[T]):
         self,
         spec: NormalizeSpec,
         *,
-        registry: OperationRegistry,
+        engine: TransformationEngine,
         catalog: ErrorCatalog,
         row_builder: RowBuilder[T] | None = None,
     ) -> None:
         self.spec = spec
         self.catalog = catalog
         self.row_builder = row_builder
-        self.engine = TransformationEngine(registry)
+        self.engine = engine
 
     def normalize(self, source: TransformResult[Any]) -> TransformResult[T]:
         """

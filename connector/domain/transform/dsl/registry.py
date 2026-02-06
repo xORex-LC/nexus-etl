@@ -8,8 +8,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from connector.domain.transform.dsl.issues import DslIssue
-
 OperationFunc = Callable[..., Any]
 
 

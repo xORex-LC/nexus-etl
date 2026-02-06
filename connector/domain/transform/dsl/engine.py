@@ -33,6 +33,18 @@ class TransformationEngine:
     def __init__(self, registry: OperationRegistry) -> None:
         self.registry = registry
 
+    @classmethod
+    def with_core_ops(cls) -> "TransformationEngine":
+        """
+        Назначение:
+            Быстрый конструктор движка с базовым реестром операций.
+        """
+        from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
+
+        registry = OperationRegistry()
+        register_core_ops(registry)
+        return cls(registry)
+
     def apply(self, value: Any, ops: Iterable[OperationCall]) -> EngineResult:
         """
         Назначение:

@@ -1,6 +1,6 @@
 """
 Назначение:
-    MapperEngine: применение DSL-правил маппинга и сбор TransformResult.
+    MapperCore: бизнес-логика применения DSL-правил маппинга.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.dsl.engine import TransformationEngine
 from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
-from connector.domain.transform.dsl.registry import OperationRegistry
 from connector.domain.transform.dsl.specs import MappingRule, MetaRule, MappingSpec
 
 
@@ -32,16 +31,15 @@ class MappingOutcome:
     warnings: list[DiagnosticItem]
 
 
-class MapperEngine:
+class MapperCore:
     """
     Назначение/ответственность:
         Применить mapping-правила DSL к SourceRecord.
     """
 
-    def __init__(self, spec: MappingSpec, registry: OperationRegistry) -> None:
+    def __init__(self, spec: MappingSpec, engine: TransformationEngine) -> None:
         self.spec = spec
-        self.registry = registry
-        self.engine = TransformationEngine(registry)
+        self.engine = engine
         self._source_index = {name: idx for idx, name in enumerate(spec.source_columns or [])}
 
     def map_record(self, record: SourceRecord, *, catalog: ErrorCatalog) -> TransformResult[Mapping[str, Any]]:

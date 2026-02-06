@@ -45,7 +45,7 @@ class _EnrichOpError:
     field: str | None = None
 
 
-class EnricherEngine(Generic[T, D]):
+class EnricherCore(Generic[T, D]):
     """
     Назначение:
         Ядро обогащения: применяет операции и сохраняет секреты.
@@ -567,4 +567,4 @@ class EnricherEngine(Generic[T, D]):
                 setattr(row, field, None)
 
 
-__all__ = ["EnricherEngine"]
+__all__ = ["EnricherCore"]
