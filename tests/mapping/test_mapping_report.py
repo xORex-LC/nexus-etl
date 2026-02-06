@@ -1,13 +1,14 @@
 import logging
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.mapping import MapperEngine
+from connector.domain.transform.dsl.loader import load_mapping_spec_for_dataset
 from connector.infra.artifacts.report_writer import createEmptyReport
 from connector.usecases.mapping_usecase import MappingUseCase
-from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.transform.stages.stages import MapStage
 
 CATALOG = build_catalog("employees", strict=True)
+SOURCE_COLUMNS = load_mapping_spec_for_dataset("employees").source_columns
 
 
 def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:

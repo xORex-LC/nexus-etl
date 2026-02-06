@@ -6,15 +6,15 @@ from connector.domain.transform.normalize import NormalizerDsl, NormalizerEngine
 from connector.domain.transform.enrich import EnricherEngine, EnrichDslBuildOptions
 from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage, StagePipeline
 from connector.domain.transform.mapping import MapperEngine
-from connector.domain.transform.dsl.loader import load_normalize_spec_for_dataset
+from connector.domain.transform.dsl.loader import load_mapping_spec_for_dataset, load_normalize_spec_for_dataset
 from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
-from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
 from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
 from connector.domain.diagnostics.catalog import build_catalog
 
 CATALOG = build_catalog("employees", strict=True)
+SOURCE_COLUMNS = load_mapping_spec_for_dataset("employees").source_columns
 
 
 def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None]:
@@ -37,15 +37,25 @@ def _collect(values: list[str | None], line_no: int = 1) -> TransformResult[None
 class _DummyEnrichDeps:
     identity_lookup = None
     secret_store = None
+    dictionaries = None
 
-    def find_user_by_target_id(self, target_id: str):
-        return None
+    class _CacheRepo:
+        def find(self, dataset: str, filters: dict[str, object], *, include_deleted: bool = False, mode: str = "exact"):
+            _ = (dataset, filters, include_deleted, mode)
+            return []
 
-    def find_user_by_usr_org_tab_num(self, tab_num: str):
-        return None
+        def find_one(
+            self,
+            dataset: str,
+            filters: dict[str, object],
+            *,
+            include_deleted: bool = False,
+            mode: str = "exact",
+        ):
+            _ = (dataset, filters, include_deleted, mode)
+            return None
 
-    def find_org_by_ouid(self, _ouid: int):
-        return {"_ouid": _ouid}
+    cache_repo = _CacheRepo()
 
 def _build_pipeline() -> StagePipeline:
     normalize_spec = load_normalize_spec_for_dataset("employees")

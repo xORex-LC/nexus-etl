@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
+from connector.domain.transform.dsl.loader import load_sink_spec_for_dataset
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.row_rules import validate_email
 from connector.domain.validation.validator import FieldRule, ValidationRule, ValidationSpec
-from connector.datasets.employees.extract.mapping_spec import EmployeesMappingSpec
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
@@ -104,9 +104,9 @@ def _validate_org_reference(
 
 
 def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:
-    mapping_spec = EmployeesMappingSpec()
+    required_fields = _required_fields_from_sink_spec()
     rules: list[ValidationRule[NormalizedEmployeesRow]] = []
-    for attr, field in mapping_spec.required_fields:
+    for attr, field in required_fields:
         validators: tuple[FieldValidator, ...] = ()
         if attr == "email":
             validators = (_validate_email,)
@@ -131,6 +131,17 @@ def _build_rules() -> tuple[ValidationRule[NormalizedEmployeesRow], ...]:
         )
     )
     return tuple(rules)
+
+
+def _required_fields_from_sink_spec() -> tuple[tuple[str, str], ...]:
+    sink_spec = load_sink_spec_for_dataset("employees")
+    required_fields: list[tuple[str, str]] = []
+    for field in sink_spec.sink.fields:
+        # Nullable fields can be empty by contract and should not be marked required.
+        if not field.required or field.nullable:
+            continue
+        required_fields.append((field.name, field.target or field.name))
+    return tuple(required_fields)
 
 
 @dataclass(frozen=True)
