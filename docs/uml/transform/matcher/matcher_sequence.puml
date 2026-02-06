@@ -8,10 +8,10 @@ participant "IdentityRule" as Rule
 participant CacheRepo
 participant ResolveRules
 
-Caller -> DeduplicationTransform: match(TransformResult[ValidationRow])
+Caller -> DeduplicationTransform: match(TransformResult[EnrichedRow])
 DeduplicationTransform -> MatchingRules: get identity_rules
 loop for each rule
-  DeduplicationTransform -> Rule: build_identity(row, validation)
+  DeduplicationTransform -> Rule: build_identity(row, match_context)
   alt identity.primary_value empty
     DeduplicationTransform -> DeduplicationTransform: skip rule
   else
@@ -30,7 +30,7 @@ alt identity missing
   DeduplicationTransform -> DeduplicationTransform: emit MATCH_IDENTITY_MISSING
   DeduplicationTransform --> Caller: TransformResult.errors
 end
-DeduplicationTransform -> ResolveRules: build_desired_state(row, validation)
+DeduplicationTransform -> ResolveRules: build_desired_state(row, match_context)
 DeduplicationTransform -> DeduplicationTransform: build_fingerprint(desired_state)
 DeduplicationTransform -> DeduplicationTransform: build_links (optional)
 DeduplicationTransform -> DeduplicationTransform: build RowRef

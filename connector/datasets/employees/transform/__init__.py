@@ -1,3 +1,3 @@
 """
-Dataset employees: transform stage (normalize/enrich/validate).
+Dataset employees: transform stage adapters (normalize/enrich).
 """

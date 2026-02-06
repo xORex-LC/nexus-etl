@@ -25,7 +25,7 @@ def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) ->
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[str, str] | None = None):
+def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[str, str] | None = None):
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
@@ -43,12 +43,12 @@ def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dic
             str(cache_dir),
             "--run-id",
             run_id,
-            "validate",
+            "enrich",
             "--csv-has-header",
         ],
         env=merged_env,
     )
-    report_path = report_dir / f"report_validate_{run_id}.json"
+    report_path = report_dir / f"report_enrich_{run_id}.json"
     return result, report_path
 
 
@@ -105,7 +105,7 @@ def make_row(
     ]
 
 
-def test_validate_ok_returns_0(tmp_path: Path):
+def test_enrich_ok_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -123,7 +123,7 @@ def test_validate_ok_returns_0(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    result, report_path = run_validate(tmp_path, csv_path, run_id="ok")
+    result, report_path = run_enrich(tmp_path, csv_path, run_id="ok")
 
     assert result.exit_code == 0
     assert report_path.exists()
@@ -132,7 +132,7 @@ def test_validate_ok_returns_0(tmp_path: Path):
     assert report["summary"]["rows_total"] == 1
 
 
-def test_validate_missing_required_returns_0(tmp_path: Path):
+def test_enrich_missing_required_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -150,14 +150,14 @@ def test_validate_missing_required_returns_0(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    result, report_path = run_validate(tmp_path, csv_path, run_id="missing")
+    result, report_path = run_enrich(tmp_path, csv_path, run_id="missing")
 
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["rows_blocked"] == 0
 
 
-def test_validate_invalid_boolean_returns_0(tmp_path: Path):
+def test_enrich_invalid_boolean_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -175,11 +175,11 @@ def test_validate_invalid_boolean_returns_0(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    result, _ = run_validate(tmp_path, csv_path, run_id="bad-bool")
+    result, _ = run_enrich(tmp_path, csv_path, run_id="bad-bool")
     assert result.exit_code == 0
 
 
-def test_validate_invalid_email_returns_0(tmp_path: Path):
+def test_enrich_invalid_email_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -197,11 +197,11 @@ def test_validate_invalid_email_returns_0(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    result, _ = run_validate(tmp_path, csv_path, run_id="bad-email")
+    result, _ = run_enrich(tmp_path, csv_path, run_id="bad-email")
     assert result.exit_code == 0
 
 
-def test_validate_duplicate_matchkey_returns_0(tmp_path: Path):
+def test_enrich_duplicate_matchkey_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -231,13 +231,13 @@ def test_validate_duplicate_matchkey_returns_0(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    result, report_path = run_validate(tmp_path, csv_path, run_id="dup-mk")
+    result, report_path = run_enrich(tmp_path, csv_path, run_id="dup-mk")
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["rows_blocked"] == 0
 
 
-def test_validate_duplicate_usr_org_tab_num_returns_0(tmp_path: Path):
+def test_enrich_duplicate_usr_org_tab_num_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -267,20 +267,20 @@ def test_validate_duplicate_usr_org_tab_num_returns_0(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    result, report_path = run_validate(tmp_path, csv_path, run_id="dup-tab")
+    result, report_path = run_enrich(tmp_path, csv_path, run_id="dup-tab")
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["rows_blocked"] == 0
 
 
-def test_validate_masks_secrets_in_report(tmp_path: Path):
+def test_enrich_masks_secrets_in_report(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
             raw_id="1001",
             full_name="Doe John M",
             login="jdoe",
-            email_or_phone="",
+            email_or_phone="john.doe@example.com",
             contacts="+123456",
             flags="disabled=false",
             role="Engineer",
@@ -292,13 +292,13 @@ def test_validate_masks_secrets_in_report(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    result, report_path = run_validate(tmp_path, csv_path, run_id="mask")
+    result, report_path = run_enrich(tmp_path, csv_path, run_id="mask")
     assert result.exit_code == 0
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["items"][0]["payload"]["password"] == "***"
+    raw_report = report_path.read_text(encoding="utf-8")
+    assert "SECRET1" not in raw_report
 
 
-def test_validate_respects_report_items_limit(tmp_path: Path):
+def test_enrich_respects_report_items_limit(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -330,7 +330,7 @@ def test_validate_respects_report_items_limit(tmp_path: Path):
     _seed_org(tmp_path, org_ouid=10)
 
     env = {"ANKEY_REPORT_ITEMS_LIMIT": "1"}
-    result, report_path = run_validate(tmp_path, csv_path, run_id="limit", env=env)
+    result, report_path = run_enrich(tmp_path, csv_path, run_id="limit", env=env)
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["meta"]["items_truncated"] is True

@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
 
@@ -82,50 +82,6 @@ class DiagnosticItem:
             details=details,
             severity=resolved_severity,
         )
-
-
-@dataclass
-class ValidationRowResult:
-    """
-    Назначение:
-        Результат валидации одной строки CSV.
-    """
-    line_no: int
-    match_key: str
-    match_key_complete: bool
-    usr_org_tab_num: str | None
-    row_ref: "RowRef" | None = None
-    secret_candidates: dict[str, str] = field(default_factory=dict)
-    secret_fields: list[str] = field(default_factory=list)
-    errors: list[DiagnosticItem] = field(default_factory=list)
-    warnings: list[DiagnosticItem] = field(default_factory=list)
-
-    @property
-    def valid(self) -> bool:
-        return len(self.errors) == 0
-
-    def add_error(
-        self,
-        catalog,
-        stage: DiagnosticStage,
-        code: str,
-        message: str | None = None,
-        field: str | None = None,
-        details: dict[str, Any] | None = None,
-    ) -> DiagnosticItem:
-        from connector.domain.diagnostics.context import error as diag_error
-
-        item = diag_error(
-            catalog=catalog,
-            stage=stage,
-            code=code,
-            field=field,
-            message=message,
-            record_ref=self.row_ref,
-            details=details,
-        )
-        self.errors.append(item)
-        return item
 
 
 class MatchStatus(str, Enum):

@@ -2,15 +2,15 @@
 title DeduplicationTransform - Activity Diagram
 
 start
-:Input TransformResult[ValidationRow];
-if (validated.row or validation.row is None?) then (yes)
+:Input TransformResult[EnrichedRow];
+if (enriched.row is None?) then (yes)
   :Emit MATCH_IDENTITY_MISSING;
   stop
 endif
 
 :Build identity rules list;
 repeat
-  :rule.build_identity(row, validation);
+  :rule.build_identity(row, match_context);
   if (identity.primary_value empty?) then (skip)
   else
     :cache_repo.find(dataset, {primary: value});
@@ -31,7 +31,7 @@ if (no identity?) then (yes)
   stop
 endif
 
-:build_desired_state(row, validation);
+:build_desired_state(row, match_context);
 :build_fingerprint(desired_state);
 :build_links (optional);
 :build RowRef (ensure identity); 

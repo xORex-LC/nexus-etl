@@ -13,10 +13,10 @@ from connector.domain.models import (
     MatchStatus,
     RowRef,
     DiagnosticItem,
-    ValidationRowResult,
 )
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.transform.matching.context import MatchContext
 from connector.domain.transform.matching.match_models import MatchedRow, build_fingerprint
 from connector.domain.transform.matching.rules import IdentityRule, MatchingRules, ResolveRules
 from connector.domain.ports.cache.repository import CacheRepositoryProtocol
@@ -55,7 +55,7 @@ class DeduplicationTransform:
             - Ищет кандидатов в кэше.
             - Формирует desired_state и fingerprint.
         """
-        row, validation = _extract_row_and_validation(enriched)
+        row, match_context = _extract_row_and_context(enriched)
         if row is None:
             extra_errors = ()
             if not enriched.errors:
@@ -65,13 +65,13 @@ class DeduplicationTransform:
                         "MATCH_IDENTITY_MISSING",
                         None,
                         "empty enriched row",
-                        validation.row_ref,
+                        match_context.row_ref,
                     ),
                 )
             return TransformResult(
                 record=enriched.record,
                 row=None,
-                row_ref=validation.row_ref,
+                row_ref=match_context.row_ref,
                 match_key=enriched.match_key,
                 meta=enriched.meta,
                 secret_candidates=enriched.secret_candidates,
@@ -79,12 +79,12 @@ class DeduplicationTransform:
                 warnings=enriched.warnings,
             )
 
-        identity, existing, match_status, error = self._match_identity(row, validation)
+        identity, existing, match_status, error = self._match_identity(row, match_context)
         if error is not None:
             return TransformResult(
                 record=enriched.record,
                 row=None,
-                row_ref=validation.row_ref,
+                row_ref=match_context.row_ref,
                 match_key=enriched.match_key,
                 meta=enriched.meta,
                 secret_candidates=enriched.secret_candidates,
@@ -97,7 +97,7 @@ class DeduplicationTransform:
             return TransformResult(
                 record=enriched.record,
                 row=None,
-                row_ref=validation.row_ref,
+                row_ref=match_context.row_ref,
                 match_key=enriched.match_key,
                 meta=enriched.meta,
                 secret_candidates=enriched.secret_candidates,
@@ -108,13 +108,13 @@ class DeduplicationTransform:
                         "MATCH_IDENTITY_MISSING",
                         None,
                         "identity value is empty",
-                        validation.row_ref,
+                        match_context.row_ref,
                     ),
                 ),
                 warnings=enriched.warnings,
             )
 
-        desired_state = self.resolve_rules.build_desired_state(row, validation)
+        desired_state = self.resolve_rules.build_desired_state(row, match_context)
         fingerprint, fingerprint_fields = build_fingerprint(
             desired_state,
             ignored_fields=self.matching_rules.ignored_fields,
@@ -122,9 +122,9 @@ class DeduplicationTransform:
 
         links = {}
         if self.matching_rules.build_links:
-            links = self.matching_rules.build_links(row, validation)
+            links = self.matching_rules.build_links(row, match_context)
 
-        row_ref = _ensure_row_ref(validation, identity, identity_value)
+        row_ref = _ensure_row_ref(match_context, identity, identity_value)
         matched_row = MatchedRow(
             row_ref=row_ref,
             identity=identity,
@@ -151,7 +151,7 @@ class DeduplicationTransform:
     def _match_identity(
         self,
         row: Any,
-        validation: ValidationRowResult,
+        match_context: MatchContext,
     ) -> tuple[Identity | None, dict[str, Any] | None, MatchStatus, DiagnosticItem | None]:
         """
         Назначение:
@@ -166,7 +166,7 @@ class DeduplicationTransform:
         match_status = MatchStatus.NOT_FOUND
 
         for rule in _iter_identity_rules(self.matching_rules):
-            candidate = rule.build_identity(row, validation)
+            candidate = rule.build_identity(row, match_context)
             candidate_value = candidate.primary_value
             if not candidate_value:
                 continue
@@ -183,7 +183,7 @@ class DeduplicationTransform:
                     identity,
                     None,
                     MatchStatus.NOT_FOUND,
-                    _build_conflict_error(self.catalog, candidate, rule.name, validation.row_ref),
+                    _build_conflict_error(self.catalog, candidate, rule.name, match_context.row_ref),
                 )
             if candidates:
                 identity = candidate
@@ -196,7 +196,7 @@ class DeduplicationTransform:
                 self.catalog,
                 None,
                 "identity value is empty",
-                validation.row_ref,
+                match_context.row_ref,
             )
         return identity, None, match_status, None
 
@@ -222,16 +222,16 @@ def _make_match_error(
     )
 
 
-def _ensure_row_ref(validation: ValidationRowResult, identity: Identity, identity_value: str) -> RowRef:
+def _ensure_row_ref(match_context: MatchContext, identity: Identity, identity_value: str) -> RowRef:
     """
     Назначение:
         Гарантировать row_ref с актуальным identity.
     """
-    row_ref = validation.row_ref
+    row_ref = match_context.row_ref
     if row_ref is None:
         return RowRef(
-            line_no=validation.line_no,
-            row_id=f"line:{validation.line_no}",
+            line_no=match_context.line_no,
+            row_id=f"line:{match_context.line_no}",
             identity_primary=identity.primary,
             identity_value=identity_value,
         )
@@ -293,30 +293,24 @@ def _iter_identity_rules(matching_rules: MatchingRules) -> tuple[IdentityRule, .
     """
     if matching_rules.identity_rules:
         return matching_rules.identity_rules
-        return (
-            IdentityRule(
-                name="primary",
-                build_identity=matching_rules.build_identity,
-            ),
-        )
+    return (
+        IdentityRule(
+            name="primary",
+            build_identity=matching_rules.build_identity,
+        ),
+    )
 
 
-def _extract_row_and_validation(source: TransformResult[Any]) -> tuple[Any | None, ValidationRowResult]:
+def _extract_row_and_context(source: TransformResult[Any]) -> tuple[Any | None, MatchContext]:
     """
     Назначение:
-        Построить единый validation-контекст для matcher без ValidateStage.
+        Построить единый match-контекст для matcher без ValidateStage.
     """
     row = source.row
-    # Backward compatibility: allow old ValidationRow payloads while migrating.
-    if row is not None and hasattr(row, "validation") and hasattr(row, "row"):
-        nested = getattr(row, "validation")
-        nested_row = getattr(row, "row")
-        if isinstance(nested, ValidationRowResult):
-            return nested_row, nested
-    return row, _build_validation_result(source, row)
+    return row, _build_match_context(source, row)
 
 
-def _build_validation_result(source: TransformResult[Any], row: Any | None) -> ValidationRowResult:
+def _build_match_context(source: TransformResult[Any], row: Any | None) -> MatchContext:
     match_key_value = source.match_key.value if source.match_key else ""
     row_ref = source.row_ref or RowRef(
         line_no=source.record.line_no,
@@ -337,7 +331,7 @@ def _build_validation_result(source: TransformResult[Any], row: Any | None) -> V
         secret_fields = [str(item) for item in meta_secret_fields if item]
     if not secret_fields and source.secret_candidates:
         secret_fields = list(source.secret_candidates.keys())
-    return ValidationRowResult(
+    return MatchContext(
         line_no=source.record.line_no,
         match_key=match_key_value,
         match_key_complete=source.match_key is not None,

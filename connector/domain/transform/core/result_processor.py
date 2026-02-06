@@ -19,7 +19,7 @@ from connector.domain.transform.core.result import TransformResult
 class TransformResultProcessor:
     """
     Назначение/ответственность:
-        Унифицированная обработка TransformResult для стадий map/normalize/enrich/validate.
+        Унифицированная обработка TransformResult для стадий transform.
 
     Контракт:
         - Отсекает записи с ошибками (FAILED) и считает статистику.

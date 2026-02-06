@@ -243,7 +243,7 @@ class EnrichStage:
 class MatchStage:
     """
     Назначение/ответственность:
-        Стадия match (validated -> matched).
+        Стадия match (enriched -> matched).
     """
 
     def __init__(self, matcher: DeduplicationTransform, catalog: ErrorCatalog) -> None:
