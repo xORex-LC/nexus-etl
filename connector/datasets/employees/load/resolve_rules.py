@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from connector.domain.transform.matching.rules import ResolveRules
+from connector.domain.transform.matching.context import MatchContext
 from connector.datasets.employees.load.projector import EmployeesProjector
 from connector.datasets.employees.load.diff_policy import EmployeesDiffPolicy
-from connector.domain.models import ValidationRowResult
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
-def build_desired_state(row: NormalizedEmployeesRow, _: ValidationRowResult) -> dict:
+def build_desired_state(row: NormalizedEmployeesRow, _: MatchContext) -> dict:
     projector = EmployeesProjector()
     return projector.to_desired_state(row)
 

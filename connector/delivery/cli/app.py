@@ -23,7 +23,6 @@ from connector.delivery.commands import (
     mapping as mapping_command,
     normalize as normalize_command,
     resolve as resolve_command,
-    validate as validate_command,
 )
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -123,22 +122,6 @@ def main(
         "configPath": config,
         "logger": None,
     }
-
-
-@app.command()
-def validate(
-    ctx: typer.Context,
-    csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
-):
-    opts = validate_command.Options(csv_has_header=csvHasHeader)
-    command_ctx = _build_ctx(ctx)
-    run_with_report(
-        ctx=command_ctx,
-        command_name="validate",
-        opts=opts,
-        handler=validate_command.handler,
-        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
-    )
 
 
 @app.command("mapping")

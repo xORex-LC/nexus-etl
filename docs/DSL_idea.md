@@ -384,7 +384,7 @@ generate:
 
 #### 3. Что удаляем
 1) `ValidateStage` из `StagePipeline` и связанного wiring в bootstrap/use-cases.
-2) Отдельный `ValidateUseCase` и CLI-команду `validate` (или оставить как alias полного dry-run pipeline без новой стадии).
+2) Отдельный `ValidateUseCase` и CLI-команду `validate`.
 3) Спецификацию/адаптеры, которые использовались только этим этапом и не имеют самостоятельной ценности.
 
 #### 4. Что переносим
@@ -419,8 +419,8 @@ generate:
 - `ValidateStage` удалён из `StagePipeline` и exports стадий.
 - `build_pipeline_context` и `import_plan_service` переведены на цепочку `map -> normalize -> enrich`.
 - `match`/`resolve` команды и `MatchUseCase` принимают `enriched_source` вместо `validated_source`.
-- `DeduplicationTransform` больше не требует `ValidationRow`; validation-контекст строится из `TransformResult` (совместимость со старым payload сохранена).
-- `validate` CLI оставлен как совместимый alias dry-run на потоке после `enrich` (без отдельной validate-стадии).
+- `DeduplicationTransform` больше не требует `ValidationRow`; используется нейтральный `MatchContext`, собранный из `TransformResult`.
+- `validate` CLI и `ValidateUseCase` удалены.
 
 ## Lookup templates (кратко)
 В enrich можно добавить укороченную форму:

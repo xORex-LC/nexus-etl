@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.models import MatchStatus, RowRef, ValidationRowResult
+from connector.domain.models import MatchStatus, RowRef
+from connector.domain.transform.matching.context import MatchContext
 from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
 from connector.domain.transform.matching.rules import ResolveRules
 from connector.domain.transform.core.result import TransformResult
@@ -39,8 +40,8 @@ class FakeCacheRepo:
         return self.responses.get((key, value), [])
 
 
-def _make_validation(match_key: str, usr_org_tab_num: str | None) -> ValidationRowResult:
-    return ValidationRowResult(
+def _make_context(match_key: str, usr_org_tab_num: str | None) -> MatchContext:
+    return MatchContext(
         line_no=1,
         match_key=match_key,
         match_key_complete=bool(match_key),
@@ -49,7 +50,7 @@ def _make_validation(match_key: str, usr_org_tab_num: str | None) -> ValidationR
     )
 
 
-def _make_transform_result(validation: ValidationRowResult) -> TransformResult[NormalizedEmployeesRow]:
+def _make_transform_result(match_context: MatchContext) -> TransformResult[NormalizedEmployeesRow]:
     row = NormalizedEmployeesRow(
         email=None,
         last_name="Doe",
@@ -64,14 +65,14 @@ def _make_transform_result(validation: ValidationRowResult) -> TransformResult[N
         organization_id=None,
         position=None,
         avatar_id=None,
-        usr_org_tab_num=validation.usr_org_tab_num,
+        usr_org_tab_num=match_context.usr_org_tab_num,
         target_id=None,
     )
     return TransformResult(
         record=SourceRecord(line_no=1, record_id="rec-1", values={}),
         row=row,
-        row_ref=validation.row_ref,
-        match_key=MatchKey(validation.match_key) if validation.match_key else None,
+        row_ref=match_context.row_ref,
+        match_key=MatchKey(match_context.match_key) if match_context.match_key else None,
     )
 
 
@@ -96,8 +97,8 @@ def test_matcher_uses_fallback_identity_when_primary_missing():
         catalog=CATALOG,
     )
 
-    validation = _make_validation(match_key="", usr_org_tab_num="TAB-1")
-    result = matcher.match(_make_transform_result(validation))
+    match_context = _make_context(match_key="", usr_org_tab_num="TAB-1")
+    result = matcher.match(_make_transform_result(match_context))
 
     assert result.row is not None
     assert result.row.match_status == MatchStatus.MATCHED
@@ -126,8 +127,8 @@ def test_matcher_returns_conflict_when_fallback_has_multiple_candidates():
         catalog=CATALOG,
     )
 
-    validation = _make_validation(match_key="", usr_org_tab_num="TAB-1")
-    result = matcher.match(_make_transform_result(validation))
+    match_context = _make_context(match_key="", usr_org_tab_num="TAB-1")
+    result = matcher.match(_make_transform_result(match_context))
 
     assert result.row is None
     assert result.errors

@@ -14,7 +14,7 @@ T = TypeVar("T")
 class RowSource(Protocol):
     """
     Назначение/ответственность:
-        Источник SourceRecord для transform/validate/plan.
+        Источник SourceRecord для data transform и plan/apply конвейера.
     """
 
     def __iter__(self) -> Iterable[SourceRecord]:

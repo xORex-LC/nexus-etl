@@ -20,7 +20,7 @@ T = TypeVar("T")
 class TransformResult(Generic[T]):
     """
     Назначение:
-        Унифицированный результат transform-пайплайна для этапов collect/map/validate.
+        Унифицированный результат transform-пайплайна для этапов extract/map/normalize/enrich/match/resolve.
     """
 
     record: SourceRecord

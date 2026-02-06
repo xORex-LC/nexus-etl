@@ -8,11 +8,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from connector.domain.models import Identity, ValidationRowResult
+from connector.domain.models import Identity
+from connector.domain.transform.matching.context import MatchContext
 
-BuildIdentity = Callable[[Any, ValidationRowResult], Identity]
-BuildLinks = Callable[[Any, ValidationRowResult], dict[str, Identity]]
-BuildDesiredState = Callable[[Any, ValidationRowResult], dict[str, Any]]
+BuildIdentity = Callable[[Any, MatchContext], Identity]
+BuildLinks = Callable[[Any, MatchContext], dict[str, Identity]]
+BuildDesiredState = Callable[[Any, MatchContext], dict[str, Any]]
 BuildSourceRef = Callable[[Identity], dict[str, Any]]
 DiffPolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
 SecretFieldsPolicy = Callable[[str, dict[str, Any], dict[str, Any] | None], list[str]]

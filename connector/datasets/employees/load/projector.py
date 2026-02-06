@@ -7,21 +7,22 @@ from connector.domain.models import Identity
 class EmployeesProjector:
     """
     Назначение:
-        Проекция валидированной строки employees в desired_state/identity/source_ref.
+        Проекция строки employees в desired_state/identity/source_ref.
     """
 
-    def to_desired_state(self, validated_entity) -> dict:
-        desired = asdict(validated_entity)
+    def to_desired_state(self, entity) -> dict:
+        desired = asdict(entity)
         desired.pop("password", None)
         desired.pop("target_id", None)
         return desired
 
-    def to_identity(self, validated_entity, validation_result) -> Identity:
+    def to_identity(self, entity, match_context) -> Identity:
+        _ = entity
         return Identity(
             primary="match_key",
             values={
-                "match_key": validation_result.match_key,
-                "usr_org_tab_num": validation_result.usr_org_tab_num or "",
+                "match_key": match_context.match_key,
+                "usr_org_tab_num": match_context.usr_org_tab_num or "",
             },
         )
 

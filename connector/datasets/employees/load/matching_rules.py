@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from connector.domain.models import Identity, ValidationRowResult
+from connector.domain.models import Identity
+from connector.domain.transform.matching.context import MatchContext
 from connector.domain.transform.matching.rules import IdentityRule, MatchingRules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
-def build_match_key_identity(row: NormalizedEmployeesRow, validation: ValidationRowResult) -> Identity:
+def build_match_key_identity(row: NormalizedEmployeesRow, validation: MatchContext) -> Identity:
     return Identity(
         primary="match_key",
         values={
@@ -15,7 +16,7 @@ def build_match_key_identity(row: NormalizedEmployeesRow, validation: Validation
     )
 
 
-def build_usr_org_tab_num_identity(row: NormalizedEmployeesRow, validation: ValidationRowResult) -> Identity:
+def build_usr_org_tab_num_identity(row: NormalizedEmployeesRow, validation: MatchContext) -> Identity:
     return Identity(
         primary="usr_org_tab_num",
         values={

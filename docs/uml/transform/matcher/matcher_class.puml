@@ -7,7 +7,7 @@ class DeduplicationTransform {
   - matching_rules: MatchingRules
   - resolve_rules: ResolveRules
   - include_deleted: bool
-  + match(validated)
+  + match(enriched)
 }
 
 class MatchingRules {
@@ -34,12 +34,7 @@ class CacheRepositoryProtocol <<protocol>> {
   + find(dataset, filters, include_deleted, mode)
 }
 
-class ValidationRow {
-  + row
-  + validation
-}
-
-class ValidationRowResult {
+class MatchContext {
   + line_no: int
   + match_key: str
   + usr_org_tab_num: str
@@ -80,11 +75,10 @@ DeduplicationTransform --> MatchingRules
 DeduplicationTransform --> ResolveRules
 DeduplicationTransform --> CacheRepositoryProtocol
 DeduplicationTransform ..> MatchedRow
-DeduplicationTransform ..> ValidationRow
+DeduplicationTransform ..> MatchContext
 MatchingRules o-- IdentityRule
-ValidationRow --> ValidationRowResult
 MatchedRow --> Identity
 TransformResult <|-- "TransformResult[MatchedRow]"
-TransformResult <|-- "TransformResult[ValidationRow]"
+TransformResult <|-- "TransformResult[EnrichedRow]"
 
 @enduml
