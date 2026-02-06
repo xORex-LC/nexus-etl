@@ -1,0 +1,179 @@
+@startuml
+title DSL - Unified Stage Model (Class Diagram)
+
+abstract class StageRules
+abstract class StageDsl
+abstract class StageCore
+abstract class StageEngine
+
+class TransformationEngine {
+  +apply(value, ops): EngineResult
+  +with_core_ops(): TransformationEngine
+}
+
+class OperationRegistry {
+  +register(name, func)
+  +get(name): Operation
+}
+
+class Operation {
+  +name: str
+  +func: callable
+}
+
+class OperationCall {
+  +op: str
+  +args: dict
+}
+
+class EngineResult {
+  +value
+  +issues: DslIssue[*]
+}
+
+class DslIssue {
+  +code: str
+  +message: str
+  +severity: str
+}
+
+class DslLoader {
+  +load_mapping_spec_for_dataset(dataset)
+  +load_normalize_spec_for_dataset(dataset)
+  +load_enrich_spec_for_dataset(dataset)
+  +load_validate_spec_for_dataset(dataset)
+  +load_match_spec_for_dataset(dataset)
+  +load_resolve_spec_for_dataset(dataset)
+}
+
+class MappingSpec {
+  +dataset: str
+  }
+class NormalizeSpec {
+  +dataset: str
+  }
+class EnrichSpec {
+  +dataset: str
+  }
+class ValidationSpec {
+  +dataset: str
+  }
+class MatchSpec {
+  +dataset: str
+  }
+class ResolveSpec {
+  +dataset: str
+  }
+
+class MappingRule {
+  +target
+  +source
+  +ops
+  }
+class NormalizeRule {
+  +field
+  +ops
+  }
+class EnrichRule {
+  +target
+  +lookup
+  +ops
+  }
+class FieldCheck {
+  +field
+  +ops
+  }
+class ConditionalCheck {
+  +when
+  +ops
+  }
+
+class MapperDsl
+class NormalizerDsl
+class EnricherDsl
+class ValidatorDsl
+class MatchDsl
+class ResolveDsl
+
+class MapperCore
+class NormalizerCore
+class EnricherCore
+class ValidatorCore
+class MatchCore
+class ResolveCore
+
+class MapperEngine
+class NormalizerEngine
+class EnricherEngine
+class ValidatorEngine
+class MatchEngine
+class ResolveEngine
+
+class TransformResult {
+  +record
+  +row
+  +meta
+  +errors
+  +warnings
+}
+
+StageDsl --> StageCore : compile()
+StageEngine --> StageCore : execute()
+StageEngine ..> StageRules
+StageEngine ..> StageDsl
+
+StageCore ..> TransformationEngine : apply ops
+TransformationEngine --> OperationRegistry
+OperationRegistry o-- Operation
+TransformationEngine ..> OperationCall
+EngineResult --> DslIssue
+
+DslLoader ..> MappingSpec
+DslLoader ..> NormalizeSpec
+DslLoader ..> EnrichSpec
+DslLoader ..> ValidationSpec
+DslLoader ..> MatchSpec
+DslLoader ..> ResolveSpec
+
+StageRules <|-- MappingSpec
+StageRules <|-- NormalizeSpec
+StageRules <|-- EnrichSpec
+StageRules <|-- ValidationSpec
+StageRules <|-- MatchSpec
+StageRules <|-- ResolveSpec
+
+MappingSpec o-- MappingRule
+NormalizeSpec o-- NormalizeRule
+EnrichSpec o-- EnrichRule
+ValidationSpec o-- FieldCheck
+ValidationSpec o-- ConditionalCheck
+
+StageDsl <|-- MapperDsl
+StageDsl <|-- NormalizerDsl
+StageDsl <|-- EnricherDsl
+StageDsl <|-- ValidatorDsl
+StageDsl <|-- MatchDsl
+StageDsl <|-- ResolveDsl
+
+StageCore <|-- MapperCore
+StageCore <|-- NormalizerCore
+StageCore <|-- EnricherCore
+StageCore <|-- ValidatorCore
+StageCore <|-- MatchCore
+StageCore <|-- ResolveCore
+
+StageEngine <|-- MapperEngine
+StageEngine <|-- NormalizerEngine
+StageEngine <|-- EnricherEngine
+StageEngine <|-- ValidatorEngine
+StageEngine <|-- MatchEngine
+StageEngine <|-- ResolveEngine
+
+MapperEngine ..> TransformResult
+NormalizerEngine ..> TransformResult
+EnricherEngine ..> TransformResult
+ValidatorEngine ..> TransformResult
+MatchEngine ..> TransformResult
+ResolveEngine ..> TransformResult
+
+@enduml
