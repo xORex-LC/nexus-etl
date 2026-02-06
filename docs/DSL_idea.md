@@ -230,13 +230,200 @@ validate:
 6) **Остатки dataset‑кода.**  
    В `datasets/*/transform` остаются transitional‑модули, которые надо убрать после полной миграции на YAML.
 
+### Детализация реализации по п.3 (граница `ops` vs `StageCore`)
+Цель: убрать дублирование и разные механики при сохранении простой архитектуры.
+
+#### Статус (реализация)
+- DSL-путь для map/normalize/enrich оставлен единственным runtime-путём.
+- Legacy-файлы старого map-пути удалены:
+  - `connector/datasets/employees/extract/source_mapper.py`
+  - `connector/datasets/employees/extract/mapping_spec.py`
+- Тесты, которые ранее брали `SOURCE_COLUMNS` из legacy-модуля, переведены на `load_mapping_spec_for_dataset(...).source_columns`.
+- `EmployeesValidationSpec` больше не зависит от legacy `EmployeesMappingSpec` и читает required-поля из `SinkSpec` (только `required` + `nullable=false`).
+
+Что осталось за пределами п.3:
+- декларативный `lookup providers` слой (п.4),
+- зачистка transitional dataset-кода (п.6).
+
+#### 1. Контракт границы
+- В `ops` остаются только pure value-трансформации:
+  - вход: значение (или небольшой `dict` значений),
+  - выход: значение (и диагностический issue),
+  - без IO, без кэша/vault, без batch-state.
+- В `StageCore` остаётся orchestration:
+  - порядок операций, merge/strictness-политики,
+  - работа с зависимостями (`cache`, `providers`, `secret_store`),
+  - cross-row/cross-system логика (`match/resolve/pending`).
+
+#### 2. Что переносим в `ops`
+- Универсальные преобразования полей:
+  - типизация (`to_int`, `to_bool`, `to_float`),
+  - строки (`trim`, `lower`, `upper`, `split`, `split_name`),
+  - простые композиции (`coalesce`, `concat`, `const`, `copy`),
+  - pattern extraction / key-value parse.
+- Чистые derive-операции без внешних зависимостей:
+  - например, build ключа из уже подготовленных полей, если нет IO и side effects.
+
+#### 3. Что не переносим в `ops`
+- Любой lookup в кэш/справочники/внешние репозитории.
+- Политики выбора кандидатов и разрешение конфликтов.
+- Логику pending-links и batch-index.
+- Запись секретов в vault и все операции с хранилищами.
+- Финальные решения `create/update/skip/conflict` для planning-части.
+
+#### 4. Пошаговая миграция
+1) Для каждой стадии (`mapping`, `normalize`, `enrich`) построить список повторяющихся pure-фрагментов.
+2) Вынести только эти фрагменты в `connector/domain/transform/dsl/ops.py`.
+3) Оставить orchestration в `mapper_core`/`normalizer_core`/`enricher_core`.
+4) Удалить legacy-путь, который дублирует DSL-путь (после тестов).
+5) Проверить, что diagnostics и отчёты не меняют семантику.
+
+#### 5. Критерии завершения по п.3
+- Нет дублирования pure-трансформаций между `mapping/normalize/enrich`.
+- Нет IO-логики внутри `ops`.
+- `StageCore` не содержит ручных реализаций уже существующих `ops`.
+- Все стадии используют единый путь `StageDSL -> StageCore`, без параллельной legacy-ветки.
+- Тесты стадий и e2e-тесты пайплайна проходят без регрессий.
+
+### Детализация реализации по п.4 (declarative providers для lookup)
+Цель: убрать датасет-специфичные `deps.*` методы из runtime и перевести lookup/exists на единый декларативный провайдерный слой.
+
+#### 1. Проблема в текущем виде
+- `EnricherDSL` вызывает lookup/exists через `getattr(deps, rule.lookup)` и `getattr(deps, rule.exists)`.
+- `datasets/*/transform/enrich_deps.py` вынужденно содержит бизнес-методы вида `find_*`.
+- DSL остаётся частично декларативным: имя метода в YAML жёстко привязывает runtime к структуре `deps`.
+
+#### 2. Целевая модель
+- `deps` = только ресурсы (`cache_repo`, `dictionaries`, `secret_store`, и т.п.), без бизнес-методов lookup.
+- DSL указывает не метод `deps`, а `provider` + аргументы.
+- Поиск/проверка существования идут через `ProviderRegistry`.
+
+#### 3. Архитектурные места (без overengineering)
+- `connector/domain/ports/transform/providers.py`
+  - контракты: `ProviderRequest`, `ProviderAdapter` (Protocol).
+- `connector/domain/transform/providers/`
+  - `registry.py`: `ProviderRegistry`.
+  - `cache_provider.py`: `cache.by_field`, `cache.exists_by_field`.
+  - `dictionary_provider.py`: `dictionary.by_key`.
+- `connector/domain/transform/enrich/enricher_dsl.py`
+  - строит `ProviderRequest` из YAML и вызывает registry.
+
+#### 4. Формат в YAML (минимум)
+- Для lookup:
+  - `provider.name`
+  - `provider.args`
+  - `source/sources`, `ops`, `value_path`, `target`
+- Для exists:
+  - `exists.provider.name`
+  - `exists.provider.args`
+
+Пример:
+```yaml
+lookup:
+  - name: manager_id
+    target: manager_id
+    source: manager_id
+    provider:
+      name: cache.by_field
+      args: {dataset: employees, field: match_key, include_deleted: true}
+    value_path: _ouid
+
+generate:
+  - name: target_id
+    target: target_id
+    source: target_id
+    ops: [{op: trim}, {op: default_uuid}]
+    exists:
+      provider:
+        name: cache.exists_by_field
+        args: {dataset: employees, field: _id, include_deleted: true}
+```
+
+#### 5. Пошаговая миграция
+1) Ввести provider-контракты и `ProviderRegistry`.
+2) Реализовать базовые адаптеры: `cache.by_field`, `cache.exists_by_field`, `dictionary.by_key`.
+3) Расширить DSL-модели (`ProviderRef`/`ExistsRef`) и валидатор загрузки.
+4) Перевести `EnricherDSL` на provider-вызовы через registry.
+5) Мигрировать `datasets/*.enrich.yaml` на `provider`-форму.
+6) Удалить fallback `getattr(deps, ...)`.
+7) Упростить `datasets/*/transform/enrich_deps.py` до resource-container.
+
+#### 6. Критерии завершения по п.4
+- В YAML нет ссылок на методы `deps`.
+- В `enrich_deps` нет бизнес-методов lookup/exists.
+- Lookup/exists выполняются только через `ProviderRegistry`.
+- Те же провайдеры доступны для других стадий (`match/resolve`) без копирования логики.
+- Поведение отчётов и диагностики не изменилось (только источник кандидатов).
+
+#### Статус (реализация)
+- Добавлены контракты и runtime-реестр провайдеров:
+  - `connector/domain/ports/transform/providers.py`
+  - `connector/domain/transform/providers/registry.py`
+  - `connector/domain/transform/providers/builtin.py`
+- `EnricherDsl` переведён на `ProviderRegistry` (lookup/exists через registry, без `getattr(deps, ...)`).
+- `datasets/employees.enrich.yaml` мигрирован на `exists.provider`.
+- `EmployeesEnrichDependencies` упрощён до resource-container (`cache_repo`, `secret_store`, `dictionaries`) без бизнес-методов `find_*`.
+- Тесты enrich/validation/stage обновлены под provider-подход.
+
+### Детализация реализации по п.5 (decommission `ValidateStage`)
+Цель: убрать `ValidateStage` как отдельный слой/этап и распределить проверки по стадиям transform.
+
+#### 1. Новая целевая схема конвейера
+- Было:
+  - `extract -> map -> normalize -> enrich -> validate -> match -> resolve -> plan`
+- Станет:
+  - `extract -> map -> normalize -> enrich -> match -> resolve -> plan`
+
+#### 2. Принцип распределения ответственности
+- `Map`: формирование sink-структуры + required по структуре.
+- `Normalize`: приведение типов/форматов + sink type/nullability checks.
+- `Enrich`: проверки только изменяемых/генерируемых полей и lookup-результатов.
+- `Match/Resolve`: cross-row/cross-system валидации (ambiguity, pending, conflicts).
+
+`ValidateStage` не держит уникальной обязательной логики и удаляется, чтобы не дублировать проверки.
+
+#### 3. Что удаляем
+1) `ValidateStage` из `StagePipeline` и связанного wiring в bootstrap/use-cases.
+2) Отдельный `ValidateUseCase` и CLI-команду `validate` (или оставить как alias полного dry-run pipeline без новой стадии).
+3) Спецификацию/адаптеры, которые использовались только этим этапом и не имеют самостоятельной ценности.
+
+#### 4. Что переносим
+1) Правила `required/type/format`:
+   - в `mapping`/`normalize` DSL и core.
+2) Секрет-aware проверки:
+   - в `enrich` (`meta.secret_fields`, очистка row после vault).
+3) Cross-row проверки:
+   - в `match/resolve` (дубликаты, конфликты, pending-links).
+
+#### 5. Пошаговая миграция
+1) Перенести обязательные проверки из validation-специки в `mapping/normalize/enrich` (без изменения кодов ошибок).
+2) Обновить pipeline сборку:
+   - исключить `ValidateStage`,
+   - обновить `build_pipeline_context` и use-cases (`match/resolve/import-plan`).
+3) Обновить CLI:
+   - удалить/переопределить `validate` команду.
+4) Удалить неиспользуемые validation-модули после стабилизации тестов.
+5) Обновить UML/доки и e2e тесты под новый маршрут данных.
+
+#### 6. Секрет-совместимость
+- После enrich секретные поля могут отсутствовать в row.
+- Это не считается ошибкой, если поле указано в `meta.secret_fields` и секрет уже отправлен в vault.
+
+#### 7. Критерии завершения по п.5
+- В конвейере нет отдельной `validate` стадии.
+- Все проверки, ранее блокировавшие поток на validate, корректно срабатывают на соответствующих стадиях.
+- `match/resolve/plan` получают только валидный для своих контрактов поток данных.
+- Нет регрессий в отчетности и кодах диагностики.
+
 ## Lookup templates (кратко)
 В enrich можно добавить укороченную форму:
 ```yaml
 enrich:
   lookup_templates:
     manager_by_full_name:
-      lookup: find_user_by_full_name
+      provider:
+        name: cache.by_field
+        args: {dataset: employees, field: full_name}
       value_path: _id
       ops: [trim, split_name]
   lookup:

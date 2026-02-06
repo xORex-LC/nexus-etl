@@ -25,6 +25,7 @@ from connector.domain.transform.dsl.specs import EnrichRule, EnrichSpec, MatchKe
 from connector.domain.transform.dsl.helpers import apply_ops
 from connector.domain.transform.common.values import read_value_path
 from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
+from connector.domain.transform.providers import ProviderRegistry, register_builtin_providers
 
 
 @dataclass(frozen=True)
@@ -47,22 +48,33 @@ class EnricherDsl:
         self,
         *,
         registry: OperationRegistry | None = None,
+        providers: ProviderRegistry | None = None,
         options: EnrichDslBuildOptions | None = None,
     ) -> None:
         if registry is None:
             registry = OperationRegistry()
             register_core_ops(registry)
+        if providers is None:
+            providers = ProviderRegistry()
+            register_builtin_providers(providers)
         self.registry = registry
+        self.providers = providers
         self.options = options
 
     def compile(self, spec: EnrichSpec) -> EnricherSpec:
-        return build_enricher_spec_from_dsl(spec, registry=self.registry, options=self.options)
+        return build_enricher_spec_from_dsl(
+            spec,
+            registry=self.registry,
+            providers=self.providers,
+            options=self.options,
+        )
 
 
 def build_enricher_spec_from_dsl(
     enrich_spec: EnrichSpec,
     *,
     registry: OperationRegistry,
+    providers: ProviderRegistry | None = None,
     options: EnrichDslBuildOptions | None = None,
 ) -> EnricherSpec:
     """
@@ -72,6 +84,9 @@ def build_enricher_spec_from_dsl(
 
     if options is None:
         options = EnrichDslBuildOptions()
+    if providers is None:
+        providers = ProviderRegistry()
+        register_builtin_providers(providers)
     engine = TransformationEngine(registry)
     operations: list[EnrichmentOperation] = []
 
@@ -88,11 +103,12 @@ def build_enricher_spec_from_dsl(
                 rule,
                 engine,
                 secrets_spec,
+                providers,
             )
         )
 
     for rule in enrich_spec.enrich.lookup:
-        operations.append(_build_lookup_operation(rule, engine))
+        operations.append(_build_lookup_operation(rule, engine, providers))
 
     return EnricherSpec(
         operations=tuple(operations),
@@ -131,6 +147,7 @@ def _build_generate_operation(
     rule: EnrichRule,
     engine: TransformationEngine,
     secrets_spec: SecretsSpec,
+    providers: ProviderRegistry,
 ) -> EnrichmentOperation:
     target = rule.target
     if target in secrets_spec.fields:
@@ -148,7 +165,7 @@ def _build_generate_operation(
         strictness=strictness,
         run_when_errors=run_when_errors,
         generator=_build_rule_generator(rule, engine),
-        exists=_build_exists(rule),
+        exists=_build_exists(rule, providers),
         allow_if=_build_allow_if(rule, engine),
         max_attempts=rule.max_attempts or 3,
         missing_error_code=rule.missing_error_code,
@@ -180,21 +197,19 @@ class _DslLookupProvider:
         Провайдер lookup-кандидатов, построенный из DSL-правила.
     """
 
-    def __init__(self, rule: EnrichRule, engine: TransformationEngine) -> None:
+    def __init__(self, rule: EnrichRule, engine: TransformationEngine, providers: ProviderRegistry) -> None:
         self.rule = rule
         self.engine = engine
-        self.name = rule.lookup or "dsl_lookup"
+        self.providers = providers
+        self.name = rule.provider.name if rule.provider else "dsl_lookup"
 
     def fetch(self, ctx, result, deps, key_values):  # noqa: ANN001
         _ = (ctx, key_values)
         row = result.row
         if row is None:
             return []
-        if not self.rule.lookup:
-            raise AttributeError("lookup rule missing 'lookup' method")
-        func = getattr(deps, self.rule.lookup, None)
-        if func is None:
-            raise AttributeError(f"deps missing method '{self.rule.lookup}'")
+        if not self.rule.provider:
+            raise ValueError("lookup rule requires provider")
 
         value = _read_rule_value(row, self.rule)
         if self.rule.ops:
@@ -206,13 +221,12 @@ class _DslLookupProvider:
         if value is None or value == "":
             return []
 
-        found = func(value)
-        if found is None:
-            return []
-        if isinstance(found, list):
-            candidates = found
-        else:
-            candidates = [found]
+        candidates = self.providers.lookup(
+            self.rule.provider.name,
+            deps,
+            value,
+            args=self.rule.provider.args,
+        )
 
         result_values = []
         for candidate in candidates:
@@ -243,15 +257,17 @@ def _read_rule_value(row: Any, rule: EnrichRule) -> Any:
     return None
 
 
-def _build_exists(rule: EnrichRule):
+def _build_exists(rule: EnrichRule, providers: ProviderRegistry):
     if not rule.exists:
         return None
 
     def _exists(deps, value):
-        func = getattr(deps, rule.exists, None)
-        if func is None:
-            raise AttributeError(f"deps missing method '{rule.exists}'")
-        return func(value)
+        return providers.exists(
+            rule.exists.provider.name,
+            deps,
+            value,
+            args=rule.exists.provider.args,
+        )
 
     return _exists
 
@@ -276,13 +292,17 @@ def _build_allow_if(rule: EnrichRule, engine: TransformationEngine):
     return _allow_if
 
 
-def _build_lookup_operation(rule: EnrichRule, engine: TransformationEngine) -> EnrichmentOperation:
-    if not rule.lookup:
-        raise ValueError("lookup rule requires 'lookup' method")
+def _build_lookup_operation(
+    rule: EnrichRule,
+    engine: TransformationEngine,
+    providers: ProviderRegistry,
+) -> EnrichmentOperation:
+    if not rule.provider:
+        raise ValueError("lookup rule requires provider")
     merge_policy = _merge_policy_for(rule)
     strictness = _strictness_for(rule)
     run_when_errors = _run_when_errors_for(rule)
-    provider = _DslLookupProvider(rule, engine)
+    provider = _DslLookupProvider(rule, engine, providers)
     return EnrichmentOperation(
         name=rule.name,
         op_type=EnrichOperationType.LOOKUP,

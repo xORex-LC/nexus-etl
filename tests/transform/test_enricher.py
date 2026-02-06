@@ -29,21 +29,30 @@ CATALOG = build_catalog("employees", strict=True)
 
 @dataclass
 class _DummyEnrichDeps:
+    cache_repo: object
     identity_lookup = None
-
-    def find_user_by_target_id(self, _target_id: str):
-        return None
-
-    def find_user_by_usr_org_tab_num(self, _tab_num: str):
-        return None
-
-    def find_org_by_ouid(self, _ouid: int):
-        return {"_ouid": _ouid}
 
 
 class _ConflictingTabDeps(_DummyEnrichDeps):
-    def find_user_by_usr_org_tab_num(self, _tab_num: str):
-        return {"match_key": "OTHER"}
+    pass
+
+
+class _EmptyCacheRepo:
+    def find(self, dataset: str, filters: dict[str, object], *, include_deleted: bool = False, mode: str = "exact"):
+        _ = (dataset, filters, include_deleted, mode)
+        return []
+
+    def find_one(self, dataset: str, filters: dict[str, object], *, include_deleted: bool = False, mode: str = "exact"):
+        _ = (dataset, filters, include_deleted, mode)
+        return None
+
+
+class _ConflictTabCacheRepo(_EmptyCacheRepo):
+    def find_one(self, dataset: str, filters: dict[str, object], *, include_deleted: bool = False, mode: str = "exact"):
+        _ = (dataset, include_deleted, mode)
+        if "usr_org_tab_num" in filters:
+            return {"match_key": "OTHER"}
+        return None
 
 
 class _DummySecretStore:
@@ -107,7 +116,7 @@ def test_enricher_builds_match_key_and_generates_values():
         usr_org_tab_num=None,
         target_id=None,
     )
-    enricher = _build_enricher_from_dsl(_DummyEnrichDeps())
+    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_repo=_EmptyCacheRepo()))
     result = enricher.enrich(_build_result(row))
 
     assert result.errors == ()
@@ -142,7 +151,7 @@ def test_enricher_reports_missing_match_key():
         usr_org_tab_num="TAB-100",
         target_id="RID-1",
     )
-    enricher = _build_enricher_from_dsl(_DummyEnrichDeps())
+    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_repo=_EmptyCacheRepo()))
     result = enricher.enrich(_build_result(row))
 
     codes = {issue.code for issue in result.errors}
@@ -178,7 +187,7 @@ def test_enricher_runs_only_allowed_ops_on_error():
             )
         ]
     )
-    enricher = _build_enricher_from_dsl(_DummyEnrichDeps())
+    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_repo=_EmptyCacheRepo()))
     enriched = enricher.enrich(result)
 
     assert enriched.match_key is not None
@@ -208,7 +217,11 @@ def test_enricher_writes_secrets_to_store():
         target_id="RID-1",
     )
     secret_store = _DummySecretStore()
-    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(), secret_store=secret_store, run_id="run-1")
+    enricher = _build_enricher_from_dsl(
+        _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()),
+        secret_store=secret_store,
+        run_id="run-1",
+    )
     result = enricher.enrich(_build_result(row, {"password": "secret"}))
 
     assert result.errors == ()
@@ -238,7 +251,7 @@ def test_enricher_reports_usr_org_tab_conflict():
         usr_org_tab_num=None,
         target_id=None,
     )
-    enricher = _build_enricher_from_dsl(_ConflictingTabDeps())
+    enricher = _build_enricher_from_dsl(_ConflictingTabDeps(cache_repo=_ConflictTabCacheRepo()))
     result = enricher.enrich(_build_result(row))
 
     codes = {issue.code for issue in result.errors}
@@ -279,7 +292,7 @@ def test_enricher_rejects_multi_target_operation():
         ),
         key_registry=KeyRegistry(builders={}),
     )
-    enricher = EnricherCore(spec, _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     result = TransformResult(
         record=record,
@@ -325,7 +338,7 @@ def test_enricher_defaults_priority_by_source():
         key_registry=KeyRegistry(builders={}),
         source_priorities={"low": 1, "high": 10},
     )
-    enricher = EnricherCore(spec, _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     result = TransformResult(
         record=record,
@@ -368,7 +381,7 @@ def test_enricher_warns_on_candidate_field_mismatch():
         ),
         key_registry=KeyRegistry(builders={}),
     )
-    enricher = EnricherCore(spec, _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     result = TransformResult(
         record=record,
@@ -415,7 +428,7 @@ def test_enricher_stop_on_failed_prevents_followup_ops():
         key_registry=KeyRegistry(builders={}),
         stop_on_failed=True,
     )
-    enricher = EnricherCore(spec, _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     result = TransformResult(
         record=record,
