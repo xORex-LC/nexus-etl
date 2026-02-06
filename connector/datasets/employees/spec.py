@@ -10,14 +10,14 @@ from connector.datasets.employees.load.resolve_rules import build_resolve_rules
 from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
-from connector.domain.transform.mapping.dsl_mapper import DslMapper
+from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.dsl.loader import load_normalize_spec_for_dataset
 from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
 from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
-from connector.domain.transform.enrich import EnricherEngine
-from connector.domain.transform.normalize import DslNormalizer
+from connector.domain.transform.enrich import EnricherEngine, EnrichDslBuildOptions
+from connector.domain.transform.normalize import NormalizerDsl, NormalizerEngine
 from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage
 from connector.domain.validation.validator import Validator
 from connector.infra.sources.csv_reader import CsvRecordSource
@@ -75,19 +75,23 @@ class EmployeesSpec(DatasetSpec):
         normalize_spec = load_normalize_spec_for_dataset("employees")
         registry = OperationRegistry()
         register_core_ops(registry)
-        normalizer = DslNormalizer(
+        normalizer = NormalizerEngine(
             normalize_spec,
-            registry=registry,
             catalog=catalog,
+            dsl=NormalizerDsl(registry=registry),
             row_builder=NormalizedEmployeesRow,
         )
-        mapper = DslMapper(catalog=catalog, dataset="employees")
+        mapper = MapperEngine.from_dataset(catalog=catalog, dataset="employees")
+        enrich_registry = OperationRegistry()
+        register_core_ops(enrich_registry)
         enricher = EnricherEngine(
             spec=EmployeesEnricherSpec(),
             deps=enrich_deps,
             secret_store=enrich_deps.secret_store,
             dataset="employees",
             catalog=catalog,
+            registry=enrich_registry,
+            options=EnrichDslBuildOptions(require_match_key=True),
         )
         return (
             MapStage(mapper, catalog),
