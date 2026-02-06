@@ -20,7 +20,7 @@ from connector.domain.transform.stages.stages import MatchStage
 class MatchUseCase:
     """
     Назначение/ответственность:
-        Use-case для сопоставления валидированных строк (validate -> match).
+        Use-case для сопоставления строк после enrich (enrich -> match).
     """
 
     def __init__(
@@ -33,7 +33,7 @@ class MatchUseCase:
 
     def iter_matched(
         self,
-        validated_source: Iterable[TransformResult],
+        enriched_source: Iterable[TransformResult],
         matcher: DeduplicationTransform,
         *,
         catalog: ErrorCatalog,
@@ -42,11 +42,11 @@ class MatchUseCase:
         Назначение:
             Итератор сопоставленных строк (для resolver/plan).
         """
-        return self._iter_matched(validated_source, matcher, catalog=catalog)
+        return self._iter_matched(enriched_source, matcher, catalog=catalog)
 
     def run(
         self,
-        validated_source: Iterable[TransformResult],
+        enriched_source: Iterable[TransformResult],
         matcher: DeduplicationTransform,
         dataset: str,
         report,
@@ -63,7 +63,7 @@ class MatchUseCase:
             should_skip=lambda r: any(w.code == "MATCH_DUPLICATE_SOURCE" for w in r.warnings),
         )
 
-        for matched in self._iter_matched(validated_source, matcher, catalog=catalog):
+        for matched in self._iter_matched(enriched_source, matcher, catalog=catalog):
             processor.process(matched)
 
         result = processor.finalize()
@@ -73,14 +73,14 @@ class MatchUseCase:
 
     def _iter_matched(
         self,
-        validated_source: Iterable[TransformResult],
+        enriched_source: Iterable[TransformResult],
         matcher: DeduplicationTransform,
         *,
         catalog: ErrorCatalog,
     ):
         seen: dict[str, str] = {}
         stage = MatchStage(matcher, catalog)
-        for matched in stage.run(validated_source):
+        for matched in stage.run(enriched_source):
             if matched.row is None:
                 yield matched
                 continue

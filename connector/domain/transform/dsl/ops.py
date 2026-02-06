@@ -9,6 +9,8 @@ import re
 import uuid
 from typing import Any, Iterable
 
+from connector.domain.transform.common import normalize_text
+
 
 def op_trim(value: Any, **_: Any) -> str | None:
     """
@@ -16,10 +18,7 @@ def op_trim(value: Any, **_: Any) -> str | None:
         Нормализует пробелы и возвращает None для пустых строк.
     """
 
-    if value is None:
-        return None
-    normalized = " ".join(str(value).split())
-    return normalized or None
+    return normalize_text(value, empty_to_none=True)
 
 
 def op_lower(value: Any, **_: Any) -> str | None:

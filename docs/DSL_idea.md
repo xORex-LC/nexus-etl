@@ -415,6 +415,13 @@ generate:
 - `match/resolve/plan` получают только валидный для своих контрактов поток данных.
 - Нет регрессий в отчетности и кодах диагностики.
 
+#### Статус (реализация)
+- `ValidateStage` удалён из `StagePipeline` и exports стадий.
+- `build_pipeline_context` и `import_plan_service` переведены на цепочку `map -> normalize -> enrich`.
+- `match`/`resolve` команды и `MatchUseCase` принимают `enriched_source` вместо `validated_source`.
+- `DeduplicationTransform` больше не требует `ValidationRow`; validation-контекст строится из `TransformResult` (совместимость со старым payload сохранена).
+- `validate` CLI оставлен как совместимый alias dry-run на потоке после `enrich` (без отдельной validate-стадии).
+
 ## Lookup templates (кратко)
 В enrich можно добавить укороченную форму:
 ```yaml

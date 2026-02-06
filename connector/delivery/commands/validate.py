@@ -19,7 +19,6 @@ from connector.domain.transform.stages.stages import StagePipeline, MapStage, No
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.logging.setup import logEvent
 from connector.usecases.validate_usecase import ValidateUseCase
-from connector.domain.validation.validator import logValidationFailure
 
 
 @dataclass(frozen=True)
@@ -55,7 +54,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
         validate_usecase = ValidateUseCase(
             report_items_limit=report_items_limit,
-            include_valid_items=False,
+            include_valid_items=True,
         )
         enrich_pipeline = StagePipeline(
             [
@@ -68,13 +67,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             enriched_source=enrich_pipeline.run(
                 Extractor(pipeline_ctx.row_source, catalog=pipeline_ctx.catalog).run()
             ),
-            validator=pipeline_ctx.validator,
             dataset=dataset_name,
             logger=ctx.logger,
             run_id=run_id,
             report=report,
-            log_failure=logValidationFailure,
-            catalog=catalog,
         )
     except sqlite3.Error as exc:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")

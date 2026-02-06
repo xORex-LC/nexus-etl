@@ -8,7 +8,7 @@ from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
-from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
+from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
 from connector.usecases.match_usecase import MatchUseCase
 from connector.usecases.resolve_usecase import ResolveUseCase
 from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
@@ -47,7 +47,6 @@ class ImportPlanService:
         dataset_spec = get_spec(dataset)
         strict = getattr(settings, "diagnostics_strict", False)
         catalog = build_catalog(dataset, strict=strict)
-        validation_deps = dataset_spec.build_validation_deps(conn, settings)
         secret_store = None
         if vault_file:
             from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
@@ -59,31 +58,20 @@ class ImportPlanService:
             csv_has_header=csv_has_header,
         )
         map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
-            validation_deps,
             enrich_deps,
             catalog,
         )
-        validator_bundle = dataset_spec.build_validator(validation_deps, catalog)
-        validator = validator_bundle.validator
         extractor = Extractor(row_source, catalog=catalog)
         stage_pipeline = StagePipeline(
             [
                 map_stage,
                 normalize_stage,
                 enrich_stage,
-                ValidateStage(validator, catalog),
             ]
         )
-
-        def _should_skip_invalid(item):
-            validation_row = item.row
-            if validation_row is None:
-                return True
-            return bool(validation_row.validation.errors)
-
-        validated_rows = iter_ok(
+        enriched_rows = iter_ok(
             stage_pipeline.run(extractor.run()),
-            should_skip=_should_skip_invalid,
+            should_skip=lambda item: item.row is None,
         )
         planning_bundle = dataset_spec.build_planning_bundle()
         cache_repo = planning_deps.cache_repo
@@ -109,7 +97,7 @@ class ImportPlanService:
         matched_rows = list(
             iter_ok(
                 match_usecase.iter_matched(
-                    validated_source=validated_rows,
+                    enriched_source=enriched_rows,
                     matcher=matcher,
                     catalog=catalog,
                 ),

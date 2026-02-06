@@ -1,6 +1,6 @@
 """
 Назначение:
-    Стадии конвейера data transform (map/normalize/enrich/validate/match/resolve).
+    Стадии конвейера data transform (map/normalize/enrich/match/resolve).
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
 from connector.domain.transform.matching.match_models import MatchedRow
-from connector.domain.validation.validator import Validator
 
 T = TypeVar("T")
 
@@ -35,7 +34,7 @@ class TransformStageProcessor(Protocol):
 class StagePipeline:
     """
     Назначение/ответственность:
-        Последовательный запуск набора стадий (map/normalize/enrich/validate).
+        Последовательный запуск набора стадий (map/normalize/enrich/match/resolve).
     """
 
     def __init__(self, stages: Sequence[TransformStageProcessor]) -> None:
@@ -241,53 +240,6 @@ class EnrichStage:
             yield builder.build()
 
 
-class ValidateStage:
-    """
-    Назначение/ответственность:
-        Стадия validate (enriched -> validated).
-    """
-
-    def __init__(self, validator: Validator, catalog: ErrorCatalog) -> None:
-        self.validator = validator
-        self.catalog = catalog
-
-    def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult]:
-        for enriched in source:
-            boundary_errors: list = []
-            validated = None
-            with diagnostic_boundary(
-                stage=DiagnosticStage.VALIDATE,
-                catalog=self.catalog,
-                sink=boundary_errors,
-                record_ref=enriched.row_ref,
-            ):
-                validated = self.validator.validate(enriched)
-            if boundary_errors:
-                builder = enriched.as_builder()
-                builder.set_row(None)
-                for err in boundary_errors:
-                    builder.add_error_item(err)
-                yield builder.build()
-                continue
-            if validated is None:
-                builder = enriched.as_builder()
-                builder.set_row(None)
-                yield builder.build()
-                continue
-            validation_row = validated.row
-            if validation_row is None:
-                yield validated
-                continue
-            validation = validation_row.validation
-            if not validation.errors:
-                builder = validated.as_builder()
-                builder.errors = list(validation.errors)
-                builder.warnings = list(validation.warnings)
-                yield builder.build()
-                continue
-            yield validated
-
-
 class MatchStage:
     """
     Назначение/ответственность:
@@ -299,18 +251,18 @@ class MatchStage:
         self.catalog = catalog
 
     def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult[MatchedRow]]:
-        for validated in source:
+        for enriched in source:
             boundary_errors: list = []
             matched: TransformResult[MatchedRow] | None = None
             with diagnostic_boundary(
                 stage=DiagnosticStage.MATCH,
                 catalog=self.catalog,
                 sink=boundary_errors,
-                record_ref=validated.row_ref,
+                record_ref=enriched.row_ref,
             ):
-                matched = self.matcher.match(validated)
+                matched = self.matcher.match(enriched)
             if matched is None:
-                builder = validated.as_builder()
+                builder = enriched.as_builder()
                 builder.set_row(None)
                 for err in boundary_errors:
                     builder.add_error_item(err)

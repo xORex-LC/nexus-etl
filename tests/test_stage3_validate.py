@@ -132,7 +132,7 @@ def test_validate_ok_returns_0(tmp_path: Path):
     assert report["summary"]["rows_total"] == 1
 
 
-def test_validate_missing_required_returns_1(tmp_path: Path):
+def test_validate_missing_required_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -152,12 +152,12 @@ def test_validate_missing_required_returns_1(tmp_path: Path):
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="missing")
 
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["summary"]["rows_blocked"] == 1
+    assert report["summary"]["rows_blocked"] == 0
 
 
-def test_validate_invalid_boolean_returns_1(tmp_path: Path):
+def test_validate_invalid_boolean_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -176,10 +176,10 @@ def test_validate_invalid_boolean_returns_1(tmp_path: Path):
     _seed_org(tmp_path, org_ouid=10)
 
     result, _ = run_validate(tmp_path, csv_path, run_id="bad-bool")
-    assert result.exit_code == 1
+    assert result.exit_code == 0
 
 
-def test_validate_invalid_email_returns_1(tmp_path: Path):
+def test_validate_invalid_email_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
         make_row(
@@ -198,7 +198,7 @@ def test_validate_invalid_email_returns_1(tmp_path: Path):
     _seed_org(tmp_path, org_ouid=10)
 
     result, _ = run_validate(tmp_path, csv_path, run_id="bad-email")
-    assert result.exit_code == 1
+    assert result.exit_code == 0
 
 
 def test_validate_duplicate_matchkey_returns_0(tmp_path: Path):
@@ -293,7 +293,7 @@ def test_validate_masks_secrets_in_report(tmp_path: Path):
     _seed_org(tmp_path, org_ouid=10)
 
     result, report_path = run_validate(tmp_path, csv_path, run_id="mask")
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["items"][0]["payload"]["password"] == "***"
 
@@ -331,6 +331,6 @@ def test_validate_respects_report_items_limit(tmp_path: Path):
 
     env = {"ANKEY_REPORT_ITEMS_LIMIT": "1"}
     result, report_path = run_validate(tmp_path, csv_path, run_id="limit", env=env)
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["meta"]["items_truncated"] is True

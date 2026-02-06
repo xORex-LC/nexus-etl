@@ -21,7 +21,6 @@ from connector.domain.transform.matching.match_models import MatchedRow, build_f
 from connector.domain.transform.matching.rules import IdentityRule, MatchingRules, ResolveRules
 from connector.domain.ports.cache.repository import CacheRepositoryProtocol
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.validation.validated_row import ValidationRow
 
 
 class DeduplicationTransform:
@@ -46,63 +45,64 @@ class DeduplicationTransform:
         self.include_deleted = include_deleted
         self.catalog = catalog
 
-    def match(self, validated: TransformResult[ValidationRow]) -> TransformResult[MatchedRow]:
+    def match(self, enriched: TransformResult[Any]) -> TransformResult[MatchedRow]:
         """
         Назначение:
-            Построить MatchedRow по валидированной строке.
+            Построить MatchedRow по строке после enrich.
 
         Алгоритм:
             - Определяет identity по правилам.
             - Ищет кандидатов в кэше.
             - Формирует desired_state и fingerprint.
         """
-        validation_row = validated.row
-        if validation_row is None or validation_row.row is None:
-            return TransformResult(
-                record=validated.record,
-                row=None,
-                row_ref=validated.row_ref,
-                match_key=validated.match_key,
-                meta=validated.meta,
-                secret_candidates=validated.secret_candidates,
-                errors=(
+        row, validation = _extract_row_and_validation(enriched)
+        if row is None:
+            extra_errors = ()
+            if not enriched.errors:
+                extra_errors = (
                     _make_match_error(
                         self.catalog,
                         "MATCH_IDENTITY_MISSING",
                         None,
-                        "empty validated row",
-                        validated.row_ref,
+                        "empty enriched row",
+                        validation.row_ref,
                     ),
-                ),
-                warnings=validated.warnings,
+                )
+            return TransformResult(
+                record=enriched.record,
+                row=None,
+                row_ref=validation.row_ref,
+                match_key=enriched.match_key,
+                meta=enriched.meta,
+                secret_candidates=enriched.secret_candidates,
+                errors=(*enriched.errors, *extra_errors),
+                warnings=enriched.warnings,
             )
-
-        row = validation_row.row
-        validation = validation_row.validation
 
         identity, existing, match_status, error = self._match_identity(row, validation)
         if error is not None:
             return TransformResult(
-                record=validated.record,
+                record=enriched.record,
                 row=None,
                 row_ref=validation.row_ref,
-                match_key=validated.match_key,
-                meta=validated.meta,
-                secret_candidates=validated.secret_candidates,
-                errors=(error,),
-                warnings=validated.warnings,
+                match_key=enriched.match_key,
+                meta=enriched.meta,
+                secret_candidates=enriched.secret_candidates,
+                errors=(*enriched.errors, error),
+                warnings=enriched.warnings,
             )
 
         identity_value = identity.primary_value if identity else None
         if not identity or not identity_value:
             return TransformResult(
-                record=validated.record,
+                record=enriched.record,
                 row=None,
                 row_ref=validation.row_ref,
-                match_key=validated.match_key,
-                meta=validated.meta,
-                secret_candidates=validated.secret_candidates,
+                match_key=enriched.match_key,
+                meta=enriched.meta,
+                secret_candidates=enriched.secret_candidates,
                 errors=(
+                    *enriched.errors,
                     _make_match_error(
                         self.catalog,
                         "MATCH_IDENTITY_MISSING",
@@ -111,7 +111,7 @@ class DeduplicationTransform:
                         validation.row_ref,
                     ),
                 ),
-                warnings=validated.warnings,
+                warnings=enriched.warnings,
             )
 
         desired_state = self.resolve_rules.build_desired_state(row, validation)
@@ -138,14 +138,14 @@ class DeduplicationTransform:
         )
 
         return TransformResult(
-            record=validated.record,
+            record=enriched.record,
             row=matched_row,
             row_ref=row_ref,
-            match_key=validated.match_key,
-            meta=validated.meta,
-            secret_candidates=validated.secret_candidates,
-            errors=validated.errors,
-            warnings=validated.warnings,
+            match_key=enriched.match_key,
+            meta=enriched.meta,
+            secret_candidates=enriched.secret_candidates,
+            errors=enriched.errors,
+            warnings=enriched.warnings,
         )
 
     def _match_identity(
@@ -293,9 +293,58 @@ def _iter_identity_rules(matching_rules: MatchingRules) -> tuple[IdentityRule, .
     """
     if matching_rules.identity_rules:
         return matching_rules.identity_rules
-    return (
-        IdentityRule(
-            name="primary",
-            build_identity=matching_rules.build_identity,
-        ),
+        return (
+            IdentityRule(
+                name="primary",
+                build_identity=matching_rules.build_identity,
+            ),
+        )
+
+
+def _extract_row_and_validation(source: TransformResult[Any]) -> tuple[Any | None, ValidationRowResult]:
+    """
+    Назначение:
+        Построить единый validation-контекст для matcher без ValidateStage.
+    """
+    row = source.row
+    # Backward compatibility: allow old ValidationRow payloads while migrating.
+    if row is not None and hasattr(row, "validation") and hasattr(row, "row"):
+        nested = getattr(row, "validation")
+        nested_row = getattr(row, "row")
+        if isinstance(nested, ValidationRowResult):
+            return nested_row, nested
+    return row, _build_validation_result(source, row)
+
+
+def _build_validation_result(source: TransformResult[Any], row: Any | None) -> ValidationRowResult:
+    match_key_value = source.match_key.value if source.match_key else ""
+    row_ref = source.row_ref or RowRef(
+        line_no=source.record.line_no,
+        row_id=source.record.record_id,
+        identity_primary="match_key",
+        identity_value=match_key_value or None,
+    )
+    if row_ref.identity_primary is None:
+        row_ref = RowRef(
+            line_no=row_ref.line_no,
+            row_id=row_ref.row_id,
+            identity_primary="match_key",
+            identity_value=match_key_value or None,
+        )
+    meta_secret_fields = source.meta.get("secret_fields") if source.meta else None
+    secret_fields: list[str] = []
+    if isinstance(meta_secret_fields, (list, tuple, set)):
+        secret_fields = [str(item) for item in meta_secret_fields if item]
+    if not secret_fields and source.secret_candidates:
+        secret_fields = list(source.secret_candidates.keys())
+    return ValidationRowResult(
+        line_no=source.record.line_no,
+        match_key=match_key_value,
+        match_key_complete=source.match_key is not None,
+        usr_org_tab_num=getattr(row, "usr_org_tab_num", None),
+        row_ref=row_ref,
+        secret_candidates=dict(source.secret_candidates),
+        secret_fields=secret_fields,
+        errors=list(source.errors),
+        warnings=list(source.warnings),
     )

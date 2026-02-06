@@ -10,10 +10,9 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.cache_registry import list_cache_specs
-from connector.datasets.spec import DatasetSpec, ValidationBundle
-from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage, ValidateStage
+from connector.datasets.spec import DatasetSpec
+from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.validation.validator import Validator
 from connector.domain.transform.matching.resolve_deps import PlanningDependencies
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.schema import ensure_cache_ready
@@ -138,7 +137,7 @@ class PipelineContext:
         Собранный контекст transform-пайплайна для CLI use-cases.
 
     Контракт:
-        Используется как единый источник для map/normalize/enrich/validate.
+        Используется как единый источник для map/normalize/enrich.
     """
 
     dataset_name: str
@@ -147,7 +146,6 @@ class PipelineContext:
     map_stage: MapStage
     normalize_stage: NormalizeStage
     enrich_stage: EnrichStage
-    validator: Validator
     stage_pipeline: StagePipeline
     planning_deps: PlanningDependencies
     report_items_limit: int
@@ -167,20 +165,15 @@ def build_pipeline_context(
 ) -> PipelineContext:
     """
     Назначение:
-        Единая сборка map/normalize/enrich/validate цепочки.
+        Единая сборка map/normalize/enrich цепочки.
     """
-    validation_deps = dataset_spec.build_validation_deps(conn, settings)
     enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
     planning_deps = dataset_spec.build_planning_deps(conn, settings)
 
     map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
-        validation_deps,
         enrich_deps,
         catalog,
     )
-
-    validation_bundle: ValidationBundle = dataset_spec.build_validator(validation_deps, catalog)
-    validator = validation_bundle.validator
 
     row_source = dataset_spec.build_record_source(csv_has_header=csv_has_header)
 
@@ -189,7 +182,6 @@ def build_pipeline_context(
             map_stage,
             normalize_stage,
             enrich_stage,
-            ValidateStage(validator, catalog),
         ]
     )
 
@@ -200,7 +192,6 @@ def build_pipeline_context(
         map_stage=map_stage,
         normalize_stage=normalize_stage,
         enrich_stage=enrich_stage,
-        validator=validator,
         stage_pipeline=stage_pipeline,
         planning_deps=planning_deps,
         report_items_limit=settings.report_items_limit,
