@@ -367,7 +367,7 @@ def test_import_apply_resource_exists_retries():
     assert report.build().summary.ops.get("create", {}).get("ok") == 1
     assert len(executor.calls) == 2
 
-def test_import_apply_requires_csv_or_plan(tmp_path: Path):
+def test_import_apply_requires_plan(tmp_path: Path):
     result = runner.invoke(
         app,
         [

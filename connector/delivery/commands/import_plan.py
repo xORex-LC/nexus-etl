@@ -15,7 +15,6 @@ from connector.usecases.import_plan_service import ImportPlanService
 
 @dataclass(frozen=True)
 class Options:
-    csv_path: str | None = None
     csv_has_header: bool | None = None
     include_deleted: bool | None = None
     report_items_limit: int | None = None
@@ -45,7 +44,6 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
         service = ImportPlanService()
         return service.run(
             conn=conn,
-            csv_path=opts.csv_path or "",
             csv_has_header=csv_has_header_value,
             include_deleted=include_deleted_value,
             settings=settings,

@@ -18,6 +18,7 @@ from connector.domain.reporting.collector import ReportCollector
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.datasets.registry import get_spec, resolve_dataset_name
+from connector.domain.transform.dsl.loader import load_source_spec_for_dataset, resolve_source_location
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.result import CommandResult as CliCommandResult
@@ -204,9 +205,9 @@ def _validate_requirements(ctx: CommandContext, opts: Any, requirements: Require
     if requirements.requires_api:
         _require_api(settings)
 
-    if requirements.requires_csv:
-        csv_path = _get_opt(opts, ("csv_path", "csv", "input_csv"))
-        _require_csv(csv_path)
+    dataset: str | None = None
+    if requirements.requires_dataset or requirements.requires_source:
+        dataset = _resolve_dataset_opt(opts, settings)
 
     if requirements.requires_cache:
         _require_cache(settings)
@@ -216,16 +217,26 @@ def _validate_requirements(ctx: CommandContext, opts: Any, requirements: Require
         _require_secrets(vault_file)
 
     if requirements.requires_dataset:
-        dataset = _resolve_dataset_opt(opts, settings)
         _require_dataset(dataset)
+    if requirements.requires_source:
+        _require_source(dataset)
 
 
-def _require_csv(csv_path: str | None) -> None:
-    if not csv_path:
-        raise RuntimeErrorWithCode("--csv is required", exit_code=2)
-    path = Path(csv_path)
-    if not path.exists() or not path.is_file():
-        raise RuntimeErrorWithCode(f"CSV file not found: {csv_path}", exit_code=2)
+def _require_source(dataset: str | None) -> None:
+    if not dataset:
+        raise RuntimeErrorWithCode("Dataset is required for source resolution", exit_code=2)
+    try:
+        source_spec = load_source_spec_for_dataset(dataset)
+    except Exception as exc:
+        raise RuntimeErrorWithCode(f"Source spec is not configured for dataset '{dataset}': {exc}", exit_code=2) from exc
+    try:
+        location = resolve_source_location(source_spec)
+    except ValueError as exc:
+        raise RuntimeErrorWithCode(f"Source location is not configured for dataset '{dataset}': {exc}", exit_code=2) from exc
+    if source_spec.source.type == "file":
+        path = Path(location)
+        if not path.exists() or not path.is_file():
+            raise RuntimeErrorWithCode(f"Source file not found: {location}", exit_code=2)
 
 
 def _require_api(settings) -> None:

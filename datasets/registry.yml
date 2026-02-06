@@ -1,5 +1,6 @@
 datasets:
   employees:
+    source: employees.source.yaml
     mapping: employees.mapping.yaml
     normalize: employees.normalize.yaml
     enrich: employees.enrich.yaml

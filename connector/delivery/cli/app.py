@@ -128,24 +128,22 @@ def main(
 @app.command()
 def validate(
     ctx: typer.Context,
-    csv: str | None = cli_options.CSV_PATH,
     csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
 ):
-    opts = validate_command.Options(csv_path=csv, csv_has_header=csvHasHeader)
+    opts = validate_command.Options(csv_has_header=csvHasHeader)
     command_ctx = _build_ctx(ctx)
     run_with_report(
         ctx=command_ctx,
         command_name="validate",
         opts=opts,
         handler=validate_command.handler,
-        requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
     )
 
 
 @app.command("mapping")
 def mapping(
     ctx: typer.Context,
-    csv: str | None = cli_options.CSV_PATH,
     csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
@@ -157,7 +155,6 @@ def mapping(
     ),
 ):
     opts = mapping_command.Options(
-        csv_path=csv,
         csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
@@ -169,14 +166,13 @@ def mapping(
         command_name="mapping",
         opts=opts,
         handler=mapping_command.handler,
-        requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
     )
 
 
 @app.command("match")
 def match(
     ctx: typer.Context,
-    csv: str | None = cli_options.CSV_PATH,
     csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
@@ -189,7 +185,6 @@ def match(
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
 ):
     opts = match_command.Options(
-        csv_path=csv,
         csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
@@ -202,14 +197,13 @@ def match(
         command_name="match",
         opts=opts,
         handler=match_command.handler,
-        requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
     )
 
 
 @app.command("normalize")
 def normalize(
     ctx: typer.Context,
-    csv: str | None = cli_options.CSV_PATH,
     csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
@@ -221,7 +215,6 @@ def normalize(
     ),
 ):
     opts = normalize_command.Options(
-        csv_path=csv,
         csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
@@ -233,14 +226,13 @@ def normalize(
         command_name="normalize",
         opts=opts,
         handler=normalize_command.handler,
-        requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
     )
 
 
 @app.command("resolve")
 def resolve(
     ctx: typer.Context,
-    csv: str | None = cli_options.CSV_PATH,
     csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
@@ -253,7 +245,6 @@ def resolve(
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
 ):
     opts = resolve_command.Options(
-        csv_path=csv,
         csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
@@ -266,14 +257,13 @@ def resolve(
         command_name="resolve",
         opts=opts,
         handler=resolve_command.handler,
-        requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
     )
 
 
 @app.command("enrich")
 def enrich(
     ctx: typer.Context,
-    csv: str | None = cli_options.CSV_PATH,
     csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
@@ -286,7 +276,6 @@ def enrich(
     vaultFile: str | None = cli_options.VAULT_FILE,
 ):
     opts = enrich_command.Options(
-        csv_path=csv,
         csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
@@ -299,14 +288,13 @@ def enrich(
         command_name="enrich",
         opts=opts,
         handler=enrich_command.handler,
-        requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
     )
 
 
 @importApp.command("plan")
 def importPlan(
     ctx: typer.Context,
-    csv: str | None = cli_options.CSV_PATH,
     csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
@@ -320,7 +308,6 @@ def importPlan(
     vaultFile: str | None = cli_options.VAULT_FILE,
 ):
     opts = import_plan_command.Options(
-        csv_path=csv,
         csv_has_header=csvHasHeader,
         include_deleted=includeDeleted,
         report_items_limit=reportItemsLimit,
@@ -333,7 +320,7 @@ def importPlan(
         command_name="import-plan",
         opts=opts,
         handler=import_plan_command.handler,
-        requirements=Requirements(requires_csv=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
     )
 
 

@@ -114,10 +114,8 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
         run_id,
         "import",
         "plan",
-        "--csv",
-        str(csv_path),
     ]
-    result = runner.invoke(app, args)
+    result = runner.invoke(app, args, env={"EMPLOYEES_SOURCE_PATH": str(csv_path)})
     plan_path = report_dir / f"plan_import_{run_id}.json"
     return result.exit_code, plan_path
 

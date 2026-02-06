@@ -11,7 +11,11 @@ from connector.domain.validation.deps import ValidationDependencies
 from connector.datasets.employees.transform.validation_spec import EmployeesValidationSpec
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.transform.mapping import MapperEngine
-from connector.domain.transform.dsl.loader import load_normalize_spec_for_dataset
+from connector.domain.transform.dsl.loader import (
+    load_normalize_spec_for_dataset,
+    load_source_spec_for_dataset,
+    resolve_source_location,
+)
 from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
@@ -112,10 +116,13 @@ class EmployeesSpec(DatasetSpec):
 
     def build_record_source(
         self,
-        csv_path: str,
         csv_has_header: bool,
     ):
-        return CsvRecordSource(csv_path, csv_has_header)
+        source_spec = load_source_spec_for_dataset("employees")
+        if source_spec.source.type != "file" or source_spec.source.format != "csv":
+            raise ValueError("employees source spec must be file/csv for current runtime")
+        source_path = resolve_source_location(source_spec)
+        return CsvRecordSource(source_path, csv_has_header)
 
     def build_planning_bundle(self) -> PlanningBundle:
         return PlanningBundle(

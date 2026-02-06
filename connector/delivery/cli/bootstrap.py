@@ -162,7 +162,6 @@ def build_pipeline_context(
     conn,
     settings: Settings,
     catalog: ErrorCatalog,
-    csv_path: str,
     csv_has_header: bool,
     secret_store: Any | None = None,
 ) -> PipelineContext:
@@ -183,7 +182,7 @@ def build_pipeline_context(
     validation_bundle: ValidationBundle = dataset_spec.build_validator(validation_deps, catalog)
     validator = validation_bundle.validator
 
-    row_source = dataset_spec.build_record_source(csv_path=csv_path, csv_has_header=csv_has_header)
+    row_source = dataset_spec.build_record_source(csv_has_header=csv_has_header)
 
     stage_pipeline = StagePipeline(
         [

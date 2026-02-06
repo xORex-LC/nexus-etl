@@ -29,6 +29,9 @@ def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dic
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
+    merged_env = {"EMPLOYEES_SOURCE_PATH": str(csv_path)}
+    if env:
+        merged_env.update(env)
     result = runner.invoke(
         app,
         [
@@ -41,11 +44,9 @@ def run_validate(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dic
             "--run-id",
             run_id,
             "validate",
-            "--csv",
-            str(csv_path),
             "--csv-has-header",
         ],
-        env=env,
+        env=merged_env,
     )
     report_path = report_dir / f"report_validate_{run_id}.json"
     return result, report_path

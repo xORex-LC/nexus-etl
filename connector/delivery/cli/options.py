@@ -6,8 +6,7 @@ import typer
 # Common dataset options
 DATASET = typer.Option(None, "--dataset", help="Dataset name")
 
-# CSV options
-CSV_PATH = typer.Option(None, "--csv", help="Path to CSV file")
+# Source options
 CSV_HAS_HEADER = typer.Option(None, "--csv-has-header", help="CSV has header row")
 
 # Report options
