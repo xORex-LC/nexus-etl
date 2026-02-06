@@ -1,6 +1,6 @@
 import logging
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.transform.mapping.dsl_mapper import DslMapper
+from connector.domain.transform.mapping import MapperEngine
 from connector.infra.artifacts.report_writer import createEmptyReport
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.datasets.employees.extract.source_mapper import SOURCE_COLUMNS
@@ -21,7 +21,7 @@ def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:
 def _run_mapping(records: list[SourceRecord]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
-    map_stage = MapStage(DslMapper(catalog=CATALOG, dataset="employees"), CATALOG)
+    map_stage = MapStage(MapperEngine.from_dataset(catalog=CATALOG, dataset="employees"), CATALOG)
     row_source = records
     result = usecase.run(
         row_source=row_source,

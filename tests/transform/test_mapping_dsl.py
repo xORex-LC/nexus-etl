@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.transform.mapping.dsl_mapper import DslMapper
+from connector.domain.transform.mapping import MapperEngine
 
 
 def test_employees_dsl_mapper_maps_record() -> None:
     catalog = build_catalog("employees", strict=True)
-    mapper = DslMapper(catalog=catalog, dataset="employees")
+    mapper = MapperEngine.from_dataset(catalog=catalog, dataset="employees")
     record = SourceRecord(
         line_no=1,
         record_id="line:1",
@@ -48,7 +48,7 @@ def test_employees_dsl_mapper_maps_record() -> None:
 
 def test_employees_dsl_mapper_missing_source_column() -> None:
     catalog = build_catalog("employees", strict=True)
-    mapper = DslMapper(catalog=catalog, dataset="employees")
+    mapper = MapperEngine.from_dataset(catalog=catalog, dataset="employees")
     record = SourceRecord(
         line_no=1,
         record_id="line:1",

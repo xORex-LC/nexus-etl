@@ -7,7 +7,7 @@ from connector.domain.ports.transform.sources import SourceMapper
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.diagnostics import build_catalog
-from connector.domain.transform.mapping.dsl_mapper import DslMapper
+from connector.domain.transform.mapping import MapperEngine
 
 CATALOG = build_catalog("employees", strict=True)
 
@@ -28,7 +28,7 @@ def test_employees_source_mapper_builds_secrets():
             "extra": "password=secret;org_id=20;tab=TAB-100",
         },
     )
-    result = DslMapper(catalog=CATALOG, dataset="employees").map(record)
+    result = MapperEngine.from_dataset(catalog=CATALOG, dataset="employees").map(record)
 
     assert result.errors == ()
     assert result.match_key is None
@@ -56,7 +56,7 @@ def test_employees_source_mapper_does_not_add_match_key_errors():
             "extra": "password=secret;org_id=20;tab=TAB-100",
         },
     )
-    result = DslMapper(catalog=CATALOG, dataset="employees").map(record)
+    result = MapperEngine.from_dataset(catalog=CATALOG, dataset="employees").map(record)
 
     codes = {issue.code for issue in result.errors}
     assert "MATCH_KEY_MISSING" not in codes
