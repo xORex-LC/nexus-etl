@@ -1,0 +1,51 @@
+@startuml
+title Mapper Stage - Activity Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam activity {
+  BackgroundColor #e8f1fb
+  BorderColor #b9d2ec
+}
+
+start
+:Input TransformResult from Extract;
+
+if (upstream errors?) then (yes)
+  :set row=None;
+  :pass downstream with same diagnostics;
+  stop
+endif
+
+:MapStage enters diagnostic_boundary(MAP);
+:MapperEngine.map(record);
+
+if (mapped result is None?) then (yes)
+  :append boundary errors;
+  :set row=None;
+  stop
+endif
+
+:MapperCore applies mapping rules;
+repeat
+  :resolve source/sources;
+  :apply ops via TransformationEngine;
+  if (dsl error?) then (yes)
+    :emit MAP diagnostic;
+  else (no)
+    :assign target/targets;
+  endif
+repeat while (more mapping rules?)
+
+:validate required + mapping schema;
+:validate sink shape (warn by policy);
+
+if (no errors?) then (yes)
+  :apply meta rules (ops + set meta path);
+endif
+
+:merge meta/errors/warnings with collected;
+:return TransformResult[mapped_row];
+stop
+
+@enduml

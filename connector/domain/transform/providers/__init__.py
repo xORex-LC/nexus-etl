@@ -3,6 +3,7 @@
     Runtime-провайдеры lookup/exists для enrich DSL.
 """
 
+from connector.domain.transform.providers.deps import TransformProviderDeps
 from connector.domain.transform.providers.registry import ProviderGateway
 
-__all__ = ["ProviderGateway"]
+__all__ = ["ProviderGateway", "TransformProviderDeps"]

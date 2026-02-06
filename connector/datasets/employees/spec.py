@@ -10,17 +10,17 @@ from connector.datasets.employees.load.resolve_rules import build_resolve_rules
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.dsl.loader import (
+    load_enrich_spec_for_dataset,
     load_normalize_spec_for_dataset,
     load_source_spec_for_dataset,
     resolve_source_location,
 )
 from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
-from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
-from connector.datasets.employees.transform.enrich_deps import EmployeesEnrichDependencies
 from connector.domain.transform.enrich import EnricherEngine, EnrichDslBuildOptions
 from connector.domain.transform.normalize import NormalizerDsl, NormalizerEngine
 from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage
+from connector.domain.transform.providers import TransformProviderDeps
 from connector.infra.sources.csv_reader import CsvRecordSource
 from connector.datasets.employees.load.cache_spec import employees_cache_spec
 from connector.datasets.organizations.load.cache_spec import organizations_cache_spec
@@ -53,45 +53,23 @@ class EmployeesSpec(DatasetSpec):
             resolver_settings=resolver_settings,
         )
 
-    def build_enrich_deps(self, conn, settings, secret_store=None) -> EmployeesEnrichDependencies:
+    def build_enrich_deps(self, conn, settings, secret_store=None) -> TransformProviderDeps:
         _ = settings
         cache_repo = self._build_cache_repo(conn)
-        return EmployeesEnrichDependencies(
-            conn=conn,
+        return TransformProviderDeps(
             cache_repo=cache_repo,
             secret_store=secret_store,
         )
 
     def build_transform_stages(
         self,
-        enrich_deps: EmployeesEnrichDependencies,
+        enrich_deps: TransformProviderDeps,
         catalog: ErrorCatalog,
     ) -> tuple[MapStage, NormalizeStage, EnrichStage]:
-        normalize_spec = load_normalize_spec_for_dataset("employees")
-        registry = OperationRegistry()
-        register_core_ops(registry)
-        normalizer = NormalizerEngine(
-            normalize_spec,
-            catalog=catalog,
-            dsl=NormalizerDsl(registry=registry),
-            row_builder=NormalizedEmployeesRow,
-        )
-        mapper = MapperEngine.from_dataset(catalog=catalog, dataset="employees")
-        enrich_registry = OperationRegistry()
-        register_core_ops(enrich_registry)
-        enricher = EnricherEngine(
-            spec=EmployeesEnricherSpec(),
-            deps=enrich_deps,
-            secret_store=enrich_deps.secret_store,
-            dataset="employees",
-            catalog=catalog,
-            registry=enrich_registry,
-            options=EnrichDslBuildOptions(require_match_key=True),
-        )
         return (
-            MapStage(mapper, catalog),
-            NormalizeStage(normalizer, catalog),
-            EnrichStage(enricher, catalog),
+            self._build_mapper_stage(catalog),
+            self._build_normalize_stage(catalog),
+            self._build_enrich_stage(catalog, enrich_deps),
         )
 
     def build_cache_specs(self) -> list:
@@ -126,6 +104,39 @@ class EmployeesSpec(DatasetSpec):
 
     def get_diagnostic_catalog(self, strict: bool):
         return build_employees_catalog(strict=strict)
+
+    def _build_mapper_stage(self, catalog: ErrorCatalog) -> MapStage:
+        mapper = MapperEngine.from_dataset(catalog=catalog, dataset="employees")
+        return MapStage(mapper, catalog)
+
+    def _build_normalize_stage(self, catalog: ErrorCatalog) -> NormalizeStage:
+        normalize_spec = load_normalize_spec_for_dataset("employees")
+        normalizer = NormalizerEngine(
+            normalize_spec,
+            catalog=catalog,
+            dsl=NormalizerDsl(registry=self._build_dsl_registry()),
+            row_builder=NormalizedEmployeesRow,
+        )
+        return NormalizeStage(normalizer, catalog)
+
+    def _build_enrich_stage(self, catalog: ErrorCatalog, enrich_deps: TransformProviderDeps) -> EnrichStage:
+        enrich_spec = load_enrich_spec_for_dataset("employees")
+        enricher = EnricherEngine(
+            spec=enrich_spec,
+            deps=enrich_deps,
+            secret_store=enrich_deps.secret_store,
+            dataset="employees",
+            catalog=catalog,
+            registry=self._build_dsl_registry(),
+            options=EnrichDslBuildOptions(require_match_key=True),
+        )
+        return EnrichStage(enricher, catalog)
+
+    @staticmethod
+    def _build_dsl_registry() -> OperationRegistry:
+        registry = OperationRegistry()
+        register_core_ops(registry)
+        return registry
 
 # Фабрика экземпляра спеки
 def make_employees_spec(secrets: SecretProviderProtocol | None = None) -> EmployeesSpec:

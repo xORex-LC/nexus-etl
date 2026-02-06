@@ -1,5 +1,5 @@
 @startuml
-title Enricher - State Machine Diagram (Current)
+title Enrich Stage - State Machine Diagram (Current)
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
@@ -9,30 +9,24 @@ skinparam state {
 }
 
 [*] --> Input
+Input --> Skipped : row is None
+Input --> ExecuteOps : valid row
 
-Input --> Skipped : row missing OR upstream errors
-Input --> ExecuteOps : valid row (or errors with allowed ops)
-
-ExecuteOps --> Failed : operation FAILED (policy=ERROR)
-ExecuteOps --> NeedsResolve : operation NEEDS_RESOLVE (ambiguous/missing key)
+ExecuteOps --> NeedsResolve : ambiguous candidates
+ExecuteOps --> Failed : strictness => FAILED
 ExecuteOps --> Enriched : operations completed
 
 NeedsResolve --> StoreSecrets
 Enriched --> StoreSecrets
+Failed --> Output
 Skipped --> Output
 
-StoreSecrets --> Output : secrets stored OR skipped OR secret-store warning
-
-Failed --> Output
-
+StoreSecrets --> Output : stored or skipped with diagnostics
 Output --> [*]
 
 note right of NeedsResolve
-Enricher does NOT resolve identity.\nIt emits ResolveHint(s) in meta\nfor Resolver to act (pending_links / conflict / manual).
-end note
-
-note right of StoreSecrets
-If secret_candidates exist:\n- require match_key\n- put_many into SecretStore\n- on error => ENRICH warning/error by policy
+Resolve is NOT done here.
+Enrich emits hints in meta for ResolveStage.
 end note
 
 @enduml

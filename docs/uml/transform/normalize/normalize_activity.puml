@@ -1,0 +1,52 @@
+@startuml
+title Normalize Stage - Activity Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam activity {
+  BackgroundColor #eaf8e6
+  BorderColor #b7ddb0
+}
+
+start
+:Input TransformResult[mapped];
+
+if (collected.errors?) then (yes)
+  :pass through unchanged;
+  stop
+endif
+
+:NormalizeStage enters diagnostic_boundary(NORMALIZE);
+:NormalizerEngine.normalize(collected);
+
+if (source.row is None?) then (yes)
+  :return as-is (preserve diagnostics);
+  stop
+endif
+
+:to_mapping(source.row);
+if (mapping conversion failed?) then (yes)
+  :return row=None + existing diagnostics;
+  stop
+endif
+
+repeat
+  :take NormalizeRule(field, ops);
+  :read current field value;
+  :apply ops via TransformationEngine;
+  :append diagnostics via on_error;
+  :write normalized value back to row dict;
+repeat while (more rules?)
+
+:validate sink type/nullability (strict);
+if (errors present?) then (yes)
+  :set row=None;
+else (no)
+  :optional row_builder(normalized_values);
+endif
+
+:append boundary errors;
+:return TransformResult[normalized];
+stop
+
+@enduml

@@ -1,0 +1,90 @@
+@startuml
+title Normalize Stage - Class Diagram (Current)
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #eaf8e6
+  BorderColor #b7ddb0
+}
+
+class NormalizeStage {
+  - normalizer: NormalizerEngine
+  - catalog: ErrorCatalog
+  + run(source): Iterable[TransformResult]
+}
+
+class NormalizerEngine {
+  - catalog: ErrorCatalog
+  - dsl: NormalizerDsl
+  - core: NormalizerCore
+  + from_dataset(dataset, catalog, engine, row_builder)
+  + normalize(source): TransformResult
+}
+
+class NormalizerDsl {
+  - engine: TransformationEngine
+  + compile(spec, catalog, sink_spec, row_builder): NormalizerCore
+}
+
+class NormalizerCore {
+  - spec: NormalizeSpec
+  - sink_spec: SinkSpec
+  - engine: TransformationEngine
+  - row_builder: callable
+  + normalize(source): TransformResult
+}
+
+class NormalizeSpec {
+  + dataset: str
+  + normalize: NormalizeRules
+}
+
+class NormalizeRules {
+  + rules: NormalizeRule[*]
+}
+
+class NormalizeRule {
+  + field: str
+  + ops: OperationCall[*]
+  + on_error: str
+}
+
+class SinkSpec {
+  + fields: SinkFieldSpec[*]
+}
+
+class TransformationEngine {
+  + apply(value, calls): EngineResult
+  + with_core_ops(): TransformationEngine
+}
+
+class TransformResult<T> {
+  + record
+  + row
+  + row_ref
+  + meta
+  + errors
+  + warnings
+}
+
+NormalizeStage --> NormalizerEngine
+NormalizerEngine --> NormalizerDsl
+NormalizerEngine --> NormalizerCore
+NormalizerCore --> NormalizeSpec
+NormalizerCore --> SinkSpec
+NormalizerCore ..> TransformationEngine : apply ops
+NormalizerDsl ..> TransformationEngine
+NormalizerCore ..> TransformResult
+
+note right of NormalizerCore
+Business logic:
+1) short-circuit when row absent
+2) apply field ops
+3) append diagnostics by on_error policy
+4) sink type/nullability check (strict)
+5) build row via row_builder
+end note
+
+@enduml

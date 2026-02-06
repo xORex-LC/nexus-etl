@@ -18,7 +18,7 @@ from connector.domain.transform.enrich import (
 )
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
+from connector.domain.transform.dsl.loader import load_enrich_spec_for_dataset
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import build_catalog
@@ -72,7 +72,7 @@ def _build_enricher_from_dsl(
     registry = OperationRegistry()
     register_core_ops(registry)
     return EnricherEngine(
-        spec=EmployeesEnricherSpec(),
+        spec=load_enrich_spec_for_dataset("employees"),
         deps=deps,
         secret_store=secret_store,
         dataset="employees",

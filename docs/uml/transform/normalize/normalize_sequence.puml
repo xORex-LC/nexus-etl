@@ -1,0 +1,50 @@
+@startuml
+title Normalize Stage - Sequence Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam sequence {
+  ArrowColor #4b5563
+  LifeLineBorderColor #9ca3af
+}
+
+actor Caller
+participant NormalizeStage
+participant NormalizerEngine
+participant NormalizerDsl
+participant NormalizerCore
+participant TransformationEngine
+participant SinkSpec
+
+Caller -> NormalizeStage: run(stream)
+loop each collected result
+  alt collected has errors
+    NormalizeStage --> Caller: pass through
+  else clean result
+    NormalizeStage -> NormalizeStage: diagnostic_boundary(NORMALIZE)
+    NormalizeStage -> NormalizerEngine: normalize(collected)
+    NormalizerEngine -> NormalizerCore: normalize(source)
+    alt source.row is None
+      NormalizerCore --> NormalizerEngine: unchanged result
+    else row exists
+      loop each NormalizeRule
+        NormalizerCore -> TransformationEngine: apply(value, ops)
+        TransformationEngine --> NormalizerCore: resolved + issues
+        NormalizerCore -> NormalizerCore: append issue by on_error
+      end
+      NormalizerCore -> SinkSpec: validate sink row (types/nullability)
+      NormalizerCore -> NormalizerCore: build row via row_builder
+      NormalizerCore --> NormalizerEngine: TransformResult[normalized]
+    end
+    NormalizerEngine --> NormalizeStage: normalized result
+    NormalizeStage -> NormalizeStage: append boundary errors
+    NormalizeStage --> Caller: TransformResult
+  end
+end
+
+note right of NormalizerDsl
+NormalizerDsl compiles once:
+NormalizeSpec + TransformationEngine -> NormalizerCore
+end note
+
+@enduml
