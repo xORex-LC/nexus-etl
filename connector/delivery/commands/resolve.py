@@ -53,12 +53,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         opts.include_resolved_items if opts.include_resolved_items is not None else False
     )
 
-    def _should_skip_invalid(item):
-        validation_row = item.row
-        if validation_row is None:
-            return True
-        return bool(validation_row.validation.errors)
-
     conn = None
     try:
         conn, _engine, _cache_repo, _cache_specs = build_cache(settings)
@@ -72,9 +66,9 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             csv_has_header=csv_has_header_value,
         )
         planning_deps = pipeline_ctx.planning_deps
-        validated_rows = iter_ok(
+        enriched_rows = iter_ok(
             pipeline_ctx.stage_pipeline.run(Extractor(pipeline_ctx.row_source, catalog=pipeline_ctx.catalog).run()),
-            should_skip=_should_skip_invalid,
+            should_skip=lambda item: item.row is None,
         )
 
         planning_bundle = dataset_spec.build_planning_bundle()
@@ -101,7 +95,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
         matched_rows = iter_ok(
             match_usecase.iter_matched(
-                validated_source=validated_rows,
+                enriched_source=enriched_rows,
                 matcher=matcher,
                 catalog=catalog,
             ),

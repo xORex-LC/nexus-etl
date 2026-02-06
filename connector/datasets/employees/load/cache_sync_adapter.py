@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.domain.validation.row_rules import normalize_whitespace
+from connector.domain.transform.common import normalize_whitespace
 from connector.domain.transform.ids.match_key import build_delimited_match_key
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 

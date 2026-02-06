@@ -7,7 +7,7 @@ from connector.domain.transform.matching.deduplication_transform import Deduplic
 from connector.domain.transform.matching.rules import ResolveRules
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.validation.validated_row import ValidationRow
+from connector.domain.transform.ids.match_key import MatchKey
 from connector.datasets.employees.load.matching_rules import build_matching_rules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.diagnostics.catalog import build_catalog
@@ -49,7 +49,7 @@ def _make_validation(match_key: str, usr_org_tab_num: str | None) -> ValidationR
     )
 
 
-def _make_transform_result(validation: ValidationRowResult) -> TransformResult[ValidationRow]:
+def _make_transform_result(validation: ValidationRowResult) -> TransformResult[NormalizedEmployeesRow]:
     row = NormalizedEmployeesRow(
         email=None,
         last_name="Doe",
@@ -69,9 +69,9 @@ def _make_transform_result(validation: ValidationRowResult) -> TransformResult[V
     )
     return TransformResult(
         record=SourceRecord(line_no=1, record_id="rec-1", values={}),
-        row=ValidationRow(row=row, validation=validation),
+        row=row,
         row_ref=validation.row_ref,
-        match_key=None,
+        match_key=MatchKey(validation.match_key) if validation.match_key else None,
     )
 
 
