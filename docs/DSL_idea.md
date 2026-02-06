@@ -28,6 +28,64 @@
 - Ядра стадий остаются чистыми и тестируемыми
 - DSL можно расширять без переписывания StageCore
 
+## Принципы реализации DSL для `map/normalize/enrich`
+Эти принципы фиксируют текущую договорённость и являются ориентирами для перевода остальных стадий.
+
+### 1. Единый каркас стадии
+Для каждой DSL-стадии сохраняем одинаковую форму:
+- `StageSpec` (Pydantic-модель правил из YAML)
+- `StageDsl` (compile: spec -> core-spec/core)
+- `StageEngine` (runtime обвязка стадии)
+- `StageCore` (бизнес-логика стадии)
+
+Текущие соответствия:
+- `MappingSpec -> MapperDsl -> MapperEngine -> MapperCore`
+- `NormalizeSpec -> NormalizerDsl -> NormalizerEngine -> NormalizerCore`
+- `EnrichSpec -> EnricherDsl -> EnricherEngine -> EnricherCore`
+
+### 2. Жёсткая граница ответственности
+- `TransformationEngine`:
+  - только исполнение `ops` (pure value transforms);
+  - не содержит IO, cache/vault/pending/policy orchestration.
+- `StageCore`:
+  - orchestration стадии, merge/strictness-политики, принятие решений;
+  - работа с зависимостями и side-effects (если это часть стадии).
+- `StageDsl`:
+  - компоновка spec в executable-конфигурацию core;
+  - провайдерный wiring для enrich.
+
+### 3. Диагностика вместо исключений
+- Ошибки правил и ops накапливаются как diagnostics (`errors/warnings`) и идут с записью дальше.
+- Исключения остаются для truly unexpected/runtime ошибок.
+- `on_error` policy правила определяет soft/hard поведение.
+
+### 4. Декларативность dataset-специфики
+- Всё, что можно выразить через YAML, выносим в `datasets/*.yaml`.
+- Dataset-код в Python допустим только как transitional слой или runtime wiring.
+- Именование ops и правил без dataset-специфики (`split_name`, `coalesce`, `default_uuid` и т.д.).
+
+### 5. Проверки sink-контракта
+- `map`: структурная/required проверка (не ломая поток лишними hard-fail).
+- `normalize`: строгая типизация/nullable-check против sink schema.
+- `enrich`: проверяет корректность только в своей зоне ответственности (lookup/generate/secret flow), без дублирования normalize-checks.
+
+### 6. Секреты и match_key
+- `match_key` и `secrets` не принадлежат map-стадии.
+- Формирование `match_key` и обработка секретов живут в enrich-логике.
+- После записи в vault секретные поля очищаются из row; маркер полей хранится в `meta`.
+
+### 7. Reuse-first для новых стадий
+Перед добавлением логики в новую стадию:
+1) проверяем, есть ли это уже в shared DSL kernel (`ops/helpers/diagnostics`);
+2) если это pure transform -> добавляем в `ops`;
+3) если нужен IO/policy -> оставляем в `StageCore`.
+
+### 8. Критерий «не переусложнить»
+Любая новая абстракция допускается только если:
+- уменьшает дублирование в 2+ стадиях;
+- упрощает подключение нового dataset через YAML;
+- не вводит второй параллельный runtime-путь.
+
 ### Минимальные базовые абстракции (псевдокод)
 ```python
 class StageRules(Protocol): ...
@@ -357,13 +415,27 @@ generate:
 
 #### Статус (реализация)
 - Добавлены контракты и runtime-реестр провайдеров:
-  - `connector/domain/ports/transform/providers.py`
+  - `connector/domain/transform/providers/deps.py`
   - `connector/domain/transform/providers/registry.py`
-  - `connector/domain/transform/providers/builtin.py`
 - `EnricherDsl` переведён на `ProviderGateway` (lookup/exists через registry, без `getattr(deps, ...)`).
 - `datasets/employees.enrich.yaml` мигрирован на `exists.provider`.
-- `EmployeesEnrichDependencies` упрощён до resource-container (`cache_repo`, `secret_store`, `dictionaries`) без бизнес-методов `find_*`.
+- `EmployeesEnrichDependencies` заменён на общий `TransformProviderDeps` в доменном слое.
 - Тесты enrich/validation/stage обновлены под provider-подход.
+
+#### Статус-апдейт (p.1 / p.2 / p.4)
+- `p.1` реализован:
+  - введён общий контейнер зависимостей `TransformProviderDeps`;
+  - `EmployeesSpec.build_enrich_deps` возвращает `TransformProviderDeps`;
+  - dataset-специфичный `enrich_deps` модуль удалён.
+- `p.2` реализован:
+  - alias `EmployeesEnricherSpec` удалён;
+  - `EnricherEngine` получает spec через `load_enrich_spec_for_dataset("employees")`.
+- `p.4` реализован:
+  - сборка transform-стадий в `connector/datasets/employees/spec.py` разложена на приватные builder-методы;
+  - выделен единый `_build_dsl_registry()` для устранения дублирования wiring-кода.
+- `p.3` сознательно отложен:
+  - `NormalizedEmployeesRow` оставлен как transitional тип;
+  - удаление запланировано после перехода потребителей на schema/dict-модель end-to-end.
 
 ### Детализация реализации по п.5 (decommission `ValidateStage`)
 Цель: убрать `ValidateStage` как отдельный слой/этап и распределить проверки по стадиям transform.

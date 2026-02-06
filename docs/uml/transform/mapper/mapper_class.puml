@@ -1,0 +1,123 @@
+@startuml
+title Mapper Stage - Class Diagram (Current)
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #e8f1fb
+  BorderColor #b9d2ec
+}
+
+class MapStage {
+  - mapper: SourceMapper
+  - catalog: ErrorCatalog
+  + run(source: Iterable[TransformResult]): Iterable[TransformResult]
+}
+
+interface SourceMapper <<protocol>> {
+  + map(record: SourceRecord): TransformResult[Mapping]
+}
+
+class MapperEngine {
+  - catalog: ErrorCatalog
+  - dsl: MapperDsl
+  - core: MapperCore
+  + from_dataset(dataset, catalog, engine)
+  + map(record): TransformResult[Mapping]
+}
+
+class MapperDsl {
+  - engine: TransformationEngine
+  + compile(spec: MappingSpec, sink_spec: SinkSpec): MapperCore
+}
+
+class MapperCore {
+  - spec: MappingSpec
+  - sink_spec: SinkSpec
+  - engine: TransformationEngine
+  + map_record(record, catalog): TransformResult[Mapping]
+}
+
+class TransformationEngine {
+  + apply(value, calls): EngineResult
+  + with_core_ops(): TransformationEngine
+}
+
+class OperationRegistry {
+  + register(name, op)
+  + get(name)
+}
+
+class MappingSpec {
+  + dataset: str
+  + source_columns: str[*]
+  + mapping: MappingRules
+}
+
+class MappingRules {
+  + rules: MappingRule[*]
+  + meta: MetaRule[*]
+  + schema_: MappingSchema
+}
+
+class MappingRule {
+  + target: str
+  + targets: str[*]
+  + source: str
+  + sources: str[*]
+  + required: bool
+  + ops: OperationCall[*]
+}
+
+class MetaRule {
+  + target: str
+  + source: str
+  + sources: str[*]
+  + ops: OperationCall[*]
+}
+
+class SinkSpec {
+  + dataset: str
+  + fields: SinkFieldSpec[*]
+}
+
+class TransformResult<T> {
+  + record
+  + row
+  + row_ref
+  + meta
+  + errors
+  + warnings
+}
+
+class SourceRecord {
+  + values: dict[str, Any]
+}
+
+MapStage --> SourceMapper
+MapStage --> ErrorCatalog
+SourceMapper <|.. MapperEngine
+MapperEngine --> MapperDsl
+MapperEngine --> MapperCore
+MapperCore --> MappingSpec
+MapperCore --> SinkSpec
+MapperCore ..> TransformationEngine : apply ops
+MapperDsl ..> TransformationEngine
+TransformationEngine --> OperationRegistry
+MappingSpec --> MappingRules
+MappingRules --> MappingRule
+MappingRules --> MetaRule
+MapperEngine ..> TransformResult
+MapperCore ..> SourceRecord
+
+note right of MapperCore
+Business logic:
+1) apply mapping rules
+2) assign targets
+3) validate required/schema
+4) sink-shape validation (warnings)
+5) build meta rules
+end note
+
+@enduml

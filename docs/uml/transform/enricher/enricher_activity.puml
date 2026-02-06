@@ -1,5 +1,5 @@
 @startuml
-title Enricher - Activity Diagram (Current)
+title Enrich Stage - Activity Diagram (Current)
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
@@ -9,79 +9,61 @@ skinparam activity {
 }
 
 start
-:Input TransformResult[T];
+:Input TransformResult[normalized];
 
-if (input.row is None?) then (yes)
+if (row is None?) then (yes)
   :Return input (no-op);
   stop
 endif
 
-if (input.errors present?) then (yes)
-  :Limit operations by run_when_errors;
-endif
-
-:Init local errors/warnings;
-:Init meta.enrich_events & meta.resolve_requests;
-:Init EnricherReport summary;
+:EnrichStage enters diagnostic_boundary(ENRICH);
+:EnricherEngine.enrich(input);
+:EnricherCore initializes builder + summary;
 
 repeat
-  :Take next operation from spec;
-  if (errors present AND op.run_when_errors not allowed?) then (skip)
-    :Skip operation;
-  else (run)
-
-  :Preconditions + required_keys check;
-  if (missing key?) then (yes)
-    :Apply on_missing_key policy\n(SKIP/WARN/ERROR/NEEDS_RESOLVE);
-    if (NEEDS_RESOLVE?) then (yes)
-      :Add ResolveHint to meta;
-    endif
-  else (no)
-    :Fetch candidates from providers\n(sink_cache / dictionaries);
-    if (provider error?) then (yes)
-      :Apply on_provider_error policy;
+  :Take next EnrichmentOperation;
+  if (run_when_errors allows?) then (yes)
+    :Resolve required keys;
+    if (missing key?) then (yes)
+      :Apply strictness.on_missing_key;
     else (no)
-      if (candidates == 0?) then (yes)
-        :Apply on_no_candidates policy;
-      elseif (candidates > 1?) then (yes)
+      :Fetch candidates (provider/generator/compute);
+      if (provider error?) then (yes)
+        :Apply strictness.on_provider_error;
+      elseif (no candidates?) then (yes)
+        :Apply strictness.on_no_candidates;
+      else (has candidates)
         :ConflictResolver.decide;
         if (ambiguous?) then (yes)
           :Outcome NEEDS_RESOLVE;
-          :Add ResolveHint to meta;
+          :Append ResolveHint to meta;
         else (selected)
-          :MergeEngine.merge (by merge_policy + field semantics);
+          :MergeEngine.merge;
           :Emit EnrichEvent;
         endif
-      else (1 candidate)
-        :MergeEngine.merge (by merge_policy + field semantics);
-        :Emit EnrichEvent;
       endif
     endif
-  endif
+  else (skip)
+    :Skip operation;
   endif
 
-  :Update EnricherReport summary;
-  if (stop_on_failed AND outcome=FAILED) then (yes)
-    :Break loop;
+  :Update EnricherReport;
+  if (stop_on_failed?) then (yes)
     break
   endif
-
 repeat while (more operations?)
 
-if (secret_candidates exist AND secret_store enabled?) then (yes)
+if (secret_store exists AND secrets present?) then (yes)
   if (match_key missing?) then (yes)
-    :Emit MATCH_KEY_MISSING (ENRICH error);
+    :Emit MATCH_KEY_MISSING;
   else (no)
     :secret_store.put_many(...);
-    if (store failed?) then (yes)
-      :Emit SECRET_STORE_ERROR;
-    endif
   endif
 endif
 
-:Attach local warnings/errors to result;
-:Attach enrich_summary to meta;
-:Return TransformResult[T] to next stages;
+:Attach summary/events/resolve_requests to meta;
+:Append boundary errors;
+:Return TransformResult[enriched];
 stop
 
 @enduml

@@ -1,5 +1,5 @@
 @startuml
-title Enricher - Class Diagram (Current)
+title Enrich Stage - Class Diagram (Current)
 set namespaceSeparator none
 skinparam backgroundColor white
 skinparam linetype ortho
@@ -9,210 +9,92 @@ skinparam class {
   BorderColor #d9c2a8
 }
 
-class Enricher {
-  - dataset: str
+class EnrichStage {
+  - enricher: EnricherEngine
+  - catalog: ErrorCatalog
+  + run(source): Iterable[TransformResult]
+}
+
+class EnricherEngine {
+  - core: EnricherCore
+  + enrich(result): TransformResult
+}
+
+class EnricherDsl {
+  - registry: OperationRegistry
+  - providers: ProviderGateway
+  + compile(spec: EnrichSpec): EnricherSpec
+}
+
+class EnricherCore {
   - spec: EnricherSpec
-  - deps: EnrichDeps
+  - deps: TransformProviderDeps
   - secret_store: SecretStoreProtocol
   - conflict_resolver: ConflictResolver
   - merge_engine: MergeEngine
-  - summary: EnricherReport
-  + enrich(input: TransformResult[T]): TransformResult[T]
+  + enrich(input): TransformResult
 }
 
-class EnricherSpec {
-  + operations: EnrichmentOperation[*]
-  + key_registry: KeyRegistry
-  + field_semantics: FieldSemanticsMap
-  + source_priorities: SourcePrioritySpec
-  + default_merge_policy: MergePolicy
-  + default_strictness: StrictnessPolicy
-  + authoritative_sources: set
-  + is_fatal_error: callable
-  + stop_on_failed: bool
+class EnrichSpec {
+  + enrich: EnrichRules
+}
+
+class EnrichRules {
+  + match_key: MatchKeySpec
+  + secrets: SecretsSpec
+  + generate: EnrichRule[*]
+  + lookup: EnrichRule[*]
 }
 
 class EnrichmentOperation {
   + name: str
   + op_type: EnrichOperationType
-  + targets: set  ' must be size=1
-  + required_keys: KeyRequirement[*]
-  + providers: CandidateProvider[*]
-  + merge_policy: MergePolicy
-  + strictness: StrictnessPolicy
+  + targets: tuple[str]
   + run_when_errors: RunWhenErrors
+  + strictness: StrictnessPolicy
+  + merge_policy: MergePolicy
 }
 
-enum EnrichOperationType {
-  COMPUTE
-  FILL_MISSING
-  LOOKUP
-  GENERATE
-  MEMBERSHIP
+class ProviderGateway {
+  + lookup(name, deps, key, args): list[dict]
+  + exists(name, deps, value, args): dict|None
+  + with_defaults(): ProviderGateway
 }
 
-enum RunWhenErrors {
-  NEVER
-  ONLY_NON_FATAL
-  ALWAYS
+class TransformProviderDeps {
+  + cache_repo: CacheRepositoryProtocol
+  + dictionaries: DictionaryProviderProtocol
 }
 
-interface CandidateProvider {
-  + name: str
-  + fetch(ctx, result, deps, key_values): CandidateValue[*]
-}
+class OperationRegistry
+class SecretStoreProtocol <<protocol>>
+class CandidateValue
+class OperationReport
+class EnricherReport
+class TransformResult<T>
 
-class SinkCacheProvider
-class DictionaryProvider
+EnrichStage --> EnricherEngine
+EnricherEngine --> EnricherCore
+EnricherEngine ..> EnricherDsl : compile once
+EnricherDsl --> EnrichSpec
+EnricherDsl --> OperationRegistry
+EnricherDsl --> ProviderGateway
+EnricherDsl --> EnrichmentOperation
+EnricherCore --> EnricherSpec
+EnricherCore --> TransformProviderDeps
+EnricherCore --> SecretStoreProtocol
+EnricherCore --> ConflictResolver
+EnricherCore --> MergeEngine
+EnricherCore --> EnricherReport
+EnricherCore ..> CandidateValue
+EnricherCore ..> OperationReport
+EnricherCore ..> TransformResult
 
-CandidateProvider <|.. SinkCacheProvider
-CandidateProvider <|.. DictionaryProvider
+note right of EnricherDsl
+DSL role:
+- compile EnrichSpec to EnricherSpec
+- build provider-backed operations
+- wire match_key/secrets policies
+end note
 
-class CandidateValue {
-  + field: str
-  + value
-  + source: str
-  + priority: int | None  ' higher = better
-  + confidence: float
-  + evidence: dict
-}
-
-class ConflictResolver {
-  + decide(candidates, policy): CandidateDecision
-}
-
-class CandidateDecision {
-  + status: str  ' SELECTED | AMBIGUOUS | NONE | ERROR
-  + selected: CandidateValue
-  + candidates: CandidateValue[*]
-  + reason: str
-}
-
-class MergeEngine {
-  + merge(field, current, decision, policy, semantics): MergeResult
-}
-
-class MergePolicy {
-  + mode: str  ' fill_only_if_empty | recompute_always | override_if_empty | override_if_authoritative | never_override
-}
-
-class FieldSemanticsMap {
-  + semantics_by_field: dict
-}
-
-class StrictnessPolicy {
-  + on_missing_key: str     ' SKIP | WARN | ERROR | NEEDS_RESOLVE
-  + on_no_candidates: str   ' SKIP | WARN | ERROR
-  + on_ambiguous: str       ' NEEDS_RESOLVE | WARN | ERROR
-  + on_provider_error: str  ' SKIP | WARN | ERROR
-}
-
-class KeyRegistry {
-  + builders: dict
-  + resolve(key, result)
-}
-
-class EnricherReport {
-  + operations_total: int
-  + outcomes: dict
-  + updated_fields: int
-  + record(report)
-  + as_dict()
-}
-
-class OperationReport {
-  + op: str
-  + outcome: EnrichOutcome
-  + events: EnrichEvent[*]
-  + resolve_hints: ResolveHint[*]
-  + warnings: ValidationErrorItem[*]
-  + errors: ValidationErrorItem[*]
-}
-
-enum EnrichOutcome {
-  APPLIED
-  SKIPPED
-  WARNED
-  FAILED
-  NEEDS_RESOLVE
-}
-
-class EnrichEvent {
-  + op: str
-  + field: str
-  + before
-  + after
-  + source: str
-  + decision: str
-  + outcome: str
-}
-
-class ResolveHint {
-  + field: str
-  + lookup_key: str
-  + reason: str
-  + candidates: list
-  + provider: str
-  + suggested_policy: str
-}
-
-class EnrichContext {
-  + run_id: str
-  + dataset: str
-  + now: datetime
-  + as_of: datetime
-}
-
-class EnrichDeps {
-  + sink_cache: SinkCacheLookupPort
-  + dictionaries: DictionaryProviderPort
-  + clock: ClockPort
-}
-
-interface SinkCacheLookupPort <<protocol>> {
-  + lookup(dataset, key_name, key_value): CandidateValue[*]
-  + get(dataset, target_id): dict
-}
-
-interface DictionaryProviderPort <<protocol>> {
-  + lookup(dict_name, key, at): list
-  + contains(dict_name, value, at): bool
-  + canonicalize(dict_name, value, at): list
-}
-
-interface SecretStoreProtocol <<protocol>> {
-  + put_many(dataset, match_key, secrets, run_id)
-}
-
-class TransformResult<T> {
-  + record
-  + row
-  + row_ref
-  + match_key
-  + meta
-  + errors
-  + warnings
-  + secret_candidates
-}
-
-Enricher --> EnricherSpec
-Enricher --> EnrichDeps
-Enricher --> ConflictResolver
-Enricher --> MergeEngine
-Enricher --> SecretStoreProtocol
-Enricher --> EnricherReport
-Enricher ..> EnrichmentOperation
-EnrichmentOperation --> CandidateProvider
-ConflictResolver --> CandidateDecision
-CandidateDecision --> CandidateValue
-OperationReport --> EnrichEvent
-OperationReport --> ResolveHint
-OperationReport --> EnrichOutcome
-EnricherSpec --> KeyRegistry
-EnricherSpec --> StrictnessPolicy
-EnricherSpec --> MergePolicy
-EnrichDeps --> SinkCacheLookupPort
-EnrichDeps --> DictionaryProviderPort
-
-TransformResult <|-- "TransformResult[EnrichedRow]"
 @enduml

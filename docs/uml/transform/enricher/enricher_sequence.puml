@@ -1,5 +1,5 @@
 @startuml
-title Enricher - Sequence Diagram (Current)
+title Enrich Stage - Sequence Diagram (Current)
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
@@ -9,72 +9,52 @@ skinparam sequence {
 }
 
 actor Caller
-participant Enricher
-participant EnricherSpec
-participant "EnrichmentOperation" as Op
-participant "CandidateProvider" as Provider
-participant SinkCache
-participant Dictionaries
+participant EnrichStage
+participant EnricherEngine
+participant EnricherCore
+participant EnricherDsl
+participant ProviderGateway
 participant ConflictResolver
 participant MergeEngine
 participant SecretStore
 
-Caller -> Enricher: enrich(TransformResult[T])
-Enricher -> Enricher: if input.errors or row is None\nthen return input
+Caller -> EnrichStage: run(stream)
+loop each input result
+  EnrichStage -> EnrichStage: diagnostic_boundary(ENRICH)
+  EnrichStage -> EnricherEngine: enrich(result)
+  EnricherEngine -> EnricherCore: enrich(result)
 
-Enricher -> EnricherSpec: get operations
-loop for each operation
-  Enricher -> Enricher: check run_when_errors
-  Enricher -> Op: execute(ctx, result, deps)
-  Op -> Op: check required_keys / preconditions
-
-  alt missing_key
-    Op -> Op: outcome by strictness.on_missing_key\n(SKIP/WARN/ERROR/NEEDS_RESOLVE)
-  else
-    loop for each provider
-      Op -> Provider: fetch(ctx, result, deps)
-      alt provider = sink_cache
-        Provider -> SinkCache: lookup(key)
-        SinkCache --> Provider: candidates[0..N]
-      else provider = dictionaries
-        Provider -> Dictionaries: lookup(dict, key, at/as_of)
-        Dictionaries --> Provider: candidates[0..N]
-      end
-      Provider --> Op: CandidateValue[*]
+  loop each EnrichmentOperation
+    EnricherCore -> EnricherCore: check run_when_errors + required keys
+    alt operation uses lookup/exists
+      EnricherCore -> ProviderGateway: lookup/exists(provider.name, args)
+      ProviderGateway --> EnricherCore: candidates/existence
     end
-
-    Op -> ConflictResolver: decide(candidates, conflict_policy)
-
-    alt decision = SELECTED
-      Op -> MergeEngine: merge(field, current, decision, merge_policy, semantics)
-      MergeEngine --> Op: merged row + merge decision
-      Op -> Op: emit EnrichEvent(APPLIED/SKIPPED)
-    else decision = NONE
-      Op -> Op: outcome by strictness.on_no_candidates
-    else decision = AMBIGUOUS
-      Op -> Op: outcome NEEDS_RESOLVE\n+ create ResolveHint
-    else decision = ERROR
-      Op -> Op: outcome by strictness.on_provider_error
+    EnricherCore -> ConflictResolver: decide(candidates)
+    alt selected
+      EnricherCore -> MergeEngine: merge(field, candidate, policy)
+      MergeEngine --> EnricherCore: merged value
+      EnricherCore -> EnricherCore: append EnrichEvent
+    else ambiguous
+      EnricherCore -> EnricherCore: append ResolveHint
+    else failed
+      EnricherCore -> EnricherCore: append diagnostics by strictness
     end
   end
 
-  Op --> Enricher: OperationReport(outcome, events, hints, warnings/errors)
-  Enricher -> Enricher: append events/hints into meta\nappend warnings/errors
-  Enricher -> Enricher: summary.record(outcome)
-  Enricher -> Enricher: if stop_on_failed and outcome==FAILED -> break
-end
-
-alt secret_candidates exist and SecretStore available
-  Enricher -> Enricher: require match_key
-  alt match_key missing
-    Enricher -> Enricher: emit MATCH_KEY_MISSING (ENRICH error)
-  else
-    Enricher -> SecretStore: put_many(dataset, match_key, secrets, run_id)
-    alt store error
-      Enricher -> Enricher: emit SECRET_STORE_ERROR (ENRICH error/warn)
-    end
+  alt secrets present and store configured
+    EnricherCore -> SecretStore: put_many(dataset, match_key, secrets)
   end
+
+  EnricherCore --> EnricherEngine: TransformResult + meta summary
+  EnricherEngine --> EnrichStage: enriched result
+  EnrichStage --> Caller: TransformResult
 end
 
-Enricher --> Caller: TransformResult[T] (row + meta + diagnostics)
+note right of EnricherDsl
+Compile time path:
+EnrichSpec + ProviderGateway + registry
+-> EnricherSpec for EnricherCore
+end note
+
 @enduml

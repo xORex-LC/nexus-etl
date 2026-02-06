@@ -1,0 +1,53 @@
+@startuml
+title Mapper Stage - Sequence Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam sequence {
+  ArrowColor #4b5563
+  LifeLineBorderColor #9ca3af
+}
+
+actor Caller
+participant MapStage
+participant MapperEngine
+participant MapperDsl
+participant MapperCore
+participant TransformationEngine
+participant OperationRegistry
+participant SinkSpec
+
+Caller -> MapStage: run(stream)
+loop for each collected
+  alt collected has errors
+    MapStage -> MapStage: set row=None, pass through
+  else valid input
+    MapStage -> MapStage: diagnostic_boundary(MAP)
+    MapStage -> MapperEngine: map(record)
+    MapperEngine -> MapperCore: map_record(record, catalog)
+    loop each MappingRule
+      MapperCore -> MapperCore: resolve source/sources
+      alt rule.ops exists
+        MapperCore -> TransformationEngine: apply(value, ops)
+        TransformationEngine -> OperationRegistry: resolve op handlers
+        OperationRegistry --> TransformationEngine: operation callables
+        TransformationEngine --> MapperCore: value + issues
+      end
+      MapperCore -> MapperCore: assign targets / append issues
+    end
+    MapperCore -> MapperCore: validate schema(required)
+    MapperCore -> SinkSpec: validate sink-shape (warn)
+    MapperCore -> MapperCore: apply meta rules
+    MapperCore --> MapperEngine: TransformResult[mapped]
+    MapperEngine --> MapStage: mapped result
+    MapStage -> MapStage: merge boundary + upstream diagnostics
+  end
+  MapStage --> Caller: TransformResult
+end
+
+note right of MapperDsl
+MapperDsl compiles once:
+MappingSpec + TransformationEngine -> MapperCore
+end note
+
+@enduml

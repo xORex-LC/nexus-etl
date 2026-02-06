@@ -1,0 +1,33 @@
+@startuml
+title Normalize Stage - State Machine Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #eaf8e6
+  BorderColor #b7ddb0
+}
+
+[*] --> Input
+
+Input --> UpstreamBlocked : collected.errors exists
+Input --> Prepare : no upstream errors
+
+Prepare --> NoRow : source.row is None
+Prepare --> ApplyRules : source.row exists
+
+ApplyRules --> SinkValidation
+SinkValidation --> Failed : normalize/sink errors
+SinkValidation --> Normalized : no errors
+
+NoRow --> Output
+Failed --> Output
+Normalized --> Output
+UpstreamBlocked --> Output
+Output --> [*]
+
+note right of SinkValidation
+Unlike MAP, sink validation here is strict\n(check_types=True).
+end note
+
+@enduml

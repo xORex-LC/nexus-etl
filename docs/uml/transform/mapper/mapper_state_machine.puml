@@ -1,0 +1,35 @@
+@startuml
+title Mapper Stage - State Machine Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #e8f1fb
+  BorderColor #b9d2ec
+}
+
+[*] --> Input
+
+Input --> UpstreamBlocked : collected.errors exists
+Input --> Mapping : valid collected record
+
+Mapping --> RuleEval
+RuleEval --> RuleEval : next rule
+RuleEval --> SchemaCheck : all rules processed
+
+SchemaCheck --> SinkCheck
+SinkCheck --> MetaRules : no hard errors
+SinkCheck --> Failed : hard errors
+
+MetaRules --> Mapped
+Failed --> Output
+Mapped --> Output
+UpstreamBlocked --> Output
+
+Output --> [*]
+
+note right of SinkCheck
+Sink shape validation is warning-level\nfor MAP (non-fatal by design).
+end note
+
+@enduml

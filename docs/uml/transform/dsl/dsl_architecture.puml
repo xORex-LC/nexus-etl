@@ -1,73 +1,80 @@
 @startuml
-title DSL Stage Architecture (High-Level)
+title DSL Stage Architecture (Current + Target)
 
 skinparam componentStyle rectangle
+skinparam defaultFontName Arial
 
-package "DSL Layer" {
-  [StageRules] as Rules
-  [StageDsl] as Dsl
+package "Runtime Pipeline" {
+  [MapStage] as MapStage
+  [NormalizeStage] as NormalizeStage
+  [EnrichStage] as EnrichStage
+  [MatchStage] as MatchStage
+  [ResolveStage] as ResolveStage
+}
+
+package "Stage DSL Layer" {
+  [MappingSpec] as MappingSpec
+  [NormalizeSpec] as NormalizeSpec
+  [EnrichSpec] as EnrichSpec
+
+  [MapperDsl] as MapperDsl
+  [NormalizerDsl] as NormalizerDsl
+  [EnricherDsl] as EnricherDsl
 }
 
 package "Stage Engine Layer" {
-  [StageEngine] as Engine
+  [MapperEngine] as MapperEngine
+  [NormalizerEngine] as NormalizerEngine
+  [EnricherEngine] as EnricherEngine
 }
 
-package "Core Layer" {
-  [StageCore] as Core
+package "Stage Core Layer" {
+  [MapperCore] as MapperCore
+  [NormalizerCore] as NormalizerCore
+  [EnricherCore] as EnricherCore
+}
+
+package "Shared DSL Kernel" {
   [TransformationEngine] as TEngine
   [OperationRegistry] as Registry
+  [ProviderGateway] as ProviderGateway
 }
 
-package "Data Model" {
-  [TransformableRecord] as Record
-  [TransformResult] as Result
+package "Dependencies" {
+  [TransformProviderDeps] as ProviderDeps
+  [Cache/Dictionaries/SecretStore] as ExternalDeps
 }
 
-Rules --> Dsl : compile()
-Dsl --> Core : builds
-Engine --> Core : execute()
-Engine --> Record
-Core --> Record : read/evolve
-Core --> Result : diagnostics
+MapStage --> MapperEngine
+NormalizeStage --> NormalizerEngine
+EnrichStage --> EnricherEngine
 
-Core ..> TEngine : apply ops (optional)
+MapperEngine --> MapperCore
+NormalizerEngine --> NormalizerCore
+EnricherEngine --> EnricherCore
+
+MapperEngine ..> MapperDsl : compile spec
+NormalizerEngine ..> NormalizerDsl : compile spec
+EnricherEngine ..> EnricherDsl : compile spec
+
+MapperDsl --> MappingSpec
+NormalizerDsl --> NormalizeSpec
+EnricherDsl --> EnrichSpec
+
+MapperCore ..> TEngine : apply ops
+NormalizerCore ..> TEngine : apply ops
+EnricherDsl ..> TEngine : ops in DSL rules
 TEngine --> Registry
 
-note right of Rules
-MappingRules
-NormalizeRules
-EnrichRules
-ValidateRules
-MatchRules
-ResolveRules
-end note
+EnricherDsl --> ProviderGateway
+EnricherCore --> ProviderDeps
+ProviderDeps --> ExternalDeps
+ProviderGateway --> ExternalDeps
 
-note right of Dsl
-MapperDsl
-NormalizerDsl
-EnricherDsl
-ValidatorDsl
-MatchDsl
-ResolveDsl
-end note
-
-note right of Core
-MapperCore
-NormalizerCore
-EnricherCore
-ValidatorCore
-MatchCore
-ResolveCore
-TEngine usage is optional
-end note
-
-note right of Engine
-MapperEngine
-NormalizerEngine
-EnricherEngine
-ValidatorEngine
-MatchEngine
-ResolveEngine
+note right of MatchStage
+Current state:
+Match/Resolve run as transform stages,
+DSL migration planned separately.
 end note
 
 @enduml

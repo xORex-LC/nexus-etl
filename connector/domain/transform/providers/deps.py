@@ -1,7 +1,11 @@
+"""
+Назначение:
+    Унифицированный runtime-контейнер зависимостей для transform-стадий.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from connector.domain.ports.cache.repository import CacheRepositoryProtocol
 from connector.domain.ports.secrets.provider import SecretStoreProtocol
@@ -9,13 +13,13 @@ from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 
 
 @dataclass(frozen=True)
-class EmployeesEnrichDependencies:
+class TransformProviderDeps:
     """
     Назначение:
-        Набор зависимостей enrich для employees.
+        Общие зависимости, которые могут использовать lookup/exists провайдеры.
     """
 
-    conn: Any
     cache_repo: CacheRepositoryProtocol
     secret_store: SecretStoreProtocol | None = None
     dictionaries: DictionaryProviderPort | None = None
+
