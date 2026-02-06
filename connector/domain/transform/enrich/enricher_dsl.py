@@ -25,7 +25,7 @@ from connector.domain.transform.dsl.specs import EnrichRule, EnrichSpec, MatchKe
 from connector.domain.transform.dsl.helpers import apply_ops
 from connector.domain.transform.common.values import read_value_path
 from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
-from connector.domain.transform.providers import ProviderRegistry, register_builtin_providers
+from connector.domain.transform.providers import ProviderGateway
 
 
 @dataclass(frozen=True)
@@ -48,15 +48,14 @@ class EnricherDsl:
         self,
         *,
         registry: OperationRegistry | None = None,
-        providers: ProviderRegistry | None = None,
+        providers: ProviderGateway | None = None,
         options: EnrichDslBuildOptions | None = None,
     ) -> None:
         if registry is None:
             registry = OperationRegistry()
             register_core_ops(registry)
         if providers is None:
-            providers = ProviderRegistry()
-            register_builtin_providers(providers)
+            providers = ProviderGateway.with_defaults()
         self.registry = registry
         self.providers = providers
         self.options = options
@@ -74,7 +73,7 @@ def build_enricher_spec_from_dsl(
     enrich_spec: EnrichSpec,
     *,
     registry: OperationRegistry,
-    providers: ProviderRegistry | None = None,
+    providers: ProviderGateway | None = None,
     options: EnrichDslBuildOptions | None = None,
 ) -> EnricherSpec:
     """
@@ -85,8 +84,7 @@ def build_enricher_spec_from_dsl(
     if options is None:
         options = EnrichDslBuildOptions()
     if providers is None:
-        providers = ProviderRegistry()
-        register_builtin_providers(providers)
+        providers = ProviderGateway.with_defaults()
     engine = TransformationEngine(registry)
     operations: list[EnrichmentOperation] = []
 
@@ -147,7 +145,7 @@ def _build_generate_operation(
     rule: EnrichRule,
     engine: TransformationEngine,
     secrets_spec: SecretsSpec,
-    providers: ProviderRegistry,
+    providers: ProviderGateway,
 ) -> EnrichmentOperation:
     target = rule.target
     if target in secrets_spec.fields:
@@ -197,7 +195,7 @@ class _DslLookupProvider:
         Провайдер lookup-кандидатов, построенный из DSL-правила.
     """
 
-    def __init__(self, rule: EnrichRule, engine: TransformationEngine, providers: ProviderRegistry) -> None:
+    def __init__(self, rule: EnrichRule, engine: TransformationEngine, providers: ProviderGateway) -> None:
         self.rule = rule
         self.engine = engine
         self.providers = providers
@@ -257,7 +255,7 @@ def _read_rule_value(row: Any, rule: EnrichRule) -> Any:
     return None
 
 
-def _build_exists(rule: EnrichRule, providers: ProviderRegistry):
+def _build_exists(rule: EnrichRule, providers: ProviderGateway):
     if not rule.exists:
         return None
 
@@ -295,7 +293,7 @@ def _build_allow_if(rule: EnrichRule, engine: TransformationEngine):
 def _build_lookup_operation(
     rule: EnrichRule,
     engine: TransformationEngine,
-    providers: ProviderRegistry,
+    providers: ProviderGateway,
 ) -> EnrichmentOperation:
     if not rule.provider:
         raise ValueError("lookup rule requires provider")

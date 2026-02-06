@@ -296,13 +296,13 @@ validate:
 #### 2. Целевая модель
 - `deps` = только ресурсы (`cache_repo`, `dictionaries`, `secret_store`, и т.п.), без бизнес-методов lookup.
 - DSL указывает не метод `deps`, а `provider` + аргументы.
-- Поиск/проверка существования идут через `ProviderRegistry`.
+- Поиск/проверка существования идут через `ProviderGateway`.
 
 #### 3. Архитектурные места (без overengineering)
 - `connector/domain/ports/transform/providers.py`
   - контракты: `ProviderRequest`, `ProviderAdapter` (Protocol).
 - `connector/domain/transform/providers/`
-  - `registry.py`: `ProviderRegistry`.
+  - `registry.py`: `ProviderGateway`.
   - `cache_provider.py`: `cache.by_field`, `cache.exists_by_field`.
   - `dictionary_provider.py`: `dictionary.by_key`.
 - `connector/domain/transform/enrich/enricher_dsl.py`
@@ -340,7 +340,7 @@ generate:
 ```
 
 #### 5. Пошаговая миграция
-1) Ввести provider-контракты и `ProviderRegistry`.
+1) Ввести provider-контракты и `ProviderGateway`.
 2) Реализовать базовые адаптеры: `cache.by_field`, `cache.exists_by_field`, `dictionary.by_key`.
 3) Расширить DSL-модели (`ProviderRef`/`ExistsRef`) и валидатор загрузки.
 4) Перевести `EnricherDSL` на provider-вызовы через registry.
@@ -351,7 +351,7 @@ generate:
 #### 6. Критерии завершения по п.4
 - В YAML нет ссылок на методы `deps`.
 - В `enrich_deps` нет бизнес-методов lookup/exists.
-- Lookup/exists выполняются только через `ProviderRegistry`.
+- Lookup/exists выполняются только через `ProviderGateway`.
 - Те же провайдеры доступны для других стадий (`match/resolve`) без копирования логики.
 - Поведение отчётов и диагностики не изменилось (только источник кандидатов).
 
@@ -360,7 +360,7 @@ generate:
   - `connector/domain/ports/transform/providers.py`
   - `connector/domain/transform/providers/registry.py`
   - `connector/domain/transform/providers/builtin.py`
-- `EnricherDsl` переведён на `ProviderRegistry` (lookup/exists через registry, без `getattr(deps, ...)`).
+- `EnricherDsl` переведён на `ProviderGateway` (lookup/exists через registry, без `getattr(deps, ...)`).
 - `datasets/employees.enrich.yaml` мигрирован на `exists.provider`.
 - `EmployeesEnrichDependencies` упрощён до resource-container (`cache_repo`, `secret_store`, `dictionaries`) без бизнес-методов `find_*`.
 - Тесты enrich/validation/stage обновлены под provider-подход.
