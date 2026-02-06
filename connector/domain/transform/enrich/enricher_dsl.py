@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from connector.domain.transform.enrich.models import (
     CandidateValue,
@@ -22,6 +22,8 @@ from connector.domain.transform.dsl.engine import TransformationEngine
 from connector.domain.transform.dsl.issues import DslSeverity
 from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.transform.dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
+from connector.domain.transform.dsl.helpers import apply_ops
+from connector.domain.transform.common.values import read_value_path
 from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
 
 
@@ -106,7 +108,7 @@ def _build_match_key_operation(match_key_spec: MatchKeySpec) -> EnrichmentOperat
             return None
         parts: list[str | None] = []
         for field in match_key_spec.fields:
-            parts.append(_read_row_value(row, field))
+            parts.append(read_value_path(row, field))
         try:
             match_key = build_delimited_match_key(parts, strict=match_key_spec.strict)
         except MatchKeyError:
@@ -163,10 +165,10 @@ def _build_rule_generator(rule: EnrichRule, engine: TransformationEngine):
             return None
         value = _read_rule_value(row, rule)
         if rule.ops:
-            outcome = engine.apply(value, rule.ops)
-            if any(issue.severity == DslSeverity.ERROR for issue in outcome.issues):
+            resolved, op_issues = apply_ops(engine, value, rule.ops)
+            if any(issue.severity == DslSeverity.ERROR for issue in op_issues):
                 return None
-            return outcome.value
+            return resolved
         return value
 
     return _generator
@@ -196,10 +198,10 @@ class _DslLookupProvider:
 
         value = _read_rule_value(row, self.rule)
         if self.rule.ops:
-            outcome = self.engine.apply(value, self.rule.ops)
-            if any(issue.severity == DslSeverity.ERROR for issue in outcome.issues):
+            resolved, op_issues = apply_ops(self.engine, value, self.rule.ops)
+            if any(issue.severity == DslSeverity.ERROR for issue in op_issues):
                 raise ValueError("lookup key ops failed")
-            value = outcome.value
+            value = resolved
 
         if value is None or value == "":
             return []
@@ -214,7 +216,7 @@ class _DslLookupProvider:
 
         result_values = []
         for candidate in candidates:
-            resolved = _read_value_path(candidate, self.rule.value_path or self.rule.target)
+            resolved = read_value_path(candidate, self.rule.value_path or self.rule.target)
             result_values.append(
                 {
                     "field": self.rule.target,
@@ -235,32 +237,10 @@ class _DslLookupProvider:
 
 def _read_rule_value(row: Any, rule: EnrichRule) -> Any:
     if rule.sources:
-        return [_read_row_value(row, name) for name in rule.sources]
+        return [read_value_path(row, name) for name in rule.sources]
     if rule.source:
-        return _read_row_value(row, rule.source)
+        return read_value_path(row, rule.source)
     return None
-
-
-def _read_row_value(row: Any, name: str | None) -> Any:
-    if name is None:
-        return None
-    if isinstance(row, Mapping):
-        return row.get(name)
-    return getattr(row, name, None)
-
-
-def _read_value_path(candidate: Any, path: str | None) -> Any:
-    if path is None:
-        return None
-    current = candidate
-    for part in path.split("."):
-        if current is None:
-            return None
-        if isinstance(current, Mapping):
-            current = current.get(part)
-        else:
-            current = getattr(current, part, None)
-    return current
 
 
 def _build_exists(rule: EnrichRule):

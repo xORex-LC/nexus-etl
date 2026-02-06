@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from connector.domain.transform.dsl.engine import TransformationEngine
 from connector.domain.transform.dsl.registry import OperationRegistry
-from connector.domain.transform.dsl.specs import MappingSpec
+from connector.domain.transform.dsl.specs import MappingSpec, SinkSpec
 from connector.domain.transform.mapping.mapper_core import MapperCore
 
 
@@ -30,5 +30,5 @@ class MapperDsl:
                 engine = TransformationEngine(registry)
         self.engine = engine
 
-    def compile(self, spec: MappingSpec) -> MapperCore:
-        return MapperCore(spec, self.engine)
+    def compile(self, spec: MappingSpec, *, sink_spec: SinkSpec | None = None) -> MapperCore:
+        return MapperCore(spec, self.engine, sink_spec=sink_spec)

@@ -5,16 +5,19 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
-from typing import Any, Callable, Generic, Mapping, TypeVar
+from dataclasses import is_dataclass
+from typing import Any, Callable, Generic, TypeVar
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.dsl.engine import TransformationEngine
-from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
-from connector.domain.transform.dsl.specs import NormalizeRule, NormalizeSpec
+from connector.domain.transform.dsl.issues import DslIssue
+from connector.domain.transform.dsl.diagnostics import append_dsl_issue
+from connector.domain.transform.dsl.helpers import apply_ops
+from connector.domain.transform.common.values import to_mapping
+from connector.domain.transform.dsl.specs import NormalizeRule, NormalizeSpec, SinkSpec
+from connector.domain.transform.common.sink_schema import validate_sink_row
 
 T = TypeVar("T")
 RowBuilder = Callable[[dict[str, Any]], T]
@@ -32,12 +35,14 @@ class NormalizerCore(Generic[T]):
         *,
         engine: TransformationEngine,
         catalog: ErrorCatalog,
+        sink_spec: SinkSpec | None = None,
         row_builder: RowBuilder[T] | None = None,
     ) -> None:
         self.spec = spec
         self.catalog = catalog
         self.row_builder = row_builder
         self.engine = engine
+        self.sink_spec = sink_spec
 
     def normalize(self, source: TransformResult[Any]) -> TransformResult[T]:
         """
@@ -56,7 +61,7 @@ class NormalizerCore(Generic[T]):
                 warnings=source.warnings,
             )
 
-        source_values = _to_mapping(source.row)
+        source_values = to_mapping(source.row)
         if source_values is None:
             return TransformResult(
                 record=source.record,
@@ -77,10 +82,15 @@ class NormalizerCore(Generic[T]):
             value = normalized_values.get(rule.field)
             if not rule.ops:
                 continue
-            result = self.engine.apply(value, rule.ops)
-            for issue in result.issues:
+            resolved, op_issues = apply_ops(self.engine, value, rule.ops)
+            for issue in op_issues:
                 self._append_issue(errors, warnings, rule, source, issue)
-            normalized_values[rule.field] = result.value
+            normalized_values[rule.field] = resolved
+
+        if self.sink_spec is not None:
+            issues = validate_sink_row(normalized_values, self.sink_spec, check_types=True)
+            for issue in issues:
+                self._append_issue(errors, warnings, rule=None, source=source, issue=issue)
 
         row: T | None
         if errors:
@@ -108,44 +118,16 @@ class NormalizerCore(Generic[T]):
         self,
         errors: list[DiagnosticItem],
         warnings: list[DiagnosticItem],
-        rule: NormalizeRule,
+        rule: NormalizeRule | None,
         source: TransformResult[Any],
         issue: DslIssue,
     ) -> None:
-        as_warning = issue.severity == DslSeverity.WARNING
-        if rule.on_error == "warn":
-            as_warning = True
-        if as_warning:
-            warnings.append(
-                diag_warning(
-                    stage=DiagnosticStage.NORMALIZE,
-                    code=issue.code,
-                    field=rule.field,
-                    message=issue.message,
-                    details=issue.details,
-                    record_ref=source.row_ref,
-                    catalog=self.catalog,
-                )
-            )
-            return
-        errors.append(
-            diag_error(
-                stage=DiagnosticStage.NORMALIZE,
-                code=issue.code,
-                field=rule.field,
-                message=issue.message,
-                details=issue.details,
-                record_ref=source.row_ref,
-                catalog=self.catalog,
-            )
+        append_dsl_issue(
+            errors=errors,
+            warnings=warnings,
+            stage=DiagnosticStage.NORMALIZE,
+            issue=issue,
+            catalog=self.catalog,
+            record_ref=source.row_ref,
+            on_error=rule.on_error if rule else "error",
         )
-
-
-def _to_mapping(value: Any) -> Mapping[str, Any] | None:
-    if value is None:
-        return None
-    if isinstance(value, Mapping):
-        return value
-    if is_dataclass(value):
-        return asdict(value)
-    return value.__dict__

@@ -1,0 +1,66 @@
+dataset: employees
+sink:
+  fields:
+    - name: email
+      type: string
+      required: true
+      target: mail
+    - name: last_name
+      type: string
+      required: true
+      target: lastName
+    - name: first_name
+      type: string
+      required: true
+      target: firstName
+    - name: middle_name
+      type: string
+      required: true
+      target: middleName
+    - name: is_logon_disable
+      type: bool
+      required: true
+      target: isLogonDisabled
+    - name: user_name
+      type: string
+      required: true
+      target: userName
+    - name: phone
+      type: string
+      required: true
+      target: phone
+    - name: password
+      type: string
+      required: true
+      target: password
+    - name: personnel_number
+      type: string
+      required: true
+      target: personnelNumber
+    - name: manager_id
+      type: int
+      required: true
+      nullable: true
+      target: managerId
+    - name: organization_id
+      type: int
+      required: true
+      target: organization_id
+    - name: position
+      type: string
+      required: true
+      target: position
+    - name: avatar_id
+      type: string
+      required: true
+      nullable: true
+      target: avatarId
+    - name: usr_org_tab_num
+      type: string
+      required: true
+      target: usrOrgTabNum
+  system_fields:
+    - name: target_id
+      type: string
+      required: true
+      generated: true

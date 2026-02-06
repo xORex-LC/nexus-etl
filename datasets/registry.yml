@@ -6,3 +6,4 @@ datasets:
     validate: employees.validate.yaml
     match: employees.match.yaml
     resolve: employees.resolve.yaml
+    sink: employees.sink.yaml

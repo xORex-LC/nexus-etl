@@ -77,6 +77,53 @@ class StageEngine(Generic[R, C]):
 - EnricherCore (apply ops для allow_if/compute/lookup keys)
 Сайд‑эффекты и политики остаются в StageCore, **не в TransformationEngine**.
 
+## Общие helpers/обвязки DSL (минимальный рефактор)
+Цель: убрать дублирование между Mapper/Normalize/Enrich, **без изменения логики**.
+
+### Общие функции/классы (кандидаты на вынос)
+1) **apply_ops(engine, value, ops) -> (value, issues)**  
+   Используется во всех DSL‑стадиях при применении операций.
+2) **read_value(record_values, row_values, path)**  
+   Унифицированное чтение `record.*` / `row.*` / plain‑fields.
+3) **read_value_path(obj, path)**  
+   Доступ к вложенным полям (для lookup/value_path).
+4) **to_mapping(value)**  
+   Приведение dataclass/obj к mapping для нормализации.
+5) **append_dsl_issue(...) / append_dsl_issues(...)**  
+   Преобразование `DslIssue` → `DiagnosticItem` с учётом `on_error`.
+
+### Где живут сейчас (для ориентира)
+- Mapper: `mapper_core.py` (`_resolve_rule_value`, `_read_value`, `_append_issue`)
+- Normalize: `normalizer_core.py` (`_append_issue`, `_to_mapping`)
+- Enrich: `enricher_dsl.py` (`_read_row_value`, `_read_value_path`, ops apply)
+
+### Использование дальше
+Эти helpers **обязательны** для DSL‑стадий (mapping/normalize/enrich/validate/match/resolve).  
+Для стадий без DSL‑ops — **опционально** (но желательно ради единого поведения диагностик).
+
+## Общие helpers/обвязки DSL (минимальный рефактор)
+Цель: убрать дублирование между Mapper/Normalize/Enrich, **без изменения логики**.
+
+### Общие функции/классы (кандидаты на вынос)
+1) **apply_ops(engine, value, ops) -> (value, issues)**  
+   Используется во всех DSL‑стадиях при применении операций.
+2) **read_value(record_values, row_values, path)**  
+   Унифицированное чтение `record.*` / `row.*` / plain‑fields.
+3) **read_value_path(obj, path)**  
+   Доступ к вложенным полям (для lookup/value_path).
+4) **to_mapping(value)**  
+   Приведение dataclass/obj к mapping для нормализации.
+5) **append_dsl_issue(...) / append_dsl_issues(...)**  
+   Преобразование `DslIssue` → `DiagnosticItem` с учётом `on_error`.
+
+### Где живут сейчас (для ориентира)
+- Mapper: `mapper_core.py` (`_resolve_rule_value`, `_read_value`, `_append_issue`)
+- Normalize: `normalizer_core.py` (`_append_issue`, `_to_mapping`)
+- Enrich: `enricher_dsl.py` (`_read_row_value`, `_read_value_path`, ops apply)
+
+### Использование дальше
+Эти helpers **обязательны** для DSL‑стадий (mapping/normalize/enrich/validate/match/resolve).  
+
 ### Что меняется архитектурно
 - Выравниваем naming: `StageRules / StageDsl / StageEngine / StageCore`
 - DSL‑слой становится унифицированным и предсказуемым для всех стадий
