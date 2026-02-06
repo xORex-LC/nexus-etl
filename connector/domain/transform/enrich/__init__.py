@@ -2,8 +2,9 @@
 Enrich package: core enrich logic and DSL wiring.
 """
 
-from .dsl import EnrichDslBuildOptions, build_enricher_spec_from_dsl
-from .engine import EnricherEngine
+from .enricher_dsl import EnrichDslBuildOptions, EnricherDsl, build_enricher_spec_from_dsl
+from .enricher_engine import EnricherEngine
+from .enricher_core import EnricherCore
 from .models import (
     CandidateDecision,
     CandidateValue,
@@ -33,6 +34,7 @@ __all__ = [
     "EnrichOperationType",
     "EnrichOutcome",
     "EnricherEngine",
+    "EnricherCore",
     "EnricherSpec",
     "EnrichmentOperation",
     "KeyRegistry",
@@ -46,4 +48,5 @@ __all__ = [
     "EnricherReport",
     "build_enricher_spec_from_dsl",
     "EnrichDslBuildOptions",
+    "EnricherDsl",
 ]

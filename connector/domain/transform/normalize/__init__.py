@@ -1,10 +1,10 @@
 """
-Нормализация данных на основе DSL.
+Назначение:
+    Пакет нормализации (DSL + core).
 """
 
-from .normalizer import DslNormalizer
+from connector.domain.transform.normalize.normalizer_core import NormalizerCore
+from connector.domain.transform.normalize.normalizer_dsl import NormalizerDsl
+from connector.domain.transform.normalize.normalizer_engine import NormalizerEngine
 
-# Backward-compatible alias (to be removed after migration).
-Normalizer = DslNormalizer
-
-__all__ = ["DslNormalizer", "Normalizer"]
+__all__ = ["NormalizerCore", "NormalizerDsl", "NormalizerEngine"]

@@ -20,7 +20,7 @@ from connector.domain.transform.enrich.models import (
 from connector.domain.transform.enrich.spec import EnricherSpec, EnrichmentOperation, KeyRegistry
 from connector.domain.transform.dsl.engine import TransformationEngine
 from connector.domain.transform.dsl.issues import DslSeverity
-from connector.domain.transform.dsl.registry import OperationRegistry
+from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.transform.dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
 from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
 
@@ -33,6 +33,28 @@ class EnrichDslBuildOptions:
     """
 
     require_match_key: bool = False
+
+
+class EnricherDsl:
+    """
+    Назначение/ответственность:
+        Компилятор Enrich DSL -> EnricherSpec (StageDsl).
+    """
+
+    def __init__(
+        self,
+        *,
+        registry: OperationRegistry | None = None,
+        options: EnrichDslBuildOptions | None = None,
+    ) -> None:
+        if registry is None:
+            registry = OperationRegistry()
+            register_core_ops(registry)
+        self.registry = registry
+        self.options = options
+
+    def compile(self, spec: EnrichSpec) -> EnricherSpec:
+        return build_enricher_spec_from_dsl(spec, registry=self.registry, options=self.options)
 
 
 def build_enricher_spec_from_dsl(
