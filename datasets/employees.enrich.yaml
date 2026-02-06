@@ -12,7 +12,13 @@ enrich:
       ops:
         - op: trim
         - op: default_uuid
-      exists: find_user_by_target_id
+      exists:
+        provider:
+          name: cache.exists_by_field
+          args:
+            dataset: employees
+            field: _id
+            include_deleted: true
       max_attempts: 3
       merge: recompute_always
       missing_error_code: TARGET_ID_MISSING
@@ -26,12 +32,18 @@ enrich:
         - op: default_prefixed_uuid
           args:
             prefix: "TAB-"
-      exists: find_user_by_usr_org_tab_num
       allow_if:
         op: equals_path
         args:
           left: match_key
           right: existing.match_key
+      exists:
+        provider:
+          name: cache.exists_by_field
+          args:
+            dataset: employees
+            field: usr_org_tab_num
+            include_deleted: true
       max_attempts: 3
       merge: recompute_always
       conflict_error_code: USR_ORG_TAB_CONFLICT

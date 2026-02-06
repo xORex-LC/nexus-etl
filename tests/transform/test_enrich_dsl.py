@@ -38,7 +38,13 @@ def test_expand_lookup_templates() -> None:
         "enrich": {
             "lookup_templates": {
                 "by_full_name": {
-                    "lookup": "find_user_by_full_name",
+                    "provider": {
+                        "name": "cache.by_field",
+                        "args": {
+                            "dataset": "employees",
+                            "field": "full_name",
+                        },
+                    },
                     "value_path": "_id",
                     "ops": [{"op": "trim"}],
                     "on_error": "warn",
@@ -56,7 +62,7 @@ def test_expand_lookup_templates() -> None:
     }
     expanded = dsl_loader._expand_enrich_templates(raw)
     lookup = expanded["enrich"]["lookup"][0]
-    assert lookup["lookup"] == "find_user_by_full_name"
+    assert lookup["provider"]["name"] == "cache.by_field"
     assert lookup["value_path"] == "_id"
     assert lookup["source"] == "manager_full_name"
     assert "lookup_templates" not in expanded["enrich"]
@@ -72,7 +78,15 @@ def test_allow_if_equals_path() -> None:
                     "target": "usr_org_tab_num",
                     "source": "usr_org_tab_num",
                     "ops": [{"op": "trim"}],
-                    "exists": "find_user_by_usr_org_tab_num",
+                    "exists": {
+                        "provider": {
+                            "name": "cache.exists_by_field",
+                            "args": {
+                                "dataset": "employees",
+                                "field": "usr_org_tab_num",
+                            },
+                        }
+                    },
                     "allow_if": {"op": "equals_path", "args": {"left": "match_key", "right": "existing.match_key"}},
                 }
             ]
@@ -89,9 +103,14 @@ def test_allow_if_equals_path() -> None:
 
 def test_lookup_rule_builds_candidate_from_value_path() -> None:
     class _Deps:
-        def find_user_by_full_name(self, value):
-            assert value == "John Doe"
-            return {"_id": "user-1"}
+        class _CacheRepo:
+            @staticmethod
+            def find(dataset: str, filters: dict[str, object], *, include_deleted: bool = False, mode: str = "exact"):
+                _ = (dataset, include_deleted, mode)
+                assert filters == {"full_name": "John Doe"}
+                return [{"_id": "user-1"}]
+
+        cache_repo = _CacheRepo()
 
     raw = {
         "dataset": "employees",
@@ -101,7 +120,13 @@ def test_lookup_rule_builds_candidate_from_value_path() -> None:
                     "name": "manager_id",
                     "target": "manager_id",
                     "source": "manager_full_name",
-                    "lookup": "find_user_by_full_name",
+                    "provider": {
+                        "name": "cache.by_field",
+                        "args": {
+                            "dataset": "employees",
+                            "field": "full_name",
+                        },
+                    },
                     "value_path": "_id",
                     "ops": [{"op": "trim"}],
                 }
@@ -122,9 +147,14 @@ def test_lookup_rule_builds_candidate_from_value_path() -> None:
 
 def test_lookup_rule_supports_nested_value_path() -> None:
     class _Deps:
-        def find_user_by_full_name(self, value):
-            assert value == "John Doe"
-            return {"user": {"id": "nested-1"}}
+        class _CacheRepo:
+            @staticmethod
+            def find(dataset: str, filters: dict[str, object], *, include_deleted: bool = False, mode: str = "exact"):
+                _ = (dataset, include_deleted, mode)
+                assert filters == {"full_name": "John Doe"}
+                return [{"user": {"id": "nested-1"}}]
+
+        cache_repo = _CacheRepo()
 
     raw = {
         "dataset": "employees",
@@ -134,7 +164,13 @@ def test_lookup_rule_supports_nested_value_path() -> None:
                     "name": "manager_id",
                     "target": "manager_id",
                     "source": "manager_full_name",
-                    "lookup": "find_user_by_full_name",
+                    "provider": {
+                        "name": "cache.by_field",
+                        "args": {
+                            "dataset": "employees",
+                            "field": "full_name",
+                        },
+                    },
                     "value_path": "user.id",
                 }
             ]

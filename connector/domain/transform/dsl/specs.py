@@ -220,6 +220,25 @@ class SecretsSpec(BaseModel):
     fields: list[str] = Field(default_factory=list)
 
 
+class ProviderRef(BaseModel):
+    """
+    Назначение:
+        Ссылка на runtime provider в registry.
+    """
+
+    name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExistsRef(BaseModel):
+    """
+    Назначение:
+        Описание exists-проверки через provider.
+    """
+
+    provider: ProviderRef
+
+
 class EnrichRule(BaseModel):
     """
     Правило enrich (generate/lookup) для одного поля.
@@ -227,7 +246,7 @@ class EnrichRule(BaseModel):
 
     name: str
     target: str
-    lookup: str | None = None
+    provider: ProviderRef | None = None
     value_path: str | None = None
     source: str | None = None
     sources: list[str] | None = None
@@ -240,7 +259,7 @@ class EnrichRule(BaseModel):
         "override_if_empty",
         "override_if_authoritative",
     ] | None = None
-    exists: str | None = None
+    exists: ExistsRef | None = None
     allow_if: OperationCall | str | None = None
     max_attempts: int | None = None
     run_when_errors: Literal["never", "if_any", "always"] | None = None
