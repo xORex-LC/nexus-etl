@@ -5,7 +5,7 @@ from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.dsl import loader as dsl_loader
 from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.transform.dsl.specs import EnrichSpec
-from connector.domain.transform.enrich.dsl import build_enricher_spec_from_dsl
+from connector.domain.transform.enrich.enricher_dsl import build_enricher_spec_from_dsl
 from connector.domain.transform.enrich.models import EnrichContext, EnrichOperationType
 from connector.domain.transform.ids.match_key import MatchKey
 

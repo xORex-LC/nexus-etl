@@ -1,12 +1,12 @@
-from connector.domain.transform.enrich import EnricherEngine
-from connector.domain.transform.normalize import DslNormalizer
+from connector.domain.transform.enrich import EnricherEngine, EnrichDslBuildOptions
+from connector.domain.transform.normalize import NormalizerDsl, NormalizerEngine
 from connector.domain.validation.deps import ValidationDependencies
 from connector.domain.validation.validator import Validator
 from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage, StagePipeline
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.datasets.employees.transform.enricher_spec import EmployeesEnricherSpec
-from connector.domain.transform.mapping.dsl_mapper import DslMapper
+from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.dsl.loader import load_normalize_spec_for_dataset
 from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
@@ -50,14 +50,22 @@ def make_employee(values: list[str | None], deps: ValidationDependencies):
     normalize_spec = load_normalize_spec_for_dataset("employees")
     registry = OperationRegistry()
     register_core_ops(registry)
-    normalizer = DslNormalizer(
+    normalizer = NormalizerEngine(
         normalize_spec,
-        registry=registry,
         catalog=CATALOG,
+        dsl=NormalizerDsl(registry=registry),
         row_builder=NormalizedEmployeesRow,
     )
-    enricher = EnricherEngine(EmployeesEnricherSpec(), _DummyEnrichDeps(), None, "employees", catalog=CATALOG)
-    mapper = DslMapper(catalog=CATALOG, dataset="employees")
+    enricher = EnricherEngine(
+        spec=EmployeesEnricherSpec(),
+        deps=_DummyEnrichDeps(),
+        secret_store=None,
+        dataset="employees",
+        catalog=CATALOG,
+        registry=registry,
+        options=EnrichDslBuildOptions(require_match_key=True),
+    )
+    mapper = MapperEngine.from_dataset(catalog=CATALOG, dataset="employees")
     pipeline = StagePipeline(
         [
             MapStage(mapper, CATALOG),
