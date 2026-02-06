@@ -1,0 +1,73 @@
+@startuml
+title DSL Stage Architecture (High-Level)
+
+skinparam componentStyle rectangle
+
+package "DSL Layer" {
+  [StageRules] as Rules
+  [StageDsl] as Dsl
+}
+
+package "Stage Engine Layer" {
+  [StageEngine] as Engine
+}
+
+package "Core Layer" {
+  [StageCore] as Core
+  [TransformationEngine] as TEngine
+  [OperationRegistry] as Registry
+}
+
+package "Data Model" {
+  [TransformableRecord] as Record
+  [TransformResult] as Result
+}
+
+Rules --> Dsl : compile()
+Dsl --> Core : builds
+Engine --> Core : execute()
+Engine --> Record
+Core --> Record : read/evolve
+Core --> Result : diagnostics
+
+Core ..> TEngine : apply ops (optional)
+TEngine --> Registry
+
+note right of Rules
+MappingRules
+NormalizeRules
+EnrichRules
+ValidateRules
+MatchRules
+ResolveRules
+end note
+
+note right of Dsl
+MapperDsl
+NormalizerDsl
+EnricherDsl
+ValidatorDsl
+MatchDsl
+ResolveDsl
+end note
+
+note right of Core
+MapperCore
+NormalizerCore
+EnricherCore
+ValidatorCore
+MatchCore
+ResolveCore
+TEngine usage is optional
+end note
+
+note right of Engine
+MapperEngine
+NormalizerEngine
+EnricherEngine
+ValidatorEngine
+MatchEngine
+ResolveEngine
+end note
+
+@enduml
