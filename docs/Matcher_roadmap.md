@@ -6,8 +6,8 @@
 ## Текущее состояние matcher
 1. Сопоставляет запись с sink/cache по identity-правилам.
 2. Формирует `desired_state` и `fingerprint` для downstream.
-3. Определяет базовый статус матчинга: `MATCHED`, `NOT_FOUND`, `CONFLICT_TARGET`.
-4. Source-dedup (duplicate/conflict внутри входного потока) сейчас частично выполняется в use-case (transitional).
+3. Определяет typed-статусы матчинга (`match_decision.status`) и transitional `match_status`.
+4. Source-dedup (duplicate/conflict внутри входного потока) выполняется в match-core.
 5. Кросс-доменное связывание target-сущностей выполняет не matcher, а resolve-стадия.
 
 ## Ближайший утвержденный план
@@ -23,6 +23,39 @@
    4. `top_candidates` (ограниченно, например top-3)
 4. Перенести source-dedup из use-case в match-core (единая доменная логика стадии).
 5. Перевести правила матчинга в декларативный `MatchSpec` (DSL).
+
+## Архитектура миграции matcher (подтверждено)
+### Целевой runtime-контур
+1. `MatchSpec` (DSL) -> `MatchDsl.compile()` -> `MatchingRules`.
+2. `MatchEngine` исполняет `MatchCore` с уже скомпилированными правилами.
+3. `MatchUseCase` остается orchestration-слоем:
+   - батчинг/flush/lifecycle;
+   - запуск stage-engine;
+   - инкрементальный репортинг.
+
+### Границы ответственности
+1. `MatchCore`:
+   - candidate generation;
+   - exact-first + fuzzy fallback;
+   - weighted scoring и thresholds;
+   - source-dedup по каноническому ключу;
+   - формирование typed решения (`match_decision`).
+2. `MatchUseCase`:
+   - не содержит match-правил и дедуп-алгоритмов;
+   - не дублирует scoring/decision-логику.
+3. `Resolve`:
+   - не определяет match decision повторно;
+   - потребляет результат matcher и выполняет link/pending policy.
+
+### Transitional совместимость (временно)
+1. Legacy-статусы сохраняются через adapter typed -> legacy.
+2. `MatchedRow.match_status` живет параллельно с `match_decision`.
+3. Полный переход на typed-only контракт выполняется после DSL cutover и миграции downstream.
+
+### Что убираем после cutover
+1. Runtime wiring через Python-фабрику `build_matching_rules()` — уже удалено.
+2. Ручную сборку dataset match-правил в коде как primary source.
+3. Дубли decision-логики между usecase/core.
 
 ## Идеи на будущее (пока не реализуем)
 1. Explainability: вклад каждого поля в финальный score.
@@ -40,4 +73,6 @@
 
 ## Статус
 1. Документ создан как backlog/ориентир.
-2. Реализация пока не начата.
+2. Реализация fuzzy/scoring и typed-contract выполнена.
+3. Cutover на `MatchSpec` как единственный runtime-источник правил выполнен.
+4. Следующий шаг: поэтапное снятие оставшегося transitional legacy (`match_status` downstream).

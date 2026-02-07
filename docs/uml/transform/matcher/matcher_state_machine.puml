@@ -1,25 +1,49 @@
 @startuml
-title DeduplicationTransform - State Machine Diagram
+title Matcher Stage - State Machine Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam stateBorderThickness 2
+skinparam state {
+  BackgroundColor #f8f0e6
+  BorderColor #c9a57c
+}
 
 [*] --> Input
-Input --> MissingInput : validation row missing
-Input --> ResolveIdentity : valid row
 
-ResolveIdentity --> ConflictTarget : multiple candidates
-ResolveIdentity --> IdentityMissing : no identity
-ResolveIdentity --> Matched : matched existing
-ResolveIdentity --> NotFound : no candidates
+Input --> BoundaryFailed : runtime boundary error
+Input --> ValidateInput : boundary success
 
-NotFound --> BuildDesiredState
-Matched --> BuildDesiredState
+ValidateInput --> MissingInput : row/identity invalid
+ValidateInput --> ExactMatch : identity candidates
 
-BuildDesiredState --> BuildFingerprint
-BuildFingerprint --> BuildLinks
-BuildLinks --> BuildRowRef
-BuildRowRef --> Output
+ExactMatch --> Matched : one exact candidate
+ExactMatch --> FuzzyFallback : no exact candidate
+ExactMatch --> ConflictTarget : multiple exact candidates
 
-ConflictTarget --> [*]
-IdentityMissing --> [*]
+FuzzyFallback --> Matched : score >= accept_threshold
+FuzzyFallback --> Ambiguous : review-range or tie
+FuzzyFallback --> NotFound : score < review_threshold
+
+Matched --> BuildResult
+Ambiguous --> BuildResult
+NotFound --> BuildResult
+
+BuildResult --> SourceDedup
+SourceDedup --> DuplicateSourceDrop : duplicate fingerprint
+SourceDedup --> ConflictSourceDrop : conflicting fingerprint
+SourceDedup --> Output : pass-through
+
+DuplicateSourceDrop --> Output
+ConflictSourceDrop --> Output
+MissingInput --> Output
+ConflictTarget --> Output
+BoundaryFailed --> Output
 Output --> [*]
+
+note right of Ambiguous
+Typed status AMBIGUOUS is preserved
+for downstream resolve/plan handling.
+end note
 
 @enduml
