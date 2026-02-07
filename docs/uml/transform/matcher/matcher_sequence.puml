@@ -1,39 +1,60 @@
 @startuml
-title DeduplicationTransform - Sequence Diagram
+title Matcher Stage - Sequence Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam sequence {
+  ArrowColor #4b5563
+  LifeLineBorderColor #9ca3af
+}
 
 actor Caller
-participant DeduplicationTransform
-participant MatchingRules
+participant MatchStage
+participant MatchEngine
+participant MatchDsl
+participant MatchCore
 participant "IdentityRule" as Rule
-participant CacheRepo
-participant ResolveRules
+participant CacheRepository
+participant Scoring
+participant IdentityRepository
 
-Caller -> DeduplicationTransform: match(TransformResult[EnrichedRow])
-DeduplicationTransform -> MatchingRules: get identity_rules
-loop for each rule
-  DeduplicationTransform -> Rule: build_identity(row, match_context)
-  alt identity.primary_value empty
-    DeduplicationTransform -> DeduplicationTransform: skip rule
-  else
-    DeduplicationTransform -> CacheRepo: find(dataset, {primary: value})
-    alt candidates_many
-      DeduplicationTransform -> DeduplicationTransform: emit MATCH_CONFLICT_TARGET
-      DeduplicationTransform --> Caller: TransformResult.errors
-    else candidates_one
-      DeduplicationTransform -> DeduplicationTransform: select identity + existing
-    else
-      DeduplicationTransform -> DeduplicationTransform: remember identity (fallback)
-    end
+Caller -> MatchStage: run(stream)
+loop each enriched item
+  MatchStage -> MatchStage: diagnostic_boundary(MATCH)
+  MatchStage -> MatchEngine: match_with_source_dedup(enriched)
+  MatchEngine -> MatchCore: match_with_source_dedup(enriched)
+  MatchCore -> MatchCore: match(enriched)
+  loop each identity rule
+    MatchCore -> Rule: build_identity(row, match_context)
+    MatchCore -> CacheRepository: find(dataset, identity)
   end
+
+  alt exact matched
+    MatchCore -> MatchCore: decision = MATCHED(identity_exact)
+  else exact not found and fuzzy enabled
+    MatchCore -> CacheRepository: find(dataset, blocking_keys...)
+    MatchCore -> Scoring: rank_candidates(source, candidates)
+    Scoring --> MatchCore: ranked + top_k
+    MatchCore -> MatchCore: threshold/tie decision
+  else exact not found and fuzzy disabled
+    MatchCore -> MatchCore: decision = NOT_FOUND
+  end
+
+  MatchCore -> MatchCore: build desired_state + fingerprint + MatchDecision
+  MatchCore -> IdentityRepository: get/set runtime_state(scope,dataset,key)
+  MatchCore --> MatchEngine: TransformResult[MatchedRow]
+  MatchEngine --> MatchStage: matched result
+  MatchStage --> Caller: TransformResult
 end
-alt identity missing
-  DeduplicationTransform -> DeduplicationTransform: emit MATCH_IDENTITY_MISSING
-  DeduplicationTransform --> Caller: TransformResult.errors
-end
-DeduplicationTransform -> ResolveRules: build_desired_state(row, match_context)
-DeduplicationTransform -> DeduplicationTransform: build_fingerprint(desired_state)
-DeduplicationTransform -> DeduplicationTransform: build_links (optional)
-DeduplicationTransform -> DeduplicationTransform: build RowRef
-DeduplicationTransform --> Caller: TransformResult[MatchedRow]
+
+note right of MatchDsl
+Compile once at wiring:
+MatchSpec -> MatchDsl.compile() -> MatchingRules
+end note
+
+note right of MatchCore
+MatchCore is the only place for:
+exact/fuzzy/scoring/source-dedup decisions.
+end note
 
 @enduml

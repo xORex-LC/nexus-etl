@@ -1,20 +1,97 @@
 @startuml
-title DeduplicationTransform - Class Diagram
+title Matcher Stage - Class Diagram (Current)
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam classBorderThickness 2
+skinparam class {
+  BackgroundColor #f8f0e6
+  BorderColor #c9a57c
+}
 
-class DeduplicationTransform {
+class MatchStage {
+  - matcher: MatchProcessor
+  - catalog: ErrorCatalog
+  + run(source): Iterable[TransformResult]
+}
+
+interface MatchProcessor <<protocol>> {
+  + match(enriched): TransformResult[MatchedRow]
+  + match_with_source_dedup(enriched): TransformResult[MatchedRow]
+  + match_stream(enriched_source): Iterable[TransformResult[MatchedRow]]
+  + reset_source_dedup(): None
+  + bind_runtime_scope(scope): None
+}
+
+class MatchEngine {
+  - dsl: MatchDsl
+  - matching_rules: MatchingRules
+  - core: MatchCore
+  + __init__(spec, dataset, cache_repo, resolve_rules, include_deleted, catalog, identity_repo)
+  + from_rules(...)
+  + match(enriched): TransformResult[MatchedRow]
+  + match_with_source_dedup(enriched): TransformResult[MatchedRow]
+}
+
+class MatchDsl {
+  + compile(spec: MatchSpec): MatchingRules
+}
+
+class MatchCore {
   - dataset: str
   - cache_repo: CacheRepositoryProtocol
+  - identity_repo: IdentityRepository
   - matching_rules: MatchingRules
   - resolve_rules: ResolveRules
-  - include_deleted: bool
-  + match(enriched)
+  + match(enriched): TransformResult[MatchedRow]
+  + match_with_source_dedup(enriched): TransformResult[MatchedRow]
+  + match_stream(enriched_source): Iterable[TransformResult[MatchedRow]]
+}
+
+class MatchSpec {
+  + dataset: str
+  + match: MatchBlock
+}
+
+class MatchBlock {
+  + identity_rules: MatchRule[*]
+  + ignored_fields: str[*]
+  + source_dedup: SourceDedupSpec
+  + fuzzy: FuzzySpec
+}
+
+class MatchRule {
+  + name: str
+  + fields: str[*]
+  + primary: str?
+}
+
+class SourceDedupSpec {
+  + enabled: bool
+  + on_duplicate: warn|error
+  + on_conflict: warn|error
+  + fallback_identity_value: bool
+}
+
+class FuzzySpec {
+  + enabled: bool
+  + blocking_keys: str[*]
+  + comparators: dict[str, comparator]
+  + weights: dict[str, float]
+  + accept_threshold: float
+  + review_threshold: float
+  + tie_delta: float
+  + max_candidates: int
+  + top_k: int
+  + score_round: int
 }
 
 class MatchingRules {
-  + build_identity
-  + ignored_fields: set
-  + build_links
   + identity_rules: IdentityRule[*]
+  + source_dedup: SourceDedupRules
+  + fuzzy: FuzzyScoringRules
+  + ignored_fields: set[str]
 }
 
 class IdentityRule {
@@ -22,43 +99,75 @@ class IdentityRule {
   + build_identity
 }
 
+class SourceDedupRules {
+  + enabled: bool
+  + on_duplicate: str
+  + on_conflict: str
+  + fallback_identity_value: bool
+}
+
+class FuzzyScoringRules {
+  + enabled: bool
+  + blocking_keys: str[*]
+  + comparators: dict[str, str]
+  + weights: dict[str, float]
+  + accept_threshold: float
+  + review_threshold: float
+  + tie_delta: float
+  + max_candidates: int
+  + top_k: int
+  + score_round: int
+}
+
 class ResolveRules {
   + build_desired_state
   + build_source_ref
   + diff_policy
-  + secret_fields_for_op
   + merge_policy
+}
+
+class MatchDecisionStatus <<enum>> {
+  MATCHED
+  NOT_FOUND
+  AMBIGUOUS
+  CONFLICT_SOURCE
+}
+
+class MatchDecision {
+  + status: MatchDecisionStatus
+  + reason_code: str
+  + selected: MatchCandidate?
+  + candidates: MatchCandidate[*]
+  + score: float?
+  + meta: dict[str, Any]
+}
+
+class MatchCandidate {
+  + target_id: str?
+  + identity: str?
+  + score: float?
+  + match_mode: str
+}
+
+class MatchedRow {
+  + row_ref: RowRef
+  + identity: Identity
+  + match_status: MatchStatus
+  + match_decision: MatchDecision
+  + desired_state: dict[str, Any]
+  + existing: dict[str, Any]?
+  + fingerprint: str
+  + source_links: dict[str, Identity]
+  + target_id: str?
 }
 
 class CacheRepositoryProtocol <<protocol>> {
   + find(dataset, filters, include_deleted, mode)
 }
 
-class MatchContext {
-  + line_no: int
-  + match_key: str
-  + usr_org_tab_num: str
-  + row_ref
-  + errors
-  + warnings
-}
-
-class Identity {
-  + primary: str
-  + values
-  + primary_value
-}
-
-class MatchedRow {
-  + row_ref
-  + identity
-  + match_status
-  + desired_state
-  + existing
-  + fingerprint
-  + fingerprint_fields
-  + source_links
-  + target_id
+class IdentityRepository <<protocol>> {
+  + get_runtime_state(scope, dataset, key)
+  + set_runtime_state(scope, dataset, key, value)
 }
 
 class TransformResult<T> {
@@ -71,14 +180,43 @@ class TransformResult<T> {
   + warnings
 }
 
-DeduplicationTransform --> MatchingRules
-DeduplicationTransform --> ResolveRules
-DeduplicationTransform --> CacheRepositoryProtocol
-DeduplicationTransform ..> MatchedRow
-DeduplicationTransform ..> MatchContext
+MatchStage --> MatchProcessor
+MatchProcessor <|.. MatchEngine
+MatchEngine --> MatchDsl
+MatchEngine --> MatchCore
+MatchDsl --> MatchSpec
+MatchSpec --> MatchBlock
+MatchBlock --> MatchRule
+MatchBlock --> SourceDedupSpec
+MatchBlock --> FuzzySpec
+MatchDsl --> MatchingRules
 MatchingRules o-- IdentityRule
-MatchedRow --> Identity
-TransformResult <|-- "TransformResult[MatchedRow]"
-TransformResult <|-- "TransformResult[EnrichedRow]"
+MatchingRules o-- SourceDedupRules
+MatchingRules o-- FuzzyScoringRules
+MatchCore --> MatchingRules
+MatchCore --> ResolveRules
+MatchCore --> CacheRepositoryProtocol
+MatchCore --> IdentityRepository
+MatchedRow --> MatchDecision
+MatchDecision --> MatchDecisionStatus
+MatchDecision --> MatchCandidate
+MatchCore ..> TransformResult
+MatchCore ..> MatchedRow
+
+note right of MatchDsl
+Compile path:
+datasets/<dataset>.match.yaml
+-> MatchSpec
+-> MatchDsl.compile()
+-> MatchingRules
+end note
+
+note right of MatchCore
+Single matcher-core runtime:
+1) identity exact-first
+2) fuzzy fallback + scoring
+3) source-dedup inside core
+4) typed MatchDecision output
+end note
 
 @enduml
