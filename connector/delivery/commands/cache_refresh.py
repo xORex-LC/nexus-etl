@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.context import CommandContext
+from connector.delivery.commands.common import ensure_supported_cache_dataset, result_with
 from connector.delivery.cli.bootstrap import (
     build_cache,
     build_api_reader,
@@ -41,9 +42,9 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     conn = None
     try:
         conn, engine, cache_repo, _cache_specs = build_cache(settings)
-        if opts.dataset is not None and opts.dataset not in cache_repo.list_datasets():
-            typer.echo(f"ERROR: Unsupported cache dataset: {opts.dataset}", err=True)
-            return _result_with(SystemErrorCode.CACHE_ERROR)
+        unsupported_result = ensure_supported_cache_dataset(cache_repo, opts.dataset)
+        if unsupported_result is not None:
+            return unsupported_result
 
         base_url = f"https://{settings.host}:{settings.port}"
         client = _build_api_client(settings, opts.api_transport)
@@ -81,21 +82,14 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
-        return _result_with(SystemErrorCode.INTERNAL_ERROR)
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
     except Exception as exc:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
         typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
-        return _result_with(SystemErrorCode.INTERNAL_ERROR)
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
     finally:
         if conn is not None:
             conn.close()
-
-
-def _result_with(code: SystemErrorCode) -> CommandResult:
-    result = CommandResult()
-    result.add_code(code)
-    return result
-
 
 def _build_api_client(settings, transport=None) -> AnkeyApiClient:
     return AnkeyApiClient(

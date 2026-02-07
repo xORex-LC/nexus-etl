@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.context import CommandContext
+from connector.delivery.commands.common import result_with
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
@@ -30,23 +31,11 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         latency_ms = int((time.monotonic() - start) * 1000)
         logEvent(ctx.logger, logging.INFO, run_id, "api", f"api ok base_url={base_url} latency_ms={latency_ms}")
         report.set_context("apply_target", {"target_type": "http"})
-        return _result_ok()
+        return result_with(SystemErrorCode.OK)
     except ApiError as exc:
         logEvent(ctx.logger, logging.ERROR, run_id, "api", f"API check failed: {exc}")
         typer.echo("ERROR: API check failed (see logs/report)", err=True)
-        return _result_with(SystemErrorCode.INFRA_UNAVAILABLE)
-
-
-def _result_with(code: SystemErrorCode) -> CommandResult:
-    result = CommandResult()
-    result.add_code(code)
-    return result
-
-
-def _result_ok() -> CommandResult:
-    result = CommandResult()
-    result.add_code(SystemErrorCode.OK)
-    return result
+        return result_with(SystemErrorCode.INFRA_UNAVAILABLE)
 
 
 def _build_api_client(settings, transport=None) -> AnkeyApiClient:

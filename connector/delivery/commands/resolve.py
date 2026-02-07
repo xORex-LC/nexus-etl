@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import logging
 import sqlite3
 from dataclasses import dataclass
 
-import typer
-
 from connector.delivery.cli.context import CommandContext
+from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.bootstrap import (
     build_cache,
     build_dataset_spec,
@@ -14,14 +12,11 @@ from connector.delivery.cli.bootstrap import (
     build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
-from connector.infra.logging.setup import logEvent
-from connector.usecases.match_usecase import MatchUseCase
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
+from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
 
 
 @dataclass(frozen=True)
@@ -73,67 +68,53 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
         planning_bundle = dataset_spec.build_planning_bundle()
 
-        cache_repo = planning_deps.cache_repo
-        if cache_repo is None:
-            raise ValueError("planning cache_repo is not configured")
-        if planning_deps.identity_repo is None:
-            raise ValueError("planning identity_repo is not configured")
         if planning_deps.pending_repo is None:
             raise ValueError("planning pending_repo is not configured")
 
-        matcher = DeduplicationTransform(
+        with open_match_runtime(
             dataset=dataset_name,
-            cache_repo=cache_repo,
-            matching_rules=planning_bundle.matching_rules,
-            resolve_rules=planning_bundle.resolve_rules,
             include_deleted=include_deleted_value,
+            run_id=run_id,
+            planning_deps=planning_deps,
+            planning_bundle=planning_bundle,
             catalog=catalog,
-        )
-        match_usecase = MatchUseCase(
             report_items_limit=report_items_limit_value,
             include_matched_items=False,
-        )
-        matched_rows = iter_ok(
-            match_usecase.iter_matched(
+            batch_size=settings.match_batch_size,
+            flush_interval_ms=settings.match_flush_interval_ms,
+        ) as match_runtime:
+            matched_rows = iter_matched_ok(
+                runtime=match_runtime,
                 enriched_source=enriched_rows,
-                matcher=matcher,
                 catalog=catalog,
-            ),
-            should_skip=lambda r: any(w.code == "MATCH_DUPLICATE_SOURCE" for w in r.warnings),
-        )
+            )
 
-        resolver = LookupEnricher(
-            planning_bundle.resolve_rules,
-            planning_bundle.link_rules,
-            identity_repo=planning_deps.identity_repo,
-            pending_repo=planning_deps.pending_repo,
-            settings=planning_deps.resolver_settings,
-            catalog=catalog,
-        )
-        resolve_usecase = ResolveUseCase(
-            report_items_limit=report_items_limit_value,
-            include_resolved_items=include_resolved_items_value,
-        )
-        return resolve_usecase.run(
-            matched_source=matched_rows,
-            resolver=resolver,
-            dataset=dataset_name,
-            report=report,
-            catalog=catalog,
-        )
+            resolver = LookupEnricher(
+                planning_bundle.resolve_rules,
+                planning_bundle.link_rules,
+                identity_repo=planning_deps.identity_repo,
+                pending_repo=planning_deps.pending_repo,
+                settings=planning_deps.resolver_settings,
+                catalog=catalog,
+            )
+            resolve_usecase = ResolveUseCase(
+                report_items_limit=report_items_limit_value,
+                include_resolved_items=include_resolved_items_value,
+                batch_size=settings.resolve_batch_size,
+                flush_interval_ms=settings.resolve_flush_interval_ms,
+            )
+            return resolve_usecase.run(
+                matched_source=matched_rows,
+                resolver=resolver,
+                dataset=dataset_name,
+                report=report,
+                catalog=catalog,
+            )
     except sqlite3.Error as exc:
-        logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
-        typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-        return _result_with(SystemErrorCode.CACHE_ERROR)
+        return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="resolve", exc=exc)
     finally:
         if conn is not None:
             conn.close()
-
-
-def _result_with(code: SystemErrorCode) -> CommandResult:
-    result = CommandResult()
-    result.add_code(code)
-    return result
 
 
 __all__ = ["handler", "Options"]
