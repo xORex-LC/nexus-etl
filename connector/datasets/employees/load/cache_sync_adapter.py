@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.domain.transform.common import normalize_whitespace
+from connector.domain.transform.common import normalize_text
 from connector.domain.transform.ids.match_key import build_delimited_match_key
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 
@@ -102,14 +102,14 @@ def map_user_from_api(item: dict[str, Any]) -> dict[str, Any]:
         "_id": _id,
         "_ouid": _ouid,
         "personnel_number": personnel_number,
-        "last_name": normalize_whitespace(last_name) or None,
-        "first_name": normalize_whitespace(first_name) or None,
-        "middle_name": normalize_whitespace(middle_name) or None,
+        "last_name": normalize_text(last_name, empty_to_none=False) or None,
+        "first_name": normalize_text(first_name, empty_to_none=False) or None,
+        "middle_name": normalize_text(middle_name, empty_to_none=False) or None,
         "match_key": match_key,
-        "mail": normalize_whitespace(mail) or mail,
-        "user_name": normalize_whitespace(user_name) or user_name,
+        "mail": normalize_text(mail, empty_to_none=False) or mail,
+        "user_name": normalize_text(user_name, empty_to_none=False) or user_name,
         "phone": _to_str_or_none(_get_first(item, "phone", "mobile")),
-        "usr_org_tab_num": normalize_whitespace(usr_org_tab_num) or usr_org_tab_num,
+        "usr_org_tab_num": normalize_text(usr_org_tab_num, empty_to_none=False) or usr_org_tab_num,
         "organization_id": organization_id,
         "account_status": _to_str_or_none(_get_first(item, "account_status", "accountStatus")),
         "deletion_date": _to_str_or_none(_get_first(item, "deletion_date", "deletionDate")),

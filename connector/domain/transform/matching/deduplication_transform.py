@@ -17,8 +17,18 @@ from connector.domain.models import (
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.transform.matching.context import MatchContext
-from connector.domain.transform.matching.match_models import MatchedRow, build_fingerprint
-from connector.domain.transform.matching.rules import IdentityRule, MatchingRules, ResolveRules
+from connector.domain.transform.matching.match_models import (
+    MatchDecisionReason,
+    MatchedRow,
+    build_fingerprint,
+)
+from connector.domain.transform.matching.rules import (
+    FuzzyScoringRules,
+    IdentityRule,
+    MatchingRules,
+    ResolveRules,
+)
+from connector.domain.transform.matching.scoring import is_tie, rank_candidates
 from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.ports.cache.repository import CacheRepositoryProtocol
 from connector.domain.transform.core.result import TransformResult
@@ -210,6 +220,33 @@ class DeduplicationTransform:
             desired_state,
             ignored_fields=self.matching_rules.ignored_fields,
         )
+        match_mode = "exact"
+        score: float | None = None
+        decision_reason: str | None = None
+        top_candidates: tuple[dict[str, Any], ...] = ()
+
+        if match_status == MatchStatus.MATCHED:
+            score = 1.0
+            decision_reason = MatchDecisionReason.IDENTITY_EXACT
+            top_candidates = self._build_top_candidates(
+                [(existing, score)] if existing is not None else [],
+                top_k=max(1, self.matching_rules.fuzzy.top_k),
+            )
+        elif self.matching_rules.fuzzy.enabled:
+            (
+                existing,
+                match_status,
+                score,
+                decision_reason,
+                top_candidates,
+            ) = self._match_with_fuzzy(
+                row=row,
+                desired_state=desired_state,
+                identity=identity,
+            )
+            match_mode = "fuzzy"
+        else:
+            decision_reason = MatchDecisionReason.IDENTITY_NOT_FOUND
 
         links = {}
         if self.matching_rules.build_links:
@@ -226,6 +263,10 @@ class DeduplicationTransform:
             fingerprint_fields=fingerprint_fields,
             source_links=links,
             target_id=getattr(row, "target_id", None),
+            match_mode=match_mode,
+            score=score,
+            decision_reason=decision_reason,
+            top_candidates=top_candidates,
         )
 
         return TransformResult(
@@ -238,6 +279,170 @@ class DeduplicationTransform:
             errors=enriched.errors,
             warnings=enriched.warnings,
         )
+
+    def _match_with_fuzzy(
+        self,
+        *,
+        row: Any,
+        desired_state: dict[str, Any],
+        identity: Identity,
+    ) -> tuple[
+        dict[str, Any] | None,
+        MatchStatus,
+        float | None,
+        str,
+        tuple[dict[str, Any], ...],
+    ]:
+        fuzzy = self.matching_rules.fuzzy
+        candidates = self._collect_blocking_candidates(
+            row=row,
+            desired_state=desired_state,
+            identity=identity,
+            fuzzy=fuzzy,
+        )
+        if not candidates:
+            return (
+                None,
+                MatchStatus.NOT_FOUND,
+                None,
+                MatchDecisionReason.FUZZY_NO_CANDIDATES,
+                (),
+            )
+
+        source_values = self._build_source_values(
+            row=row,
+            desired_state=desired_state,
+            identity=identity,
+            fuzzy=fuzzy,
+        )
+        ranked = rank_candidates(
+            source_values,
+            candidates,
+            comparators=fuzzy.comparators,
+            weights=fuzzy.weights,
+            score_round=max(0, fuzzy.score_round),
+        )
+        if not ranked:
+            return None, MatchStatus.NOT_FOUND, None, MatchDecisionReason.FUZZY_NO_RANKED, ()
+
+        top_candidates = self._build_top_candidates(
+            [(item.candidate, item.score) for item in ranked],
+            top_k=max(1, fuzzy.top_k),
+        )
+        best = ranked[0]
+        if is_tie(ranked, tie_delta=max(0.0, fuzzy.tie_delta)):
+            return (
+                None,
+                MatchStatus.CONFLICT_TARGET,
+                best.score,
+                MatchDecisionReason.FUZZY_TIE,
+                top_candidates,
+            )
+
+        accept_threshold = min(1.0, max(0.0, float(fuzzy.accept_threshold)))
+        review_threshold = min(accept_threshold, max(0.0, float(fuzzy.review_threshold)))
+        if best.score >= accept_threshold:
+            return (
+                best.candidate,
+                MatchStatus.MATCHED,
+                best.score,
+                MatchDecisionReason.FUZZY_ACCEPT,
+                top_candidates,
+            )
+        if best.score >= review_threshold:
+            return (
+                None,
+                MatchStatus.CONFLICT_TARGET,
+                best.score,
+                MatchDecisionReason.FUZZY_REVIEW,
+                top_candidates,
+            )
+        return (
+            None,
+            MatchStatus.NOT_FOUND,
+            best.score,
+            MatchDecisionReason.FUZZY_REJECT,
+            top_candidates,
+        )
+
+    def _collect_blocking_candidates(
+        self,
+        *,
+        row: Any,
+        desired_state: dict[str, Any],
+        identity: Identity,
+        fuzzy: FuzzyScoringRules,
+    ) -> list[dict[str, Any]]:
+        if not fuzzy.blocking_keys:
+            return []
+
+        found: list[dict[str, Any]] = []
+        seen_keys: set[str] = set()
+        limit = max(1, int(fuzzy.max_candidates))
+
+        for key_name in fuzzy.blocking_keys:
+            key_value = _read_value(
+                key_name,
+                row=row,
+                desired_state=desired_state,
+                identity=identity,
+            )
+            if key_value in (None, ""):
+                continue
+            try:
+                matches = self.cache_repo.find(
+                    self.dataset,
+                    {key_name: key_value},
+                    include_deleted=self.include_deleted,
+                )
+            except ValueError:
+                # Transitional mode: skip unknown blocking keys silently.
+                continue
+            for item in matches:
+                candidate_key = _candidate_dedup_key(item)
+                if candidate_key in seen_keys:
+                    continue
+                seen_keys.add(candidate_key)
+                found.append(item)
+                if len(found) >= limit:
+                    return found
+        return found
+
+    def _build_source_values(
+        self,
+        *,
+        row: Any,
+        desired_state: dict[str, Any],
+        identity: Identity,
+        fuzzy: FuzzyScoringRules,
+    ) -> dict[str, Any]:
+        fields = set(fuzzy.comparators.keys()) | set(fuzzy.weights.keys())
+        values: dict[str, Any] = {}
+        for field in fields:
+            values[field] = _read_value(
+                field,
+                row=row,
+                desired_state=desired_state,
+                identity=identity,
+            )
+        return values
+
+    def _build_top_candidates(
+        self,
+        ranked: list[tuple[dict[str, Any], float]],
+        *,
+        top_k: int,
+    ) -> tuple[dict[str, Any], ...]:
+        items: list[dict[str, Any]] = []
+        for candidate, candidate_score in ranked[:top_k]:
+            target_id = candidate.get("_id") or candidate.get("target_id")
+            items.append(
+                {
+                    "target_id": str(target_id) if target_id is not None else None,
+                    "score": candidate_score,
+                }
+            )
+        return tuple(items)
 
     def _match_identity(
         self,
@@ -416,6 +621,28 @@ def _build_source_dedup_key(
     if allow_fallback:
         return f"{dataset}:_fallback:{value}"
     return None
+
+
+def _read_value(
+    field: str,
+    *,
+    row: Any,
+    desired_state: dict[str, Any],
+    identity: Identity,
+) -> Any:
+    if field in desired_state:
+        return desired_state.get(field)
+    if field == identity.primary:
+        return identity.primary_value
+    return getattr(row, field, None)
+
+
+def _candidate_dedup_key(candidate: dict[str, Any]) -> str:
+    target_id = candidate.get("_id") or candidate.get("target_id")
+    if target_id is not None:
+        return f"id:{target_id}"
+    parts = [f"{k}={candidate.get(k)}" for k in sorted(candidate.keys())]
+    return "|".join(parts)
 
 
 def _drop_matched_row(
