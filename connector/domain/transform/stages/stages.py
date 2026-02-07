@@ -260,7 +260,7 @@ class MatchStage:
                 sink=boundary_errors,
                 record_ref=enriched.row_ref,
             ):
-                matched = self.matcher.match(enriched)
+                matched = self.matcher.match_with_source_dedup(enriched)
             if matched is None:
                 builder = enriched.as_builder()
                 builder.set_row(None)

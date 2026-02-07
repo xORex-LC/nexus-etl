@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import json
+from itertools import chain
 
 from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
@@ -8,12 +10,10 @@ from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
-from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
-from connector.usecases.match_usecase import MatchUseCase
+from connector.domain.transform.stages.stages import StagePipeline
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
-import json
+from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
 from connector.domain.transform.matching.match_models import MatchedRow
 from connector.domain.models import Identity, MatchStatus, RowRef
 from connector.domain.transform.core.source_record import SourceRecord
@@ -23,6 +23,7 @@ from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.catalog import build_catalog
+
 
 class ImportPlanService:
     """
@@ -81,64 +82,60 @@ class ImportPlanService:
             raise ValueError("planning identity_repo is not configured")
         if planning_deps.pending_repo is None:
             raise ValueError("planning pending_repo is not configured")
-
-        matcher = DeduplicationTransform(
+        with open_match_runtime(
             dataset=dataset,
-            cache_repo=cache_repo,
-            matching_rules=planning_bundle.matching_rules,
-            resolve_rules=planning_bundle.resolve_rules,
             include_deleted=include_deleted,
+            run_id=run_id,
+            planning_deps=planning_deps,
+            planning_bundle=planning_bundle,
             catalog=catalog,
-        )
-        match_usecase = MatchUseCase(
             report_items_limit=report_items_limit,
             include_matched_items=False,
-        )
-        matched_rows = list(
-            iter_ok(
-                match_usecase.iter_matched(
-                    enriched_source=enriched_rows,
-                    matcher=matcher,
-                    catalog=catalog,
-                ),
-                should_skip=lambda r: any(w.code == "MATCH_DUPLICATE_SOURCE" for w in r.warnings),
-            )
-        )
-
-        pending_rows = _load_pending_rows(
-            dataset=dataset,
-            pending_repo=planning_deps.pending_repo,
-            cache_repo=cache_repo,
-            include_deleted=include_deleted,
-            ignored_fields=planning_bundle.matching_rules.ignored_fields,
-        )
-        matched_rows.extend(pending_rows)
-
-        resolver = LookupEnricher(
-            planning_bundle.resolve_rules,
-            planning_bundle.link_rules,
-            identity_repo=planning_deps.identity_repo,
-            pending_repo=planning_deps.pending_repo,
-            settings=planning_deps.resolver_settings,
-            catalog=catalog,
-        )
-        resolve_usecase = ResolveUseCase(
-            report_items_limit=report_items_limit,
-            include_resolved_items=False,
-        )
-        resolved_rows = iter_ok(
-            resolve_usecase.iter_resolved(
-                matched_source=matched_rows,
-                resolver=resolver,
-                dataset=dataset,
+            batch_size=getattr(settings, "match_batch_size", 500),
+            flush_interval_ms=getattr(settings, "match_flush_interval_ms", 500),
+        ) as match_runtime:
+            matched_rows = iter_matched_ok(
+                runtime=match_runtime,
+                enriched_source=enriched_rows,
                 catalog=catalog,
             )
-        )
 
-        use_case = PlanUseCase()
-        plan_result = use_case.run(
-            resolved_row_source=resolved_rows,
-        )
+            pending_rows = _load_pending_rows(
+                dataset=dataset,
+                pending_repo=planning_deps.pending_repo,
+                cache_repo=cache_repo,
+                include_deleted=include_deleted,
+                ignored_fields=planning_bundle.matching_rules.ignored_fields,
+            )
+            matched_with_pending = chain(matched_rows, pending_rows)
+
+            resolver = LookupEnricher(
+                planning_bundle.resolve_rules,
+                planning_bundle.link_rules,
+                identity_repo=planning_deps.identity_repo,
+                pending_repo=planning_deps.pending_repo,
+                settings=planning_deps.resolver_settings,
+                catalog=catalog,
+            )
+            resolve_usecase = ResolveUseCase(
+                report_items_limit=report_items_limit,
+                include_resolved_items=False,
+                batch_size=getattr(settings, "resolve_batch_size", 500),
+                flush_interval_ms=getattr(settings, "resolve_flush_interval_ms", 500),
+            )
+            resolved_rows = iter_ok(
+                resolve_usecase.iter_resolved(
+                    matched_source=matched_with_pending,
+                    resolver=resolver,
+                    dataset=dataset,
+                    catalog=catalog,
+                )
+            )
+
+            use_case = PlanUseCase()
+            plan_result = use_case.run(
+                resolved_row_source=resolved_rows,
+            )
         plan_meta = {
             "csv_path": None,
             "include_deleted": include_deleted,

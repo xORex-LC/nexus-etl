@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from connector.domain.models import Identity
 from connector.domain.transform.matching.context import MatchContext
-from connector.domain.transform.matching.rules import IdentityRule, MatchingRules
+from connector.domain.transform.matching.rules import IdentityRule, MatchingRules, SourceDedupRules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
@@ -39,5 +39,11 @@ def build_matching_rules() -> MatchingRules:
         identity_rules=(
             IdentityRule(name="match_key", build_identity=build_match_key_identity),
             IdentityRule(name="usr_org_tab_num", build_identity=build_usr_org_tab_num_identity),
+        ),
+        source_dedup=SourceDedupRules(
+            enabled=True,
+            on_duplicate="warn",
+            on_conflict="error",
+            fallback_identity_value=True,
         ),
     )

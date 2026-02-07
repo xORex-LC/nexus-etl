@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 
 from connector.domain.models import (
     DiagnosticStage,
@@ -15,10 +15,11 @@ from connector.domain.models import (
     DiagnosticItem,
 )
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.diagnostics.context import error as diag_error
+from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.transform.matching.context import MatchContext
 from connector.domain.transform.matching.match_models import MatchedRow, build_fingerprint
 from connector.domain.transform.matching.rules import IdentityRule, MatchingRules, ResolveRules
+from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.ports.cache.repository import CacheRepositoryProtocol
 from connector.domain.transform.core.result import TransformResult
 
@@ -37,6 +38,7 @@ class DeduplicationTransform:
         resolve_rules: ResolveRules,
         include_deleted: bool,
         catalog: ErrorCatalog,
+        identity_repo: IdentityRepository | None = None,
     ) -> None:
         self.dataset = dataset
         self.cache_repo = cache_repo
@@ -44,6 +46,95 @@ class DeduplicationTransform:
         self.resolve_rules = resolve_rules
         self.include_deleted = include_deleted
         self.catalog = catalog
+        self.identity_repo = identity_repo
+        self._seen_source: dict[str, str] = {}
+        self._runtime_scope: str | None = None
+
+    def reset_source_dedup(self) -> None:
+        """
+        Назначение:
+            Сбросить in-memory состояние source-dedup перед новым прогоном.
+        """
+        self._seen_source.clear()
+
+    def bind_runtime_scope(self, scope: str | None) -> None:
+        """
+        Назначение:
+            Подключить scoped runtime-state для source-dedup.
+        """
+        self._runtime_scope = scope
+
+    def match_stream(self, enriched_source: Iterable[TransformResult[Any]]) -> Iterable[TransformResult[MatchedRow]]:
+        """
+        Назначение:
+            Потоковый match + source-dedup внутри matcher-core.
+        """
+        self.reset_source_dedup()
+        for enriched in enriched_source:
+            yield self.match_with_source_dedup(enriched)
+
+    def match_with_source_dedup(self, enriched: TransformResult[Any]) -> TransformResult[MatchedRow]:
+        """
+        Назначение:
+            Выполнить match и применить source-dedup политики.
+        """
+        matched = self.match(enriched)
+        if matched.row is None:
+            return matched
+
+        dedup_rules = self.matching_rules.source_dedup
+        if not dedup_rules.enabled:
+            return matched
+
+        dedup_key = _build_source_dedup_key(
+            self.dataset,
+            matched.row.identity,
+            allow_fallback=dedup_rules.fallback_identity_value,
+        )
+        if dedup_key is None:
+            return matched
+
+        prev_fingerprint = self._read_seen_fingerprint(dedup_key)
+        if prev_fingerprint is None:
+            self._write_seen_fingerprint(dedup_key, matched.row.fingerprint)
+            return matched
+
+        if prev_fingerprint == matched.row.fingerprint:
+            warning = _build_source_duplicate_warning(self.catalog, matched.row)
+            return _drop_matched_row(
+                matched,
+                warning=warning,
+                drop_reason="duplicate_source",
+            )
+
+        if dedup_rules.on_conflict == "warn":
+            warning = _build_source_conflict_warning(self.catalog, matched.row)
+            return _drop_matched_row(
+                matched,
+                warning=warning,
+                drop_reason="conflict_source",
+            )
+
+        error = _build_source_conflict_error(self.catalog, matched.row)
+        return _drop_matched_row(
+            matched,
+            error=error,
+            drop_reason="conflict_source",
+        )
+
+    def _read_seen_fingerprint(self, dedup_key: str) -> str | None:
+        scope = self._runtime_scope
+        if scope and self.identity_repo is not None:
+            value = self.identity_repo.get_runtime_state(scope, self.dataset, dedup_key)
+            if value is not None:
+                return value
+        return self._seen_source.get(dedup_key)
+
+    def _write_seen_fingerprint(self, dedup_key: str, fingerprint: str) -> None:
+        self._seen_source[dedup_key] = fingerprint
+        scope = self._runtime_scope
+        if scope and self.identity_repo is not None:
+            self.identity_repo.set_runtime_state(scope, self.dataset, dedup_key, fingerprint)
 
     def match(self, enriched: TransformResult[Any]) -> TransformResult[MatchedRow]:
         """
@@ -308,6 +399,73 @@ def _extract_row_and_context(source: TransformResult[Any]) -> tuple[Any | None, 
     """
     row = source.row
     return row, _build_match_context(source, row)
+
+
+def _build_source_dedup_key(
+    dataset: str,
+    identity: Identity,
+    *,
+    allow_fallback: bool,
+) -> str | None:
+    primary = (identity.primary or "").strip()
+    value = (identity.primary_value or "").strip()
+    if value == "":
+        return None
+    if primary:
+        return f"{dataset}:{primary}:{value}"
+    if allow_fallback:
+        return f"{dataset}:_fallback:{value}"
+    return None
+
+
+def _drop_matched_row(
+    matched: TransformResult[MatchedRow],
+    *,
+    warning: DiagnosticItem | None = None,
+    error: DiagnosticItem | None = None,
+    drop_reason: str,
+) -> TransformResult[MatchedRow]:
+    builder = matched.as_builder()
+    builder.set_row(None)
+    builder.set_meta("match_drop_reason", drop_reason)
+    if warning is not None:
+        builder.add_warning_item(warning)
+    if error is not None:
+        builder.add_error_item(error)
+    return builder.build()
+
+
+def _build_source_duplicate_warning(catalog: ErrorCatalog, row: MatchedRow) -> DiagnosticItem:
+    return diag_warning(
+        catalog=catalog,
+        stage=DiagnosticStage.MATCH,
+        code="MATCH_DUPLICATE_SOURCE",
+        field=row.identity.primary,
+        message="duplicate row in source batch",
+        record_ref=row.row_ref,
+    )
+
+
+def _build_source_conflict_warning(catalog: ErrorCatalog, row: MatchedRow) -> DiagnosticItem:
+    return diag_warning(
+        catalog=catalog,
+        stage=DiagnosticStage.MATCH,
+        code="MATCH_CONFLICT_SOURCE",
+        field=row.identity.primary,
+        message="conflicting rows in source batch",
+        record_ref=row.row_ref,
+    )
+
+
+def _build_source_conflict_error(catalog: ErrorCatalog, row: MatchedRow) -> DiagnosticItem:
+    return diag_error(
+        catalog=catalog,
+        stage=DiagnosticStage.MATCH,
+        code="MATCH_CONFLICT_SOURCE",
+        field=row.identity.primary,
+        message="conflicting rows in source batch",
+        record_ref=row.row_ref,
+    )
 
 
 def _build_match_context(source: TransformResult[Any], row: Any | None) -> MatchContext:

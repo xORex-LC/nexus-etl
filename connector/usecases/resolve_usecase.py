@@ -10,6 +10,7 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.core.result_processor import PlanningResultProcessor
 from connector.domain.transform.stages.stages import ResolveStage
 
@@ -24,9 +25,13 @@ class ResolveUseCase:
         self,
         report_items_limit: int,
         include_resolved_items: bool,
+        batch_size: int = 500,
+        flush_interval_ms: int = 500,
     ) -> None:
         self.report_items_limit = report_items_limit
         self.include_resolved_items = include_resolved_items
+        self.batch_size = batch_size
+        self.flush_interval_ms = flush_interval_ms
 
     def iter_resolved(
         self,
@@ -81,8 +86,13 @@ class ResolveUseCase:
         catalog: ErrorCatalog,
     ):
         stage = ResolveStage(resolver, catalog)
-        for resolved in stage.run(matched_source, dataset=dataset):
-            yield resolved
+        for batch in iter_micro_batches(
+            matched_source,
+            batch_size=self.batch_size,
+            flush_interval_ms=self.flush_interval_ms,
+        ):
+            for resolved in stage.run(batch, dataset=dataset):
+                yield resolved
 
 
 def _purge_pending(resolver: LookupEnricher) -> None:

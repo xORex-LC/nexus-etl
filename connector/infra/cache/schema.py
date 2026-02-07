@@ -4,7 +4,7 @@ from connector.infra.cache.cache_spec import CacheSpec
 from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def ensure_base_schema(engine: SqliteEngine) -> int:
@@ -27,6 +27,8 @@ def ensure_base_schema(engine: SqliteEngine) -> int:
             _migrate_to_v3(engine)
         if current_version < 4:
             _migrate_to_v4(engine)
+        if current_version < 5:
+            _migrate_to_v5(engine)
         _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
@@ -116,6 +118,13 @@ def _migrate_to_v4(engine: SqliteEngine) -> None:
         engine.execute("ALTER TABLE pending_links ADD COLUMN payload TEXT")
 
 
+def _migrate_to_v5(engine: SqliteEngine) -> None:
+    """
+    Миграция с v4: добавляем runtime-state таблицу для scoped состояния match/resolve.
+    """
+    _create_runtime_state_table(engine)
+
+
 def _create_service_tables(engine: SqliteEngine) -> None:
     engine.execute(
         """
@@ -174,6 +183,28 @@ def _create_service_tables(engine: SqliteEngine) -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_pending_expires
         ON pending_links(expires_at)
+        """
+    )
+    _create_runtime_state_table(engine)
+
+
+def _create_runtime_state_table(engine: SqliteEngine) -> None:
+    engine.execute(
+        """
+        CREATE TABLE IF NOT EXISTS identity_runtime_state (
+            scope TEXT NOT NULL,
+            dataset TEXT NOT NULL,
+            state_key TEXT NOT NULL,
+            state_value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (scope, dataset, state_key)
+        )
+        """
+    )
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_identity_runtime_scope
+        ON identity_runtime_state(scope, dataset)
         """
     )
 

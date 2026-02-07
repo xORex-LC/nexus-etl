@@ -174,6 +174,118 @@ class StageEngine(Generic[R, C]):
 3) Для очередей использовать стабильный partition key по identity, чтобы один identity обрабатывался последовательно.
 4) Сохранить idempotency на записи состояния и обработке retry.
 
+### Подтвержденный план реализации (детально)
+Ниже зафиксирован итоговый, согласованный план устранения проблемы `match+resolve latency/state`.
+
+#### 1. Границы ответственности (обязательное правило)
+1) Микро-батчинг (`batch_size`, `flush_interval_ms`) реализуется в orchestration/use-case слое.
+2) `MatchCore/ResolveCore` сохраняются как доменные процессоры (детерминированная логика на входном наборе), без знания о таймерах/окнах/flushing.
+3) Тайминг, размеры окон, жизненный цикл state и cleanup — зона use-case.
+
+Почему так:
+- это runtime-параметры окружения, а не бизнес-правила датасета;
+- проще тестировать и масштабировать разные режимы исполнения (local/CI/RMQ/prod);
+- не раздуваем доменное ядро инфраструктурными деталями исполнения.
+
+#### 2. Состояние между окнами: без новых портов
+1) Новые порты `MatchSeenRepository`/`ResolveIndexRepository` на этом этапе не вводим.
+2) Используем и расширяем существующий `IdentityRepository` (reuse-first подход).
+3) Для runtime-state вводим scope-нейминг:
+   - `run:<run_id>` — единица изоляции состояния конкретного запуска.
+4) Внутри scope сохраняем:
+   - match-seen state: `identity -> fingerprint` (+ служебные атрибуты, при необходимости TTL);
+   - resolve runtime-index (если нужен отдельный индекс для batch-решений).
+5) `PendingLinksRepository` остается текущим механизмом pending/retry для resolve.
+
+#### 3. Очистка состояния (must-have)
+1) По завершению команды выполняется cleanup scope `run:<run_id>`.
+2) Cleanup вызывается в `finally`-ветке orchestration (чтобы срабатывать и на ошибках).
+3) Для аварийных сценариев/утечек допускается дополнительный sweep по TTL.
+
+#### 4. Конфигурация runtime-параметров через Settings
+Параметры задаются не DSL-правилами, а runtime-конфигурацией:
+1) `match_batch_size`
+2) `match_flush_interval_ms`
+3) `resolve_batch_size`
+4) `resolve_flush_interval_ms`
+
+Источник значений:
+- `CLI > ENV > config.yml > defaults`.
+
+Обоснование:
+- эти параметры нужны для tuning среды выполнения;
+- не смешиваем бизнес-декларации датасета с эксплуатационными настройками рантайма.
+
+#### 5. Алгоритм исполнения для Match (микро-батчи)
+1) Use-case читает входной поток и собирает окно:
+   - flush по размеру (`match_batch_size`) или времени (`match_flush_interval_ms`).
+2) Для окна:
+   - запускается `MatchCore` + source-dedup правила;
+   - hard-drop (`row=None`) сохраняется как договоренный барьер для downstream.
+3) Результат окна немедленно стримится дальше в resolve (без ожидания полного файла).
+4) Match-report формируется инкрементально по окнам.
+
+#### 6. Алгоритм исполнения для Resolve (микро-батчи)
+1) Resolve принимает поток результатов match и тоже работает окнами:
+   - flush по `resolve_batch_size` или `resolve_flush_interval_ms`.
+2) Pending/retry остается на `PendingLinksRepository`.
+3) Resolve может использовать runtime-state в `IdentityRepository` под тем же scope run.
+4) После успешного/финального исхода записи state обновляется идемпотентно.
+
+#### 7. Идемпотентность и порядок
+1) Запись runtime-state выполняется upsert-операциями.
+2) Для очередей (RMQ и аналоги) рекомендуется partition key по identity:
+   - один identity должен обрабатываться последовательно.
+3) Повторный запуск с новым `run_id` не должен конфликтовать со старым scope.
+
+#### 8. Наблюдаемость и диагностика
+1) В report/метриках фиксируем:
+   - количество flush-окон,
+   - средний размер окна,
+   - задержку flush,
+   - размер pending и retry-attempts.
+2) Ошибки state/store классифицируются через diagnostic layer как runtime/infra.
+
+#### 9. Пошаговый план внедрения (один проход)
+Шаг 1:
+- добавить runtime-настройки в `Settings` + ENV/CLI/config wiring.
+
+Шаг 2:
+- расширить `IdentityRepository` для scoped runtime-state (`run:<run_id>`), без введения новых портов.
+
+Шаг 3:
+- внедрить микро-батч executor в `MatchUseCase` (size/time flush) с потоковой отдачей результата.
+
+Шаг 4:
+- внедрить микро-батч executor в `ResolveUseCase` (size/time flush), сохранив pending/retry через `PendingLinksRepository`.
+
+Шаг 5:
+- добавить guaranteed cleanup scope в orchestration (`finally`).
+
+Шаг 6:
+- покрыть unit/integration тестами:
+  - flush по размеру;
+  - flush по таймеру;
+  - корректная изоляция state по `run_id`;
+  - cleanup scope;
+  - повторный запуск и идемпотентность.
+
+#### 10. Definition of Done
+1) `match/resolve` не держат неограниченное состояние в памяти всего прогона.
+2) Микро-батчинг настраивается через `Settings` (`CLI/ENV/config`).
+3) Runtime-state хранится в существующем репозитории с `run`-scope и очищается после прогона.
+4) `PendingLinksRepository` продолжает обслуживать resolve pending/retry без регрессий.
+5) `import plan` и цепочка `match -> resolve` проходят регрессионные тесты.
+
+### Статус реализации
+Реализовано:
+1) Runtime-параметры микро-батчинга добавлены в `Settings` и wired через `CLI/ENV/config`.
+2) `IdentityRepository` расширен scoped runtime-state (`set/get/clear`), sqlite-реализация и schema migration добавлены.
+3) `MatchUseCase` и `ResolveUseCase` переведены на микро-батчи (`iter_micro_batches`).
+4) `match` source-dedup использует runtime-state (`run:<run_id>`) через `IdentityRepository`.
+5) Cleanup runtime-scope добавлен в orchestration (`import-plan`, `match`, `resolve`) в `finally`.
+6) Добавлены/обновлены тесты: config priority, identity runtime state, matcher dedup, cache schema version.
+
 ## Идея развития Match: Fuzzy + Confidence Scoring
 Цель:
 - расширить `match` от strict identity-lookup до управляемого сопоставления с оценкой вероятности совпадения.
@@ -299,6 +411,73 @@ class StageEngine(Generic[R, C]):
 2) Добавить в matcher вычисление статуса по thresholds.
 3) Прокинуть статус в resolve/plan и исключить ambiguous из executable items.
 4) Добавить счётчики/репорт для ambiguous.
+
+### Детальный план реализации (Match: перенос dedup + подготовка к fuzzy/scoring)
+Цель:
+- закрыть текущую проблему `use-case contains dedup logic`;
+- сделать matcher единым местом принятия решений по source duplicate/conflict;
+- подготовить безопасный фундамент для `fuzzy + scoring`.
+
+Шаг 0. Инвентаризация текущего поведения
+1) Зафиксировать текущее поведение тестами (baseline):
+   - duplicate source -> warning и не уходит в resolver;
+   - source conflict -> error и не уходит в resolver;
+   - обычная строка -> проходит в resolver.
+2) Зафиксировать текущие коды диагностики и формат report-строк.
+
+Шаг 1. Расширение правил matcher (без DSL)
+1) В `MatchingRules` добавить dedup-политику:
+   - `dedup_enabled: bool`
+   - `on_duplicate: \"warn\" | \"skip\"`
+   - `on_conflict: \"error\" | \"warn\"`
+   - `dedup_fallback_identity_value: bool` (transitional)
+2) Для employees задать эти правила в `build_matching_rules()`.
+
+Шаг 2. Перенос source-dedup в matcher-core
+1) В `DeduplicationTransform` добавить потоковый режим `match_stream(...)`:
+   - принимает iterable enriched rows;
+   - внутри ведёт `seen` по каноническому ключу `(dataset, identity_primary, identity_value)`;
+   - fallback на `identity_value`, если включён transitional-флаг.
+2) Для каждой строки:
+   - сначала выполнить обычный `match(...)`;
+   - затем применить source-dedup policy по fingerprint;
+   - при duplicate/conflict добавить диагностику;
+   - выполнить hard-drop (`row=None`) для downstream, сохранив диагностику для report.
+
+Шаг 3. Упрощение MatchUseCase
+1) Удалить `seen` и всю dedup-логику из `MatchUseCase`.
+2) Оставить только orchestration/reporting:
+   - запуск `MatchStage`,
+   - запись статистики и report items,
+   - фильтрацию по `row is None` как downstream-барьер.
+
+Шаг 4. Typed контракт решения (Phase 1)
+1) Добавить `MatchDecisionStatus`, `MatchCandidate`, `MatchDecision`.
+2) В matcher формировать решение типами, а не ad-hoc строками.
+3) Переходный адаптер в текущий `MatchStatus` оставить до миграции resolver/plan.
+
+Шаг 5. Ambiguous semantics (Phase 1.2)
+1) Добавить `AMBIGUOUS` в typed-контракт.
+2) На этапе до полноценного fuzzy:
+   - допускается производить `AMBIGUOUS` только для tie-case;
+   - thresholds подключаются после ввода scoring.
+3) Resolver/Plan:
+   - `AMBIGUOUS` не исполняется;
+   - учитывается в report/summary и в exit policy (`CONFLICT`).
+
+Шаг 6. Тесты и критерии готовности
+1) Unit tests:
+   - dedup key canonical vs fallback;
+   - duplicate/conflict policies;
+   - hard-drop semantics (`row=None` + diagnostics preserved).
+2) Integration tests:
+   - `match -> resolve` (drop не доходит в resolver);
+   - `import plan` report содержит dropped items с корректными кодами.
+3) DoD:
+   - в `MatchUseCase` нет бизнес-правил dedup;
+   - source-dedup полностью в matcher-core;
+   - поведение совместимо с текущими отчётами и кодами ошибок;
+   - baseline тесты + новые matcher-тесты проходят.
 
 ### Роль TransformationEngine
 **TransformationEngine = универсальный исполнитель ops**.  
