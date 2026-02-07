@@ -127,6 +127,179 @@ class StageEngine(Generic[R, C]):
   - MatchDsl / ResolveDsl → MatchCore / ResolveCore
   - MatchEngine / ResolveEngine
 
+## Текущая проблема (Match, transitional)
+Сейчас часть доменной логики `match` находится в `MatchUseCase`, а не в `MatchCore`:
+- source-batch дедуп (`duplicate/conflict in source`) выполняется внутри use-case;
+- это смешивает orchestration и бизнес-правила стадии.
+
+Почему это проблема:
+- use-case должен координировать выполнение стадии, а не содержать правила матчинга;
+- при добавлении нового dataset придется менять use-case вместо декларативных правил;
+- ломается единый принцип `StageSpec -> StageDsl -> StageEngine -> StageCore`.
+
+Целевое состояние:
+1) source-batch dedup переносится в `MatchCore` (или отдельную dedup-policy внутри match-ядра);
+2) `MatchUseCase` оставляет только orchestration/report;
+3) поведение dedup задается dataset-правилами/DSL (`enabled`, `identity_key`, `on_duplicate`, `on_conflict`).
+
+### Зафиксированные решения по переносу source-dedup (до DSL)
+1) Политики dedup (`on_duplicate`, `on_conflict`, `enabled`) задаются в dataset-правилах matcher.
+   - На текущем шаге это Python-правила (`MatchingRules`), без DSL.
+   - DSL-описание этих политик добавляется позже, отдельным этапом.
+
+2) Поведение при source duplicate/conflict:
+   - запись должна попадать в match-report с диагностикой;
+   - запись не должна идти в resolver;
+   - технически это означает `hard-drop` на matcher-стадии (`row=None` после классификации).
+
+3) Канонический dedup-key:
+   - основной ключ: `(dataset, identity_primary, identity_value)`;
+   - временно допускается fallback на `identity_value`, если `identity_primary` отсутствует;
+   - fallback считается transitional-режимом совместимости.
+
+## Текущая проблема (производительность/latency на Match+Resolve)
+Сейчас `match` и `resolve` используют stateful-механику, которая в текущем runtime может приводить к накоплению данных:
+- в `match` есть source-dedup по identity/fingerprint;
+- в `resolve` есть batch-индексы и pending-логика.
+
+Риск:
+- при переходе на потоковую доставку (например, RMQ) первые стадии (`map/normalize/enrich`) будут идти стримом,
+  а `match/resolve` станут точками задержки и роста памяти.
+
+Краткое решение:
+1) Перейти на микро-батчи для `match` и `resolve` (`batch_size + flush_interval_ms`).
+2) Вынести состояние между окнами в внешний store:
+   - dedup-state (`identity -> fingerprint`, TTL),
+   - pending-state/attempts для resolve.
+3) Для очередей использовать стабильный partition key по identity, чтобы один identity обрабатывался последовательно.
+4) Сохранить idempotency на записи состояния и обработке retry.
+
+## Идея развития Match: Fuzzy + Confidence Scoring
+Цель:
+- расширить `match` от strict identity-lookup до управляемого сопоставления с оценкой вероятности совпадения.
+
+Что добавляем (минимум):
+1) Fuzzy-comparators для строковых полей (после нормализации значений).
+2) Weighted scoring (веса полей + агрегированный score).
+3) Пороговые решения:
+   - `score >= accept_threshold` -> `MATCHED`
+   - `review_threshold <= score < accept_threshold` -> `CONFLICT_TARGET` / `NEEDS_REVIEW`
+   - `score < review_threshold` -> `NOT_FOUND`
+
+Краткий алгоритм:
+1) Candidate generation:
+   - сначала exact/blocking-кандидаты по ключам (identity/block keys),
+   - затем fuzzy-evaluation только на ограниченном наборе кандидатов.
+2) Field scoring:
+   - для каждого поля применяем comparator (`exact`, `casefold`, `similarity`),
+   - умножаем на вес поля,
+   - считаем итоговый score.
+3) Decision:
+   - выбираем top-1 и top-k кандидатов,
+   - применяем thresholds и tie-policy.
+4) Output:
+   - в результат match передаем `score`, `match_mode`, `decision_reason`, `top_candidates` (ограниченно).
+
+Где хранить правила:
+- в dataset DSL (`MatchSpec`):
+  - `blocking_keys`
+  - `comparators`/`weights`
+  - `thresholds`
+  - `tie_policy`
+
+План внедрения (поэтапно):
+1) MVP: один fuzzy comparator + weighted score + thresholds.
+2) Расширить `MatchedRow` метаданными scoring.
+3) Перенести source-dedup из use-case в match-core (единая доменная логика стадии).
+4) После стабилизации вынести все match-rules в декларативный `MatchSpec`.
+
+### Базовый контракт до DSL (Phase 1)
+До декларативного `MatchSpec` фиксируем typed-результат решения матчинга:
+
+1) `MatchDecisionStatus`:
+   - `MATCHED`
+   - `NOT_FOUND`
+   - `AMBIGUOUS`
+   - `CONFLICT_SOURCE`
+   - `INVALID_INPUT`
+
+2) `MatchCandidate`:
+   - `target_id`
+   - `identity`
+   - `score`
+   - `match_mode` (`exact|fuzzy`)
+   - `evidence` (опционально)
+
+3) `MatchDecision`:
+   - `status: MatchDecisionStatus`
+   - `reason_code`
+   - `message`
+   - `selected`
+   - `candidates`
+   - `score`
+   - `meta`
+
+Зачем это нужно:
+- убрать “магические строки” в match-логике;
+- зафиксировать единый выходной контракт перед переносом правил в DSL;
+- упростить оркестрацию use-case (use-case читает `decision.status`, а не набор ad-hoc проверок).
+
+Переходная совместимость:
+- временно допускается адаптер `MatchDecisionStatus -> MatchStatus`,
+  чтобы не ломать resolver/plan в одном шаге.
+- на этапе миграции `AMBIGUOUS` может временно маппиться в текущий `CONFLICT_TARGET`.
+
+### Канонический dedup-key и fingerprint policy (Phase 1.1)
+Что фиксируем как инвариант:
+1) Source-dedup выполняется по каноническому ключу:
+   - `(dataset, identity_primary, identity_value)`
+2) Для сравнения “дубликат/конфликт” используется fingerprint от `desired_state`:
+   - fingerprint строится детерминированно,
+   - `ignored_fields` задаются dataset-правилами,
+   - одинаковый dedup-key + одинаковый fingerprint = duplicate,
+   - одинаковый dedup-key + разный fingerprint = source-conflict.
+
+Текущее ограничение (transitional):
+- сейчас dedup в use-case местами опирается только на `identity_value`,
+  что потенциально создаёт коллизии при разных `identity_primary`.
+
+Целевое состояние:
+1) dedup-key используется только в каноническом виде (`dataset+primary+value`);
+2) логика source-dedup переносится из use-case в match-core;
+3) use-case не содержит ad-hoc правил дедупа.
+
+### Ambiguous semantics (Phase 1.2)
+Цель:
+- отделить неоднозначность матчинга от “жёсткого конфликта”, чтобы fuzzy/scoring имели управляемый контракт.
+
+Правило:
+1) `MATCHED`:
+   - `score >= accept_threshold`
+2) `AMBIGUOUS`:
+   - `review_threshold <= score < accept_threshold`
+   - либо tie в top-кандидатах при `tie_policy=review`
+3) `NOT_FOUND`:
+   - `score < review_threshold`
+
+Поведение по стадиям:
+1) Matcher:
+   - возвращает typed-решение со статусом, score, reason и top-candidates.
+2) Resolver:
+   - не выполняет обычный resolve-path для `AMBIGUOUS`;
+   - формирует диагностику (`MATCH_AMBIGUOUS` / `RESOLVE_SKIPPED_AMBIGUOUS`).
+3) Plan:
+   - `AMBIGUOUS` не попадает в исполняемые операции (`create/update`);
+   - учитывается в отчёте и summary (`ambiguous_count`).
+4) Exit policy:
+   - ambiguous без hard-errors -> `CONFLICT`;
+   - system/runtime ошибки обрабатываются отдельной политикой.
+
+Минимальный план внедрения:
+1) Ввести typed-status `AMBIGUOUS` в match-контракт.
+2) Добавить в matcher вычисление статуса по thresholds.
+3) Прокинуть статус в resolve/plan и исключить ambiguous из executable items.
+4) Добавить счётчики/репорт для ambiguous.
+
 ### Роль TransformationEngine
 **TransformationEngine = универсальный исполнитель ops**.  
 Он используется там, где логика стадии сводится к применению операций:
