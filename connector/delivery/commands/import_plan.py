@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.context import CommandContext
 from connector.delivery.cli.bootstrap import build_cache, build_dataset_spec
+from connector.delivery.cli.context import CommandContext
+from connector.delivery.commands.common import result_with, sqlite_cache_error_result
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.logging.setup import logEvent
@@ -56,20 +58,16 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
         )
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
-        return _result_with(SystemErrorCode.INTERNAL_ERROR)
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
+    except sqlite3.Error as exc:
+        return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="plan", exc=exc)
     except Exception as exc:
         logEvent(ctx.logger, logging.ERROR, run_id, "plan", f"Import plan failed: {exc}")
         typer.echo("ERROR: import plan failed (see logs)", err=True)
-        return _result_with(SystemErrorCode.INTERNAL_ERROR)
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
     finally:
         if conn is not None:
             conn.close()
-
-
-def _result_with(code: SystemErrorCode) -> CommandResult:
-    result = CommandResult()
-    result.add_code(code)
-    return result
 
 
 __all__ = ["handler", "Options"]

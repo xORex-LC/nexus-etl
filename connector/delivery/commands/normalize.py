@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import logging
 import sqlite3
 from dataclasses import dataclass
 
-import typer
-
 from connector.delivery.cli.context import CommandContext
+from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.bootstrap import (
     build_cache,
     build_dataset_spec,
@@ -14,8 +12,6 @@ from connector.delivery.cli.bootstrap import (
     build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.infra.logging.setup import logEvent
 from connector.usecases.normalize_usecase import NormalizeUseCase
 
 
@@ -65,18 +61,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             catalog=catalog,
         )
     except sqlite3.Error as exc:
-        logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
-        typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
-        return _result_with(SystemErrorCode.CACHE_ERROR)
+        return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="normalize", exc=exc)
     finally:
         if conn is not None:
             conn.close()
-
-
-def _result_with(code: SystemErrorCode) -> CommandResult:
-    result = CommandResult()
-    result.add_code(code)
-    return result
 
 
 __all__ = ["handler", "Options"]

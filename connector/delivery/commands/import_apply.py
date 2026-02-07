@@ -7,6 +7,7 @@ import sqlite3
 import typer
 
 from connector.delivery.cli.context import CommandContext
+from connector.delivery.commands.common import log_sqlite_cache_error, result_with
 from connector.delivery.cli.bootstrap import (
     build_cache,
     build_identity_repos,
@@ -41,7 +42,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
     if not opts.plan_path:
         typer.echo("ERROR: --plan is required (apply no longer builds plan from CSV)", err=True)
-        return _result_with(SystemErrorCode.IO_ERROR)
+        return result_with(SystemErrorCode.IO_ERROR)
 
     report_items_limit = opts.report_items_limit if opts.report_items_limit is not None else settings.report_items_limit
     resource_exists_retries = (
@@ -56,7 +57,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     except (OSError, ValueError) as exc:
         logEvent(ctx.logger, logging.ERROR, run_id, "plan", f"Import apply failed: {exc}")
         typer.echo(f"ERROR: import apply failed: {exc}", err=True)
-        return _result_with(SystemErrorCode.IO_ERROR)
+        return result_with(SystemErrorCode.IO_ERROR)
 
     dataset_name = plan.meta.dataset
     catalog = ctx.catalog or build_diagnostics_catalog(dataset_name, strict=settings.diagnostics_strict)
@@ -70,7 +71,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         identity_repo, pending_repo = build_identity_repos(engine)
         identity_keys, identity_id_fields = build_identity_index_plan()
     except sqlite3.Error as exc:
-        logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
+        log_sqlite_cache_error(logger=ctx.logger, run_id=run_id, exc=exc)
     except Exception as exc:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to init identity index: {exc}")
 
@@ -126,12 +127,5 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     if conn is not None:
         conn.close()
     return result
-
-
-def _result_with(code: SystemErrorCode) -> CommandResult:
-    result = CommandResult()
-    result.add_code(code)
-    return result
-
 
 __all__ = ["handler", "Options"]
