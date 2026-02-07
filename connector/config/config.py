@@ -75,7 +75,12 @@ class Settings:
     max_actions: int | None = None
     dry_run: bool = False
     diagnostics_strict: bool = False
-    diagnostics_strict: bool = False
+
+    # Match/resolve runtime micro-batching
+    match_batch_size: int = 500
+    match_flush_interval_ms: int = 500
+    resolve_batch_size: int = 500
+    resolve_flush_interval_ms: int = 500
 
     # Resolver pending/identity tuning
     pending_ttl_seconds: int = 120
@@ -84,7 +89,6 @@ class Settings:
     pending_on_expire: str = "error"
     pending_allow_partial: bool = False
     # Срок хранения обработанных pending-записей (в днях). 0 = не чистить.
-    pending_retention_days: int = 14
     pending_retention_days: int = 14
 
 @dataclass(frozen=True)
@@ -319,6 +323,10 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "pending_allow_partial": envGet("ANKEY_PENDING_ALLOW_PARTIAL"),
         "pending_retention_days": envGet("ANKEY_PENDING_RETENTION_DAYS"),
         "diagnostics_strict": envGet("ANKEY_DIAGNOSTICS_STRICT"),
+        "match_batch_size": envGet("ANKEY_MATCH_BATCH_SIZE"),
+        "match_flush_interval_ms": envGet("ANKEY_MATCH_FLUSH_INTERVAL_MS"),
+        "resolve_batch_size": envGet("ANKEY_RESOLVE_BATCH_SIZE"),
+        "resolve_flush_interval_ms": envGet("ANKEY_RESOLVE_FLUSH_INTERVAL_MS"),
     }
     if any(v is not None for v in env.values()):
         sources.append("env")
@@ -363,6 +371,10 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         "pending_allow_partial": cfg.get("pending_allow_partial", defaults.pending_allow_partial),
         "pending_retention_days": cfg.get("pending_retention_days", defaults.pending_retention_days),
         "diagnostics_strict": cfg.get("diagnostics_strict", defaults.diagnostics_strict),
+        "match_batch_size": cfg.get("match_batch_size", defaults.match_batch_size),
+        "match_flush_interval_ms": cfg.get("match_flush_interval_ms", defaults.match_flush_interval_ms),
+        "resolve_batch_size": cfg.get("resolve_batch_size", defaults.resolve_batch_size),
+        "resolve_flush_interval_ms": cfg.get("resolve_flush_interval_ms", defaults.resolve_flush_interval_ms),
     }
 
     if env["host"] is not None:
@@ -434,6 +446,14 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         merged["pending_retention_days"] = parseInt(env["pending_retention_days"])
     if env["diagnostics_strict"] is not None:
         merged["diagnostics_strict"] = parseBool(env["diagnostics_strict"])
+    if env["match_batch_size"] is not None:
+        merged["match_batch_size"] = parseInt(env["match_batch_size"])
+    if env["match_flush_interval_ms"] is not None:
+        merged["match_flush_interval_ms"] = parseInt(env["match_flush_interval_ms"])
+    if env["resolve_batch_size"] is not None:
+        merged["resolve_batch_size"] = parseInt(env["resolve_batch_size"])
+    if env["resolve_flush_interval_ms"] is not None:
+        merged["resolve_flush_interval_ms"] = parseInt(env["resolve_flush_interval_ms"])
 
     if any(v is not None for v in cli_overrides.values()):
         sources.append("cli")
@@ -480,6 +500,11 @@ def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings
         diagnostics_strict=parseBoolAny(merged.get("diagnostics_strict"))
         if merged.get("diagnostics_strict") is not None
         else defaults.diagnostics_strict,
+        match_batch_size=parseIntAny(merged.get("match_batch_size")) or defaults.match_batch_size,
+        match_flush_interval_ms=parseIntAny(merged.get("match_flush_interval_ms")) or defaults.match_flush_interval_ms,
+        resolve_batch_size=parseIntAny(merged.get("resolve_batch_size")) or defaults.resolve_batch_size,
+        resolve_flush_interval_ms=parseIntAny(merged.get("resolve_flush_interval_ms"))
+        or defaults.resolve_flush_interval_ms,
     )
 
     return LoadedSettings(settings=settings, sources_used=sources)

@@ -26,6 +26,7 @@
 30) Усилить типизацию DTO на границах (SourceRecord/Normalized/Enriched) — заменить dict/Any на dataclass/TypedDict для контрактов.
 31) Версионировать миграции SQLite (registry/файлы), чтобы порядок изменений был воспроизводим и тестируем.
 32) Добавить severity у ValidationErrorItem (fatal/non-fatal) и использовать в Enricher.run_when_errors=ONLY_NON_FATAL.
+33) TODO: TECHDEBT — этап 4: унифицировать orchestration для `mapping/normalize/enrich` (общий runner/use-case цикл `Extractor -> stage.run -> result_processor`) по аналогии с `match/resolve`.
 
 Sink-spec leakage (where sink/normalized specificity leaks into non-dataset layers):
 - (удалено) csv_reader.py (employees-only нормализованный CSV) — больше не используется.

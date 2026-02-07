@@ -72,6 +72,18 @@ def main(
     retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API calls"),
     retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff for retries"),
     resourceExistsRetries: int | None = typer.Option(None, "--resource-exists-retries", help="Retries for resourceExists"),
+    matchBatchSize: int | None = typer.Option(None, "--match-batch-size", help="Match micro-batch size"),
+    matchFlushIntervalMs: int | None = typer.Option(
+        None,
+        "--match-flush-interval-ms",
+        help="Match micro-batch flush interval (ms)",
+    ),
+    resolveBatchSize: int | None = typer.Option(None, "--resolve-batch-size", help="Resolve micro-batch size"),
+    resolveFlushIntervalMs: int | None = typer.Option(
+        None,
+        "--resolve-flush-interval-ms",
+        help="Resolve micro-batch flush interval (ms)",
+    ),
     strictDiagnostics: bool | None = typer.Option(
         None,
         "--strict-diagnostics/--no-strict-diagnostics",
@@ -106,6 +118,10 @@ def main(
         "retries": retries,
         "retry_backoff_seconds": retryBackoffSeconds,
         "resource_exists_retries": resourceExistsRetries,
+        "match_batch_size": matchBatchSize,
+        "match_flush_interval_ms": matchFlushIntervalMs,
+        "resolve_batch_size": resolveBatchSize,
+        "resolve_flush_interval_ms": resolveFlushIntervalMs,
         "report_include_skipped": None,
         "diagnostics_strict": strictDiagnostics,
     }

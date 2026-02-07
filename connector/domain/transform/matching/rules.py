@@ -21,6 +21,19 @@ MergePolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
 
 
 @dataclass(frozen=True)
+class SourceDedupRules:
+    """
+    Назначение:
+        Политики source-dedup на match-стадии (до DSL).
+    """
+
+    enabled: bool = True
+    on_duplicate: str = "warn"
+    on_conflict: str = "error"
+    fallback_identity_value: bool = True
+
+
+@dataclass(frozen=True)
 class IdentityRule:
     """
     Назначение:
@@ -46,6 +59,7 @@ class MatchingRules:
     ignored_fields: set[str] = field(default_factory=set)
     build_links: BuildLinks | None = None
     identity_rules: tuple[IdentityRule, ...] = ()
+    source_dedup: SourceDedupRules = field(default_factory=SourceDedupRules)
 
 
 @dataclass(frozen=True)
