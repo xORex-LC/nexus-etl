@@ -25,6 +25,23 @@ class ResolveOp:
     CONFLICT = "conflict"
 
 
+class MatchDecisionReason:
+    """
+    Назначение:
+        Канонические reason-коды для explainability match-решения.
+    """
+
+    IDENTITY_EXACT = "identity_exact"
+    IDENTITY_NOT_FOUND = "identity_not_found"
+
+    FUZZY_NO_CANDIDATES = "fuzzy_no_candidates"
+    FUZZY_NO_RANKED = "fuzzy_no_ranked"
+    FUZZY_TIE = "fuzzy_tie"
+    FUZZY_ACCEPT = "fuzzy_accept"
+    FUZZY_REVIEW = "fuzzy_review"
+    FUZZY_REJECT = "fuzzy_reject"
+
+
 @dataclass(frozen=True)
 class MatchedRow:
     """
@@ -41,6 +58,10 @@ class MatchedRow:
     fingerprint_fields: tuple[str, ...]
     source_links: dict[str, Identity] = field(default_factory=dict)
     target_id: str | None = None
+    match_mode: str = "exact"
+    score: float | None = None
+    decision_reason: str | None = None
+    top_candidates: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)

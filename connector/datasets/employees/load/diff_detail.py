@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.domain.transform.common import normalize_whitespace as normalizeWhitespace
+from connector.domain.transform.common import normalize_text
 
 
 def _normalize_str(value: str | None) -> str | None:
-    return normalizeWhitespace(value)
+    return normalize_text(value, empty_to_none=False)
 
 
 def _to_bool(value: Any) -> bool | None:

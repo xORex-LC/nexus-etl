@@ -3,8 +3,15 @@
 from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
 from connector.domain.transform.matching.context import MatchContext
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
-from connector.domain.transform.matching.match_models import MatchedRow, ResolvedRow, ResolveOp, build_fingerprint_for_keys
+from connector.domain.transform.matching.match_models import (
+    MatchDecisionReason,
+    MatchedRow,
+    ResolvedRow,
+    ResolveOp,
+    build_fingerprint_for_keys,
+)
 from connector.domain.transform.matching.rules import (
+    FuzzyScoringRules,
     MatchingRules,
     ResolveRules,
     LinkRules,
@@ -22,7 +29,9 @@ __all__ = [
     "MatchedRow",
     "ResolvedRow",
     "ResolveOp",
+    "MatchDecisionReason",
     "build_fingerprint_for_keys",
+    "FuzzyScoringRules",
     "MatchingRules",
     "SourceDedupRules",
     "ResolveRules",

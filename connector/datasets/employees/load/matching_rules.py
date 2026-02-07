@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from connector.domain.models import Identity
 from connector.domain.transform.matching.context import MatchContext
-from connector.domain.transform.matching.rules import IdentityRule, MatchingRules, SourceDedupRules
+from connector.domain.transform.matching.rules import (
+    FuzzyScoringRules,
+    IdentityRule,
+    MatchingRules,
+    SourceDedupRules,
+)
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
@@ -45,5 +50,31 @@ def build_matching_rules() -> MatchingRules:
             on_duplicate="warn",
             on_conflict="error",
             fallback_identity_value=True,
+        ),
+        fuzzy=FuzzyScoringRules(
+            enabled=False,
+            blocking_keys=("email", "usr_org_tab_num", "personnel_number"),
+            comparators={
+                "email": "casefold",
+                "last_name": "similarity",
+                "first_name": "similarity",
+                "middle_name": "similarity",
+                "personnel_number": "exact",
+                "usr_org_tab_num": "exact",
+            },
+            weights={
+                "email": 3.0,
+                "personnel_number": 2.0,
+                "usr_org_tab_num": 2.0,
+                "last_name": 1.0,
+                "first_name": 1.0,
+                "middle_name": 0.5,
+            },
+            accept_threshold=0.90,
+            review_threshold=0.70,
+            tie_delta=0.05,
+            max_candidates=50,
+            top_k=3,
+            score_round=4,
         ),
     )

@@ -325,6 +325,105 @@ class StageEngine(Generic[R, C]):
 3) Перенести source-dedup из use-case в match-core (единая доменная логика стадии).
 4) После стабилизации вынести все match-rules в декларативный `MatchSpec`.
 
+### Подтвержденный детальный план реализации (MVP Fuzzy + Scoring)
+Ниже фиксируется рабочий план реализации без введения параллельного runtime-пути.
+
+1) Зафиксировать инварианты MVP в документе:
+   - `exact-first`, `fuzzy` только как fallback.
+   - review-диапазон маппится в текущий `MatchStatus.CONFLICT_TARGET`.
+   - `top_k` по умолчанию = `3`.
+   - comparator `similarity` реализуется через `difflib.SequenceMatcher` (stdlib).
+
+2) Расширить `MatchingRules` (без DSL на этом шаге), добавив управляемые параметры:
+   - `fuzzy_enabled`, `blocking_keys`, `max_candidates`,
+   - `comparators`, `weights`,
+   - `accept_threshold`, `review_threshold`,
+   - `tie_delta`, `top_k`, `score_round`.
+   Дефолты должны оставлять legacy exact-поведение без регрессии.
+
+3) Добавить отдельный доменный модуль scoring (`matching/scoring.py`):
+   - field-level score (`exact|casefold|similarity`),
+   - агрегирование weighted score,
+   - top-1/top-k и tie-check.
+
+4) Расширить `MatchedRow` explainability-метаданными:
+   - `match_mode`, `score`, `decision_reason`, `top_candidates`.
+   Формат `top_candidates` для MVP:
+   - `[{target_id, score}]` (ограничение `top_k`).
+
+5) Встроить scoring в `DeduplicationTransform` без дублирования flow:
+   - сохранить текущий exact-путь как fast path,
+   - при `NOT_FOUND` и `fuzzy_enabled=true` запускать blocking + scoring.
+
+6) Candidate generation делать через существующий `cache_repo.find(...)`:
+   - union кандидатов по `blocking_keys`,
+   - ограничение `max_candidates` (для MVP достаточно текущего подтвержденного лимита, напр. 50).
+   Новые репозитории/порты не вводить.
+
+7) Decision policy для MVP:
+   - `score >= accept_threshold` -> `MATCHED`,
+   - `review_threshold <= score < accept_threshold` -> `CONFLICT_TARGET`,
+   - `score < review_threshold` -> `NOT_FOUND`,
+   - tie (`top1-top2 < tie_delta`) -> `CONFLICT_TARGET`.
+
+8) Source-dedup оставить внутри match-core (как уже реализовано) и применять после match-decision.
+   Не добавлять отдельный dedup-механизм для fuzzy.
+
+9) Dataset-конфиг для employees:
+   - добавить MVP-параметры в `datasets/employees/load/matching_rules.py`,
+   - сохранить обратную совместимость и возможность отключить fuzzy (`fuzzy_enabled=false`).
+
+10) Resolver/apply не менять по контракту:
+   - они продолжают читать `match_status` как раньше,
+   - новые поля используются как мета/объяснимость и не ломают текущий pipeline.
+
+11) Добавить unit/regression тесты:
+   - accept/review/reject thresholds,
+   - tie-case,
+   - blocking + max_candidates,
+   - legacy exact regression,
+   - `top_k` default=3 и корректный output `top_candidates`.
+
+12) Прогнать полную регрессию (`pytest`) и зафиксировать статус в этом документе.
+
+13) После стабилизации вынести параметры в декларативный `MatchSpec` DSL
+   (без переписывания match-core, только смена источника конфигурации).
+
+### Статус реализации (MVP Fuzzy + Scoring)
+Реализовано:
+1) Расширен `MatchingRules`:
+   - добавлен `FuzzyScoringRules` с runtime-параметрами (`blocking_keys`, `comparators`, `weights`, `thresholds`, `tie_delta`, `max_candidates`, `top_k`, `score_round`).
+2) Добавлен доменный модуль `matching/scoring.py`:
+   - field-level scoring (`exact|casefold|similarity`),
+   - weighted aggregation,
+   - ranking + tie-check.
+3) Расширен `MatchedRow` explainability-полями:
+   - `match_mode`, `score`, `decision_reason`, `top_candidates`.
+4) Встроен fuzzy fallback в `DeduplicationTransform`:
+   - `exact` остается fast-path,
+   - при `NOT_FOUND` и `fuzzy.enabled=true` запускается blocking + scoring.
+5) Реализована decision policy MVP:
+   - `accept/review/reject` по порогам,
+   - tie -> `CONFLICT_TARGET`,
+   - режимы/причины сохраняются в `decision_reason`.
+6) Dataset-конфиг employees расширен fuzzy-параметрами в `matching_rules.py`
+   (по умолчанию `enabled=false`, чтобы сохранить legacy-поведение).
+7) Добавлены тесты `tests/planning/test_matcher_fuzzy_scoring.py`:
+   - accept/review/reject,
+   - tie-case,
+   - default `top_k=3`.
+8) Полная регрессия проекта (`pytest`) проходит без падений.
+9) Добавлена runtime-валидация параметров `FuzzyScoringRules`:
+   - проверяются границы `thresholds`,
+   - `review_threshold <= accept_threshold`,
+   - `max_candidates/top_k/score_round` валидируются на допустимые минимумы,
+   - `weights` валидируются на `finite` и `>= 0`.
+   - покрыто отдельными тестами `tests/planning/test_matcher_rules_validation.py`.
+
+Осталось для следующего этапа:
+1) вынести параметры/правила в декларативный `MatchSpec` DSL;
+2) при необходимости расширить explainability (`top_candidates.evidence`) без изменения core-алгоритма.
+
 ### Базовый контракт до DSL (Phase 1)
 До декларативного `MatchSpec` фиксируем typed-результат решения матчинга:
 

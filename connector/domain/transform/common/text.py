@@ -28,9 +28,15 @@ def normalize_text(
     return normalized
 
 
-def normalize_whitespace(value: str | None) -> str | None:
+def normalize_for_compare(value: object | None) -> str:
     """
     Назначение:
-        Нормализовать повторяющиеся пробелы в строке.
+        Привести значение к канонической строке для сравнения.
+
+    Контракт:
+        - `None` преобразуется в пустую строку.
+        - Повторяющиеся пробелы схлопываются.
+        - Сравнение выполняется в `casefold` регистре.
     """
-    return normalize_text(value, empty_to_none=False)
+    normalized = normalize_text(value, empty_to_none=False)
+    return (normalized or "").casefold()
