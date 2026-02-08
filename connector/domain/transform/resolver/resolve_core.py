@@ -13,9 +13,12 @@ import logging
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
-from connector.domain.transform.matching.resolve_deps import ResolverSettings
-from connector.domain.transform.matching.identity_keys import format_identity_key
-from connector.domain.transform.matching.match_models import (
+from connector.domain.transform.common.sink_schema import validate_sink_fields
+from connector.domain.transform.dsl.diagnostics import append_dsl_issues
+from connector.domain.transform.dsl.specs import SinkSpec
+from connector.domain.transform.resolver.resolve_deps import ResolverSettings
+from connector.domain.transform.matcher.identity_keys import format_identity_key
+from connector.domain.transform.matcher.match_models import (
     MatchedRow,
     MatchDecisionStatus,
     ResolvedRow,
@@ -23,17 +26,17 @@ from connector.domain.transform.matching.match_models import (
     build_fingerprint_for_keys,
     resolve_decision_status,
 )
-from connector.domain.transform.matching.rules import LinkFieldRule, LinkRules, ResolveRules
+from connector.domain.transform.matcher.rules import LinkFieldRule, LinkRules, ResolveRules
 from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.ports.cache.pending_links import PendingLink, PendingLinksRepository
 
 logger = logging.getLogger(__name__)
 
 
-class LookupEnricher:
+class ResolveCore:
     """
     Назначение/ответственность:
-        Принятие решения по операции и формирование данных для плана.
+        Ядро resolve-стадии: принятие решения по операции и формирование данных для плана.
     """
 
     def __init__(
@@ -45,6 +48,7 @@ class LookupEnricher:
         pending_repo: PendingLinksRepository | None = None,
         settings: ResolverSettings | None = None,
         catalog: ErrorCatalog,
+        sink_spec: SinkSpec | None = None,
     ) -> None:
         self.resolve_rules = resolve_rules
         self.link_rules = link_rules or LinkRules()
@@ -52,6 +56,7 @@ class LookupEnricher:
         self.pending_repo = pending_repo
         self.settings = settings
         self.catalog = catalog
+        self.sink_spec = sink_spec
         self._last_sweep_at: datetime | None = None
         self._expired: list[PendingLink] = []
 
@@ -148,6 +153,7 @@ class LookupEnricher:
 
         original_desired = dict(matched.desired_state)
         desired_state = dict(original_desired)
+        mutated_fields: set[str] = set()
         if self.resolve_rules.merge_policy:
             # merge_policy должен только дополнять desired_state на основе existing,
             # не затирая явно заданные значения.
@@ -165,8 +171,9 @@ class LookupEnricher:
                 for key, value in original_desired.items():
                     merged[key] = value
                 desired_state = merged
+                mutated_fields.update(_collect_changed_fields(original_desired, desired_state))
 
-        pending_created, should_stop = self._resolve_links(
+        pending_created, should_stop, link_mutations = self._resolve_links(
             matched,
             desired_state,
             warnings,
@@ -174,7 +181,16 @@ class LookupEnricher:
             meta,
             batch_index,
         )
+        mutated_fields.update(link_mutations)
         if should_stop:
+            return None, errors, warnings
+        if self._validate_sink_mutations(
+            matched=matched,
+            desired_state=desired_state,
+            mutated_fields=mutated_fields,
+            errors=errors,
+            warnings=warnings,
+        ):
             return None, errors, warnings
 
         target_id = _resolve_target_id(matched, target_id_map)
@@ -227,16 +243,16 @@ class LookupEnricher:
         errors: list[DiagnosticItem],
         meta: dict[str, Any] | None,
         batch_index: dict[str, dict[str, list[str]]] | None,
-    ) -> tuple[bool, bool]:
+    ) -> tuple[bool, bool, set[str]]:
         """
         Назначение:
             Разрешить связи (foreign keys) по правилам LinkRules.
 
         Возвращает:
-            (pending_created, should_stop).
+            (pending_created, should_stop, changed_fields).
         """
         if not self.link_rules.fields:
-            return False
+            return False, False, set()
         if self.identity_repo is None or self.pending_repo is None:
             errors.append(
                 diag_error(
@@ -248,10 +264,11 @@ class LookupEnricher:
                     record_ref=matched.row_ref,
                 )
             )
-            return False, True
+            return False, True, set()
 
         pending_created = False
         should_stop = False
+        changed_fields: set[str] = set()
         for rule in self.link_rules.fields:
             if rule.field not in desired_state:
                 continue
@@ -271,6 +288,18 @@ class LookupEnricher:
                 batch_index,
             )
             if resolved_id is None:
+                if rule.on_unresolved == "hard_error":
+                    errors.append(
+                        diag_error(
+                            catalog=self.catalog,
+                            stage=DiagnosticStage.RESOLVE,
+                            code="RESOLVE_CONFLICT",
+                            field=rule.field,
+                            message=reason or "link is unresolved",
+                            record_ref=matched.row_ref,
+                        )
+                    )
+                    return pending_created, True, changed_fields
                 pending_created = True
                 row_id = matched.row_ref.row_id
                 expires_at = _build_expires_at(self.settings)
@@ -298,7 +327,7 @@ class LookupEnricher:
                             record_ref=matched.row_ref,
                         )
                     )
-                    return pending_created, True
+                    return pending_created, True, changed_fields
                 warnings.append(
                     diag_warning(
                         catalog=self.catalog,
@@ -313,9 +342,44 @@ class LookupEnricher:
                     should_stop = True
                 continue
 
-            desired_state[rule.field] = _coerce_resolved(resolved_id, rule)
+            resolved_value = _coerce_resolved(resolved_id, rule)
+            if desired_state.get(rule.field) != resolved_value:
+                desired_state[rule.field] = resolved_value
+                changed_fields.add(rule.field)
 
-        return pending_created, should_stop
+        return pending_created, should_stop, changed_fields
+
+    def _validate_sink_mutations(
+        self,
+        *,
+        matched: MatchedRow,
+        desired_state: dict[str, Any],
+        mutated_fields: set[str],
+        errors: list[DiagnosticItem],
+        warnings: list[DiagnosticItem],
+    ) -> bool:
+        if self.sink_spec is None:
+            return False
+        if not mutated_fields:
+            return False
+        issues = validate_sink_fields(
+            desired_state,
+            self.sink_spec,
+            fields=sorted(mutated_fields),
+            check_types=True,
+        )
+        if not issues:
+            return False
+        append_dsl_issues(
+            errors=errors,
+            warnings=warnings,
+            issues=issues,
+            stage=DiagnosticStage.RESOLVE,
+            catalog=self.catalog,
+            record_ref=matched.row_ref,
+            on_error="error",
+        )
+        return True
 
 
 def _resolve_target_id(matched: MatchedRow, target_id_map: dict[str, str]) -> str | None:
@@ -574,6 +638,17 @@ def _collect_batch_keys(link_rules: LinkRules, dataset: str) -> tuple[set[str], 
     return keys, id_field
 
 
+def _collect_changed_fields(
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> set[str]:
+    changed: set[str] = set()
+    for key in set(before.keys()) | set(after.keys()):
+        if before.get(key) != after.get(key):
+            changed.add(key)
+    return changed
+
+
 def _extract_resolved_id(row: MatchedRow, id_field: str) -> str | None:
     if resolve_decision_status(row) == MatchDecisionStatus.MATCHED and row.existing:
         existing_id = row.existing.get(id_field)
@@ -623,3 +698,6 @@ def _serialize_pending_payload(
         "meta": meta or {},
     }
     return json.dumps(payload, ensure_ascii=True, default=str)
+
+
+__all__ = ["ResolveCore"]

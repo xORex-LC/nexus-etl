@@ -1,3 +1,69 @@
 dataset: employees
 resolve:
-  policies: []
+  desired_state:
+    mode: project_fields
+    fields:
+      - email
+      - last_name
+      - first_name
+      - middle_name
+      - is_logon_disable
+      - user_name
+      - phone
+      - personnel_number
+      - manager_id
+      - organization_id
+      - position
+      - avatar_id
+      - usr_org_tab_num
+  source_ref:
+    mode: from_identity
+    fields:
+      - match_key
+  diff:
+    mode: compare_fields
+    from_sink:
+      enabled: true
+      normalize_by_type: true
+      exclude_fields:
+        - password
+        - avatar_id
+    fields:
+      - field: email
+        existing: mail
+        output: mail
+        normalize: text
+      - field: is_logon_disable
+        existing: is_logon_disabled
+        normalize: bool
+      - field: manager_id
+        existing: manager_ouid
+  merge:
+    mode: none
+  secrets:
+    mode: by_op
+    create: [password]
+    update: []
+  links:
+    - field: manager_id
+      target_dataset: employees
+      resolve_keys:
+        - name: match_key
+          field: manager_id
+      dedup_rules:
+        - [organization_id]
+      target_id_field: _ouid
+      coerce: int
+      on_unresolved: pending
+    - field: organization_id
+      target_dataset: organizations
+      resolve_keys:
+        - name: name
+          field: organization_id
+        - name: _ouid
+          field: organization_id
+      dedup_rules:
+        - [code]
+      target_id_field: _ouid
+      coerce: int
+      on_unresolved: pending

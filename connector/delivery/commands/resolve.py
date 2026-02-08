@@ -15,7 +15,7 @@ from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.domain.transform.matching.lookup_enricher import LookupEnricher
+from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
 
 
@@ -89,7 +89,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 catalog=catalog,
             )
 
-            resolver = LookupEnricher(
+            resolver = ResolveCore(
                 planning_bundle.resolve_rules,
                 planning_bundle.link_rules,
                 identity_repo=planning_deps.identity_repo,

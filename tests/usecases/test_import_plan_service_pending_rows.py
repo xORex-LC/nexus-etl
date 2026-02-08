@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from connector.domain.transform.matching.match_models import MatchDecisionStatus
+from connector.domain.transform.matcher.match_models import MatchDecisionStatus
 from connector.usecases.import_plan_service import _load_pending_rows
 
 

@@ -14,8 +14,8 @@ from connector.domain.ports.transform.sources import SourceMapper
 from connector.domain.transform.enrich import EnricherEngine
 from connector.domain.transform.normalize import NormalizerEngine
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.matching.lookup_enricher import LookupEnricher
-from connector.domain.transform.matching.match_models import (
+from connector.domain.transform.resolver.resolve_core import ResolveCore
+from connector.domain.transform.matcher.match_models import (
     MatchedRow,
     MatchDecisionStatus,
     resolve_decision_status,
@@ -305,7 +305,7 @@ class ResolveStage:
         Стадия resolve (matched -> resolved).
     """
 
-    def __init__(self, resolver: LookupEnricher, catalog: ErrorCatalog) -> None:
+    def __init__(self, resolver: ResolveCore, catalog: ErrorCatalog) -> None:
         self.resolver = resolver
         self.catalog = catalog
 
@@ -381,7 +381,7 @@ def _build_target_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dic
 
 def _build_batch_index(
     matched_rows: list[TransformResult[MatchedRow]],
-    resolver: LookupEnricher,
+    resolver: ResolveCore,
     dataset: str | None,
 ) -> dict[str, dict[str, list[str]]]:
     """

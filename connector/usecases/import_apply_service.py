@@ -10,7 +10,7 @@ from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
-from connector.domain.transform.matching.identity_keys import format_identity_key
+from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.ports.cache.pending_links import PendingLinksRepository
 from connector.common.sanitize import maskSecretsInObject

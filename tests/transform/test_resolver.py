@@ -3,11 +3,12 @@ from __future__ import annotations
 import sqlite3
 
 from connector.domain.models import RowRef, Identity
-from connector.domain.transform.matching.resolve_deps import ResolverSettings
-from connector.domain.transform.matching.identity_keys import format_identity_key
-from connector.domain.transform.matching.match_models import MatchedRow, MatchDecision, MatchDecisionStatus
-from connector.domain.transform.matching.lookup_enricher import LookupEnricher
-from connector.domain.transform.matching.rules import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
+from connector.domain.transform.resolver.resolve_deps import ResolverSettings
+from connector.domain.transform.matcher.identity_keys import format_identity_key
+from connector.domain.transform.matcher.match_models import MatchedRow, MatchDecision, MatchDecisionStatus
+from connector.domain.transform.resolver.resolve_core import ResolveCore
+from connector.domain.transform.matcher.rules import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
+from connector.domain.transform.dsl.loader import load_sink_spec_for_dataset
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.schema import ensure_cache_ready
@@ -23,7 +24,7 @@ def _make_engine() -> SqliteEngine:
     return engine
 
 
-def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[LookupEnricher, SqlitePendingLinksRepository]:
+def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[ResolveCore, SqlitePendingLinksRepository]:
     catalog = build_catalog("employees", strict=True)
     identity_repo = SqliteIdentityRepository(engine)
     pending_repo = SqlitePendingLinksRepository(engine)
@@ -40,7 +41,7 @@ def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[Lo
         )
     )
     resolve_rules = ResolveRules(build_desired_state=lambda *_: {})
-    resolver = LookupEnricher(
+    resolver = ResolveCore(
         resolve_rules,
         link_rules,
         identity_repo=identity_repo,
@@ -273,3 +274,95 @@ def test_resolver_dedup_rules_narrow_candidates():
     assert resolved.desired_state["manager_id"] == 42
     pending = pending_repo.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
     assert pending == []
+
+
+def test_resolver_hard_error_on_unresolved_rule():
+    engine = _make_engine()
+    settings = ResolverSettings(
+        pending_ttl_seconds=120,
+        pending_max_attempts=5,
+        pending_sweep_interval_seconds=0,
+        pending_on_expire="error",
+        pending_allow_partial=True,
+        pending_retention_days=14,
+    )
+    catalog = build_catalog("employees", strict=True)
+    identity_repo = SqliteIdentityRepository(engine)
+    pending_repo = SqlitePendingLinksRepository(engine)
+    resolver = ResolveCore(
+        ResolveRules(build_desired_state=lambda *_: {}),
+        LinkRules(
+            fields=(
+                LinkFieldRule(
+                    field="manager_id",
+                    target_dataset="employees",
+                    resolve_keys=(LinkKeyRule(name="match_key", field="manager_id"),),
+                    on_unresolved="hard_error",
+                ),
+            )
+        ),
+        identity_repo=identity_repo,
+        pending_repo=pending_repo,
+        settings=settings,
+        catalog=catalog,
+    )
+
+    matched = _make_matched_row()
+    resolved, errors, warnings = resolver.resolve(
+        matched,
+        target_id_map={},
+        meta={"link_keys": {"manager_id": {"match_key": "mgr"}}},
+    )
+
+    assert resolved is None
+    assert warnings == []
+    assert any(err.code == "RESOLVE_CONFLICT" for err in errors)
+    assert pending_repo.list_pending_for_key("employees", format_identity_key("match_key", "mgr")) == []
+
+
+def test_resolver_validates_sink_for_resolved_mutations():
+    engine = _make_engine()
+    settings = ResolverSettings(
+        pending_ttl_seconds=120,
+        pending_max_attempts=5,
+        pending_sweep_interval_seconds=0,
+        pending_on_expire="error",
+        pending_allow_partial=False,
+        pending_retention_days=14,
+    )
+    catalog = build_catalog("employees", strict=True)
+    identity_repo = SqliteIdentityRepository(engine)
+    pending_repo = SqlitePendingLinksRepository(engine)
+    # manager_id in sink schema is int; here we intentionally produce non-int resolved value.
+    identity_repo.upsert_identity("employees", format_identity_key("match_key", "mgr"), "bad-int")
+
+    resolver = ResolveCore(
+        ResolveRules(build_desired_state=lambda *_: {}),
+        LinkRules(
+            fields=(
+                LinkFieldRule(
+                    field="manager_id",
+                    target_dataset="employees",
+                    resolve_keys=(LinkKeyRule(name="match_key", field="manager_id"),),
+                    target_id_field="_ouid",
+                    coerce="int",
+                ),
+            )
+        ),
+        identity_repo=identity_repo,
+        pending_repo=pending_repo,
+        settings=settings,
+        catalog=catalog,
+        sink_spec=load_sink_spec_for_dataset("employees"),
+    )
+
+    matched = _make_matched_row()
+    resolved, errors, warnings = resolver.resolve(
+        matched,
+        target_id_map={},
+        meta={"link_keys": {"manager_id": {"match_key": "mgr"}}},
+    )
+
+    assert resolved is None
+    assert warnings == []
+    assert any(err.code == "SINK_TYPE_INVALID" and err.field == "manager_id" for err in errors)

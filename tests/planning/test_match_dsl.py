@@ -6,10 +6,10 @@ import pytest
 
 from connector.domain.transform.dsl.loader import load_match_spec_for_dataset
 from connector.domain.transform.dsl.specs import MatchSpec
-from connector.domain.transform.matching.context import MatchContext
-from connector.domain.transform.matching.match_dsl import MatchDsl
-from connector.domain.transform.matching.match_engine import MatchEngine
-from connector.domain.transform.matching.rules import ResolveRules
+from connector.domain.transform.matcher.context import MatchContext
+from connector.domain.transform.matcher.match_dsl import MatchDsl
+from connector.domain.transform.matcher.match_engine import MatchEngine
+from connector.domain.transform.matcher.rules import ResolveRules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.diagnostics.catalog import build_catalog
 

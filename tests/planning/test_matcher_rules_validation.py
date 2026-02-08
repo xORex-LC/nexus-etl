@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from connector.domain.transform.matching.rules import FuzzyScoringRules
+from connector.domain.transform.matcher.rules import FuzzyScoringRules
 
 
 def test_fuzzy_rules_default_is_valid():

@@ -494,7 +494,7 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
 
 
 def test_plan_builder_does_not_emit_dataset_in_items():
-    from connector.domain.transform.matching.match_models import ResolvedRow, ResolveOp
+    from connector.domain.transform.matcher.match_models import ResolvedRow, ResolveOp
     from connector.domain.models import Identity, RowRef
 
     builder = PlanBuilder()

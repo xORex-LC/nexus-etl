@@ -1,65 +1,81 @@
 @startuml
-title LookupEnricher.resolve - Activity Diagram
+title Resolver Stage - Activity Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam activity {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+  FontColor #1f1f1f
+}
 
 start
-:maybe_sweep_expired;
+:maybe_sweep_expired();
 
-if (match_status conflict?) then (yes)
-  :add error RESOLVE_CONFLICT;
+if (match_decision.status in\n{AMBIGUOUS, CONFLICT_SOURCE}?) then (yes)
+  :append RESOLVE_AMBIGUOUS/RESOLVE_CONFLICT;
   stop
 endif
 
-:merge desired_state (merge_policy?);
+:desired_state = matched.desired_state;
+if (merge_policy configured?) then (yes)
+  :desired_state = merge_policy(existing, desired_state);
+endif
 
 repeat
   :take next LinkFieldRule;
-  if (field missing OR value None?) then (yes)
-    :skip rule;
-  elseif (value is int AND skip-int?) then (yes)
-    :skip rule;
-  else (no)
-    :extract key_values
-from meta + desired_state;
-    :lookup candidates
-(batch_index or identity_repo);
-    if (candidates == 0?) then (yes)
-      :add pending;
-      :touch attempt;
-      if (attempts >= max?) then (yes)
-        :mark conflict;
-        :add error RESOLVE_MAX_ATTEMPTS;
+  if (field absent or value None?) then (skip)
+    :continue;
+  else (process)
+    :extract key_values\n(meta overrides + desired_state);
+    :lookup candidates\n(batch_index -> identity_repo);
+    if (single candidate?) then (yes)
+      :coerce candidate id;
+      :write desired_state[field];
+    else (no)
+      if (on_unresolved == hard_error?) then (yes)
+        :append RESOLVE_CONFLICT;
         stop
-      else (no)
-        :add warning RESOLVE_PENDING;
-        if (allow_partial?) then (yes)
-          :continue;
-        else (no)
+      else (pending)
+        :add pending + touch_attempt;
+        if (attempts >= max?) then (yes)
+          :mark conflict;
+          :append RESOLVE_MAX_ATTEMPTS;
           stop
+        else (no)
+          :append RESOLVE_PENDING warning;
+          if (allow_partial?) then (yes)
+            :continue;
+          else (no)
+            stop
+          endif
         endif
-      endif
-    elseif (candidates == 1?) then (yes)
-      :coerce resolved_id;
-      :desired_state[field] = resolved_id;
-    else (multiple)
-      :add warning RESOLVE_PENDING (multi);
-      if (allow_partial?) then (yes)
-        :continue;
-      else (no)
-        stop
       endif
     endif
   endif
 repeat while (more rules?) is (yes)
 
-:target_id = resolve_target_id;
+if (sink_spec configured and\nmutated_fields not empty?) then (yes)
+  :validate_sink_fields(mutated_fields);
+  if (sink issues?) then (yes)
+    :append diagnostics from sink issues;
+    stop
+  endif
+endif
+
+:target_id = resolve_target_id();
 if (target_id missing?) then (yes)
-  :add error RESOLVE_TARGET_ID_MISSING;
+  :append RESOLVE_TARGET_ID_MISSING;
   stop
 endif
 
-:op, changes = decide_op;
+:op, changes = decide_op();
+:source_ref = build_source_ref(identity);
+:secret_fields = secrets_policy(op);
 :build ResolvedRow;
-:mark_resolved_for_source (if no pending);
+if (pending_created == false?) then (yes)
+  :mark_resolved_for_source(row_id);
+endif
 stop
 
 @enduml

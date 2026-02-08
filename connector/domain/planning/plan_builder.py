@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.domain.planning.plan_models import Operation, PlanItem, PlanSummary
-from connector.domain.transform.matching.match_models import ResolvedRow, ResolveOp
+from connector.domain.transform.matcher.match_models import ResolvedRow, ResolveOp
 
 @dataclass
 class PlanBuildResult:

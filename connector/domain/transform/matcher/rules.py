@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from connector.domain.models import Identity
-from connector.domain.transform.matching.context import MatchContext
+from connector.domain.transform.matcher.context import MatchContext
 
 BuildIdentity = Callable[[Any, MatchContext], Identity]
 BuildLinks = Callable[[Any, MatchContext], dict[str, Identity]]
@@ -155,6 +155,7 @@ class LinkFieldRule:
     dedup_rules: tuple[tuple[str, ...], ...] = ()
     target_id_field: str = "_id"
     coerce: str | None = None
+    on_unresolved: str = "pending"
 
 
 @dataclass(frozen=True)
