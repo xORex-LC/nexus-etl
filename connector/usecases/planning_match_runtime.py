@@ -9,7 +9,7 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.matching.match_engine import MatchEngine
 from connector.domain.transform.matching.resolve_deps import PlanningDependencies
 from connector.usecases.match_usecase import MatchUseCase
 
@@ -21,7 +21,7 @@ class MatchRuntime:
         Собранный runtime для match-стадии (matcher + use-case + scope).
     """
 
-    matcher: DeduplicationTransform
+    matcher: MatchEngine
     match_usecase: MatchUseCase
     runtime_scope: str
     identity_repo: IdentityRepository
@@ -57,10 +57,10 @@ def open_match_runtime(
     """
     cache_repo, identity_repo = _require_match_deps(planning_deps)
     runtime_scope = f"run:{run_id}"
-    matcher = DeduplicationTransform(
+    matcher = MatchEngine(
+        spec=planning_bundle.match_spec,
         dataset=dataset,
         cache_repo=cache_repo,
-        matching_rules=planning_bundle.matching_rules,
         resolve_rules=planning_bundle.resolve_rules,
         include_deleted=include_deleted,
         catalog=catalog,

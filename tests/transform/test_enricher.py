@@ -12,6 +12,7 @@ from connector.domain.transform.enrich import (
     EnrichmentOperation,
     EnrichOperationType,
     KeyRegistry,
+    MergePolicy,
     RunWhenErrors,
     StrictnessPolicy,
     EnrichOutcome,
@@ -19,6 +20,8 @@ from connector.domain.transform.enrich import (
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.dsl.loader import load_enrich_spec_for_dataset
+from connector.domain.transform.dsl.loader import load_sink_spec_for_dataset
+from connector.datasets.employees.spec import make_employees_spec
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import build_catalog
@@ -79,6 +82,7 @@ def _build_enricher_from_dsl(
         catalog=CATALOG,
         registry=registry,
         options=EnrichDslBuildOptions(require_match_key=True),
+        sink_spec=load_sink_spec_for_dataset("employees"),
         run_id=run_id,
     )
 
@@ -444,3 +448,59 @@ def test_enricher_stop_on_failed_prevents_followup_ops():
     codes = {issue.code for issue in enriched.errors}
     assert "ENRICH_PROVIDER_ERROR" in codes
     assert enriched.row.field is None
+
+
+def test_enricher_warns_when_candidate_violates_sink_type():
+    @dataclass
+    class _Row:
+        organization_id: int | str | None = 10
+
+    def _compute(result, deps):
+        _ = (result, deps)
+        return {"organization_id": "not-a-number"}
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="type_check",
+                op_type=EnrichOperationType.COMPUTE,
+                targets=("organization_id",),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.WARNED),
+                merge_policy=MergePolicy(mode="recompute_always"),
+                compute=_compute,
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = EnricherCore(
+        spec,
+        _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()),
+        None,
+        "employees",
+        catalog=CATALOG,
+        sink_spec=load_sink_spec_for_dataset("employees"),
+    )
+    record = SourceRecord(line_no=1, record_id="line:1", values={})
+    result = TransformResult(
+        record=record,
+        row=_Row(),
+        row_ref=None,
+        match_key=None,
+        errors=[],
+        warnings=[],
+    )
+
+    enriched = enricher.enrich(result)
+
+    warning_codes = {issue.code for issue in enriched.warnings}
+    assert "SINK_TYPE_INVALID" in warning_codes
+    assert enriched.row.organization_id == 10
+
+
+def test_employees_spec_wires_sink_spec_into_normalizer():
+    spec = make_employees_spec()
+    stage = spec._build_normalize_stage(CATALOG)
+
+    assert stage.normalizer.core.sink_spec is not None
+    assert stage.normalizer.core.sink_spec.dataset == "employees"

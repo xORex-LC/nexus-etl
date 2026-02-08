@@ -14,11 +14,17 @@ from connector.domain.transform.stages.stages import StagePipeline
 from connector.usecases.resolve_usecase import ResolveUseCase
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
 from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
-from connector.domain.transform.matching.match_models import MatchedRow
-from connector.domain.models import Identity, MatchStatus, RowRef
+from connector.domain.transform.matching.match_models import (
+    MatchedRow,
+    MatchCandidate,
+    MatchDecision,
+    MatchDecisionReason,
+    MatchDecisionStatus,
+    build_fingerprint,
+)
+from connector.domain.models import Identity, RowRef
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.matching.match_models import build_fingerprint
 from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -74,7 +80,7 @@ class ImportPlanService:
             stage_pipeline.run(extractor.run()),
             should_skip=lambda item: item.row is None,
         )
-        planning_bundle = dataset_spec.build_planning_bundle()
+        planning_bundle = dataset_spec.build_planning_bundle(settings=settings)
         cache_repo = planning_deps.cache_repo
         if cache_repo is None:
             raise ValueError("planning cache_repo is not configured")
@@ -105,7 +111,7 @@ class ImportPlanService:
                 pending_repo=planning_deps.pending_repo,
                 cache_repo=cache_repo,
                 include_deleted=include_deleted,
-                ignored_fields=planning_bundle.matching_rules.ignored_fields,
+                ignored_fields=set(planning_bundle.match_spec.match.ignored_fields),
             )
             matched_with_pending = chain(matched_rows, pending_rows)
 
@@ -199,14 +205,74 @@ def _load_pending_rows(
             include_deleted=include_deleted,
         )
         if len(candidates) > 1:
-            match_status = MatchStatus.CONFLICT_TARGET
             existing = None
+            score = None
+            decision_reason = "replay_ambiguous"
+            top_candidates = tuple(
+                {
+                    "target_id": str(item.get("_id") or item.get("target_id"))
+                    if (item.get("_id") or item.get("target_id")) is not None
+                    else None,
+                    "score": None,
+                }
+                for item in candidates[:3]
+            )
+            decision_candidates = tuple(
+                MatchCandidate(
+                    target_id=item.get("target_id"),
+                    identity=identity.primary_value or None,
+                    score=item.get("score"),
+                    match_mode="replay",
+                    evidence=item.get("evidence"),
+                )
+                for item in top_candidates
+            )
+            match_decision = MatchDecision(
+                status=MatchDecisionStatus.AMBIGUOUS,
+                reason_code=decision_reason,
+                selected=None,
+                candidates=decision_candidates,
+                score=score,
+                meta={"match_mode": "replay"},
+            )
         elif candidates:
-            match_status = MatchStatus.MATCHED
             existing = candidates[0]
+            score = 1.0
+            decision_reason = MatchDecisionReason.IDENTITY_EXACT
+            selected_target = existing.get("_id") or existing.get("target_id")
+            selected = MatchCandidate(
+                target_id=str(selected_target) if selected_target is not None else None,
+                identity=identity.primary_value or None,
+                score=score,
+                match_mode="exact",
+                evidence={"identity_primary": identity.primary},
+            )
+            top_candidates = (
+                {
+                    "target_id": selected.target_id,
+                    "score": score,
+                },
+            )
+            match_decision = MatchDecision(
+                status=MatchDecisionStatus.MATCHED,
+                reason_code=decision_reason,
+                selected=selected,
+                candidates=(selected,),
+                score=score,
+                meta={"match_mode": "exact"},
+            )
         else:
-            match_status = MatchStatus.NOT_FOUND
             existing = None
+            score = None
+            decision_reason = MatchDecisionReason.IDENTITY_NOT_FOUND
+            match_decision = MatchDecision(
+                status=MatchDecisionStatus.NOT_FOUND,
+                reason_code=decision_reason,
+                selected=None,
+                candidates=(),
+                score=score,
+                meta={"match_mode": "exact"},
+            )
 
         fingerprint, fingerprint_fields = build_fingerprint(
             desired_state,
@@ -215,13 +281,13 @@ def _load_pending_rows(
         matched_row = MatchedRow(
             row_ref=row_ref,
             identity=identity,
-            match_status=match_status,
             desired_state=desired_state,
             existing=existing,
             fingerprint=fingerprint,
             fingerprint_fields=fingerprint_fields,
             source_links={},
             target_id=target_id,
+            match_decision=match_decision,
         )
         record = SourceRecord(line_no=row_ref.line_no, record_id=row_ref.row_id, values={})
         results.append(

@@ -84,29 +84,6 @@ class DiagnosticItem:
         )
 
 
-class MatchStatus(str, Enum):
-    MATCHED = "matched"
-    NOT_FOUND = "not_found"
-    CONFLICT_TARGET = "conflict_target"
-    CONFLICT_SOURCE = "conflict_source"
-
-
-@dataclass(frozen=True)
-class MatchResult:
-    """
-    Назначение:
-        Типизированный результат поиска/сопоставления по match_key.
-
-    Поля:
-        status: MatchStatus
-        candidate: выбранный пользователь (если matched, иначе None)
-        candidates: список всех найденных кандидатов после фильтров
-    """
-    status: MatchStatus
-    candidate: dict | None
-    candidates: list[dict]
-
-
 @dataclass(frozen=True)
 class Identity:
     """

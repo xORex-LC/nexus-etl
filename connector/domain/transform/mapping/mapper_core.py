@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.models import DiagnosticItem, DiagnosticStage
+from connector.domain.models import DiagnosticItem, DiagnosticStage, RowRef
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.dsl.engine import TransformationEngine
@@ -266,7 +266,7 @@ class MapperCore:
                 issues=issues,
                 stage=DiagnosticStage.MAP,
                 catalog=catalog,
-                record_ref=None,
+                record_ref=_row_ref_from_record(record),
                 on_error="warn",
             )
 
@@ -285,7 +285,7 @@ class MapperCore:
             issues=issues,
             stage=DiagnosticStage.MAP,
             catalog=catalog,
-            record_ref=None,
+            record_ref=_row_ref_from_record(record),
             on_error=getattr(rule, "on_error", "error"),
         )
 
@@ -304,7 +304,7 @@ class MapperCore:
             issues=issues,
             stage=DiagnosticStage.MAP,
             catalog=catalog,
-            record_ref=None,
+            record_ref=_row_ref_from_record(record),
             on_error=getattr(rule, "on_error", "error"),
         )
 
@@ -322,3 +322,16 @@ def _is_present(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip() != ""
     return True
+
+
+def _row_ref_from_record(record: SourceRecord) -> RowRef:
+    """
+    Назначение:
+        Построить минимальный RowRef для map-стадии из SourceRecord.
+    """
+    return RowRef(
+        line_no=record.line_no,
+        row_id=record.record_id,
+        identity_primary=None,
+        identity_value=None,
+    )

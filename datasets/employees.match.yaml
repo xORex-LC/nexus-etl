@@ -1,4 +1,48 @@
 dataset: employees
 match:
-  identity_rules: []
-  ignored_fields: []
+  identity_rules:
+    - name: match_key
+      primary: match_key
+      fields:
+        - match_key
+        - usr_org_tab_num
+    - name: usr_org_tab_num
+      primary: usr_org_tab_num
+      fields:
+        - usr_org_tab_num
+        - match_key
+  ignored_fields:
+    - updated_at
+    - _rev
+    - deletion_date
+    - account_status
+  source_dedup:
+    enabled: true
+    on_duplicate: warn
+    on_conflict: error
+  fuzzy:
+    enabled: false
+    blocking_keys:
+      - email
+      - usr_org_tab_num
+      - personnel_number
+    comparators:
+      email: casefold
+      last_name: similarity
+      first_name: similarity
+      middle_name: similarity
+      personnel_number: exact
+      usr_org_tab_num: exact
+    weights:
+      email: 3.0
+      personnel_number: 2.0
+      usr_org_tab_num: 2.0
+      last_name: 1.0
+      first_name: 1.0
+      middle_name: 0.5
+    accept_threshold: 0.9
+    review_threshold: 0.7
+    tie_delta: 0.05
+    max_candidates: 50
+    top_k: 3
+    score_round: 4

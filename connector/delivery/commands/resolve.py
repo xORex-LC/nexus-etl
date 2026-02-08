@@ -66,7 +66,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             should_skip=lambda item: item.row is None,
         )
 
-        planning_bundle = dataset_spec.build_planning_bundle()
+        planning_bundle = dataset_spec.build_planning_bundle(settings=settings)
 
         if planning_deps.pending_repo is None:
             raise ValueError("planning pending_repo is not configured")

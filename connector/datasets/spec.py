@@ -4,9 +4,10 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
+from connector.domain.transform.dsl.specs import MatchSpec
 
 from connector.domain.transform.matching.resolve_deps import PlanningDependencies
-from connector.domain.transform.matching.rules import LinkRules, MatchingRules, ResolveRules
+from connector.domain.transform.matching.rules import LinkRules, ResolveRules
 from connector.domain.ports.target.execution import RequestSpec, ExecutionResult
 from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.core.source_record import SourceRecord
@@ -19,7 +20,7 @@ class PlanningBundle:
         Набор правил для planning (match/resolve/link).
     """
 
-    matching_rules: MatchingRules
+    match_spec: MatchSpec
     resolve_rules: ResolveRules
     link_rules: LinkRules
 
@@ -70,7 +71,7 @@ class DatasetSpec(Protocol):
         self,
         csv_has_header: bool,
     ) -> Iterable[SourceRecord]: ...
-    def build_planning_bundle(self) -> PlanningBundle: ...
+    def build_planning_bundle(self, settings=None) -> PlanningBundle: ...
     def get_report_adapter(self) -> ReportAdapter: ...
     def get_apply_adapter(self) -> ApplyAdapter: ...
     def get_diagnostic_catalog(self, strict: bool) -> ErrorCatalog: ...

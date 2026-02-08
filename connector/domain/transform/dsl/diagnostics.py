@@ -9,7 +9,7 @@ from typing import Iterable
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
-from connector.domain.models import DiagnosticItem, DiagnosticStage
+from connector.domain.models import DiagnosticItem, DiagnosticStage, RowRef
 from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
 
 
@@ -20,7 +20,7 @@ def append_dsl_issue(
     stage: DiagnosticStage,
     issue: DslIssue,
     catalog: ErrorCatalog,
-    record_ref: str | None,
+    record_ref: RowRef | None,
     on_error: str | None = None,
 ) -> None:
     """
@@ -63,7 +63,7 @@ def append_dsl_issues(
     issues: Iterable[DslIssue],
     stage: DiagnosticStage,
     catalog: ErrorCatalog,
-    record_ref: str | None,
+    record_ref: RowRef | None,
     on_error: str | None = None,
 ) -> None:
     """

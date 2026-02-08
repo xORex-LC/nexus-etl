@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
 from connector.domain.transform.dsl.specs import SinkSpec, SinkFieldSpec
@@ -23,6 +23,30 @@ def validate_sink_row(
     """
     issues: list[DslIssue] = []
     for field in spec.sink.fields:
+        _validate_field(row, field, check_types, issues)
+    return issues
+
+
+def validate_sink_fields(
+    row: Mapping[str, Any],
+    spec: SinkSpec,
+    *,
+    fields: Iterable[str],
+    check_types: bool,
+) -> list[DslIssue]:
+    """
+    Назначение:
+        Проверить только указанные поля sink-схемы и вернуть список DslIssue.
+    """
+    issues: list[DslIssue] = []
+    indexed = {
+        sink_field.name: sink_field
+        for sink_field in (*spec.sink.fields, *spec.sink.system_fields)
+    }
+    for name in fields:
+        field = indexed.get(name)
+        if field is None:
+            continue
         _validate_field(row, field, check_types, issues)
     return issues
 

@@ -9,14 +9,17 @@ from typing import Callable, Iterable, Protocol, Sequence, TypeVar
 
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.models import DiagnosticStage, MatchStatus
+from connector.domain.models import DiagnosticStage
 from connector.domain.ports.transform.sources import SourceMapper
 from connector.domain.transform.enrich import EnricherEngine
 from connector.domain.transform.normalize import NormalizerEngine
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
-from connector.domain.transform.matching.match_models import MatchedRow
+from connector.domain.transform.matching.match_models import (
+    MatchedRow,
+    MatchDecisionStatus,
+    resolve_decision_status,
+)
 
 T = TypeVar("T")
 
@@ -28,6 +31,25 @@ class TransformStageProcessor(Protocol):
     """
 
     def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult]:
+        ...
+
+
+class MatchProcessor(Protocol):
+    """
+    Назначение:
+        Минимальный контракт match-движка для MatchStage/MatchUseCase.
+    """
+
+    def match(self, enriched: TransformResult) -> TransformResult[MatchedRow]:
+        ...
+
+    def match_with_source_dedup(self, enriched: TransformResult) -> TransformResult[MatchedRow]:
+        ...
+
+    def reset_source_dedup(self) -> None:
+        ...
+
+    def bind_runtime_scope(self, scope: str | None) -> None:
         ...
 
 
@@ -246,7 +268,7 @@ class MatchStage:
         Стадия match (enriched -> matched).
     """
 
-    def __init__(self, matcher: DeduplicationTransform, catalog: ErrorCatalog) -> None:
+    def __init__(self, matcher: MatchProcessor, catalog: ErrorCatalog) -> None:
         self.matcher = matcher
         self.catalog = catalog
 
@@ -348,7 +370,7 @@ def _build_target_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dic
         row = item.row
         if row is None:
             continue
-        if row.match_status == MatchStatus.MATCHED and row.existing:
+        if resolve_decision_status(row) == MatchDecisionStatus.MATCHED and row.existing:
             target_id = row.existing.get("_id")
         else:
             target_id = row.target_id

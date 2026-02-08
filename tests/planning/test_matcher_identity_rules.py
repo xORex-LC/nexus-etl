@@ -2,18 +2,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.models import MatchStatus, RowRef
+from connector.domain.models import RowRef
 from connector.domain.transform.matching.context import MatchContext
-from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.matching.match_core import MatchCore
+from connector.domain.transform.matching.match_dsl import MatchDsl
+from connector.domain.transform.matching.match_models import MatchDecisionStatus
 from connector.domain.transform.matching.rules import ResolveRules
+from connector.domain.transform.dsl.loader import load_match_spec_for_dataset
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.ids.match_key import MatchKey
-from connector.datasets.employees.load.matching_rules import build_matching_rules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.diagnostics.catalog import build_catalog
 
 CATALOG = build_catalog("employees", strict=True)
+
+
+def _employees_matching_rules():
+    return MatchDsl().compile(load_match_spec_for_dataset("employees"))
 
 
 @dataclass
@@ -80,15 +86,15 @@ def _make_resolve_rules() -> ResolveRules:
     return ResolveRules(build_desired_state=lambda *_: {"payload": "ok"})
 
 
-def test_matcher_uses_fallback_identity_when_primary_missing():
-    matching_rules = build_matching_rules()
+def test_matcher_uses_next_identity_rule_when_primary_missing():
+    matching_rules = _employees_matching_rules()
     resolve_rules = _make_resolve_rules()
     cache_repo = FakeCacheRepo(
         responses={
             ("usr_org_tab_num", "TAB-1"): [{"_id": "u-1", "usr_org_tab_num": "TAB-1"}],
         },
     )
-    matcher = DeduplicationTransform(
+    matcher = MatchCore(
         dataset="employees",
         cache_repo=cache_repo,
         matching_rules=matching_rules,
@@ -101,14 +107,14 @@ def test_matcher_uses_fallback_identity_when_primary_missing():
     result = matcher.match(_make_transform_result(match_context))
 
     assert result.row is not None
-    assert result.row.match_status == MatchStatus.MATCHED
+    assert result.row.match_decision.status == MatchDecisionStatus.MATCHED
     assert result.row.identity.primary == "usr_org_tab_num"
     assert result.row.identity.primary_value == "TAB-1"
     assert result.row.existing == {"_id": "u-1", "usr_org_tab_num": "TAB-1"}
 
 
-def test_matcher_returns_conflict_when_fallback_has_multiple_candidates():
-    matching_rules = build_matching_rules()
+def test_matcher_returns_conflict_when_secondary_rule_has_multiple_candidates():
+    matching_rules = _employees_matching_rules()
     resolve_rules = _make_resolve_rules()
     cache_repo = FakeCacheRepo(
         responses={
@@ -118,7 +124,7 @@ def test_matcher_returns_conflict_when_fallback_has_multiple_candidates():
             ],
         },
     )
-    matcher = DeduplicationTransform(
+    matcher = MatchCore(
         dataset="employees",
         cache_repo=cache_repo,
         matching_rules=matching_rules,

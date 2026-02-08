@@ -28,6 +28,7 @@ def build_core_catalog(*, strict: bool) -> ErrorCatalog:
         CatalogEntry("MATCH_CONFLICT", SystemErrorCode.CONFLICT, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("MATCH_CONFLICT_SOURCE", SystemErrorCode.CONFLICT, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("MATCH_DUPLICATE_SOURCE", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.WARNING),
+        CatalogEntry("RESOLVE_AMBIGUOUS", SystemErrorCode.CONFLICT, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("RESOLVE_CONFLICT", SystemErrorCode.CONFLICT, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("RESOLVE_TARGET_ID_MISSING", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("RESOLVE_CONFIG_MISSING", SystemErrorCode.INTERNAL_ERROR, severity=DiagnosticSeverity.ERROR),

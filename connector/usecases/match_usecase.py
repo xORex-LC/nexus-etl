@@ -9,8 +9,7 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.core.result_processor import PlanningResultProcessor
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.stages.stages import MatchStage
-from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
+from connector.domain.transform.stages.stages import MatchProcessor, MatchStage
 
 
 class MatchUseCase:
@@ -34,7 +33,7 @@ class MatchUseCase:
     def iter_matched(
         self,
         enriched_source: Iterable[TransformResult],
-        matcher: DeduplicationTransform,
+        matcher: MatchProcessor,
         *,
         catalog: ErrorCatalog,
         run_scope: str | None = None,
@@ -53,7 +52,7 @@ class MatchUseCase:
     def run(
         self,
         enriched_source: Iterable[TransformResult],
-        matcher: DeduplicationTransform,
+        matcher: MatchProcessor,
         dataset: str,
         report,
         catalog: ErrorCatalog,
@@ -66,7 +65,9 @@ class MatchUseCase:
             context_key="match",
             ok_label="matched_ok",
             failed_label="match_failed",
-            meta_builder=lambda r: {"match_status": r.row.match_status if r.row else None},
+            meta_builder=lambda r: {
+                "match_status": (r.row.match_decision.status.value if r.row else None)
+            },
         )
 
         for matched in self._iter_matched(
@@ -86,7 +87,7 @@ class MatchUseCase:
     def _iter_matched(
         self,
         enriched_source: Iterable[TransformResult],
-        matcher: DeduplicationTransform,
+        matcher: MatchProcessor,
         *,
         catalog: ErrorCatalog,
         run_scope: str | None = None,

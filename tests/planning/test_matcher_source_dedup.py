@@ -3,12 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.domain.models import Identity, MatchStatus, RowRef
+from connector.domain.models import Identity, RowRef
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.ids.match_key import MatchKey
-from connector.domain.transform.matching.deduplication_transform import DeduplicationTransform
-from connector.domain.transform.matching.rules import MatchingRules, ResolveRules, SourceDedupRules
+from connector.domain.transform.matching.match_core import MatchCore
+from connector.domain.transform.matching.match_models import MatchDecisionStatus
+from connector.domain.transform.matching.rules import (
+    IdentityRule,
+    MatchingRules,
+    ResolveRules,
+    SourceDedupRules,
+)
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
@@ -56,7 +62,7 @@ class FakeIdentityRepo:
             del self.values[key]
 
 
-def _row(*, phone: str) -> NormalizedEmployeesRow:
+def _row(*, phone: str, position: str = "Engineer") -> NormalizedEmployeesRow:
     return NormalizedEmployeesRow(
         email="john@example.com",
         last_name="Doe",
@@ -69,7 +75,7 @@ def _row(*, phone: str) -> NormalizedEmployeesRow:
         personnel_number="100",
         manager_id=None,
         organization_id=1,
-        position="Engineer",
+        position=position,
         avatar_id=None,
         usr_org_tab_num="TAB-100",
         target_id=None,
@@ -94,17 +100,21 @@ def _resolve_rules() -> ResolveRules:
     )
 
 
-def _build_matcher(*, on_conflict: str = "error", fallback: bool = True) -> DeduplicationTransform:
+def _build_matcher(*, on_conflict: str = "error") -> MatchCore:
     matching_rules = MatchingRules(
-        build_identity=lambda _row, _ctx: Identity(
-            primary="match_key",
-            values={"match_key": "Doe|John|M|100"},
+        identity_rules=(
+            IdentityRule(
+                name="match_key",
+                build_identity=lambda _row, _ctx: Identity(
+                    primary="match_key",
+                    values={"match_key": "Doe|John|M|100"},
+                ),
+            ),
         ),
         source_dedup=SourceDedupRules(
             enabled=True,
             on_duplicate="warn",
             on_conflict=on_conflict,
-            fallback_identity_value=fallback,
         ),
     )
     cache_repo = FakeCacheRepo(
@@ -112,7 +122,7 @@ def _build_matcher(*, on_conflict: str = "error", fallback: bool = True) -> Dedu
             ("match_key", "Doe|John|M|100"): [{"_id": "u-1", "match_key": "Doe|John|M|100"}],
         }
     )
-    return DeduplicationTransform(
+    return MatchCore(
         dataset="employees",
         cache_repo=cache_repo,
         matching_rules=matching_rules,
@@ -129,7 +139,7 @@ def test_source_dedup_duplicate_is_hard_dropped_with_warning():
     second = matcher.match_with_source_dedup(_result(_row(phone="+111")))
 
     assert first.row is not None
-    assert first.row.match_status == MatchStatus.MATCHED
+    assert first.row.match_decision.status == MatchDecisionStatus.MATCHED
 
     assert second.row is None
     assert second.errors == ()
@@ -149,18 +159,22 @@ def test_source_dedup_conflict_is_hard_dropped_with_error():
     assert second.meta.get("match_drop_reason") == "conflict_source"
 
 
-def test_source_dedup_fallback_identity_value_can_be_disabled():
+def test_source_dedup_requires_canonical_identity_key():
     matching_rules = MatchingRules(
-        build_identity=lambda _row, _ctx: Identity(primary="", values={"": "same"}),
+        identity_rules=(
+            IdentityRule(
+                name="empty",
+                build_identity=lambda _row, _ctx: Identity(primary="", values={"": "same"}),
+            ),
+        ),
         source_dedup=SourceDedupRules(
             enabled=True,
             on_duplicate="warn",
             on_conflict="error",
-            fallback_identity_value=False,
         ),
     )
     cache_repo = FakeCacheRepo(responses={("", "same"): [{"_id": "u-1"}]})
-    matcher = DeduplicationTransform(
+    matcher = MatchCore(
         dataset="employees",
         cache_repo=cache_repo,
         matching_rules=matching_rules,
@@ -193,3 +207,47 @@ def test_source_dedup_reads_scoped_runtime_state_from_identity_repo():
 
     assert second.row is None
     assert any(w.code == "MATCH_DUPLICATE_SOURCE" for w in second.warnings)
+
+
+def test_source_dedup_uses_canonical_key_with_identity_primary():
+    matching_rules = MatchingRules(
+        identity_rules=(
+            IdentityRule(
+                name="variable_primary",
+                build_identity=lambda row, _ctx: Identity(
+                    primary="phone" if row.position == "Engineer" else "personnel_number",
+                    values={
+                        "phone": "same-key",
+                        "personnel_number": "same-key",
+                    },
+                ),
+            ),
+        ),
+        source_dedup=SourceDedupRules(
+            enabled=True,
+            on_duplicate="warn",
+            on_conflict="error",
+        ),
+    )
+    cache_repo = FakeCacheRepo(
+        responses={
+            ("phone", "same-key"): [{"_id": "u-1"}],
+            ("personnel_number", "same-key"): [{"_id": "u-2"}],
+        }
+    )
+    matcher = MatchCore(
+        dataset="employees",
+        cache_repo=cache_repo,
+        matching_rules=matching_rules,
+        resolve_rules=_resolve_rules(),
+        include_deleted=False,
+        catalog=CATALOG,
+    )
+
+    first = matcher.match_with_source_dedup(_result(_row(phone="+111", position="Engineer")))
+    second = matcher.match_with_source_dedup(_result(_row(phone="+111", position="Manager")))
+
+    assert first.row is not None
+    assert second.row is not None
+    assert second.errors == ()
+    assert second.warnings == ()

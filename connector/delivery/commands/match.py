@@ -64,7 +64,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             should_skip=lambda item: item.row is None,
         )
 
-        planning_bundle = dataset_spec.build_planning_bundle()
+        planning_bundle = dataset_spec.build_planning_bundle(settings=settings)
 
         with open_match_runtime(
             dataset=dataset_name,

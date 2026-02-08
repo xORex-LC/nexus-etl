@@ -10,16 +10,18 @@ from typing import Any
 import json
 import logging
 
-from connector.domain.models import DiagnosticStage, MatchStatus, DiagnosticItem
+from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.transform.matching.resolve_deps import ResolverSettings
 from connector.domain.transform.matching.identity_keys import format_identity_key
 from connector.domain.transform.matching.match_models import (
     MatchedRow,
+    MatchDecisionStatus,
     ResolvedRow,
     ResolveOp,
     build_fingerprint_for_keys,
+    resolve_decision_status,
 )
 from connector.domain.transform.matching.rules import LinkFieldRule, LinkRules, ResolveRules
 from connector.domain.ports.cache.identity import IdentityRepository
@@ -126,15 +128,19 @@ class LookupEnricher:
 
         self._maybe_sweep_expired()
 
-        if matched.match_status in (MatchStatus.CONFLICT_TARGET, MatchStatus.CONFLICT_SOURCE):
+        decision_status = resolve_decision_status(matched)
+        if decision_status in (MatchDecisionStatus.AMBIGUOUS, MatchDecisionStatus.CONFLICT_SOURCE):
             # Политика: конфликт на этапе match = hard-fail, план не строим.
+            is_ambiguous = decision_status == MatchDecisionStatus.AMBIGUOUS
+            conflict_reason = "ambiguous match result" if is_ambiguous else "conflict during match stage"
+            diag_code = "RESOLVE_AMBIGUOUS" if is_ambiguous else "RESOLVE_CONFLICT"
             errors.append(
                 diag_error(
                     catalog=self.catalog,
                     stage=DiagnosticStage.RESOLVE,
-                    code="RESOLVE_CONFLICT",
+                    code=diag_code,
                     field=matched.identity.primary,
-                    message="conflict during match stage",
+                    message=conflict_reason,
                     record_ref=matched.row_ref,
                 )
             )
@@ -317,7 +323,7 @@ def _resolve_target_id(matched: MatchedRow, target_id_map: dict[str, str]) -> st
     Назначение:
         Вычислить target_id с учётом match-статуса и batch-map.
     """
-    if matched.match_status == MatchStatus.MATCHED:
+    if resolve_decision_status(matched) == MatchDecisionStatus.MATCHED:
         existing_id = matched.existing.get("_id") if matched.existing else None
         return str(existing_id) if existing_id is not None else None
     return matched.target_id or target_id_map.get(matched.identity.primary_value)
@@ -328,7 +334,7 @@ def _decide_op(matched: MatchedRow, desired_state: dict[str, Any], rules: Resolv
     Назначение:
         Определить операцию и diff (если нужно).
     """
-    if matched.match_status == MatchStatus.NOT_FOUND:
+    if resolve_decision_status(matched) == MatchDecisionStatus.NOT_FOUND:
         return ResolveOp.CREATE, {}
     if _can_skip_with_fingerprint(matched, desired_state, rules):
         return ResolveOp.SKIP, {}
@@ -345,7 +351,7 @@ def _can_skip_with_fingerprint(
     desired_state: dict[str, Any],
     rules: ResolveRules,
 ) -> bool:
-    if matched.match_status != MatchStatus.MATCHED:
+    if resolve_decision_status(matched) != MatchDecisionStatus.MATCHED:
         return False
     if matched.existing is None:
         return False
@@ -569,7 +575,7 @@ def _collect_batch_keys(link_rules: LinkRules, dataset: str) -> tuple[set[str], 
 
 
 def _extract_resolved_id(row: MatchedRow, id_field: str) -> str | None:
-    if row.match_status == MatchStatus.MATCHED and row.existing:
+    if resolve_decision_status(row) == MatchDecisionStatus.MATCHED and row.existing:
         existing_id = row.existing.get(id_field)
         if existing_id is not None:
             return str(existing_id).strip()
