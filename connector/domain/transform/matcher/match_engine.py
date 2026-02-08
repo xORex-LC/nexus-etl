@@ -10,10 +10,10 @@ from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.ports.cache.repository import CacheRepositoryProtocol
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.dsl.specs import MatchSpec
-from connector.domain.transform.matching.match_core import MatchCore
-from connector.domain.transform.matching.match_dsl import MatchDsl
-from connector.domain.transform.matching.match_models import MatchedRow
-from connector.domain.transform.matching.rules import ResolveRules
+from connector.domain.transform.matcher.match_core import MatchCore
+from connector.domain.transform.matcher.match_dsl import MatchDsl
+from connector.domain.transform.matcher.match_models import MatchedRow
+from connector.domain.transform.matcher.rules import ResolveRules
 
 
 class MatchEngine:

@@ -13,7 +13,7 @@ from connector.datasets.cache_registry import list_cache_specs
 from connector.datasets.spec import DatasetSpec
 from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.matching.resolve_deps import PlanningDependencies
+from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.sqlite_engine import SqliteEngine

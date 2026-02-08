@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.transform.matching.match_models import MatchedRow
+from connector.domain.transform.matcher.match_models import MatchedRow
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.transform.core.iterators import iter_micro_batches

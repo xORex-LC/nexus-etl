@@ -9,8 +9,8 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.matching.match_engine import MatchEngine
-from connector.domain.transform.matching.resolve_deps import PlanningDependencies
+from connector.domain.transform.matcher.match_engine import MatchEngine
+from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.usecases.match_usecase import MatchUseCase
 
 

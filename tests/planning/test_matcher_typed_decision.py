@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.transform.matching.match_models import (
+from connector.domain.transform.matcher.match_models import (
     MatchDecision,
     MatchDecisionStatus,
     MatchedRow,

@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.transform.dsl.specs import MatchSpec
+from connector.domain.transform.dsl.specs import MatchSpec, SinkSpec
 
-from connector.domain.transform.matching.resolve_deps import PlanningDependencies
-from connector.domain.transform.matching.rules import LinkRules, ResolveRules
+from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
+from connector.domain.transform.matcher.rules import LinkRules, ResolveRules
 from connector.domain.ports.target.execution import RequestSpec, ExecutionResult
 from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.core.source_record import SourceRecord
@@ -23,6 +23,7 @@ class PlanningBundle:
     match_spec: MatchSpec
     resolve_rules: ResolveRules
     link_rules: LinkRules
+    sink_spec: SinkSpec | None = None
 
 class ApplyAdapter(Protocol):
     """

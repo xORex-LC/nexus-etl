@@ -7,7 +7,7 @@ from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.transform.matching.lookup_enricher import LookupEnricher
+from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.transform.core.iterators import iter_micro_batches
@@ -36,7 +36,7 @@ class ResolveUseCase:
     def iter_resolved(
         self,
         matched_source: Iterable[TransformResult],
-        resolver: LookupEnricher,
+        resolver: ResolveCore,
         *,
         dataset: str | None = None,
         catalog: ErrorCatalog,
@@ -50,7 +50,7 @@ class ResolveUseCase:
     def run(
         self,
         matched_source: Iterable[TransformResult],
-        resolver: LookupEnricher,
+        resolver: ResolveCore,
         dataset: str,
         report,
         catalog: ErrorCatalog,
@@ -80,7 +80,7 @@ class ResolveUseCase:
     def _iter_resolved(
         self,
         matched_source: Iterable[TransformResult],
-        resolver: LookupEnricher,
+        resolver: ResolveCore,
         *,
         dataset: str | None = None,
         catalog: ErrorCatalog,
@@ -95,7 +95,7 @@ class ResolveUseCase:
                 yield resolved
 
 
-def _purge_pending(resolver: LookupEnricher) -> None:
+def _purge_pending(resolver: ResolveCore) -> None:
     # Чистим обработанные pending-записи по retention, если включено.
     settings = resolver.settings
     if settings is None:

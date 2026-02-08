@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from connector.datasets.spec import DatasetSpec, PlanningBundle
-from connector.datasets.employees.load.reporting import employees_report_adapter
+from connector.datasets.spec import DatasetSpec, PlanningBundle, ReportAdapter
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
-from connector.domain.transform.matching.resolve_deps import PlanningDependencies, ResolverSettings
-from connector.datasets.employees.load.link_rules import build_link_rules
-from connector.datasets.employees.load.resolve_rules import build_resolve_rules
+from connector.domain.transform.resolver.resolve_deps import PlanningDependencies, ResolverSettings
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.dsl.loader import (
     load_enrich_spec_for_dataset,
     load_match_spec_for_dataset,
     load_normalize_spec_for_dataset,
+    load_resolve_spec_for_dataset,
     load_sink_spec_for_dataset,
     load_source_spec_for_dataset,
     resolve_source_location,
@@ -19,6 +17,7 @@ from connector.domain.transform.dsl.loader import (
 from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.transform.enrich import EnricherEngine, EnrichDslBuildOptions
+from connector.domain.transform.resolver.resolve_dsl import ResolveDsl
 from connector.domain.transform.normalize import NormalizerDsl, NormalizerEngine
 from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.providers import TransformProviderDeps
@@ -38,7 +37,11 @@ class EmployeesSpec(DatasetSpec):
     """
 
     def __init__(self, secrets: SecretProviderProtocol | None = None):
-        self._report_adapter = employees_report_adapter
+        self._report_adapter = ReportAdapter(
+            identity_label="match_key",
+            conflict_code="MATCH_CONFLICT",
+            conflict_field="matchKey",
+        )
         self._apply_adapter = EmployeesApplyAdapter(secrets=secrets)
 
     def build_planning_deps(self, conn, settings) -> PlanningDependencies:
@@ -93,10 +96,16 @@ class EmployeesSpec(DatasetSpec):
     def build_planning_bundle(self, settings=None) -> PlanningBundle:
         _ = settings
         match_spec = load_match_spec_for_dataset("employees")
+        resolve_spec = load_resolve_spec_for_dataset("employees")
+        sink_spec = load_sink_spec_for_dataset("employees")
+        compiled = ResolveDsl().compile(resolve_spec, sink_spec=sink_spec)
+        resolve_rules = compiled.resolve_rules
+        link_rules = compiled.link_rules
         return PlanningBundle(
             match_spec=match_spec,
-            resolve_rules=build_resolve_rules(),
-            link_rules=build_link_rules(),
+            resolve_rules=resolve_rules,
+            link_rules=link_rules,
+            sink_spec=sink_spec,
         )
 
     def get_report_adapter(self):

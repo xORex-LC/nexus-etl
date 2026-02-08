@@ -1,22 +1,137 @@
 @startuml
-title LookupEnricher - Class Diagram
+title Resolver Stage - Class Diagram (Current)
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam classBorderThickness 2
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 
-class LookupEnricher {
+class ResolveStage {
+  - resolver: ResolveCore
+  - catalog: ErrorCatalog
+  + run(source, dataset): Iterable[TransformResult]
+}
+
+class ResolveEngine {
+  - dsl: ResolveDsl
+  - resolve_rules: ResolveRules
+  - link_rules: LinkRules
+  - core: ResolveCore
+  + __init__(spec, identity_repo, pending_repo, settings, catalog, sink_spec, dsl)
+  + resolve(matched, target_id_map, meta, batch_index)
+  + build_batch_index(matched_rows, dataset)
+  + drain_expired()
+}
+
+class ResolveDsl {
+  + compile(spec: ResolveSpec, sink_spec: SinkSpec?): CompiledResolveRules
+}
+
+class CompiledResolveRules {
+  + resolve_rules: ResolveRules
+  + link_rules: LinkRules
+}
+
+class ResolveSpec {
+  + dataset: str
+  + resolve: ResolveBlock
+}
+
+class ResolveBlock {
+  + desired_state: ResolveDesiredStateSpec
+  + source_ref: ResolveSourceRefSpec?
+  + diff: ResolveDiffSpec
+  + merge: ResolveMergeSpec?
+  + secrets: ResolveSecretsSpec?
+  + links: ResolveLinkSpec[*]
+}
+
+class ResolveDesiredStateSpec {
+  + mode: project_fields
+  + fields: str[*]
+  + drop_fields: str[*]
+}
+
+class ResolveSourceRefSpec {
+  + mode: from_identity
+  + fields: str[*]
+  + include_primary: bool
+}
+
+class ResolveDiffSpec {
+  + mode: compare_fields
+  + fields: ResolveDiffFieldSpec[*]
+  + ignore_fields: str[*]
+  + from_sink: FromSinkSpec
+}
+
+class FromSinkSpec {
+  + enabled: bool
+  + exclude_fields: str[*]
+  + normalize_by_type: bool
+}
+
+class ResolveDiffFieldSpec {
+  + field: str
+  + existing: str?
+  + output: str?
+  + normalize: none|text|bool
+}
+
+class ResolveMergeSpec {
+  + mode: none|fill_empty_from_existing
+  + fields: ResolveMergeFieldSpec[*]
+}
+
+class ResolveMergeFieldSpec {
+  + field: str
+  + existing: str?
+  + normalize: none|text|bool
+}
+
+class ResolveSecretsSpec {
+  + mode: none|by_op
+  + create: str[*]
+  + update: str[*]
+}
+
+class ResolveLinkSpec {
+  + field: str
+  + target_dataset: str
+  + resolve_keys: ResolveLinkKeySpec[*]
+  + dedup_rules: str[*][*]
+  + target_id_field: str
+  + coerce: int|str?
+  + on_unresolved: pending|hard_error
+}
+
+class ResolveLinkKeySpec {
+  + name: str
+  + field: str
+}
+
+class ResolveCore {
   - resolve_rules: ResolveRules
   - link_rules: LinkRules
   - identity_repo: IdentityRepository
   - pending_repo: PendingLinksRepository
   - settings: ResolverSettings
+  - sink_spec: SinkSpec
   + resolve(matched, target_id_map, meta, batch_index)
   + build_batch_index(matched_rows, dataset)
+  + drain_expired()
 }
 
 class ResolveRules {
   + build_desired_state
   + build_source_ref
   + diff_policy
-  + secret_fields_for_op
   + merge_policy
+  + secret_fields_for_op
 }
 
 class LinkRules {
@@ -30,11 +145,49 @@ class LinkFieldRule {
   + dedup_rules: tuple
   + target_id_field: str
   + coerce: str
+  + on_unresolved: str
 }
 
 class LinkKeyRule {
   + name: str
   + field: str
+}
+
+class MatchedRow {
+  + row_ref: RowRef
+  + identity: Identity
+  + desired_state: dict[str, Any]
+  + existing: dict[str, Any]?
+  + fingerprint: str
+  + fingerprint_fields: tuple[str, ...]
+  + match_decision: MatchDecision
+  + source_links: dict[str, Identity]
+  + target_id: str?
+}
+
+class ResolvedRow {
+  + row_ref: RowRef
+  + identity: Identity
+  + op: str
+  + desired_state: dict[str, Any]
+  + changes: dict[str, Any]
+  + existing: dict[str, Any]?
+  + target_id: str?
+  + source_ref: dict[str, Any]?
+  + secret_fields: str[*]
+}
+
+class IdentityRepository <<protocol>> {
+  + find_candidates(dataset, identity_key)
+}
+
+class PendingLinksRepository <<protocol>> {
+  + add_pending(...)
+  + touch_attempt(pending_id)
+  + mark_conflict(pending_id, reason)
+  + mark_resolved_for_source(source_row_id)
+  + sweep_expired(now_iso, reason)
+  + purge_stale(cutoff_iso)
 }
 
 class ResolverSettings {
@@ -44,48 +197,6 @@ class ResolverSettings {
   + pending_on_expire: str
   + pending_allow_partial: bool
   + pending_retention_days: int
-}
-
-class IdentityRepository <<protocol>> {
-  + upsert_identity(dataset, identity_key, resolved_id)
-  + find_candidates(dataset, identity_key)
-}
-
-class PendingLinksRepository <<protocol>> {
-  + add_pending(...)
-  + touch_attempt(pending_id)
-  + list_pending_for_key(dataset, identity_key)
-  + list_pending_rows(dataset)
-  + mark_conflict(pending_id)
-  + mark_expired(pending_id)
-  + mark_resolved(pending_id)
-  + mark_resolved_for_source(source_row_id)
-  + sweep_expired(...)
-  + purge_stale(cutoff, statuses)
-}
-
-class MatchedRow {
-  + row_ref
-  + identity
-  + match_status
-  + desired_state
-  + existing
-  + fingerprint
-  + fingerprint_fields
-  + source_links
-  + target_id
-}
-
-class ResolvedRow {
-  + row_ref
-  + identity
-  + op
-  + desired_state
-  + changes
-  + existing
-  + target_id
-  + source_ref
-  + secret_fields
 }
 
 class TransformResult<T> {
@@ -98,16 +209,47 @@ class TransformResult<T> {
   + warnings
 }
 
-LookupEnricher --> ResolveRules
-LookupEnricher --> LinkRules
-LookupEnricher --> IdentityRepository
-LookupEnricher --> PendingLinksRepository
-LookupEnricher --> ResolverSettings
-LookupEnricher ..> MatchedRow
-LookupEnricher ..> ResolvedRow
-TransformResult <|-- "TransformResult[ResolvedRow]"
+ResolveStage --> ResolveCore
+ResolveEngine --> ResolveDsl
+ResolveEngine --> ResolveCore
+ResolveEngine --> ResolveRules
+ResolveEngine --> LinkRules
+ResolveDsl --> ResolveSpec
+ResolveDsl --> CompiledResolveRules
+ResolveSpec --> ResolveBlock
+ResolveBlock --> ResolveDesiredStateSpec
+ResolveBlock --> ResolveSourceRefSpec
+ResolveBlock --> ResolveDiffSpec
+ResolveDiffSpec --> FromSinkSpec
+ResolveBlock --> ResolveMergeSpec
+ResolveBlock --> ResolveSecretsSpec
+ResolveBlock --> ResolveLinkSpec
+ResolveLinkSpec --> ResolveLinkKeySpec
+ResolveCore --> ResolveRules
+ResolveCore --> LinkRules
+ResolveCore --> IdentityRepository
+ResolveCore --> PendingLinksRepository
+ResolveCore --> ResolverSettings
+ResolveCore ..> MatchedRow
+ResolveCore ..> ResolvedRow
 TransformResult <|-- "TransformResult[MatchedRow]"
+TransformResult <|-- "TransformResult[ResolvedRow]"
 LinkRules o-- LinkFieldRule
 LinkFieldRule o-- LinkKeyRule
+
+note right of ResolveDsl
+Single compile path:
+ResolveSpec (v2)
+-> ResolveRules + LinkRules
+No strategy registry.
+end note
+
+note right of ResolveCore
+Resolver-core only:
+1) merge desired_state
+2) resolve links + pending policy
+3) decide op (create/update/skip)
+4) targeted sink validation
+end note
 
 @enduml

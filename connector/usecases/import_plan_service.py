@@ -12,9 +12,9 @@ from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.stages.stages import StagePipeline
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.domain.transform.matching.lookup_enricher import LookupEnricher
+from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
-from connector.domain.transform.matching.match_models import (
+from connector.domain.transform.matcher.match_models import (
     MatchedRow,
     MatchCandidate,
     MatchDecision,
@@ -115,13 +115,14 @@ class ImportPlanService:
             )
             matched_with_pending = chain(matched_rows, pending_rows)
 
-            resolver = LookupEnricher(
+            resolver = ResolveCore(
                 planning_bundle.resolve_rules,
                 planning_bundle.link_rules,
                 identity_repo=planning_deps.identity_repo,
                 pending_repo=planning_deps.pending_repo,
                 settings=planning_deps.resolver_settings,
                 catalog=catalog,
+                sink_spec=planning_bundle.sink_spec,
             )
             resolve_usecase = ResolveUseCase(
                 report_items_limit=report_items_limit,
@@ -169,6 +170,10 @@ def _load_pending_rows(
     include_deleted: bool,
     ignored_fields: set[str],
 ) -> list[TransformResult[MatchedRow]]:
+    # TODO(DSL plan/resolve): this replay path still reconstructs MatchDecision
+    # inside usecase-level orchestration. After plan/resolve DSL migration,
+    # move to a single source of truth (deserialize stored typed decision or
+    # resolve via core), so usecase does not contain match decision logic.
     if pending_repo is None:
         return []
     pending_rows = pending_repo.list_pending_rows(dataset)

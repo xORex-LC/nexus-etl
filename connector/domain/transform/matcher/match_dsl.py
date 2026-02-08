@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from connector.domain.models import Identity
-from connector.domain.transform.matching.rules import (
+from connector.domain.transform.matcher.rules import (
     FuzzyScoringRules,
     IdentityRule,
     MatchingRules,

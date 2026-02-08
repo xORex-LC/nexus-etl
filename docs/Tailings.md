@@ -33,7 +33,6 @@ Sink-spec leakage (where sink/normalized specificity leaks into non-dataset laye
 
 Sink-spec in correct place (dataset layer, ok):
 - connector/datasets/employees/source_mapper.py: маппинг SourceRecord -> EmployeesRowPublic.
-- connector/datasets/employees/projector.py: desired_state/source_ref/identity для employees.
 - connector/datasets/employees/planning_policy.py: employees decision + desired_state.
 - connector/datasets/employees/apply_adapter.py: построение request payload для sink.
 - connector/datasets/employees/spec.py: wiring employees dataset components.

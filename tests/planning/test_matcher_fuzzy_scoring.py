@@ -7,12 +7,12 @@ from connector.domain.models import Identity, RowRef
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.ids.match_key import MatchKey
-from connector.domain.transform.matching.match_core import MatchCore
-from connector.domain.transform.matching.match_models import (
+from connector.domain.transform.matcher.match_core import MatchCore
+from connector.domain.transform.matcher.match_models import (
     MatchDecisionReason,
     MatchDecisionStatus,
 )
-from connector.domain.transform.matching.rules import (
+from connector.domain.transform.matcher.rules import (
     FuzzyScoringRules,
     IdentityRule,
     MatchingRules,

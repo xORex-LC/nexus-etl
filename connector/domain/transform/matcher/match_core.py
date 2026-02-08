@@ -15,8 +15,8 @@ from connector.domain.models import (
 )
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
-from connector.domain.transform.matching.context import MatchContext
-from connector.domain.transform.matching.match_models import (
+from connector.domain.transform.matcher.context import MatchContext
+from connector.domain.transform.matcher.match_models import (
     MatchCandidate,
     MatchDecision,
     MatchDecisionStatus,
@@ -24,12 +24,12 @@ from connector.domain.transform.matching.match_models import (
     MatchedRow,
     build_fingerprint,
 )
-from connector.domain.transform.matching.rules import (
+from connector.domain.transform.matcher.rules import (
     FuzzyScoringRules,
     MatchingRules,
     ResolveRules,
 )
-from connector.domain.transform.matching.scoring import is_tie, rank_candidates
+from connector.domain.transform.matcher.scoring import is_tie, rank_candidates
 from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.ports.cache.repository import CacheRepositoryProtocol
 from connector.domain.transform.core.result import TransformResult
