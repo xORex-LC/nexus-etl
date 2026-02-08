@@ -10,7 +10,6 @@ from typing import Any, Iterable
 from connector.domain.models import (
     DiagnosticStage,
     Identity,
-    MatchStatus,
     RowRef,
     DiagnosticItem,
 )
@@ -18,13 +17,15 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.transform.matching.context import MatchContext
 from connector.domain.transform.matching.match_models import (
+    MatchCandidate,
+    MatchDecision,
+    MatchDecisionStatus,
     MatchDecisionReason,
     MatchedRow,
     build_fingerprint,
 )
 from connector.domain.transform.matching.rules import (
     FuzzyScoringRules,
-    IdentityRule,
     MatchingRules,
     ResolveRules,
 )
@@ -34,10 +35,11 @@ from connector.domain.ports.cache.repository import CacheRepositoryProtocol
 from connector.domain.transform.core.result import TransformResult
 
 
-class DeduplicationTransform:
+class MatchCore:
     """
     Назначение/ответственность:
-        Сопоставление валидированной строки с кэшем/target без принятия решений.
+        Ядро матчинга: сопоставление валидированной строки с кэшем/target
+        без принятия решений apply/resolve.
     """
 
     def __init__(
@@ -53,6 +55,8 @@ class DeduplicationTransform:
         self.dataset = dataset
         self.cache_repo = cache_repo
         self.matching_rules = matching_rules
+        if not self.matching_rules.identity_rules:
+            raise ValueError("matching identity_rules must not be empty")
         self.resolve_rules = resolve_rules
         self.include_deleted = include_deleted
         self.catalog = catalog
@@ -99,7 +103,6 @@ class DeduplicationTransform:
         dedup_key = _build_source_dedup_key(
             self.dataset,
             matched.row.identity,
-            allow_fallback=dedup_rules.fallback_identity_value,
         )
         if dedup_key is None:
             return matched
@@ -180,7 +183,7 @@ class DeduplicationTransform:
                 warnings=enriched.warnings,
             )
 
-        identity, existing, match_status, error = self._match_identity(row, match_context)
+        identity, existing, decision_status, error = self._match_identity(row, match_context)
         if error is not None:
             return TransformResult(
                 record=enriched.record,
@@ -225,17 +228,18 @@ class DeduplicationTransform:
         decision_reason: str | None = None
         top_candidates: tuple[dict[str, Any], ...] = ()
 
-        if match_status == MatchStatus.MATCHED:
+        if decision_status == MatchDecisionStatus.MATCHED:
             score = 1.0
             decision_reason = MatchDecisionReason.IDENTITY_EXACT
             top_candidates = self._build_top_candidates(
                 [(existing, score)] if existing is not None else [],
                 top_k=max(1, self.matching_rules.fuzzy.top_k),
             )
+            decision_status = MatchDecisionStatus.MATCHED
         elif self.matching_rules.fuzzy.enabled:
             (
                 existing,
-                match_status,
+                decision_status,
                 score,
                 decision_reason,
                 top_candidates,
@@ -247,26 +251,46 @@ class DeduplicationTransform:
             match_mode = "fuzzy"
         else:
             decision_reason = MatchDecisionReason.IDENTITY_NOT_FOUND
+            decision_status = MatchDecisionStatus.NOT_FOUND
 
         links = {}
         if self.matching_rules.build_links:
             links = self.matching_rules.build_links(row, match_context)
 
+        decision_candidates = _to_match_candidates(
+            top_candidates,
+            match_mode=match_mode,
+        )
+        selected_candidate = None
+        if decision_status == MatchDecisionStatus.MATCHED:
+            selected_candidate = _build_selected_candidate(
+                existing=existing,
+                identity=identity,
+                score=score,
+                match_mode=match_mode,
+            )
+            if selected_candidate is not None and not decision_candidates:
+                decision_candidates = (selected_candidate,)
+        match_decision = MatchDecision(
+            status=decision_status,
+            reason_code=decision_reason or MatchDecisionReason.IDENTITY_NOT_FOUND,
+            selected=selected_candidate,
+            candidates=decision_candidates,
+            score=score,
+            meta={"match_mode": match_mode},
+        )
+
         row_ref = _ensure_row_ref(match_context, identity, identity_value)
         matched_row = MatchedRow(
             row_ref=row_ref,
             identity=identity,
-            match_status=match_status,
             desired_state=desired_state,
             existing=existing,
             fingerprint=fingerprint,
             fingerprint_fields=fingerprint_fields,
             source_links=links,
             target_id=getattr(row, "target_id", None),
-            match_mode=match_mode,
-            score=score,
-            decision_reason=decision_reason,
-            top_candidates=top_candidates,
+            match_decision=match_decision,
         )
 
         return TransformResult(
@@ -288,7 +312,7 @@ class DeduplicationTransform:
         identity: Identity,
     ) -> tuple[
         dict[str, Any] | None,
-        MatchStatus,
+        MatchDecisionStatus,
         float | None,
         str,
         tuple[dict[str, Any], ...],
@@ -303,7 +327,7 @@ class DeduplicationTransform:
         if not candidates:
             return (
                 None,
-                MatchStatus.NOT_FOUND,
+                MatchDecisionStatus.NOT_FOUND,
                 None,
                 MatchDecisionReason.FUZZY_NO_CANDIDATES,
                 (),
@@ -323,7 +347,7 @@ class DeduplicationTransform:
             score_round=max(0, fuzzy.score_round),
         )
         if not ranked:
-            return None, MatchStatus.NOT_FOUND, None, MatchDecisionReason.FUZZY_NO_RANKED, ()
+            return None, MatchDecisionStatus.NOT_FOUND, None, MatchDecisionReason.FUZZY_NO_RANKED, ()
 
         top_candidates = self._build_top_candidates(
             [(item.candidate, item.score) for item in ranked],
@@ -333,7 +357,7 @@ class DeduplicationTransform:
         if is_tie(ranked, tie_delta=max(0.0, fuzzy.tie_delta)):
             return (
                 None,
-                MatchStatus.CONFLICT_TARGET,
+                MatchDecisionStatus.AMBIGUOUS,
                 best.score,
                 MatchDecisionReason.FUZZY_TIE,
                 top_candidates,
@@ -344,7 +368,7 @@ class DeduplicationTransform:
         if best.score >= accept_threshold:
             return (
                 best.candidate,
-                MatchStatus.MATCHED,
+                MatchDecisionStatus.MATCHED,
                 best.score,
                 MatchDecisionReason.FUZZY_ACCEPT,
                 top_candidates,
@@ -352,14 +376,14 @@ class DeduplicationTransform:
         if best.score >= review_threshold:
             return (
                 None,
-                MatchStatus.CONFLICT_TARGET,
+                MatchDecisionStatus.AMBIGUOUS,
                 best.score,
                 MatchDecisionReason.FUZZY_REVIEW,
                 top_candidates,
             )
         return (
             None,
-            MatchStatus.NOT_FOUND,
+            MatchDecisionStatus.NOT_FOUND,
             best.score,
             MatchDecisionReason.FUZZY_REJECT,
             top_candidates,
@@ -448,7 +472,7 @@ class DeduplicationTransform:
         self,
         row: Any,
         match_context: MatchContext,
-    ) -> tuple[Identity | None, dict[str, Any] | None, MatchStatus, DiagnosticItem | None]:
+    ) -> tuple[Identity | None, dict[str, Any] | None, MatchDecisionStatus, DiagnosticItem | None]:
         """
         Назначение:
             Выбрать identity и найденную запись из кэша.
@@ -459,9 +483,9 @@ class DeduplicationTransform:
         """
         identity: Identity | None = None
         existing: dict[str, Any] | None = None
-        match_status = MatchStatus.NOT_FOUND
+        decision_status = MatchDecisionStatus.NOT_FOUND
 
-        for rule in _iter_identity_rules(self.matching_rules):
+        for rule in self.matching_rules.identity_rules:
             candidate = rule.build_identity(row, match_context)
             candidate_value = candidate.primary_value
             if not candidate_value:
@@ -478,23 +502,23 @@ class DeduplicationTransform:
                 return (
                     identity,
                     None,
-                    MatchStatus.NOT_FOUND,
+                    MatchDecisionStatus.NOT_FOUND,
                     _build_conflict_error(self.catalog, candidate, rule.name, match_context.row_ref),
                 )
             if candidates:
                 identity = candidate
                 existing = candidates[0]
-                match_status = MatchStatus.MATCHED
-                return identity, existing, match_status, None
+                decision_status = MatchDecisionStatus.MATCHED
+                return identity, existing, decision_status, None
 
         if identity is None:
-            return None, None, MatchStatus.NOT_FOUND, _build_identity_error(
+            return None, None, MatchDecisionStatus.NOT_FOUND, _build_identity_error(
                 self.catalog,
                 None,
                 "identity value is empty",
                 match_context.row_ref,
             )
-        return identity, None, match_status, None
+        return identity, None, decision_status, None
 
 
 def _make_match_error(
@@ -582,21 +606,6 @@ def _build_conflict_error(
     )
 
 
-def _iter_identity_rules(matching_rules: MatchingRules) -> tuple[IdentityRule, ...]:
-    """
-    Назначение:
-        Вернуть список правил identity с fallback на build_identity.
-    """
-    if matching_rules.identity_rules:
-        return matching_rules.identity_rules
-    return (
-        IdentityRule(
-            name="primary",
-            build_identity=matching_rules.build_identity,
-        ),
-    )
-
-
 def _extract_row_and_context(source: TransformResult[Any]) -> tuple[Any | None, MatchContext]:
     """
     Назначение:
@@ -609,18 +618,14 @@ def _extract_row_and_context(source: TransformResult[Any]) -> tuple[Any | None, 
 def _build_source_dedup_key(
     dataset: str,
     identity: Identity,
-    *,
-    allow_fallback: bool,
 ) -> str | None:
     primary = (identity.primary or "").strip()
     value = (identity.primary_value or "").strip()
     if value == "":
         return None
-    if primary:
-        return f"{dataset}:{primary}:{value}"
-    if allow_fallback:
-        return f"{dataset}:_fallback:{value}"
-    return None
+    if primary == "":
+        return None
+    return f"{dataset}:{primary}:{value}"
 
 
 def _read_value(
@@ -643,6 +648,44 @@ def _candidate_dedup_key(candidate: dict[str, Any]) -> str:
         return f"id:{target_id}"
     parts = [f"{k}={candidate.get(k)}" for k in sorted(candidate.keys())]
     return "|".join(parts)
+
+
+def _to_match_candidates(
+    top_candidates: tuple[dict[str, Any], ...],
+    *,
+    match_mode: str,
+) -> tuple[MatchCandidate, ...]:
+    candidates: list[MatchCandidate] = []
+    for item in top_candidates:
+        candidates.append(
+            MatchCandidate(
+                target_id=str(item.get("target_id")) if item.get("target_id") is not None else None,
+                identity=None,
+                score=float(item.get("score")) if item.get("score") is not None else None,
+                match_mode=match_mode,
+                evidence=None,
+            )
+        )
+    return tuple(candidates)
+
+
+def _build_selected_candidate(
+    *,
+    existing: dict[str, Any] | None,
+    identity: Identity,
+    score: float | None,
+    match_mode: str,
+) -> MatchCandidate | None:
+    if existing is None:
+        return None
+    target_id = existing.get("_id") or existing.get("target_id")
+    return MatchCandidate(
+        target_id=str(target_id) if target_id is not None else None,
+        identity=identity.primary_value or None,
+        score=score,
+        match_mode=match_mode,
+        evidence={"identity_primary": identity.primary},
+    )
 
 
 def _drop_matched_row(

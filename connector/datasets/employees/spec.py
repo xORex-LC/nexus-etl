@@ -4,14 +4,15 @@ from connector.datasets.spec import DatasetSpec, PlanningBundle
 from connector.datasets.employees.load.reporting import employees_report_adapter
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
 from connector.domain.transform.matching.resolve_deps import PlanningDependencies, ResolverSettings
-from connector.datasets.employees.load.matching_rules import build_matching_rules
 from connector.datasets.employees.load.link_rules import build_link_rules
 from connector.datasets.employees.load.resolve_rules import build_resolve_rules
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.dsl.loader import (
     load_enrich_spec_for_dataset,
+    load_match_spec_for_dataset,
     load_normalize_spec_for_dataset,
+    load_sink_spec_for_dataset,
     load_source_spec_for_dataset,
     resolve_source_location,
 )
@@ -89,9 +90,11 @@ class EmployeesSpec(DatasetSpec):
         source_path = resolve_source_location(source_spec)
         return CsvRecordSource(source_path, csv_has_header)
 
-    def build_planning_bundle(self) -> PlanningBundle:
+    def build_planning_bundle(self, settings=None) -> PlanningBundle:
+        _ = settings
+        match_spec = load_match_spec_for_dataset("employees")
         return PlanningBundle(
-            matching_rules=build_matching_rules(),
+            match_spec=match_spec,
             resolve_rules=build_resolve_rules(),
             link_rules=build_link_rules(),
         )
@@ -111,16 +114,19 @@ class EmployeesSpec(DatasetSpec):
 
     def _build_normalize_stage(self, catalog: ErrorCatalog) -> NormalizeStage:
         normalize_spec = load_normalize_spec_for_dataset("employees")
+        sink_spec = load_sink_spec_for_dataset("employees")
         normalizer = NormalizerEngine(
             normalize_spec,
             catalog=catalog,
             dsl=NormalizerDsl(registry=self._build_dsl_registry()),
+            sink_spec=sink_spec,
             row_builder=NormalizedEmployeesRow,
         )
         return NormalizeStage(normalizer, catalog)
 
     def _build_enrich_stage(self, catalog: ErrorCatalog, enrich_deps: TransformProviderDeps) -> EnrichStage:
         enrich_spec = load_enrich_spec_for_dataset("employees")
+        sink_spec = load_sink_spec_for_dataset("employees")
         enricher = EnricherEngine(
             spec=enrich_spec,
             deps=enrich_deps,
@@ -129,6 +135,7 @@ class EmployeesSpec(DatasetSpec):
             catalog=catalog,
             registry=self._build_dsl_registry(),
             options=EnrichDslBuildOptions(require_match_key=True),
+            sink_spec=sink_spec,
         )
         return EnrichStage(enricher, catalog)
 

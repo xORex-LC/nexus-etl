@@ -12,8 +12,11 @@ from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.ports.secrets.provider import SecretStoreProtocol
+from connector.domain.transform.common.sink_schema import validate_sink_fields
 from connector.domain.transform.core.result import TransformResult, TransformResultBuilder
+from connector.domain.transform.dsl.issues import DslIssue
 from connector.domain.transform.ids.match_key import MatchKey
+from connector.domain.transform.dsl.specs import SinkSpec
 from connector.domain.transform.enrich.models import (
     CandidateValue,
     EnrichContext,
@@ -58,6 +61,7 @@ class EnricherCore(Generic[T, D]):
         secret_store: SecretStoreProtocol | None,
         dataset: str,
         catalog: ErrorCatalog,
+        sink_spec: SinkSpec | None = None,
         run_id: str | None = None,
     ) -> None:
         self.spec = spec
@@ -65,6 +69,7 @@ class EnricherCore(Generic[T, D]):
         self.secret_store = secret_store
         self.dataset = dataset
         self.catalog = catalog
+        self.sink_spec = sink_spec
         self.run_id = run_id
         self.conflict_resolver = ConflictResolver()
         self.merge_engine = MergeEngine(spec.authoritative_sources)
@@ -393,6 +398,18 @@ class EnricherCore(Generic[T, D]):
                     )
                 )
                 continue
+            sink_field = self._sink_field_name(target_field)
+            sink_issues = self._validate_sink_target(sink_field, candidate.value)
+            if sink_issues:
+                issue = sink_issues[0]
+                return self._report_by_policy(
+                    builder=builder,
+                    op=op,
+                    outcome=(op.strictness or self.spec.default_strictness).on_provider_error,
+                    code=issue.code,
+                    message=issue.message,
+                    field=issue.field or sink_field,
+                )
             self._set_field_value(builder, target_field, candidate.value)
             tracker.register(target_field, op.name)
             events.append(
@@ -565,6 +582,21 @@ class EnricherCore(Generic[T, D]):
                 continue
             if hasattr(row, field):
                 setattr(row, field, None)
+
+    def _sink_field_name(self, target_field: str) -> str:
+        if target_field.startswith("secret:"):
+            return target_field.split("secret:", 1)[1]
+        return target_field
+
+    def _validate_sink_target(self, sink_field: str, value: Any) -> list[DslIssue]:
+        if self.sink_spec is None:
+            return []
+        return validate_sink_fields(
+            {sink_field: value},
+            self.sink_spec,
+            fields=(sink_field,),
+            check_types=True,
+        )
 
 
 __all__ = ["EnricherCore"]

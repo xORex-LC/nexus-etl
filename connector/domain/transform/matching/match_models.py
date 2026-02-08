@@ -8,9 +8,10 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
-from connector.domain.models import Identity, MatchStatus, RowRef
+from connector.domain.models import Identity, RowRef
 
 
 class ResolveOp:
@@ -42,6 +43,56 @@ class MatchDecisionReason:
     FUZZY_REJECT = "fuzzy_reject"
 
 
+class MatchDecisionStatus(str, Enum):
+    """
+    Назначение:
+        Типизированные статусы решения матчинга (переходный контракт до DSL).
+    """
+
+    MATCHED = "matched"
+    NOT_FOUND = "not_found"
+    AMBIGUOUS = "ambiguous"
+    CONFLICT_SOURCE = "conflict_source"
+
+
+@dataclass(frozen=True)
+class MatchCandidate:
+    """
+    Назначение:
+        Каноническое представление кандидата в match-решении.
+    """
+
+    target_id: str | None
+    identity: str | None
+    score: float | None
+    match_mode: str
+    evidence: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class MatchDecision:
+    """
+    Назначение:
+        Типизированное решение матчера без привязки к legacy-статусам.
+    """
+
+    status: MatchDecisionStatus
+    reason_code: str
+    message: str | None = None
+    selected: MatchCandidate | None = None
+    candidates: tuple[MatchCandidate, ...] = ()
+    score: float | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+def resolve_decision_status(row: "MatchedRow") -> MatchDecisionStatus:
+    """
+    Назначение:
+        Вернуть typed-статус решения для downstream стадий.
+    """
+    return row.match_decision.status
+
+
 @dataclass(frozen=True)
 class MatchedRow:
     """
@@ -51,17 +102,13 @@ class MatchedRow:
 
     row_ref: RowRef
     identity: Identity
-    match_status: MatchStatus
     desired_state: dict[str, Any]
     existing: dict[str, Any] | None
     fingerprint: str
     fingerprint_fields: tuple[str, ...]
+    match_decision: MatchDecision
     source_links: dict[str, Identity] = field(default_factory=dict)
     target_id: str | None = None
-    match_mode: str = "exact"
-    score: float | None = None
-    decision_reason: str | None = None
-    top_candidates: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)

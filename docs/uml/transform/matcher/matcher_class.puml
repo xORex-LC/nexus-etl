@@ -6,8 +6,8 @@ skinparam linetype ortho
 skinparam defaultFontName Arial
 skinparam classBorderThickness 2
 skinparam class {
-  BackgroundColor #f8f0e6
-  BorderColor #c9a57c
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
 }
 
 class MatchStage {
@@ -19,7 +19,6 @@ class MatchStage {
 interface MatchProcessor <<protocol>> {
   + match(enriched): TransformResult[MatchedRow]
   + match_with_source_dedup(enriched): TransformResult[MatchedRow]
-  + match_stream(enriched_source): Iterable[TransformResult[MatchedRow]]
   + reset_source_dedup(): None
   + bind_runtime_scope(scope): None
 }
@@ -29,9 +28,9 @@ class MatchEngine {
   - matching_rules: MatchingRules
   - core: MatchCore
   + __init__(spec, dataset, cache_repo, resolve_rules, include_deleted, catalog, identity_repo)
-  + from_rules(...)
   + match(enriched): TransformResult[MatchedRow]
   + match_with_source_dedup(enriched): TransformResult[MatchedRow]
+  + match_stream(enriched_source): Iterable[TransformResult[MatchedRow]]
 }
 
 class MatchDsl {
@@ -71,13 +70,12 @@ class SourceDedupSpec {
   + enabled: bool
   + on_duplicate: warn|error
   + on_conflict: warn|error
-  + fallback_identity_value: bool
 }
 
 class FuzzySpec {
   + enabled: bool
   + blocking_keys: str[*]
-  + comparators: dict[str, comparator]
+  + comparators: dict[str, exact|casefold|similarity]
   + weights: dict[str, float]
   + accept_threshold: float
   + review_threshold: float
@@ -103,7 +101,6 @@ class SourceDedupRules {
   + enabled: bool
   + on_duplicate: str
   + on_conflict: str
-  + fallback_identity_value: bool
 }
 
 class FuzzyScoringRules {
@@ -123,6 +120,7 @@ class ResolveRules {
   + build_desired_state
   + build_source_ref
   + diff_policy
+  + secret_fields_for_op
   + merge_policy
 }
 
@@ -136,6 +134,7 @@ class MatchDecisionStatus <<enum>> {
 class MatchDecision {
   + status: MatchDecisionStatus
   + reason_code: str
+  + message: str?
   + selected: MatchCandidate?
   + candidates: MatchCandidate[*]
   + score: float?
@@ -147,16 +146,17 @@ class MatchCandidate {
   + identity: str?
   + score: float?
   + match_mode: str
+  + evidence: dict[str, Any]?
 }
 
 class MatchedRow {
   + row_ref: RowRef
   + identity: Identity
-  + match_status: MatchStatus
-  + match_decision: MatchDecision
   + desired_state: dict[str, Any]
   + existing: dict[str, Any]?
   + fingerprint: str
+  + fingerprint_fields: tuple[str, ...]
+  + match_decision: MatchDecision
   + source_links: dict[str, Identity]
   + target_id: str?
 }

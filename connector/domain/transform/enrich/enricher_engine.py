@@ -11,7 +11,7 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretStoreProtocol
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
-from connector.domain.transform.dsl.specs import EnrichSpec
+from connector.domain.transform.dsl.specs import EnrichSpec, SinkSpec
 from connector.domain.transform.enrich.enricher_core import EnricherCore
 from connector.domain.transform.enrich.enricher_dsl import EnrichDslBuildOptions, EnricherDsl
 from connector.domain.transform.providers import ProviderGateway
@@ -37,6 +37,7 @@ class EnricherEngine(Generic[T, D]):
         registry: OperationRegistry | None = None,
         providers: ProviderGateway | None = None,
         options: EnrichDslBuildOptions | None = None,
+        sink_spec: SinkSpec | None = None,
         run_id: str | None = None,
     ) -> None:
         if registry is None:
@@ -51,6 +52,7 @@ class EnricherEngine(Generic[T, D]):
             secret_store=secret_store,
             dataset=dataset,
             catalog=catalog,
+            sink_spec=sink_spec,
             run_id=run_id,
         )
 

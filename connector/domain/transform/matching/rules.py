@@ -26,12 +26,14 @@ class SourceDedupRules:
     """
     Назначение:
         Политики source-dedup на match-стадии (до DSL).
+
+    Пояснение:
+        Dedup-key строится канонически как `dataset:identity_primary:identity_value`.
     """
 
     enabled: bool = True
     on_duplicate: str = "warn"
     on_conflict: str = "error"
-    fallback_identity_value: bool = True
 
 
 @dataclass(frozen=True)
@@ -50,16 +52,11 @@ class MatchingRules:
     """
     Назначение:
         Набор правил сопоставления для matcher (dataset‑специфика).
-
-    Пояснения:
-        Если identity_rules не заданы, matcher использует build_identity
-        как единственное правило построения identity.
     """
 
-    build_identity: BuildIdentity
+    identity_rules: tuple[IdentityRule, ...]
     ignored_fields: set[str] = field(default_factory=set)
     build_links: BuildLinks | None = None
-    identity_rules: tuple[IdentityRule, ...] = ()
     source_dedup: SourceDedupRules = field(default_factory=SourceDedupRules)
     fuzzy: "FuzzyScoringRules" = field(default_factory=lambda: FuzzyScoringRules())
 

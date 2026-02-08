@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import sqlite3
 
-from connector.domain.models import MatchStatus, RowRef, Identity
+from connector.domain.models import RowRef, Identity
 from connector.domain.transform.matching.resolve_deps import ResolverSettings
 from connector.domain.transform.matching.identity_keys import format_identity_key
-from connector.domain.transform.matching.match_models import MatchedRow
+from connector.domain.transform.matching.match_models import MatchedRow, MatchDecision, MatchDecisionStatus
 from connector.domain.transform.matching.lookup_enricher import LookupEnricher
 from connector.domain.transform.matching.rules import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
 from connector.domain.diagnostics.catalog import build_catalog
@@ -57,14 +57,51 @@ def _make_matched_row() -> MatchedRow:
     return MatchedRow(
         row_ref=row_ref,
         identity=identity,
-        match_status=MatchStatus.NOT_FOUND,
         desired_state={"manager_id": "mgr", "organization_id": 10},
         existing=None,
         fingerprint="fp",
         fingerprint_fields=("manager_id", "organization_id"),
         source_links={},
         target_id="RID-1",
+        match_decision=MatchDecision(
+            status=MatchDecisionStatus.NOT_FOUND,
+            reason_code="identity_not_found",
+        ),
     )
+
+
+def test_resolver_stops_on_ambiguous_match_status():
+    engine = _make_engine()
+    settings = ResolverSettings(
+        pending_ttl_seconds=120,
+        pending_max_attempts=5,
+        pending_sweep_interval_seconds=0,
+        pending_on_expire="error",
+        pending_allow_partial=False,
+        pending_retention_days=14,
+    )
+    resolver, _pending_repo = _make_resolver(engine, settings)
+
+    matched = _make_matched_row()
+    matched = MatchedRow(
+        row_ref=matched.row_ref,
+        identity=matched.identity,
+        desired_state=matched.desired_state,
+        existing=matched.existing,
+        fingerprint=matched.fingerprint,
+        fingerprint_fields=matched.fingerprint_fields,
+        source_links=matched.source_links,
+        target_id=matched.target_id,
+        match_decision=MatchDecision(
+            status=MatchDecisionStatus.AMBIGUOUS,
+            reason_code="fuzzy_tie",
+        ),
+    )
+    resolved, errors, warnings = resolver.resolve(matched, target_id_map={})
+
+    assert resolved is None
+    assert warnings == []
+    assert any(err.code == "RESOLVE_AMBIGUOUS" for err in errors)
 
 
 def test_resolver_resolves_link_from_identity_index():
