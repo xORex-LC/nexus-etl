@@ -3,15 +3,13 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from typing import Any
 
-from connector.domain.ports.cache.gateway import CacheGatewayPort
-from connector.domain.ports.cache.pending_links import PendingLink, PendingRow
-from connector.domain.ports.cache.repository import CacheMeta, UpsertResult
+from connector.domain.ports.cache.models import CacheMeta, PendingLink, PendingRow, UpsertResult
 from connector.infra.cache.identity_repository import SqliteIdentityRepository
 from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
 from connector.infra.cache.repository import SqliteCacheRepository
 
 
-class SqliteCacheGateway(CacheGatewayPort):
+class SqliteCacheGateway:
     """
     Назначение:
         Единый SQLite фасад для cache/identity/pending операций.
@@ -28,7 +26,7 @@ class SqliteCacheGateway(CacheGatewayPort):
         self._identity_repo = identity_repo
         self._pending_repo = pending_repo
 
-    # CacheRepositoryProtocol
+    # Cache admin + lookup
     def transaction(self) -> AbstractContextManager[None]:
         return self._cache_repo.transaction()
 
@@ -86,7 +84,7 @@ class SqliteCacheGateway(CacheGatewayPort):
             mode=mode,
         )
 
-    # IdentityRepository
+    # Identity/runtime state
     def upsert_identity(self, dataset: str, identity_key: str, resolved_id: str) -> None:
         self._identity_repo.upsert_identity(dataset, identity_key, resolved_id)
 
@@ -113,7 +111,7 @@ class SqliteCacheGateway(CacheGatewayPort):
     def clear_runtime_scope(self, scope: str) -> None:
         self._identity_repo.clear_runtime_scope(scope)
 
-    # PendingLinksRepository
+    # Pending lifecycle
     def add_pending(
         self,
         dataset: str,
@@ -162,4 +160,3 @@ class SqliteCacheGateway(CacheGatewayPort):
         statuses: tuple[str, ...] | None = None,
     ) -> int:
         return self._pending_repo.purge_stale(cutoff, statuses=statuses)
-

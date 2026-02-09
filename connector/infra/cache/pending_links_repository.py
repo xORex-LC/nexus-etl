@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-from connector.domain.ports.cache.pending_links import (
-    PendingLink,
-    PendingLinksRepository,
-    PendingRow,
-    PendingStatus,
-)
+from connector.domain.ports.cache.models import PendingLink, PendingRow, PendingStatus
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
 
-class SqlitePendingLinksRepository(PendingLinksRepository):
+class SqlitePendingLinksRepository:
     """
     Назначение/ответственность:
         SQLite реализация pending_links.
