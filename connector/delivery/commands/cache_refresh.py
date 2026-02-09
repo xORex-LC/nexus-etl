@@ -41,8 +41,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     conn = None
     try:
         conn, _engine, cache_gateway, _cache_specs = build_cache(settings)
-        cache_repo = cache_gateway
-        unsupported_result = ensure_supported_cache_dataset(cache_repo, opts.dataset)
+        unsupported_result = ensure_supported_cache_dataset(cache_gateway, opts.dataset)
         if unsupported_result is not None:
             return unsupported_result
 
@@ -53,19 +52,14 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
         adapters = list_cache_sync_adapters()
         identity_keys, identity_id_fields = build_identity_index_plan()
-        identity_repo = cache_gateway
-        pending_repo = cache_gateway
-
         cache_refresh = CacheRefreshUseCase(
             reader,
-            cache_repo,
+            cache_gateway,
             adapters,
-            identity_repo=identity_repo,
             identity_keys=identity_keys,
             identity_id_fields=identity_id_fields,
-            pending_repo=pending_repo,
         )
-        service = CacheCommandService(cache_repo, cache_refresh)
+        service = CacheCommandService(cache_gateway, cache_refresh)
 
         return service.refresh(
             page_size=opts.page_size or settings.page_size,

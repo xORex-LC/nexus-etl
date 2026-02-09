@@ -13,7 +13,7 @@ from connector.domain.dsl.specs import (
     SinkSpec,
 )
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
-from connector.domain.ports.cache.gateway import CacheGatewayPort
+from connector.domain.ports.cache.roles import EnrichLookupPort, PlanningRuntimePort
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies, ResolverSettings
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.transform.mapping import MapperEngine
@@ -75,7 +75,7 @@ class EmployeesSpec(DatasetSpec):
         self,
         settings,
         *,
-        cache_gateway: CacheGatewayPort,
+        cache_gateway: PlanningRuntimePort,
     ) -> PlanningDependencies:
         resolver_settings = _build_resolver_settings(settings)
         return PlanningDependencies(
@@ -87,7 +87,7 @@ class EmployeesSpec(DatasetSpec):
         self,
         settings,
         *,
-        cache_gateway: CacheGatewayPort,
+        cache_gateway: EnrichLookupPort,
         secret_store=None,
     ) -> TransformProviderDeps:
         _ = settings
@@ -175,11 +175,10 @@ class EmployeesSpec(DatasetSpec):
         matcher = MatchEngine(
             spec=self.build_match_spec(settings=settings),
             dataset=self.dataset_name,
-            cache_repo=cache_gateway,
+            cache_gateway=cache_gateway,
             resolve_rules=compiled_resolve.resolve_rules,
             include_deleted=include_deleted,
             catalog=catalog,
-            identity_repo=cache_gateway,
             options=options,
         )
         return MatchStage(matcher, catalog)
@@ -197,8 +196,7 @@ class EmployeesSpec(DatasetSpec):
             raise ValueError("planning cache_gateway is not configured")
         resolver = ResolveEngine(
             spec=self.build_resolve_spec(settings=settings),
-            identity_repo=cache_gateway,
-            pending_repo=cache_gateway,
+            cache_gateway=cache_gateway,
             settings=planning_deps.resolver_settings,
             catalog=catalog,
             sink_spec=self.build_sink_spec(settings=settings),

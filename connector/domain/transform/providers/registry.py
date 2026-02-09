@@ -57,9 +57,6 @@ class ProviderGateway:
 def _cache_by_field(deps: Any, value: Any, *, args: dict[str, Any]) -> list[dict[str, Any]]:
     cache_gateway = getattr(deps, "cache_gateway", None)
     if cache_gateway is None:
-        # Backward compatibility for tests/transitional deps objects.
-        cache_gateway = getattr(deps, "cache_repo", None)
-    if cache_gateway is None:
         raise AttributeError("deps.cache_gateway is required for provider 'cache.by_field'")
     dataset = str(args["dataset"])
     field = str(args["field"])
@@ -75,9 +72,6 @@ def _cache_by_field(deps: Any, value: Any, *, args: dict[str, Any]) -> list[dict
 
 def _cache_exists_by_field(deps: Any, value: Any, *, args: dict[str, Any]) -> Any | None:
     cache_gateway = getattr(deps, "cache_gateway", None)
-    if cache_gateway is None:
-        # Backward compatibility for tests/transitional deps objects.
-        cache_gateway = getattr(deps, "cache_repo", None)
     if cache_gateway is None:
         raise AttributeError("deps.cache_gateway is required for provider 'cache.exists_by_field'")
     dataset = str(args["dataset"])

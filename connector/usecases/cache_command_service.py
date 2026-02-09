@@ -5,6 +5,7 @@ import logging
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.ports.cache.roles import CacheAdminPort
 
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_status_usecase import CacheStatusUseCase
@@ -19,14 +20,14 @@ class CacheCommandService:
 
     def __init__(
         self,
-        cache_repo,
+        cache_gateway: CacheAdminPort,
         cache_refresh: CacheRefreshUseCase | None = None,
         cache_status: CacheStatusUseCase | None = None,
         cache_clear: CacheClearUseCase | None = None,
     ):
-        self.cache_repo = cache_repo
+        self.cache_gateway = cache_gateway
         self.cache_refresh = cache_refresh
-        self.cache_status = cache_status or CacheStatusUseCase(cache_repo)
+        self.cache_status = cache_status or CacheStatusUseCase(cache_gateway)
         self.cache_clear = cache_clear
 
     def refresh(

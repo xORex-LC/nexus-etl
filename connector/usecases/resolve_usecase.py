@@ -100,10 +100,10 @@ def _purge_pending(resolver) -> None:
         return
     if settings.pending_retention_days <= 0:
         return
-    if resolver.pending_repo is None:
+    if resolver.cache_gateway is None:
         return
     cutoff = datetime.now(timezone.utc) - timedelta(days=settings.pending_retention_days)
-    resolver.pending_repo.purge_stale(cutoff.isoformat())
+    resolver.cache_gateway.purge_stale(cutoff.isoformat())
 
 
 def _resolve_status(item: TransformResult) -> str | None:
