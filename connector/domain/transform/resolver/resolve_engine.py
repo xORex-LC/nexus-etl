@@ -10,7 +10,8 @@ from typing import Any
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.ports.cache.pending_links import PendingLinksRepository
-from connector.domain.transform.dsl.specs import ResolveSpec, SinkSpec
+from connector.domain.dsl.build_options import ResolveDslBuildOptions
+from connector.domain.dsl.specs import ResolveSpec, SinkSpec
 from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.domain.transform.matcher.match_models import MatchedRow
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
@@ -33,8 +34,9 @@ class ResolveEngine:
         catalog: ErrorCatalog,
         sink_spec: SinkSpec | None = None,
         dsl: ResolveDsl | None = None,
+        options: ResolveDslBuildOptions | None = None,
     ) -> None:
-        self.dsl = dsl or ResolveDsl()
+        self.dsl = dsl or ResolveDsl(options=options)
         compiled = self.dsl.compile(spec, sink_spec=sink_spec)
         self.resolve_rules = compiled.resolve_rules
         self.link_rules = compiled.link_rules

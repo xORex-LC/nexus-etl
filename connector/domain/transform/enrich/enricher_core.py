@@ -14,9 +14,9 @@ from connector.domain.diagnostics.context import error as diag_error, warning as
 from connector.domain.ports.secrets.provider import SecretStoreProtocol
 from connector.domain.transform.common.sink_schema import validate_sink_fields
 from connector.domain.transform.core.result import TransformResult, TransformResultBuilder
-from connector.domain.transform.dsl.issues import DslIssue
+from connector.domain.dsl.issues import DslIssue
 from connector.domain.transform.ids.match_key import MatchKey
-from connector.domain.transform.dsl.specs import SinkSpec
+from connector.domain.dsl.specs import SinkSpec
 from connector.domain.transform.enrich.models import (
     CandidateValue,
     EnrichContext,

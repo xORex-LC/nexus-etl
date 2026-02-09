@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.transform.dsl.loader import load_source_spec_for_dataset, resolve_source_location
+from connector.domain.dsl.loader import load_source_spec_for_dataset, resolve_source_location
 
 
 def test_load_source_spec_for_dataset() -> None:

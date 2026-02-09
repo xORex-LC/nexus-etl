@@ -2,7 +2,8 @@
 Enrich package: core enrich logic and DSL wiring.
 """
 
-from .enricher_dsl import EnrichDslBuildOptions, EnricherDsl, build_enricher_spec_from_dsl
+from connector.domain.dsl.build_options import EnrichDslBuildOptions
+from .enricher_dsl import EnricherDsl, build_enricher_spec_from_dsl
 from .enricher_engine import EnricherEngine
 from .enricher_core import EnricherCore
 from .models import (

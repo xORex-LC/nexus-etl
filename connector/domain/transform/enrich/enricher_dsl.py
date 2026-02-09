@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 from connector.domain.transform.enrich.models import (
@@ -18,25 +17,15 @@ from connector.domain.transform.enrich.models import (
     StrictnessPolicy,
 )
 from connector.domain.transform.enrich.spec import EnricherSpec, EnrichmentOperation, KeyRegistry
-from connector.domain.transform.dsl.engine import TransformationEngine
-from connector.domain.transform.dsl.issues import DslSeverity
-from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
-from connector.domain.transform.dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
-from connector.domain.transform.dsl.helpers import apply_ops
+from connector.domain.dsl.build_options import EnrichDslBuildOptions
+from connector.domain.dsl.engine import TransformationEngine
+from connector.domain.dsl.issues import DslSeverity
+from connector.domain.dsl.registry import OperationRegistry, register_core_ops
+from connector.domain.dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
+from connector.domain.dsl.helpers import apply_ops
 from connector.domain.transform.common.values import read_value_path
 from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
 from connector.domain.transform.providers import ProviderGateway
-
-
-@dataclass(frozen=True)
-class EnrichDslBuildOptions:
-    """
-    Назначение:
-        Настройки сборки EnricherSpec из DSL.
-    """
-
-    require_match_key: bool = False
-
 
 class EnricherDsl:
     """

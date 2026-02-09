@@ -10,7 +10,7 @@ from typing import Iterable
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.models import DiagnosticItem, DiagnosticStage, RowRef
-from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
+from connector.domain.dsl.issues import DslIssue, DslSeverity
 
 
 def append_dsl_issue(

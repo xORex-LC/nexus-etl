@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from connector.domain.transform.dsl.loader import load_match_spec_for_dataset
-from connector.domain.transform.dsl.specs import MatchSpec
+from connector.domain.dsl.loader import load_match_spec_for_dataset
+from connector.domain.dsl.specs import MatchSpec
 from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.transform.matcher.match_dsl import MatchDsl
 from connector.domain.transform.matcher.match_engine import MatchEngine

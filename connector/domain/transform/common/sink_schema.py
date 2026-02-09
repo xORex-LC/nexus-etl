@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping
 
-from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
-from connector.domain.transform.dsl.specs import SinkSpec, SinkFieldSpec
+from connector.domain.dsl.issues import DslIssue, DslSeverity
+from connector.domain.dsl.specs import SinkSpec, SinkFieldSpec
 
 
 def validate_sink_row(

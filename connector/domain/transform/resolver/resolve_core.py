@@ -14,8 +14,8 @@ from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.transform.common.sink_schema import validate_sink_fields
-from connector.domain.transform.dsl.diagnostics import append_dsl_issues
-from connector.domain.transform.dsl.specs import SinkSpec
+from connector.domain.dsl.diagnostics import append_dsl_issues
+from connector.domain.dsl.specs import SinkSpec
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.domain.transform.matcher.match_models import (

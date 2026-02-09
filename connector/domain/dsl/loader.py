@@ -11,7 +11,16 @@ from typing import Any
 import yaml
 import os
 
-from connector.domain.transform.dsl.specs import (
+from connector.domain.dsl.build_options import (
+    BaseDslBuildOptions,
+    EnrichDslBuildOptions,
+    MapDslBuildOptions,
+    MatchDslBuildOptions,
+    NormalizeDslBuildOptions,
+    ResolveDslBuildOptions,
+    build_options_from_mapping,
+)
+from connector.domain.dsl.specs import (
     MappingSpec,
     SourceSpec,
     NormalizeSpec,
@@ -142,6 +151,26 @@ def load_sink_spec_for_dataset(dataset: str) -> SinkSpec:
     return SinkSpec.model_validate(raw)
 
 
+def load_map_build_options_for_dataset(dataset: str) -> MapDslBuildOptions:
+    return _load_stage_build_options(dataset, "mapping", MapDslBuildOptions)
+
+
+def load_normalize_build_options_for_dataset(dataset: str) -> NormalizeDslBuildOptions:
+    return _load_stage_build_options(dataset, "normalize", NormalizeDslBuildOptions)
+
+
+def load_enrich_build_options_for_dataset(dataset: str) -> EnrichDslBuildOptions:
+    return _load_stage_build_options(dataset, "enrich", EnrichDslBuildOptions)
+
+
+def load_match_build_options_for_dataset(dataset: str) -> MatchDslBuildOptions:
+    return _load_stage_build_options(dataset, "match", MatchDslBuildOptions)
+
+
+def load_resolve_build_options_for_dataset(dataset: str) -> ResolveDslBuildOptions:
+    return _load_stage_build_options(dataset, "resolve", ResolveDslBuildOptions)
+
+
 def _read_yaml(path: str | Path) -> dict[str, Any]:
     path = Path(path)
     with path.open("r", encoding="utf-8") as handle:
@@ -204,4 +233,33 @@ def _resolve_registry_path(registry: dict[str, Any], dataset: str, stage: str) -
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+    # loader.py moved from domain/transform/dsl to domain/dsl.
+    # parents[3] points to repository root: <repo>/connector/domain/dsl/loader.py
+    return Path(__file__).resolve().parents[3]
+
+
+def _load_stage_build_options(
+    dataset: str,
+    stage: str,
+    options_cls: type[BaseDslBuildOptions],
+):
+    """
+    Назначение:
+        Загрузить compile-policy build options с merge-приоритетом:
+        defaults -> global.base/global.stages[stage] -> datasets[dataset].build_options[stage]
+    """
+    registry = _load_registry()
+    root_build_options = registry.get("build_options") or {}
+    datasets = registry.get("datasets") or {}
+    dataset_entry = datasets.get(dataset) or {}
+    dataset_build_options = dataset_entry.get("build_options") or {}
+
+    global_base = root_build_options.get("base") or {}
+    global_stage = (root_build_options.get("stages") or {}).get(stage) or {}
+    dataset_stage = dataset_build_options.get(stage) or {}
+
+    merged: dict[str, Any] = {}
+    merged.update(global_base)
+    merged.update(global_stage)
+    merged.update(dataset_stage)
+    return build_options_from_mapping(options_cls, merged)

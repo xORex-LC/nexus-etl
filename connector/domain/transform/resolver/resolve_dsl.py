@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from connector.domain.transform.common import normalize_text
-from connector.domain.transform.dsl.specs import (
+from connector.domain.dsl.build_options import ResolveDslBuildOptions
+from connector.domain.dsl.specs import (
     ResolveDiffFieldSpec,
     ResolveDiffSpec,
     ResolveLinkSpec,
@@ -49,12 +50,22 @@ class ResolveDsl:
         Компилирует ResolveSpec в ResolveRules/LinkRules без изменения resolver-core.
     """
 
+    def __init__(self, *, options: ResolveDslBuildOptions | None = None) -> None:
+        self.options = options or ResolveDslBuildOptions()
+
     def compile(
         self,
         spec: ResolveSpec,
         *,
         sink_spec: SinkSpec | None = None,
     ) -> CompiledResolveRules:
+        if not self.options.allow_pending_links:
+            pending_links = [item.field for item in spec.resolve.links if item.on_unresolved == "pending"]
+            if pending_links:
+                raise ValueError(
+                    "resolve links with on_unresolved='pending' are disabled by build options: "
+                    + ", ".join(pending_links)
+                )
         link_rules = LinkRules(
             fields=tuple(self._compile_link_rule(item) for item in spec.resolve.links),
         )

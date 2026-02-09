@@ -8,3 +8,6 @@ datasets:
     match: employees.match.yaml
     resolve: employees.resolve.yaml
     sink: employees.sink.yaml
+    build_options:
+      enrich:
+        require_match_key: true
