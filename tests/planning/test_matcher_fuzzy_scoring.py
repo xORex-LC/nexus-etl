@@ -27,6 +27,7 @@ CATALOG = build_catalog("employees", strict=True)
 @dataclass
 class FakeCacheRepo:
     responses: dict[tuple[str, str], list[dict]]
+    runtime: dict[tuple[str, str, str], str] | None = None
 
     def find(
         self,
@@ -41,6 +42,22 @@ class FakeCacheRepo:
             return []
         key, value = next(iter(filters.items()))
         return self.responses.get((key, str(value)), [])
+
+    def set_runtime_state(self, scope: str, dataset: str, state_key: str, state_value: str) -> None:
+        if self.runtime is None:
+            self.runtime = {}
+        self.runtime[(scope, dataset, state_key)] = state_value
+
+    def get_runtime_state(self, scope: str, dataset: str, state_key: str) -> str | None:
+        if self.runtime is None:
+            return None
+        return self.runtime.get((scope, dataset, state_key))
+
+    def clear_runtime_scope(self, scope: str) -> None:
+        if self.runtime is None:
+            return
+        for key in [item for item in self.runtime if item[0] == scope]:
+            del self.runtime[key]
 
 
 def _row(*, email: str, first_name: str = "John") -> NormalizedEmployeesRow:
@@ -90,7 +107,7 @@ def _matcher(
 ) -> MatchCore:
     return MatchCore(
         dataset="employees",
-        cache_repo=FakeCacheRepo(responses=responses),
+        cache_gateway=FakeCacheRepo(responses=responses),
         matching_rules=MatchingRules(
             identity_rules=(
                 IdentityRule(

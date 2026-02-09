@@ -9,7 +9,7 @@ from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.cache_spec import CacheSpec, FieldSpec
-from connector.domain.ports.cache.repository import UpsertResult
+from connector.domain.ports.cache.models import UpsertResult
 
 
 def _make_spec() -> CacheSpec:

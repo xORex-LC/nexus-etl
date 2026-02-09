@@ -13,18 +13,14 @@ class _PendingRow:
     payload: str
 
 
-class _PendingRepo:
-    def __init__(self, rows: list[_PendingRow]) -> None:
+class _CacheGateway:
+    def __init__(self, rows: list[_PendingRow], by_identity: dict[str, list[dict]]) -> None:
         self._rows = rows
+        self._by_identity = by_identity
 
     def list_pending_rows(self, dataset: str) -> list[_PendingRow]:
         _ = dataset
         return list(self._rows)
-
-
-class _CacheRepo:
-    def __init__(self, by_identity: dict[str, list[dict]]) -> None:
-        self._by_identity = by_identity
 
     def find(self, dataset: str, filters: dict[str, str], *, include_deleted: bool = False):
         _ = dataset, include_deleted
@@ -53,24 +49,21 @@ def _payload(*, row_id: str, match_key: str) -> str:
 
 
 def test_pending_replay_rows_include_typed_match_decision_for_all_statuses():
-    pending_repo = _PendingRepo(
+    cache_gateway = _CacheGateway(
         [
             _PendingRow(source_row_id="row-amb", payload=_payload(row_id="row-amb", match_key="amb")),
             _PendingRow(source_row_id="row-match", payload=_payload(row_id="row-match", match_key="matched")),
             _PendingRow(source_row_id="row-miss", payload=_payload(row_id="row-miss", match_key="missing")),
-        ]
-    )
-    cache_repo = _CacheRepo(
-        by_identity={
+        ],
+        {
             "amb": [{"_id": "u-1"}, {"_id": "u-2"}],
             "matched": [{"_id": "u-3"}],
-        }
+        },
     )
 
     rows = _load_pending_rows(
         dataset="employees",
-        pending_repo=pending_repo,
-        cache_repo=cache_repo,
+        cache_gateway=cache_gateway,
         include_deleted=False,
         ignored_fields=set(),
     )
