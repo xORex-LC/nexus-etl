@@ -2,22 +2,21 @@ from __future__ import annotations
 
 import sqlite3
 
-from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
-from connector.infra.cache.schema import ensure_cache_ready
+from connector.infra.cache.factory import build_sqlite_cache_gateway
+from connector.infra.cache.gateway import SqliteCacheGateway
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
 
-def _make_engine() -> SqliteEngine:
+def _make_gateway() -> tuple[SqliteCacheGateway, SqliteEngine]:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     engine = SqliteEngine(conn)
-    ensure_cache_ready(engine, [])
-    return engine
+    gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
+    return gateway, engine
 
 
 def test_purge_stale_removes_only_processed_statuses():
-    engine = _make_engine()
-    repo = SqlitePendingLinksRepository(engine)
+    repo, engine = _make_gateway()
 
     pending_id = repo.add_pending("employees", "row-p", "manager_id", "k1", None)
     resolved_old_id = repo.add_pending("employees", "row-r-old", "manager_id", "k2", None)

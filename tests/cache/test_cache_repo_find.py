@@ -4,20 +4,19 @@ import sqlite3
 from pathlib import Path
 
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.repository import SqliteCacheRepository
-from connector.infra.cache.schema import ensure_cache_ready
+from connector.infra.cache.factory import build_sqlite_cache_gateway
+from connector.infra.cache.gateway import SqliteCacheGateway
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.datasets.cache_registry import list_cache_specs
 
 
-def _build_repo(tmp_path: Path) -> tuple[SqliteCacheRepository, sqlite3.Connection]:
+def _build_repo(tmp_path: Path) -> tuple[SqliteCacheGateway, sqlite3.Connection]:
     cache_dir = tmp_path / "cache"
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     engine = SqliteEngine(conn)
     cache_specs = list_cache_specs()
-    ensure_cache_ready(engine, cache_specs)
-    return SqliteCacheRepository(engine, cache_specs), conn
+    return build_sqlite_cache_gateway(engine=engine, cache_specs=cache_specs), conn
 
 
 def test_find_exact_and_include_deleted(tmp_path: Path):
