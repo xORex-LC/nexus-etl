@@ -148,8 +148,7 @@ def test_resolve_engine_wraps_lookup_core():
     spec = load_resolve_spec_for_dataset("employees")
     engine = ResolveEngine(
         spec=spec,
-        identity_repo=None,
-        pending_repo=None,
+        cache_gateway=None,
         settings=None,
         catalog=build_catalog("employees", strict=True),
         sink_spec=load_sink_spec_for_dataset("employees"),

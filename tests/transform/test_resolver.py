@@ -14,6 +14,7 @@ from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.identity_repository import SqliteIdentityRepository
 from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
+from connector.infra.cache.factory import build_sqlite_cache_gateway
 
 
 def _make_engine() -> SqliteEngine:
@@ -26,8 +27,8 @@ def _make_engine() -> SqliteEngine:
 
 def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[ResolveCore, SqlitePendingLinksRepository]:
     catalog = build_catalog("employees", strict=True)
-    identity_repo = SqliteIdentityRepository(engine)
     pending_repo = SqlitePendingLinksRepository(engine)
+    cache_gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
     link_rules = LinkRules(
         fields=(
             LinkFieldRule(
@@ -44,8 +45,7 @@ def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[Re
     resolver = ResolveCore(
         resolve_rules,
         link_rules,
-        identity_repo=identity_repo,
-        pending_repo=pending_repo,
+        cache_gateway=cache_gateway,
         settings=settings,
         catalog=catalog,
     )
@@ -289,6 +289,7 @@ def test_resolver_hard_error_on_unresolved_rule():
     catalog = build_catalog("employees", strict=True)
     identity_repo = SqliteIdentityRepository(engine)
     pending_repo = SqlitePendingLinksRepository(engine)
+    cache_gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
     resolver = ResolveCore(
         ResolveRules(build_desired_state=lambda *_: {}),
         LinkRules(
@@ -301,8 +302,7 @@ def test_resolver_hard_error_on_unresolved_rule():
                 ),
             )
         ),
-        identity_repo=identity_repo,
-        pending_repo=pending_repo,
+        cache_gateway=cache_gateway,
         settings=settings,
         catalog=catalog,
     )
@@ -333,6 +333,7 @@ def test_resolver_validates_sink_for_resolved_mutations():
     catalog = build_catalog("employees", strict=True)
     identity_repo = SqliteIdentityRepository(engine)
     pending_repo = SqlitePendingLinksRepository(engine)
+    cache_gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
     # manager_id in sink schema is int; here we intentionally produce non-int resolved value.
     identity_repo.upsert_identity("employees", format_identity_key("match_key", "mgr"), "bad-int")
 
@@ -349,8 +350,7 @@ def test_resolver_validates_sink_for_resolved_mutations():
                 ),
             )
         ),
-        identity_repo=identity_repo,
-        pending_repo=pending_repo,
+        cache_gateway=cache_gateway,
         settings=settings,
         catalog=catalog,
         sink_spec=load_sink_spec_for_dataset("employees"),

@@ -32,7 +32,7 @@ CATALOG = build_catalog("employees", strict=True)
 
 @dataclass
 class _DummyEnrichDeps:
-    cache_repo: object
+    cache_gateway: object
     identity_lookup = None
 
 
@@ -120,7 +120,7 @@ def test_enricher_builds_match_key_and_generates_values():
         usr_org_tab_num=None,
         target_id=None,
     )
-    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_repo=_EmptyCacheRepo()))
+    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()))
     result = enricher.enrich(_build_result(row))
 
     assert result.errors == ()
@@ -155,7 +155,7 @@ def test_enricher_reports_missing_match_key():
         usr_org_tab_num="TAB-100",
         target_id="RID-1",
     )
-    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_repo=_EmptyCacheRepo()))
+    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()))
     result = enricher.enrich(_build_result(row))
 
     codes = {issue.code for issue in result.errors}
@@ -191,7 +191,7 @@ def test_enricher_runs_only_allowed_ops_on_error():
             )
         ]
     )
-    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_repo=_EmptyCacheRepo()))
+    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()))
     enriched = enricher.enrich(result)
 
     assert enriched.match_key is not None
@@ -222,7 +222,7 @@ def test_enricher_writes_secrets_to_store():
     )
     secret_store = _DummySecretStore()
     enricher = _build_enricher_from_dsl(
-        _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()),
+        _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()),
         secret_store=secret_store,
         run_id="run-1",
     )
@@ -255,7 +255,7 @@ def test_enricher_reports_usr_org_tab_conflict():
         usr_org_tab_num=None,
         target_id=None,
     )
-    enricher = _build_enricher_from_dsl(_ConflictingTabDeps(cache_repo=_ConflictTabCacheRepo()))
+    enricher = _build_enricher_from_dsl(_ConflictingTabDeps(cache_gateway=_ConflictTabCacheRepo()))
     result = enricher.enrich(_build_result(row))
 
     codes = {issue.code for issue in result.errors}
@@ -296,7 +296,7 @@ def test_enricher_rejects_multi_target_operation():
         ),
         key_registry=KeyRegistry(builders={}),
     )
-    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     result = TransformResult(
         record=record,
@@ -342,7 +342,7 @@ def test_enricher_defaults_priority_by_source():
         key_registry=KeyRegistry(builders={}),
         source_priorities={"low": 1, "high": 10},
     )
-    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     result = TransformResult(
         record=record,
@@ -385,7 +385,7 @@ def test_enricher_warns_on_candidate_field_mismatch():
         ),
         key_registry=KeyRegistry(builders={}),
     )
-    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     result = TransformResult(
         record=record,
@@ -432,7 +432,7 @@ def test_enricher_stop_on_failed_prevents_followup_ops():
         key_registry=KeyRegistry(builders={}),
         stop_on_failed=True,
     )
-    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     result = TransformResult(
         record=record,
@@ -475,7 +475,7 @@ def test_enricher_warns_when_candidate_violates_sink_type():
     )
     enricher = EnricherCore(
         spec,
-        _DummyEnrichDeps(cache_repo=_EmptyCacheRepo()),
+        _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()),
         None,
         "employees",
         catalog=CATALOG,

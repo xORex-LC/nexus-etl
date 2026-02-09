@@ -45,6 +45,16 @@ class FakeCacheRepo:
         key, value = next(iter(filters.items()))
         return self.responses.get((key, value), [])
 
+    def set_runtime_state(self, scope: str, dataset: str, state_key: str, state_value: str) -> None:
+        _ = (scope, dataset, state_key, state_value)
+
+    def get_runtime_state(self, scope: str, dataset: str, state_key: str) -> str | None:
+        _ = (scope, dataset, state_key)
+        return None
+
+    def clear_runtime_scope(self, scope: str) -> None:
+        _ = scope
+
 
 def _make_context(match_key: str, usr_org_tab_num: str | None) -> MatchContext:
     return MatchContext(
@@ -96,7 +106,7 @@ def test_matcher_uses_next_identity_rule_when_primary_missing():
     )
     matcher = MatchCore(
         dataset="employees",
-        cache_repo=cache_repo,
+        cache_gateway=cache_repo,
         matching_rules=matching_rules,
         resolve_rules=resolve_rules,
         include_deleted=False,
@@ -126,7 +136,7 @@ def test_matcher_returns_conflict_when_secondary_rule_has_multiple_candidates():
     )
     matcher = MatchCore(
         dataset="employees",
-        cache_repo=cache_repo,
+        cache_gateway=cache_repo,
         matching_rules=matching_rules,
         resolve_rules=resolve_rules,
         include_deleted=False,

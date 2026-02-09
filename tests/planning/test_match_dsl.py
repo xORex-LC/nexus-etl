@@ -120,7 +120,12 @@ def test_match_engine_wraps_match_core():
     engine = MatchEngine(
         spec=spec,
         dataset="employees",
-        cache_repo=SimpleNamespace(find=lambda *_args, **_kwargs: []),
+        cache_gateway=SimpleNamespace(
+            find=lambda *_args, **_kwargs: [],
+            set_runtime_state=lambda *_args, **_kwargs: None,
+            get_runtime_state=lambda *_args, **_kwargs: None,
+            clear_runtime_scope=lambda *_args, **_kwargs: None,
+        ),
         resolve_rules=ResolveRules(build_desired_state=lambda *_: {}),
         include_deleted=False,
         catalog=build_catalog("employees", strict=True),

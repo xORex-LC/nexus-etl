@@ -110,7 +110,7 @@ def test_lookup_rule_builds_candidate_from_value_path() -> None:
                 assert filters == {"full_name": "John Doe"}
                 return [{"_id": "user-1"}]
 
-        cache_repo = _CacheRepo()
+        cache_gateway = _CacheRepo()
 
     raw = {
         "dataset": "employees",
@@ -154,7 +154,7 @@ def test_lookup_rule_supports_nested_value_path() -> None:
                 assert filters == {"full_name": "John Doe"}
                 return [{"user": {"id": "nested-1"}}]
 
-        cache_repo = _CacheRepo()
+        cache_gateway = _CacheRepo()
 
     raw = {
         "dataset": "employees",

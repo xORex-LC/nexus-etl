@@ -24,6 +24,7 @@ CATALOG = build_catalog("employees", strict=True)
 @dataclass
 class FakeCacheRepo:
     responses: dict[tuple[str, str], list[dict]]
+    values: dict[tuple[str, str, str], str] | None = None
 
     def find(
         self,
@@ -39,25 +40,19 @@ class FakeCacheRepo:
         key, value = next(iter(filters.items()))
         return self.responses.get((key, value), [])
 
-
-@dataclass
-class FakeIdentityRepo:
-    values: dict[tuple[str, str, str], str]
-
-    def upsert_identity(self, dataset: str, identity_key: str, resolved_id: str) -> None:
-        _ = (dataset, identity_key, resolved_id)
-
-    def find_candidates(self, dataset: str, identity_key: str) -> list[str]:
-        _ = (dataset, identity_key)
-        return []
-
     def set_runtime_state(self, scope: str, dataset: str, state_key: str, state_value: str) -> None:
+        if self.values is None:
+            self.values = {}
         self.values[(scope, dataset, state_key)] = state_value
 
     def get_runtime_state(self, scope: str, dataset: str, state_key: str) -> str | None:
+        if self.values is None:
+            return None
         return self.values.get((scope, dataset, state_key))
 
     def clear_runtime_scope(self, scope: str) -> None:
+        if self.values is None:
+            return
         for key in [k for k in self.values if k[0] == scope]:
             del self.values[key]
 
@@ -124,7 +119,7 @@ def _build_matcher(*, on_conflict: str = "error") -> MatchCore:
     )
     return MatchCore(
         dataset="employees",
-        cache_repo=cache_repo,
+        cache_gateway=cache_repo,
         matching_rules=matching_rules,
         resolve_rules=_resolve_rules(),
         include_deleted=False,
@@ -176,7 +171,7 @@ def test_source_dedup_requires_canonical_identity_key():
     cache_repo = FakeCacheRepo(responses={("", "same"): [{"_id": "u-1"}]})
     matcher = MatchCore(
         dataset="employees",
-        cache_repo=cache_repo,
+        cache_gateway=cache_repo,
         matching_rules=matching_rules,
         resolve_rules=_resolve_rules(),
         include_deleted=False,
@@ -193,15 +188,20 @@ def test_source_dedup_requires_canonical_identity_key():
 
 
 def test_source_dedup_reads_scoped_runtime_state_from_identity_repo():
-    state_repo = FakeIdentityRepo(values={})
+    shared_gateway = FakeCacheRepo(
+        responses={
+            ("match_key", "Doe|John|M|100"): [{"_id": "u-1", "match_key": "Doe|John|M|100"}],
+        },
+        values={},
+    )
     matcher1 = _build_matcher()
-    matcher1.identity_repo = state_repo
+    matcher1.cache_gateway = shared_gateway
     matcher1.bind_runtime_scope("run:scope")
     first = matcher1.match_with_source_dedup(_result(_row(phone="+111")))
     assert first.row is not None
 
     matcher2 = _build_matcher()
-    matcher2.identity_repo = state_repo
+    matcher2.cache_gateway = shared_gateway
     matcher2.bind_runtime_scope("run:scope")
     second = matcher2.match_with_source_dedup(_result(_row(phone="+111")))
 
@@ -237,7 +237,7 @@ def test_source_dedup_uses_canonical_key_with_identity_primary():
     )
     matcher = MatchCore(
         dataset="employees",
-        cache_repo=cache_repo,
+        cache_gateway=cache_repo,
         matching_rules=matching_rules,
         resolve_rules=_resolve_rules(),
         include_deleted=False,
