@@ -9,23 +9,27 @@ skinparam class<<new>> {
 }
 
 package "Domain" {
-  interface CacheRepositoryProtocol
-  interface IdentityRepositoryPort
-  interface PendingLinksRepositoryPort
+  interface CacheGatewayPort <<new>>
 
-  class TransformRuntimeDeps {
-    +cache_repo: CacheRepositoryProtocol
-    +identity_repo: IdentityRepositoryPort
-    +pending_repo: PendingLinksRepositoryPort
+  class TransformProviderDeps {
+    +cache_gateway: CacheGatewayPort
+  }
+
+  class PlanningDependencies {
+    +cache_gateway: CacheGatewayPort
+    +resolver_settings
   }
 
   class EmployeesSpec {
-    +build_runtime_deps(
-      cache_repo,
-      identity_repo,
-      pending_repo,
-      ...
-    ): TransformRuntimeDeps
+    +build_enrich_deps(
+      settings,
+      cache_gateway,
+      secret_store
+    ): TransformProviderDeps
+    +build_planning_deps(
+      settings,
+      cache_gateway
+    ): PlanningDependencies
   }
 }
 
@@ -42,32 +46,34 @@ package "Infra (SQLite)" {
 }
 
 package "Composition Root" {
-  class CacheGatewayFactory <<new>> {
+  class BootstrapWiring <<new>> {
     +build_cache_gateway(settings): SqliteCacheGateway
-    +wire_runtime_deps(spec, gateway, ...): TransformRuntimeDeps
+    +build_pipeline_context(...): PipelineContext
   }
 }
 
-SqliteCacheGateway ..|> CacheRepositoryProtocol
-SqliteCacheGateway ..|> IdentityRepositoryPort
-SqliteCacheGateway ..|> PendingLinksRepositoryPort
+SqliteCacheGateway ..|> CacheGatewayPort
 
 SqliteCacheGateway *-- SqliteCacheRepository
 SqliteCacheGateway *-- SqliteIdentityRepository
 SqliteCacheGateway *-- SqlitePendingLinksRepository
 
-EmployeesSpec ..> CacheRepositoryProtocol
-EmployeesSpec ..> IdentityRepositoryPort
-EmployeesSpec ..> PendingLinksRepositoryPort
-EmployeesSpec --> TransformRuntimeDeps
+EmployeesSpec ..> CacheGatewayPort
+EmployeesSpec --> TransformProviderDeps
+EmployeesSpec --> PlanningDependencies
 
-CacheGatewayFactory --> SqliteCacheGateway
-CacheGatewayFactory --> EmployeesSpec
-CacheGatewayFactory --> TransformRuntimeDeps
+BootstrapWiring --> SqliteCacheGateway
+BootstrapWiring --> EmployeesSpec
 
 note bottom of EmployeesSpec
 No direct dependency on SQLite classes.
-Only port-level dependencies.
+Only one cache gateway port dependency.
+end note
+
+note right of CacheGatewayPort
+Single domain boundary for cache access.
+Feature-specific operations are grouped by capability,
+not by extra per-feature ports.
 end note
 
 @enduml
