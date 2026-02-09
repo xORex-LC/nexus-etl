@@ -13,6 +13,7 @@ from connector.domain.dsl.specs import (
     SinkSpec,
 )
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
+from connector.domain.ports.cache.gateway import CacheGatewayPort
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies, ResolverSettings
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.transform.mapping import MapperEngine
@@ -48,10 +49,6 @@ from connector.domain.transform.providers import TransformProviderDeps
 from connector.infra.sources.csv_reader import CsvRecordSource
 from connector.datasets.employees.load.cache_spec import employees_cache_spec
 from connector.datasets.organizations.load.cache_spec import organizations_cache_spec
-from connector.infra.cache.sqlite_engine import SqliteEngine
-from connector.infra.cache.repository import SqliteCacheRepository
-from connector.infra.cache.identity_repository import SqliteIdentityRepository
-from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
 from connector.datasets.employees.diagnostic_catalog import build_employees_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
 
@@ -74,24 +71,28 @@ class EmployeesSpec(DatasetSpec):
         )
         self._apply_adapter = EmployeesApplyAdapter(secrets=secrets)
 
-    def build_planning_deps(self, conn, settings) -> PlanningDependencies:
+    def build_planning_deps(
+        self,
+        settings,
+        *,
+        cache_gateway: CacheGatewayPort,
+    ) -> PlanningDependencies:
         resolver_settings = _build_resolver_settings(settings)
-        cache_repo = self._build_cache_repo(conn)
-        engine = SqliteEngine(conn)
-        identity_repo = SqliteIdentityRepository(engine)
-        pending_repo = SqlitePendingLinksRepository(engine)
         return PlanningDependencies(
-            cache_repo=cache_repo,
-            identity_repo=identity_repo,
-            pending_repo=pending_repo,
+            cache_gateway=cache_gateway,
             resolver_settings=resolver_settings,
         )
 
-    def build_enrich_deps(self, conn, settings, secret_store=None) -> TransformProviderDeps:
+    def build_enrich_deps(
+        self,
+        settings,
+        *,
+        cache_gateway: CacheGatewayPort,
+        secret_store=None,
+    ) -> TransformProviderDeps:
         _ = settings
-        cache_repo = self._build_cache_repo(conn)
         return TransformProviderDeps(
-            cache_repo=cache_repo,
+            cache_gateway=cache_gateway,
             secret_store=secret_store,
         )
 
@@ -166,19 +167,19 @@ class EmployeesSpec(DatasetSpec):
         include_deleted: bool,
         settings=None,
     ) -> MatchStage:
-        cache_repo = planning_deps.cache_repo
-        if cache_repo is None:
-            raise ValueError("planning cache_repo is not configured")
+        cache_gateway = planning_deps.cache_gateway
+        if cache_gateway is None:
+            raise ValueError("planning cache_gateway is not configured")
         compiled_resolve = self._compile_resolve(settings=settings)
         options = load_match_build_options_for_dataset(self.dataset_name)
         matcher = MatchEngine(
             spec=self.build_match_spec(settings=settings),
             dataset=self.dataset_name,
-            cache_repo=cache_repo,
+            cache_repo=cache_gateway,
             resolve_rules=compiled_resolve.resolve_rules,
             include_deleted=include_deleted,
             catalog=catalog,
-            identity_repo=planning_deps.identity_repo,
+            identity_repo=cache_gateway,
             options=options,
         )
         return MatchStage(matcher, catalog)
@@ -191,10 +192,13 @@ class EmployeesSpec(DatasetSpec):
         settings=None,
     ) -> ResolveStage:
         options = load_resolve_build_options_for_dataset(self.dataset_name)
+        cache_gateway = planning_deps.cache_gateway
+        if cache_gateway is None:
+            raise ValueError("planning cache_gateway is not configured")
         resolver = ResolveEngine(
             spec=self.build_resolve_spec(settings=settings),
-            identity_repo=planning_deps.identity_repo,
-            pending_repo=planning_deps.pending_repo,
+            identity_repo=cache_gateway,
+            pending_repo=cache_gateway,
             settings=planning_deps.resolver_settings,
             catalog=catalog,
             sink_spec=self.build_sink_spec(settings=settings),
@@ -238,10 +242,6 @@ class EmployeesSpec(DatasetSpec):
 
     def build_cache_specs(self) -> list:
         return [organizations_cache_spec, employees_cache_spec]
-
-    def _build_cache_repo(self, conn) -> SqliteCacheRepository:
-        engine = SqliteEngine(conn)
-        return SqliteCacheRepository(engine, self.build_cache_specs())
 
     def build_record_source(
         self,

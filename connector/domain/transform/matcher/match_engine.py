@@ -6,8 +6,7 @@
 from __future__ import annotations
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.repository import CacheRepositoryProtocol
+from connector.domain.ports.cache.gateway import CacheGatewayPort
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.dsl.build_options import MatchDslBuildOptions
 from connector.domain.dsl.specs import MatchSpec
@@ -28,11 +27,11 @@ class MatchEngine:
         *,
         spec: MatchSpec,
         dataset: str,
-        cache_repo: CacheRepositoryProtocol,
+        cache_repo: CacheGatewayPort,
         resolve_rules: ResolveRules,
         include_deleted: bool,
         catalog: ErrorCatalog,
-        identity_repo: IdentityRepository | None = None,
+        identity_repo: CacheGatewayPort | None = None,
         dsl: MatchDsl | None = None,
         options: MatchDslBuildOptions | None = None,
     ) -> None:

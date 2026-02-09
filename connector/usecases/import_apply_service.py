@@ -11,8 +11,7 @@ from connector.domain.ports.target.execution import ExecutionResult, RequestExec
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
 from connector.domain.transform.matcher.identity_keys import format_identity_key
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.pending_links import PendingLinksRepository
+from connector.domain.ports.cache.gateway import CacheGatewayPort
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.diagnostics.context import error as diag_error
@@ -34,10 +33,10 @@ class ImportApplyService:
         executor: RequestExecutorProtocol,
         secrets: SecretProviderProtocol | None = None,
         spec_resolver: Callable[..., DatasetSpec] = get_spec,
-        identity_repo: IdentityRepository | None = None,
+        identity_repo: CacheGatewayPort | None = None,
         identity_keys: dict[str, set[str]] | None = None,
         identity_id_fields: dict[str, str] | None = None,
-        pending_repo: PendingLinksRepository | None = None,
+        pending_repo: CacheGatewayPort | None = None,
     ):
         self.executor = executor
         self.secrets = secrets

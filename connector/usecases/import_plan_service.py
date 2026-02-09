@@ -28,6 +28,11 @@ from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.catalog import build_catalog
+from connector.infra.cache.gateway import SqliteCacheGateway
+from connector.infra.cache.identity_repository import SqliteIdentityRepository
+from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
+from connector.infra.cache.repository import SqliteCacheRepository
+from connector.infra.cache.sqlite_engine import SqliteEngine
 
 
 class ImportPlanService:
@@ -58,8 +63,16 @@ class ImportPlanService:
             from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
 
             secret_store = FileVaultSecretStore(vault_file)
-        enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
-        planning_deps = dataset_spec.build_planning_deps(conn, settings)
+        cache_gateway = _build_cache_gateway(conn=conn, dataset_spec=dataset_spec)
+        enrich_deps = dataset_spec.build_enrich_deps(
+            settings,
+            cache_gateway=cache_gateway,
+            secret_store=secret_store,
+        )
+        planning_deps = dataset_spec.build_planning_deps(
+            settings,
+            cache_gateway=cache_gateway,
+        )
         row_source = dataset_spec.build_record_source(
             csv_has_header=csv_has_header,
         )
@@ -86,17 +99,13 @@ class ImportPlanService:
             settings=settings,
         )
         match_spec = dataset_spec.build_match_spec(settings=settings)
-        cache_repo = planning_deps.cache_repo
-        if cache_repo is None:
-            raise ValueError("planning cache_repo is not configured")
-        if planning_deps.identity_repo is None:
-            raise ValueError("planning identity_repo is not configured")
-        if planning_deps.pending_repo is None:
-            raise ValueError("planning pending_repo is not configured")
+        cache_gateway = planning_deps.cache_gateway
+        if cache_gateway is None:
+            raise ValueError("planning cache_gateway is not configured")
         with open_match_runtime(
             run_id=run_id,
             match_stage=match_stage,
-            identity_repo=planning_deps.identity_repo,
+            cache_gateway=cache_gateway,
             report_items_limit=report_items_limit,
             include_matched_items=False,
             batch_size=getattr(settings, "match_batch_size", 500),
@@ -109,8 +118,8 @@ class ImportPlanService:
 
             pending_rows = _load_pending_rows(
                 dataset=dataset,
-                pending_repo=planning_deps.pending_repo,
-                cache_repo=cache_repo,
+                pending_repo=cache_gateway,
+                cache_repo=cache_gateway,
                 include_deleted=include_deleted,
                 ignored_fields=set(match_spec.match.ignored_fields),
             )
@@ -151,6 +160,18 @@ class ImportPlanService:
         result = CommandResult()
         result.add_code(SystemErrorCode.OK)
         return result
+
+
+def _build_cache_gateway(*, conn, dataset_spec) -> SqliteCacheGateway:
+    engine = SqliteEngine(conn)
+    cache_repo = SqliteCacheRepository(engine, dataset_spec.build_cache_specs())
+    identity_repo = SqliteIdentityRepository(engine)
+    pending_repo = SqlitePendingLinksRepository(engine)
+    return SqliteCacheGateway(
+        cache_repo=cache_repo,
+        identity_repo=identity_repo,
+        pending_repo=pending_repo,
+    )
 
 
 def _load_pending_rows(
