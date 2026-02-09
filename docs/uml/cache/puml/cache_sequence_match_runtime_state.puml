@@ -1,0 +1,61 @@
+@startuml
+title Cache Sequence - Match Runtime State (Source Dedup)
+
+actor CLI
+participant "Match command" as Command
+participant "open_match_runtime()" as RuntimeCtx
+participant MatchUseCase
+participant MatchStage
+participant MatchEngine
+participant MatchCore
+participant "MatchRuntimePort\n(cache_gateway)" as Port
+participant SqliteCacheGateway as Gateway
+participant SqliteIdentityRepository as IdentityRepo
+database "SQLite DB" as DB
+
+CLI -> Command: run match
+Command -> RuntimeCtx: open(run_id, match_stage, cache_gateway)
+RuntimeCtx -> MatchUseCase: iter_matched(..., run_scope)
+MatchUseCase -> MatchStage: run(stream)
+MatchStage -> MatchEngine: match_with_source_dedup(result)
+MatchEngine -> MatchCore: match_with_source_dedup(result)
+
+MatchCore -> Port: get_runtime_state(scope,dataset,dedup_key)
+Port -> Gateway: get_runtime_state(...)
+Gateway -> IdentityRepo: get_runtime_state(...)
+IdentityRepo -> DB: SELECT state_value ...
+DB --> IdentityRepo: value | null
+IdentityRepo --> Gateway: value | null
+Gateway --> Port: value | null
+Port --> MatchCore: value | null
+
+alt first seen in scope
+  MatchCore -> Port: set_runtime_state(scope,dataset,dedup_key,fingerprint)
+  Port -> Gateway: set_runtime_state(...)
+  Gateway -> IdentityRepo: set_runtime_state(...)
+  IdentityRepo -> DB: UPSERT identity_runtime_state
+  DB --> IdentityRepo: ok
+  IdentityRepo --> Gateway: ok
+  Gateway --> Port: ok
+else duplicate/conflict in scope
+  MatchCore -> MatchCore: drop row by source_dedup policy
+end
+
+MatchCore --> MatchEngine: TransformResult[MatchedRow]
+MatchEngine --> MatchStage: TransformResult[MatchedRow]
+MatchStage --> MatchUseCase: stream item
+MatchUseCase --> RuntimeCtx: stream item
+
+RuntimeCtx -> Port: clear_runtime_scope(scope)
+Port -> Gateway: clear_runtime_scope(scope)
+Gateway -> IdentityRepo: clear_runtime_scope(scope)
+IdentityRepo -> DB: DELETE identity_runtime_state WHERE scope=...
+DB --> IdentityRepo: ok
+IdentityRepo --> Gateway: ok
+Gateway --> Port: ok
+
+RuntimeCtx --> Command: done
+Command --> CLI: done
+
+@enduml
+

@@ -1,0 +1,147 @@
+@startuml
+title Cache Domain View (Ports, DTO, Stage Deps)
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+hide empty members
+
+package "domain.ports.cache.models" {
+  enum UpsertResult {
+    INSERTED
+    UPDATED
+  }
+
+  class CacheMeta {
+    +values: dict[str, str | None]
+  }
+
+  enum PendingStatus {
+    PENDING
+    RESOLVED
+    CONFLICT
+    EXPIRED
+  }
+
+  class PendingLink {
+    +pending_id: int
+    +dataset: str
+    +source_row_id: str
+    +field: str
+    +lookup_key: str
+    +status: str
+    +attempts: int
+    +created_at: str | None
+    +last_attempt_at: str | None
+    +expires_at: str | None
+    +reason: str | None
+    +payload: str | None
+  }
+
+  class PendingRow {
+    +dataset: str
+    +source_row_id: str
+    +payload: str
+  }
+}
+
+package "domain.ports.cache.roles" {
+  interface CacheAdminPort <<protocol>> {
+    +transaction(): ContextManager[None]
+    +upsert(dataset: str, write_model: dict): UpsertResult
+    +count(dataset: str): int
+    +count_by_table(dataset: str): dict[str, int]
+    +clear(dataset: str): None
+    +list_datasets(): list[str]
+    +get_meta(dataset: str | None): CacheMeta
+    +set_meta(dataset: str | None, key: str, value: str | None): None
+    +reset_meta(dataset: str): None
+  }
+
+  interface EnrichLookupPort <<protocol>> {
+    +find(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): list[dict]
+    +find_one(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): dict | None
+  }
+
+  interface MatchRuntimePort <<protocol>> {
+    +find(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): list[dict]
+    +set_runtime_state(scope: str, dataset: str, state_key: str, state_value: str): None
+    +get_runtime_state(scope: str, dataset: str, state_key: str): str | None
+    +clear_runtime_scope(scope: str): None
+  }
+
+  interface ResolveRuntimePort <<protocol>> {
+    +find_candidates(dataset: str, identity_key: str): list[str]
+    +add_pending(dataset: str, source_row_id: str, field: str, lookup_key: str, expires_at: str | None, payload: str | None): int
+    +list_pending_rows(dataset: str): list[PendingRow]
+    +mark_resolved_for_source(source_row_id: str): None
+    +mark_conflict(pending_id: int, reason: str | None): None
+    +touch_attempt(pending_id: int): int
+    +sweep_expired(now: str, reason: str | None): list[PendingLink]
+    +purge_stale(cutoff: str, statuses: tuple[str, ...] | None): int
+  }
+
+  interface ApplyRuntimePort <<protocol>> {
+    +upsert_identity(dataset: str, identity_key: str, resolved_id: str): None
+    +list_pending_for_key(dataset: str, lookup_key: str): list[PendingLink]
+    +mark_resolved(pending_id: int): None
+  }
+
+  interface CacheRefreshPort <<protocol>>
+  interface PendingReplayPort <<protocol>>
+  interface PlanningRuntimePort <<protocol>>
+}
+
+package "domain.transform deps" {
+  class TransformProviderDeps {
+    +cache_gateway: EnrichLookupPort
+    +secret_store: SecretStoreProtocol | None
+    +dictionaries: DictionaryProviderPort | None
+  }
+
+  class ResolverSettings {
+    +pending_ttl_seconds: int
+    +pending_max_attempts: int
+    +pending_sweep_interval_seconds: int
+    +pending_on_expire: str
+    +pending_allow_partial: bool
+    +pending_retention_days: int
+  }
+
+  class PlanningDependencies {
+    +cache_gateway: PlanningRuntimePort | None
+    +resolver_settings: ResolverSettings | None
+  }
+}
+
+CacheRefreshPort --|> CacheAdminPort
+CacheRefreshPort --|> ApplyRuntimePort
+
+PendingReplayPort --|> ResolveRuntimePort
+PendingReplayPort --|> EnrichLookupPort
+
+PlanningRuntimePort --|> MatchRuntimePort
+PlanningRuntimePort --|> ResolveRuntimePort
+
+ResolveRuntimePort ..> PendingRow
+ResolveRuntimePort ..> PendingLink
+ApplyRuntimePort ..> PendingLink
+CacheAdminPort ..> CacheMeta
+CacheAdminPort ..> UpsertResult
+
+TransformProviderDeps ..> EnrichLookupPort
+PlanningDependencies ..> PlanningRuntimePort
+PlanningDependencies ..> ResolverSettings
+
+note right of TransformProviderDeps
+Used by Enrich stage runtime.
+Cache dependency is narrowed
+to EnrichLookupPort.
+end note
+
+note right of PlanningDependencies
+Used by Match/Resolve stage builders.
+Single runtime object,
+role-limited by PlanningRuntimePort.
+end note
+
+@enduml

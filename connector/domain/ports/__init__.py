@@ -1,7 +1,6 @@
 """Единый экспорт доменных портов."""
 
 from connector.domain.ports.cache import (
-    CacheGatewayPort,
     PendingLink,
     PendingRow,
 )
@@ -10,7 +9,6 @@ from connector.domain.ports.transform import RowSource, SourceMapper, Dictionary
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 
 __all__ = [
-    "CacheGatewayPort",
     "PendingLink",
     "PendingRow",
     "RequestSpec",
