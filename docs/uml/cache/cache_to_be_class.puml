@@ -1,0 +1,73 @@
+@startuml
+title Cache Access Architecture - TO BE (Class Diagram)
+
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+skinparam class<<new>> {
+  BackgroundColor #E8F5E9
+  BorderColor #2E7D32
+}
+
+package "Domain" {
+  interface CacheRepositoryProtocol
+  interface IdentityRepositoryPort
+  interface PendingLinksRepositoryPort
+
+  class TransformRuntimeDeps {
+    +cache_repo: CacheRepositoryProtocol
+    +identity_repo: IdentityRepositoryPort
+    +pending_repo: PendingLinksRepositoryPort
+  }
+
+  class EmployeesSpec {
+    +build_runtime_deps(
+      cache_repo,
+      identity_repo,
+      pending_repo,
+      ...
+    ): TransformRuntimeDeps
+  }
+}
+
+package "Infra (SQLite)" {
+  class SqliteCacheRepository
+  class SqliteIdentityRepository
+  class SqlitePendingLinksRepository
+
+  class SqliteCacheGateway <<new>> {
+    -cache_repo: SqliteCacheRepository
+    -identity_repo: SqliteIdentityRepository
+    -pending_repo: SqlitePendingLinksRepository
+  }
+}
+
+package "Composition Root" {
+  class CacheGatewayFactory <<new>> {
+    +build_cache_gateway(settings): SqliteCacheGateway
+    +wire_runtime_deps(spec, gateway, ...): TransformRuntimeDeps
+  }
+}
+
+SqliteCacheGateway ..|> CacheRepositoryProtocol
+SqliteCacheGateway ..|> IdentityRepositoryPort
+SqliteCacheGateway ..|> PendingLinksRepositoryPort
+
+SqliteCacheGateway *-- SqliteCacheRepository
+SqliteCacheGateway *-- SqliteIdentityRepository
+SqliteCacheGateway *-- SqlitePendingLinksRepository
+
+EmployeesSpec ..> CacheRepositoryProtocol
+EmployeesSpec ..> IdentityRepositoryPort
+EmployeesSpec ..> PendingLinksRepositoryPort
+EmployeesSpec --> TransformRuntimeDeps
+
+CacheGatewayFactory --> SqliteCacheGateway
+CacheGatewayFactory --> EmployeesSpec
+CacheGatewayFactory --> TransformRuntimeDeps
+
+note bottom of EmployeesSpec
+No direct dependency on SQLite classes.
+Only port-level dependencies.
+end note
+
+@enduml

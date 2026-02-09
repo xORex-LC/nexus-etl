@@ -420,10 +420,10 @@ Match-правила переведены с Python-конфига на декл
 
 ### 2) Фактическое состояние DSL ядра (as-is)
 DSL kernel уже стабилен и переиспользуется в map/normalize/enrich:
-1) `connector/domain/transform/dsl/specs.py` — pydantic-модели;
-2) `connector/domain/transform/dsl/loader.py` — загрузка dataset DSL из `datasets/registry.yml`;
-3) `connector/domain/transform/dsl/engine.py` + `registry.py` + `ops.py` — универсальный execution kernel;
-4) `connector/domain/transform/dsl/diagnostics.py` — bridge `DslIssue -> DiagnosticItem`.
+1) `connector/domain/dsl/specs.py` — pydantic-модели;
+2) `connector/domain/dsl/loader.py` — загрузка dataset DSL из `datasets/registry.yml`;
+3) `connector/domain/dsl/engine.py` + `registry.py` + `ops.py` — универсальный execution kernel;
+4) `connector/domain/dsl/diagnostics.py` — bridge `DslIssue -> DiagnosticItem`.
 
 Для matcher уже есть часть инфраструктуры:
 1) `load_match_spec_for_dataset()` в `loader.py`;
