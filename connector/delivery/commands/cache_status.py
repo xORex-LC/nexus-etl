@@ -26,11 +26,11 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
     conn = None
     try:
-        conn, _engine, cache_repo, _cache_specs = build_cache(settings)
-        unsupported_result = ensure_supported_cache_dataset(cache_repo, opts.dataset)
+        conn, _engine, cache_gateway, _cache_specs = build_cache(settings)
+        unsupported_result = ensure_supported_cache_dataset(cache_gateway, opts.dataset)
         if unsupported_result is not None:
             return unsupported_result
-        service = CacheCommandService(cache_repo)
+        service = CacheCommandService(cache_gateway)
         result = service.status(ctx.logger, report, run_id, dataset=opts.dataset)
         exit_code = result.exit_code()
         status = result.summary or {}

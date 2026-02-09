@@ -40,7 +40,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
     conn = None
     try:
-        conn, _engine, _cache_repo, _cache_specs = build_cache(settings)
+        conn, _engine, _cache_gateway, _cache_specs = build_cache(settings)
         secret_store = FileVaultSecretStore(opts.vault_file) if opts.vault_file else None
         pipeline_ctx = build_pipeline_context(
             dataset_spec=dataset_spec,

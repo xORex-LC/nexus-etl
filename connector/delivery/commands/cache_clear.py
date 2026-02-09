@@ -27,12 +27,12 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
     conn = None
     try:
-        conn, _engine, cache_repo, _cache_specs = build_cache(settings)
-        unsupported_result = ensure_supported_cache_dataset(cache_repo, opts.dataset)
+        conn, _engine, cache_gateway, _cache_specs = build_cache(settings)
+        unsupported_result = ensure_supported_cache_dataset(cache_gateway, opts.dataset)
         if unsupported_result is not None:
             return unsupported_result
-        cache_clear = CacheClearUseCase(cache_repo)
-        service = CacheCommandService(cache_repo, cache_clear=cache_clear)
+        cache_clear = CacheClearUseCase(cache_gateway)
+        service = CacheCommandService(cache_gateway, cache_clear=cache_clear)
         result = service.clear(ctx.logger, report, run_id, dataset=opts.dataset)
         exit_code = result.exit_code()
         if exit_code != 0:

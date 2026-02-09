@@ -28,10 +28,8 @@ from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.infra.cache.gateway import SqliteCacheGateway
-from connector.infra.cache.identity_repository import SqliteIdentityRepository
-from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
-from connector.infra.cache.repository import SqliteCacheRepository
+from connector.domain.ports.cache.roles import PendingReplayPort
+from connector.infra.cache.factory import build_sqlite_cache_gateway
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
 
@@ -63,7 +61,10 @@ class ImportPlanService:
             from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
 
             secret_store = FileVaultSecretStore(vault_file)
-        cache_gateway = _build_cache_gateway(conn=conn, dataset_spec=dataset_spec)
+        cache_gateway = build_sqlite_cache_gateway(
+            engine=SqliteEngine(conn),
+            cache_specs=dataset_spec.build_cache_specs(),
+        )
         enrich_deps = dataset_spec.build_enrich_deps(
             settings,
             cache_gateway=cache_gateway,
@@ -118,8 +119,7 @@ class ImportPlanService:
 
             pending_rows = _load_pending_rows(
                 dataset=dataset,
-                pending_repo=cache_gateway,
-                cache_repo=cache_gateway,
+                cache_gateway=cache_gateway,
                 include_deleted=include_deleted,
                 ignored_fields=set(match_spec.match.ignored_fields),
             )
@@ -161,24 +161,10 @@ class ImportPlanService:
         result.add_code(SystemErrorCode.OK)
         return result
 
-
-def _build_cache_gateway(*, conn, dataset_spec) -> SqliteCacheGateway:
-    engine = SqliteEngine(conn)
-    cache_repo = SqliteCacheRepository(engine, dataset_spec.build_cache_specs())
-    identity_repo = SqliteIdentityRepository(engine)
-    pending_repo = SqlitePendingLinksRepository(engine)
-    return SqliteCacheGateway(
-        cache_repo=cache_repo,
-        identity_repo=identity_repo,
-        pending_repo=pending_repo,
-    )
-
-
 def _load_pending_rows(
     *,
     dataset: str,
-    pending_repo,
-    cache_repo,
+    cache_gateway: PendingReplayPort,
     include_deleted: bool,
     ignored_fields: set[str],
 ) -> list[TransformResult[MatchedRow]]:
@@ -186,9 +172,7 @@ def _load_pending_rows(
     # inside usecase-level orchestration. After plan/resolve DSL migration,
     # move to a single source of truth (deserialize stored typed decision or
     # resolve via core), so usecase does not contain match decision logic.
-    if pending_repo is None:
-        return []
-    pending_rows = pending_repo.list_pending_rows(dataset)
+    pending_rows = cache_gateway.list_pending_rows(dataset)
     if not pending_rows:
         return []
     results: list[TransformResult[MatchedRow]] = []
@@ -216,7 +200,7 @@ def _load_pending_rows(
             target_id = payload.get("resource_id")
         meta = payload.get("meta") or {}
 
-        candidates = cache_repo.find(
+        candidates = cache_gateway.find(
             dataset,
             {identity.primary: identity.primary_value},
             include_deleted=include_deleted,

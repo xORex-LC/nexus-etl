@@ -17,10 +17,8 @@ from connector.domain.transform.resolver.resolve_deps import PlanningDependencie
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.sqlite_engine import SqliteEngine
-from connector.infra.cache.repository import SqliteCacheRepository
+from connector.infra.cache.factory import build_sqlite_cache_gateway
 from connector.infra.cache.gateway import SqliteCacheGateway
-from connector.infra.cache.identity_repository import SqliteIdentityRepository
-from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
 from connector.infra.http.ankey_client import AnkeyApiClient
 from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
@@ -62,14 +60,7 @@ def build_cache(settings: Settings) -> tuple[sqlite3.Connection, SqliteEngine, S
     engine = SqliteEngine(conn)
     cache_specs = list_cache_specs()
     ensure_cache_ready(engine, cache_specs)
-    cache_repo = SqliteCacheRepository(engine, cache_specs)
-    identity_repo = SqliteIdentityRepository(engine)
-    pending_repo = SqlitePendingLinksRepository(engine)
-    gateway = SqliteCacheGateway(
-        cache_repo=cache_repo,
-        identity_repo=identity_repo,
-        pending_repo=pending_repo,
-    )
+    gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=cache_specs)
     return conn, engine, gateway, cache_specs
 
 
@@ -167,7 +158,7 @@ def build_pipeline_context(
     Назначение:
         Единая сборка map/normalize/enrich цепочки.
     """
-    cache_gateway = _build_cache_gateway_for_dataset(conn, dataset_spec)
+    cache_gateway = build_dataset_cache_gateway(conn=conn, dataset_spec=dataset_spec)
     enrich_deps = dataset_spec.build_enrich_deps(
         settings,
         cache_gateway=cache_gateway,
@@ -206,19 +197,15 @@ def build_pipeline_context(
     )
 
 
-def _build_cache_gateway_for_dataset(conn, dataset_spec: DatasetSpec) -> SqliteCacheGateway:
+def build_dataset_cache_gateway(conn, dataset_spec: DatasetSpec) -> SqliteCacheGateway:
     """
     Назначение:
         Построить единый cache gateway из sqlite-соединения и cache-specs датасета.
     """
     engine = SqliteEngine(conn)
-    cache_repo = SqliteCacheRepository(engine, dataset_spec.build_cache_specs())
-    identity_repo = SqliteIdentityRepository(engine)
-    pending_repo = SqlitePendingLinksRepository(engine)
-    return SqliteCacheGateway(
-        cache_repo=cache_repo,
-        identity_repo=identity_repo,
-        pending_repo=pending_repo,
+    return build_sqlite_cache_gateway(
+        engine=engine,
+        cache_specs=dataset_spec.build_cache_specs(),
     )
 
 
@@ -232,4 +219,5 @@ __all__ = [
     "build_secret_provider",
     "PipelineContext",
     "build_pipeline_context",
+    "build_dataset_cache_gateway",
 ]

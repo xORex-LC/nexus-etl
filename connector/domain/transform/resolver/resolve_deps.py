@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.ports.cache.gateway import CacheGatewayPort
+from connector.domain.ports.cache.roles import PlanningRuntimePort
 
 
 @dataclass(frozen=True)
@@ -33,5 +33,5 @@ class PlanningDependencies:
 
     """
 
-    cache_gateway: CacheGatewayPort | None = None
+    cache_gateway: PlanningRuntimePort | None = None
     resolver_settings: ResolverSettings | None = None

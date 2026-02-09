@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Iterable, Iterator
 
-from connector.domain.ports.cache.gateway import CacheGatewayPort
+from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.stages.stages import MatchStage
@@ -21,7 +21,7 @@ class MatchRuntime:
     match_stage: MatchStage
     match_usecase: MatchUseCase
     runtime_scope: str
-    cache_gateway: CacheGatewayPort
+    cache_gateway: MatchRuntimePort
 
 
 @contextmanager
@@ -29,7 +29,7 @@ def open_match_runtime(
     *,
     run_id: str,
     match_stage: MatchStage,
-    cache_gateway: CacheGatewayPort,
+    cache_gateway: MatchRuntimePort,
     report_items_limit: int,
     include_matched_items: bool,
     batch_size: int,

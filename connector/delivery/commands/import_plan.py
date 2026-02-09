@@ -35,7 +35,7 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
     conn = None
     try:
         dataset_name, _spec = build_dataset_spec(opts.dataset, settings)
-        conn, _engine, _cache_repo, _cache_specs = build_cache(settings)
+        conn, _engine, _cache_gateway, _cache_specs = build_cache(settings)
 
         include_deleted_value = opts.include_deleted if opts.include_deleted is not None else settings.include_deleted
         report_items_limit_value = (
