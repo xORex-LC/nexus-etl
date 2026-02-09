@@ -15,7 +15,6 @@ from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
 
 
@@ -65,19 +64,23 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             pipeline_ctx.stage_pipeline.run(Extractor(pipeline_ctx.row_source, catalog=pipeline_ctx.catalog).run()),
             should_skip=lambda item: item.row is None,
         )
-
-        planning_bundle = dataset_spec.build_planning_bundle(settings=settings)
+        match_stage, resolve_stage = dataset_spec.build_planning_stages(
+            planning_deps=planning_deps,
+            catalog=catalog,
+            include_deleted=include_deleted_value,
+            settings=settings,
+        )
+        identity_repo = planning_deps.identity_repo
+        if identity_repo is None:
+            raise ValueError("planning identity_repo is not configured")
 
         if planning_deps.pending_repo is None:
             raise ValueError("planning pending_repo is not configured")
 
         with open_match_runtime(
-            dataset=dataset_name,
-            include_deleted=include_deleted_value,
             run_id=run_id,
-            planning_deps=planning_deps,
-            planning_bundle=planning_bundle,
-            catalog=catalog,
+            match_stage=match_stage,
+            identity_repo=identity_repo,
             report_items_limit=report_items_limit_value,
             include_matched_items=False,
             batch_size=settings.match_batch_size,
@@ -86,16 +89,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             matched_rows = iter_matched_ok(
                 runtime=match_runtime,
                 enriched_source=enriched_rows,
-                catalog=catalog,
-            )
-
-            resolver = ResolveCore(
-                planning_bundle.resolve_rules,
-                planning_bundle.link_rules,
-                identity_repo=planning_deps.identity_repo,
-                pending_repo=planning_deps.pending_repo,
-                settings=planning_deps.resolver_settings,
-                catalog=catalog,
             )
             resolve_usecase = ResolveUseCase(
                 report_items_limit=report_items_limit_value,
@@ -105,7 +98,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             )
             return resolve_usecase.run(
                 matched_source=matched_rows,
-                resolver=resolver,
+                resolve_stage=resolve_stage,
                 dataset=dataset_name,
                 report=report,
                 catalog=catalog,

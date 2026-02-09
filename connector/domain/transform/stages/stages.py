@@ -14,7 +14,6 @@ from connector.domain.ports.transform.sources import SourceMapper
 from connector.domain.transform.enrich import EnricherEngine
 from connector.domain.transform.normalize import NormalizerEngine
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.domain.transform.matcher.match_models import (
     MatchedRow,
     MatchDecisionStatus,
@@ -50,6 +49,26 @@ class MatchProcessor(Protocol):
         ...
 
     def bind_runtime_scope(self, scope: str | None) -> None:
+        ...
+
+
+class ResolveProcessor(Protocol):
+    """
+    Назначение:
+        Минимальный контракт resolve-движка для ResolveStage/ResolveUseCase.
+    """
+
+    def build_batch_index(self, matched_rows: list, dataset: str) -> dict[str, dict[str, list[str]]]:
+        ...
+
+    def resolve(
+        self,
+        matched: MatchedRow,
+        *,
+        target_id_map: dict[str, str],
+        meta: dict | None = None,
+        batch_index: dict[str, dict[str, list[str]]] | None = None,
+    ):
         ...
 
 
@@ -305,7 +324,7 @@ class ResolveStage:
         Стадия resolve (matched -> resolved).
     """
 
-    def __init__(self, resolver: ResolveCore, catalog: ErrorCatalog) -> None:
+    def __init__(self, resolver: ResolveProcessor, catalog: ErrorCatalog) -> None:
         self.resolver = resolver
         self.catalog = catalog
 
@@ -381,7 +400,7 @@ def _build_target_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dic
 
 def _build_batch_index(
     matched_rows: list[TransformResult[MatchedRow]],
-    resolver: ResolveCore,
+    resolver: ResolveProcessor,
     dataset: str | None,
 ) -> dict[str, dict[str, list[str]]]:
     """

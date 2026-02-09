@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.matcher.match_models import MatchedRow
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.core.result_processor import PlanningResultProcessor
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.stages.stages import MatchProcessor, MatchStage
+from connector.domain.transform.stages.stages import MatchStage
 
 
 class MatchUseCase:
@@ -33,9 +32,8 @@ class MatchUseCase:
     def iter_matched(
         self,
         enriched_source: Iterable[TransformResult],
-        matcher: MatchProcessor,
+        match_stage: MatchStage,
         *,
-        catalog: ErrorCatalog,
         run_scope: str | None = None,
     ):
         """
@@ -44,18 +42,16 @@ class MatchUseCase:
         """
         return self._iter_matched(
             enriched_source,
-            matcher,
-            catalog=catalog,
+            match_stage,
             run_scope=run_scope,
         )
 
     def run(
         self,
         enriched_source: Iterable[TransformResult],
-        matcher: MatchProcessor,
+        match_stage: MatchStage,
         dataset: str,
         report,
-        catalog: ErrorCatalog,
         run_scope: str | None = None,
     ) -> CommandResult:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
@@ -72,8 +68,7 @@ class MatchUseCase:
 
         for matched in self._iter_matched(
             enriched_source,
-            matcher,
-            catalog=catalog,
+            match_stage,
             run_scope=run_scope,
         ):
             force_failed = bool((matched.meta or {}).get("match_drop_reason"))
@@ -87,18 +82,17 @@ class MatchUseCase:
     def _iter_matched(
         self,
         enriched_source: Iterable[TransformResult],
-        matcher: MatchProcessor,
+        match_stage: MatchStage,
         *,
-        catalog: ErrorCatalog,
         run_scope: str | None = None,
     ):
+        matcher = match_stage.matcher
         matcher.reset_source_dedup()
         matcher.bind_runtime_scope(run_scope)
-        stage = MatchStage(matcher, catalog)
         for batch in iter_micro_batches(
             enriched_source,
             batch_size=self.batch_size,
             flush_interval_ms=self.flush_interval_ms,
         ):
-            for matched in stage.run(batch):
+            for matched in match_stage.run(batch):
                 yield matched

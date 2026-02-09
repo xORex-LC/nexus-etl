@@ -19,13 +19,13 @@ from connector.domain.transform.enrich import (
 )
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.transform.dsl.loader import load_enrich_spec_for_dataset
-from connector.domain.transform.dsl.loader import load_sink_spec_for_dataset
+from connector.domain.dsl.loader import load_enrich_spec_for_dataset
+from connector.domain.dsl.loader import load_sink_spec_for_dataset
 from connector.datasets.employees.spec import make_employees_spec
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
+from connector.domain.dsl.registry import OperationRegistry, register_core_ops
 
 CATALOG = build_catalog("employees", strict=True)
 
@@ -500,7 +500,7 @@ def test_enricher_warns_when_candidate_violates_sink_type():
 
 def test_employees_spec_wires_sink_spec_into_normalizer():
     spec = make_employees_spec()
-    stage = spec._build_normalize_stage(CATALOG)
+    stage = spec.build_normalize_stage(catalog=CATALOG)
 
     assert stage.normalizer.core.sink_spec is not None
     assert stage.normalizer.core.sink_spec.dataset == "employees"

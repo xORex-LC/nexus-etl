@@ -12,7 +12,6 @@ from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.stages.stages import StagePipeline
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
 from connector.domain.transform.matcher.match_models import (
     MatchedRow,
@@ -65,8 +64,8 @@ class ImportPlanService:
             csv_has_header=csv_has_header,
         )
         map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
-            enrich_deps,
-            catalog,
+            enrich_deps=enrich_deps,
+            catalog=catalog,
         )
         extractor = Extractor(row_source, catalog=catalog)
         stage_pipeline = StagePipeline(
@@ -80,7 +79,13 @@ class ImportPlanService:
             stage_pipeline.run(extractor.run()),
             should_skip=lambda item: item.row is None,
         )
-        planning_bundle = dataset_spec.build_planning_bundle(settings=settings)
+        match_stage, resolve_stage = dataset_spec.build_planning_stages(
+            planning_deps=planning_deps,
+            catalog=catalog,
+            include_deleted=include_deleted,
+            settings=settings,
+        )
+        match_spec = dataset_spec.build_match_spec(settings=settings)
         cache_repo = planning_deps.cache_repo
         if cache_repo is None:
             raise ValueError("planning cache_repo is not configured")
@@ -89,12 +94,9 @@ class ImportPlanService:
         if planning_deps.pending_repo is None:
             raise ValueError("planning pending_repo is not configured")
         with open_match_runtime(
-            dataset=dataset,
-            include_deleted=include_deleted,
             run_id=run_id,
-            planning_deps=planning_deps,
-            planning_bundle=planning_bundle,
-            catalog=catalog,
+            match_stage=match_stage,
+            identity_repo=planning_deps.identity_repo,
             report_items_limit=report_items_limit,
             include_matched_items=False,
             batch_size=getattr(settings, "match_batch_size", 500),
@@ -103,7 +105,6 @@ class ImportPlanService:
             matched_rows = iter_matched_ok(
                 runtime=match_runtime,
                 enriched_source=enriched_rows,
-                catalog=catalog,
             )
 
             pending_rows = _load_pending_rows(
@@ -111,19 +112,10 @@ class ImportPlanService:
                 pending_repo=planning_deps.pending_repo,
                 cache_repo=cache_repo,
                 include_deleted=include_deleted,
-                ignored_fields=set(planning_bundle.match_spec.match.ignored_fields),
+                ignored_fields=set(match_spec.match.ignored_fields),
             )
             matched_with_pending = chain(matched_rows, pending_rows)
 
-            resolver = ResolveCore(
-                planning_bundle.resolve_rules,
-                planning_bundle.link_rules,
-                identity_repo=planning_deps.identity_repo,
-                pending_repo=planning_deps.pending_repo,
-                settings=planning_deps.resolver_settings,
-                catalog=catalog,
-                sink_spec=planning_bundle.sink_spec,
-            )
             resolve_usecase = ResolveUseCase(
                 report_items_limit=report_items_limit,
                 include_resolved_items=False,
@@ -133,9 +125,8 @@ class ImportPlanService:
             resolved_rows = iter_ok(
                 resolve_usecase.iter_resolved(
                     matched_source=matched_with_pending,
-                    resolver=resolver,
+                    resolve_stage=resolve_stage,
                     dataset=dataset,
-                    catalog=catalog,
                 )
             )
 

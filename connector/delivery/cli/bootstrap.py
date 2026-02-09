@@ -171,8 +171,8 @@ def build_pipeline_context(
     planning_deps = dataset_spec.build_planning_deps(conn, settings)
 
     map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
-        enrich_deps,
-        catalog,
+        enrich_deps=enrich_deps,
+        catalog=catalog,
     )
 
     row_source = dataset_spec.build_record_source(csv_has_header=csv_has_header)

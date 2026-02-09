@@ -4,26 +4,26 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.transform.dsl.specs import MatchSpec, SinkSpec
-
+from connector.domain.dsl.specs import (
+    EnrichSpec,
+    MappingSpec,
+    MatchSpec,
+    NormalizeSpec,
+    ResolveSpec,
+    SinkSpec,
+)
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
-from connector.domain.transform.matcher.rules import LinkRules, ResolveRules
+from connector.domain.transform.stages.stages import (
+    EnrichStage,
+    MapStage,
+    MatchStage,
+    NormalizeStage,
+    ResolveStage,
+)
 from connector.domain.ports.target.execution import RequestSpec, ExecutionResult
-from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.infra.cache.cache_spec import CacheSpec
 
-@dataclass(frozen=True)
-class PlanningBundle:
-    """
-    Назначение:
-        Набор правил для planning (match/resolve/link).
-    """
-
-    match_spec: MatchSpec
-    resolve_rules: ResolveRules
-    link_rules: LinkRules
-    sink_spec: SinkSpec | None = None
 
 class ApplyAdapter(Protocol):
     """
@@ -44,6 +44,7 @@ class ApplyAdapter(Protocol):
         """
         ...
 
+
 @dataclass(frozen=True)
 class ReportAdapter:
     """
@@ -54,25 +55,73 @@ class ReportAdapter:
     conflict_code: str
     conflict_field: str
 
+
 class DatasetSpec(Protocol):
     """
     Назначение:
         Контракт плагина датасета: transform/planning/apply/report адаптеры.
     """
 
+    dataset_name: str
+
     def build_planning_deps(self, conn, settings) -> PlanningDependencies: ...
     def build_enrich_deps(self, conn, settings, secret_store=None): ...
+    def build_map_spec(self, settings=None) -> MappingSpec: ...
+    def build_normalize_spec(self, settings=None) -> NormalizeSpec: ...
+    def build_enrich_spec(self, settings=None) -> EnrichSpec: ...
+    def build_match_spec(self, settings=None) -> MatchSpec: ...
+    def build_resolve_spec(self, settings=None) -> ResolveSpec: ...
+    def build_sink_spec(self, settings=None) -> SinkSpec | None: ...
+    def build_map_stage(
+        self,
+        *,
+        catalog: ErrorCatalog,
+    ) -> MapStage: ...
+    def build_normalize_stage(
+        self,
+        *,
+        catalog: ErrorCatalog,
+    ) -> NormalizeStage: ...
+    def build_enrich_stage(
+        self,
+        *,
+        catalog: ErrorCatalog,
+        enrich_deps,
+    ) -> EnrichStage: ...
+    def build_match_stage(
+        self,
+        *,
+        planning_deps: PlanningDependencies,
+        catalog: ErrorCatalog,
+        include_deleted: bool,
+        settings=None,
+    ) -> MatchStage: ...
+    def build_resolve_stage(
+        self,
+        *,
+        planning_deps: PlanningDependencies,
+        catalog: ErrorCatalog,
+        settings=None,
+    ) -> ResolveStage: ...
     def build_transform_stages(
         self,
+        *,
         enrich_deps,
         catalog: ErrorCatalog,
     ) -> tuple[MapStage, NormalizeStage, EnrichStage]: ...
+    def build_planning_stages(
+        self,
+        *,
+        planning_deps: PlanningDependencies,
+        catalog: ErrorCatalog,
+        include_deleted: bool,
+        settings=None,
+    ) -> tuple[MatchStage, ResolveStage]: ...
     def build_cache_specs(self) -> list[CacheSpec]: ...
     def build_record_source(
         self,
         csv_has_header: bool,
     ) -> Iterable[SourceRecord]: ...
-    def build_planning_bundle(self, settings=None) -> PlanningBundle: ...
     def get_report_adapter(self) -> ReportAdapter: ...
     def get_apply_adapter(self) -> ApplyAdapter: ...
     def get_diagnostic_catalog(self, strict: bool) -> ErrorCatalog: ...

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from connector.datasets.spec import DatasetSpec
-from connector.domain.transform.matcher.rules import LinkRules
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.datasets.employees.spec import make_employees_spec
 
@@ -41,17 +40,17 @@ def build_identity_index_plan(
     keys_by_dataset: dict[str, set[str]] = {}
     id_field_by_dataset: dict[str, str] = {}
     for spec in list_specs(secrets=secrets):
-        rules: LinkRules = spec.build_planning_bundle().link_rules
-        for field_rule in rules.fields:
-            dataset = field_rule.target_dataset
-            if dataset in id_field_by_dataset and id_field_by_dataset[dataset] != field_rule.target_id_field:
+        resolve_spec = spec.build_resolve_spec()
+        for link_spec in resolve_spec.resolve.links:
+            dataset = link_spec.target_dataset
+            if dataset in id_field_by_dataset and id_field_by_dataset[dataset] != link_spec.target_id_field:
                 raise ValueError(
                     "conflicting target_id_field for dataset "
-                    f"{dataset}: {id_field_by_dataset[dataset]} vs {field_rule.target_id_field}"
+                    f"{dataset}: {id_field_by_dataset[dataset]} vs {link_spec.target_id_field}"
                 )
-            id_field_by_dataset.setdefault(dataset, field_rule.target_id_field)
+            id_field_by_dataset.setdefault(dataset, link_spec.target_id_field)
             keys = keys_by_dataset.setdefault(dataset, set())
-            keys.update(key_rule.name for key_rule in field_rule.resolve_keys)
-            for dedup in field_rule.dedup_rules:
+            keys.update(key_rule.name for key_rule in link_spec.resolve_keys)
+            for dedup in link_spec.dedup_rules:
                 keys.update(dedup)
     return keys_by_dataset, id_field_by_dataset
