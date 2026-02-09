@@ -6,8 +6,8 @@ from typer.testing import CliRunner
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.datasets.cache_registry import list_cache_specs
-from connector.infra.cache.schema import ensure_cache_ready
-from connector.infra.cache.repository import SqliteCacheRepository
+from connector.infra.cache.factory import build_sqlite_cache_gateway
+from connector.infra.cache.gateway import SqliteCacheGateway
 
 from connector.main import app
 
@@ -52,11 +52,10 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
     return result, report_path
 
 
-def _build_repo(conn) -> SqliteCacheRepository:
+def _build_repo(conn) -> SqliteCacheGateway:
     engine = SqliteEngine(conn)
     cache_specs = list_cache_specs()
-    ensure_cache_ready(engine, cache_specs)
-    return SqliteCacheRepository(engine, cache_specs)
+    return build_sqlite_cache_gateway(engine=engine, cache_specs=cache_specs)
 
 
 def _seed_org(tmp_path: Path, org_ouid: int) -> None:

@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 
 from connector.datasets.cache_registry import list_cache_specs
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.repository import SqliteCacheRepository
+from connector.infra.cache.factory import build_sqlite_cache_gateway
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.main import app
 
@@ -193,7 +193,7 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
     try:
         engine = SqliteEngine(conn)
         cache_specs = list_cache_specs()
-        repo = SqliteCacheRepository(engine, cache_specs)
+        repo = build_sqlite_cache_gateway(engine=engine, cache_specs=cache_specs)
         users_count = repo.count("employees")
         org_count = repo.count("organizations")
     finally:
