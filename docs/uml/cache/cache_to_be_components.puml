@@ -10,18 +10,19 @@ skinparam component<<new>> {
 
 package "Dataset Wiring" {
   [EmployeesSpec] as EmployeesSpec
-  [build_runtime_deps] as BuildRuntimeDeps
-  [TransformRuntimeDeps] as RuntimeDeps
+  [build_enrich_deps] as BuildEnrichDeps
+  [build_planning_deps] as BuildPlanningDeps
+  [TransformProviderDeps] as TransformDeps
+  [PlanningDependencies] as PlanningDeps
 }
 
 package "Composition Root (Delivery/Bootstrap)" {
   [build_cache_gateway] <<new>> as BuildCacheGateway
+  [build_pipeline_context] as BuildPipelineContext
 }
 
 package "Domain Ports" {
-  interface "CacheRepositoryProtocol" as CacheRepoPort
-  interface "IdentityRepositoryPort" as IdentityRepoPort
-  interface "PendingLinksRepositoryPort" as PendingRepoPort
+  interface "CacheGatewayPort" <<new>> as CacheGatewayPort
 }
 
 package "Infra Cache Gateway" {
@@ -32,36 +33,46 @@ package "Infra Cache Gateway" {
 }
 
 package "Use Cases" {
-  [Map/Normalize/Enrich] as TransformStages
-  [Match/Resolve] as PlanningStages
+  [Map/Normalize/Enrich stages] as TransformStages
+  [Match/Resolve stages] as PlanningStages
+  [ImportPlanService] as ImportPlanService
 }
 
-EmployeesSpec --> BuildRuntimeDeps
-BuildRuntimeDeps --> RuntimeDeps
+EmployeesSpec --> BuildEnrichDeps
+EmployeesSpec --> BuildPlanningDeps
+BuildEnrichDeps --> TransformDeps
+BuildPlanningDeps --> PlanningDeps
 BuildCacheGateway --> SqliteGateway
-BuildCacheGateway --> BuildRuntimeDeps : injects ports
+BuildPipelineContext --> BuildCacheGateway
+BuildPipelineContext --> BuildEnrichDeps : injects cache_gateway
+BuildPipelineContext --> BuildPlanningDeps : injects cache_gateway
 
-SqliteGateway ..|> CacheRepoPort
-SqliteGateway ..|> IdentityRepoPort
-SqliteGateway ..|> PendingRepoPort
+SqliteGateway ..|> CacheGatewayPort
 SqliteGateway --> SqliteCacheRepo : delegates
 SqliteGateway --> SqliteIdentityRepo : delegates
 SqliteGateway --> SqlitePendingRepo : delegates
 
-RuntimeDeps --> CacheRepoPort
-RuntimeDeps --> IdentityRepoPort
-RuntimeDeps --> PendingRepoPort
+TransformDeps --> CacheGatewayPort
+PlanningDeps --> CacheGatewayPort
 
-TransformStages --> CacheRepoPort
-PlanningStages --> IdentityRepoPort
-PlanningStages --> PendingRepoPort
+TransformStages --> CacheGatewayPort
+PlanningStages --> CacheGatewayPort
+ImportPlanService --> CacheGatewayPort
 
-note bottom of RuntimeDeps
+note bottom of TransformDeps
 Benefits:
-- no direct SQLite dependency in build_runtime_deps
+- no direct SQLite dependency in spec deps builders
 - SQLite selection only in composition root
-- one deps builder in spec
-- separated ports remain (ISP-safe)
+- one cache gateway port for transform/planning/apply
+- one domain cache boundary instead of multiple ports
+end note
+
+note right of SqliteGateway
+Internal delegates keep
+storage concerns separated:
+- snapshot cache
+- identity index
+- pending links
 end note
 
 @enduml
