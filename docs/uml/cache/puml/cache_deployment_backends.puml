@@ -1,0 +1,50 @@
+@startuml
+title Cache Deployment - Current and Target Backend Swap
+
+skinparam linetype ortho
+
+node "CLI / Commands" as CLI {
+  component "enrich/match/resolve/\ncache refresh/apply" as Commands
+}
+
+node "Application Runtime" as APP {
+  component "UseCases + Stages" as Stages
+  component "Role-based cache ports\n(EnrichLookupPort, MatchRuntimePort,\nResolveRuntimePort, ApplyRuntimePort, CacheAdminPort)" as Ports
+  component "cache_gateway object\n(SqliteCacheGateway)" as Gateway
+}
+
+node "Current Infra" as CUR {
+  database "SQLite" as SqliteDB
+  component "SqliteCacheRepository" as SqliteCacheRepo
+  component "SqliteIdentityRepository" as SqliteIdentityRepo
+  component "SqlitePendingLinksRepository" as SqlitePendingRepo
+}
+
+node "Target Infra (future)" as FUT {
+  database "Redis / alternative store" as RedisDB
+  component "RedisCacheGateway\n(planned)" as RedisGateway
+}
+
+CLI --> Commands
+Commands --> Stages
+Stages ..> Ports
+Ports <.. Gateway
+Gateway *--> SqliteCacheRepo
+Gateway *--> SqliteIdentityRepo
+Gateway *--> SqlitePendingRepo
+
+SqliteCacheRepo --> SqliteDB
+SqliteIdentityRepo --> SqliteDB
+SqlitePendingRepo --> SqliteDB
+
+RedisGateway --> RedisDB
+Ports <.. RedisGateway : same role contracts
+
+note bottom of APP
+Backend swap should not affect
+stage/use-case contracts while
+role ports remain stable.
+end note
+
+@enduml
+

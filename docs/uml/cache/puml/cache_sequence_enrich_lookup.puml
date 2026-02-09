@@ -1,0 +1,45 @@
+@startuml
+title Cache Sequence - Enrich Lookup
+
+actor CLI
+participant "Enrich command" as Command
+participant EnrichUseCase
+participant EnrichStage
+participant EnricherEngine
+participant EnricherCore
+participant ProviderGateway
+participant "EnrichLookupPort\n(cache_gateway)" as Port
+participant SqliteCacheGateway as Gateway
+participant SqliteCacheRepository as Repo
+database "SQLite DB" as DB
+
+CLI -> Command: run enrich
+Command -> EnrichUseCase: run()
+EnrichUseCase -> EnrichStage: run(stream)
+EnrichStage -> EnricherEngine: enrich(result)
+EnricherEngine -> EnricherCore: enrich(result)
+EnricherCore -> ProviderGateway: lookup("cache.by_field", deps, value)
+ProviderGateway -> Port: find(dataset, filters, include_deleted, mode)
+Port -> Gateway: find(...)
+Gateway -> Repo: find(...)
+Repo -> DB: SELECT ... FROM dataset_table
+DB --> Repo: rows
+Repo --> Gateway: list[dict]
+Gateway --> Port: list[dict]
+Port --> ProviderGateway: list[dict]
+ProviderGateway --> EnricherCore: candidates
+
+alt candidates found
+  EnricherCore -> EnricherCore: merge candidate(s)
+else no candidates
+  EnricherCore -> EnricherCore: add warning/error by policy
+end
+
+EnricherCore --> EnricherEngine: TransformResult
+EnricherEngine --> EnrichStage: TransformResult
+EnrichStage --> EnrichUseCase: stream item
+EnrichUseCase --> Command: report item
+Command --> CLI: done
+
+@enduml
+

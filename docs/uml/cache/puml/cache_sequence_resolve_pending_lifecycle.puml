@@ -1,0 +1,65 @@
+@startuml
+title Cache Sequence - Resolve Pending Lifecycle
+
+actor CLI
+participant "Resolve command" as Command
+participant ResolveUseCase
+participant ResolveStage
+participant ResolveEngine
+participant ResolveCore
+participant "ResolveRuntimePort\n(cache_gateway)" as Port
+participant SqliteCacheGateway as Gateway
+participant SqliteIdentityRepository as IdentityRepo
+participant SqlitePendingLinksRepository as PendingRepo
+database "SQLite DB" as DB
+
+CLI -> Command: run resolve
+Command -> ResolveUseCase: iter_resolved(...)
+ResolveUseCase -> ResolveStage: run(stream)
+ResolveStage -> ResolveEngine: resolve(matched_row, ...)
+ResolveEngine -> ResolveCore: resolve(matched_row, ...)
+
+ResolveCore -> Port: find_candidates(dataset, identity_key)
+Port -> Gateway: find_candidates(...)
+Gateway -> IdentityRepo: find_candidates(...)
+IdentityRepo -> DB: SELECT resolved_id ...
+DB --> IdentityRepo: candidates
+IdentityRepo --> Gateway: candidates
+Gateway --> Port: candidates
+Port --> ResolveCore: candidates
+
+alt unresolved / no candidate
+  ResolveCore -> Port: add_pending(dataset, source_row_id, field, lookup_key, expires_at, payload)
+  Port -> Gateway: add_pending(...)
+  Gateway -> PendingRepo: add_pending(...)
+  PendingRepo -> DB: INSERT/UPDATE pending_links
+  DB --> PendingRepo: pending_id
+  PendingRepo --> Gateway: pending_id
+  Gateway --> Port: pending_id
+else resolved candidate found
+  ResolveCore -> Port: mark_resolved_for_source(source_row_id)
+  Port -> Gateway: mark_resolved_for_source(...)
+  Gateway -> PendingRepo: mark_resolved_for_source(...)
+  PendingRepo -> DB: UPDATE pending_links SET status=resolved ...
+  DB --> PendingRepo: ok
+  PendingRepo --> Gateway: ok
+  Gateway --> Port: ok
+end
+
+ResolveCore -> Port: sweep_expired(now, reason)
+Port -> Gateway: sweep_expired(...)
+Gateway -> PendingRepo: sweep_expired(...)
+PendingRepo -> DB: SELECT+UPDATE pending_links expired
+DB --> PendingRepo: expired rows
+PendingRepo --> Gateway: list[PendingLink]
+Gateway --> Port: list[PendingLink]
+Port --> ResolveCore: expired rows
+
+ResolveCore --> ResolveEngine: (ResolvedRow | None, errors, warnings)
+ResolveEngine --> ResolveStage: tuple
+ResolveStage --> ResolveUseCase: stream item
+ResolveUseCase --> Command: report item
+Command --> CLI: done
+
+@enduml
+
