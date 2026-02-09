@@ -12,12 +12,13 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.models import DiagnosticItem, DiagnosticStage, RowRef
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.transform.dsl.engine import TransformationEngine
-from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
-from connector.domain.transform.dsl.diagnostics import append_dsl_issues
-from connector.domain.transform.dsl.helpers import apply_ops
+from connector.domain.dsl.engine import TransformationEngine
+from connector.domain.dsl.build_options import MapDslBuildOptions
+from connector.domain.dsl.issues import DslIssue, DslSeverity
+from connector.domain.dsl.diagnostics import append_dsl_issues
+from connector.domain.dsl.helpers import apply_ops
 from connector.domain.transform.common.values import read_value
-from connector.domain.transform.dsl.specs import MappingRule, MetaRule, MappingSpec, SinkSpec
+from connector.domain.dsl.specs import MappingRule, MetaRule, MappingSpec, SinkSpec
 from connector.domain.transform.common.sink_schema import validate_sink_row
 
 
@@ -46,11 +47,13 @@ class MapperCore:
         engine: TransformationEngine,
         *,
         sink_spec: SinkSpec | None = None,
+        options: MapDslBuildOptions | None = None,
     ) -> None:
         self.spec = spec
         self.engine = engine
         self._source_index = {name: idx for idx, name in enumerate(spec.source_columns or [])}
         self.sink_spec = sink_spec
+        self.options = options or MapDslBuildOptions()
 
     def map_record(self, record: SourceRecord, *, catalog: ErrorCatalog) -> TransformResult[Mapping[str, Any]]:
         """

@@ -8,9 +8,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from connector.domain.transform.dsl.issues import DslIssue, DslSeverity
-from connector.domain.transform.dsl.registry import OperationRegistry
-from connector.domain.transform.dsl.specs import OperationCall
+from connector.domain.dsl.issues import DslIssue, DslSeverity
+from connector.domain.dsl.registry import OperationRegistry
+from connector.domain.dsl.specs import OperationCall
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ class TransformationEngine:
         Назначение:
             Быстрый конструктор движка с базовым реестром операций.
         """
-        from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
+        from connector.domain.dsl.registry import OperationRegistry, register_core_ops
 
         registry = OperationRegistry()
         register_core_ops(registry)

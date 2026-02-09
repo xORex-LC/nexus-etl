@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from connector.domain.transform.dsl.engine import TransformationEngine
-from connector.domain.transform.dsl.issues import DslIssue
-from connector.domain.transform.dsl.specs import OperationCall
+from connector.domain.dsl.engine import TransformationEngine
+from connector.domain.dsl.issues import DslIssue
+from connector.domain.dsl.specs import OperationCall
 
 
 def apply_ops(

@@ -6,13 +6,14 @@
 from __future__ import annotations
 
 from connector.domain.models import Identity
+from connector.domain.dsl.build_options import MatchDslBuildOptions
 from connector.domain.transform.matcher.rules import (
     FuzzyScoringRules,
     IdentityRule,
     MatchingRules,
     SourceDedupRules,
 )
-from connector.domain.transform.dsl.specs import MatchRule, MatchSpec
+from connector.domain.dsl.specs import MatchRule, MatchSpec
 
 
 class MatchDsl:
@@ -21,10 +22,20 @@ class MatchDsl:
         Компилирует MatchSpec в MatchingRules без изменения matcher-core.
     """
 
+    def __init__(self, *, options: MatchDslBuildOptions | None = None) -> None:
+        self.options = options or MatchDslBuildOptions()
+
     def compile(self, spec: MatchSpec) -> MatchingRules:
         identity_rules = tuple(_build_identity_rule(rule) for rule in spec.match.identity_rules)
         if not identity_rules:
             raise ValueError("match.identity_rules must not be empty")
+        if self.options.require_primary_identity_rule:
+            missing_primary = [rule.name for rule in spec.match.identity_rules if not rule.primary]
+            if missing_primary:
+                raise ValueError(
+                    "match.identity_rules[].primary is required by build options; missing for: "
+                    + ", ".join(missing_primary)
+                )
         source_dedup = SourceDedupRules(
             enabled=spec.match.source_dedup.enabled,
             on_duplicate=spec.match.source_dedup.on_duplicate,

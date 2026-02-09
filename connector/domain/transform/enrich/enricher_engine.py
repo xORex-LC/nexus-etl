@@ -10,10 +10,11 @@ from typing import Generic, TypeVar
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretStoreProtocol
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.dsl.registry import OperationRegistry, register_core_ops
-from connector.domain.transform.dsl.specs import EnrichSpec, SinkSpec
+from connector.domain.dsl.build_options import EnrichDslBuildOptions
+from connector.domain.dsl.registry import OperationRegistry, register_core_ops
+from connector.domain.dsl.specs import EnrichSpec, SinkSpec
 from connector.domain.transform.enrich.enricher_core import EnricherCore
-from connector.domain.transform.enrich.enricher_dsl import EnrichDslBuildOptions, EnricherDsl
+from connector.domain.transform.enrich.enricher_dsl import EnricherDsl
 from connector.domain.transform.providers import ProviderGateway
 
 T = TypeVar("T")
@@ -40,6 +41,8 @@ class EnricherEngine(Generic[T, D]):
         sink_spec: SinkSpec | None = None,
         run_id: str | None = None,
     ) -> None:
+        # NOTE: registry/providers are test and migration hooks.
+        # DatasetSpec production path should rely on defaults and build options.
         if registry is None:
             registry = OperationRegistry()
             register_core_ops(registry)

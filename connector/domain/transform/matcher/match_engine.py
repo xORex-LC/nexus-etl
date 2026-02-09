@@ -9,7 +9,8 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.identity import IdentityRepository
 from connector.domain.ports.cache.repository import CacheRepositoryProtocol
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.dsl.specs import MatchSpec
+from connector.domain.dsl.build_options import MatchDslBuildOptions
+from connector.domain.dsl.specs import MatchSpec
 from connector.domain.transform.matcher.match_core import MatchCore
 from connector.domain.transform.matcher.match_dsl import MatchDsl
 from connector.domain.transform.matcher.match_models import MatchedRow
@@ -33,8 +34,9 @@ class MatchEngine:
         catalog: ErrorCatalog,
         identity_repo: IdentityRepository | None = None,
         dsl: MatchDsl | None = None,
+        options: MatchDslBuildOptions | None = None,
     ) -> None:
-        self.dsl = dsl or MatchDsl()
+        self.dsl = dsl or MatchDsl(options=options)
         self.matching_rules = self.dsl.compile(spec)
         self.core = MatchCore(
             dataset=dataset,

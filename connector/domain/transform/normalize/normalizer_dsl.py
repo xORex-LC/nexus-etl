@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.transform.dsl.engine import TransformationEngine
-from connector.domain.transform.dsl.registry import OperationRegistry
-from connector.domain.transform.dsl.specs import NormalizeSpec, SinkSpec
+from connector.domain.dsl.build_options import NormalizeDslBuildOptions
+from connector.domain.dsl.engine import TransformationEngine
+from connector.domain.dsl.registry import OperationRegistry
+from connector.domain.dsl.specs import NormalizeSpec, SinkSpec
 from connector.domain.transform.normalize.normalizer_core import NormalizerCore, RowBuilder
 
 
@@ -23,6 +24,7 @@ class NormalizerDsl:
         *,
         registry: OperationRegistry | None = None,
         engine: TransformationEngine | None = None,
+        options: NormalizeDslBuildOptions | None = None,
     ) -> None:
         if engine is None:
             if registry is None:
@@ -30,6 +32,7 @@ class NormalizerDsl:
             else:
                 engine = TransformationEngine(registry)
         self.engine = engine
+        self.options = options or NormalizeDslBuildOptions()
 
     def compile(
         self,
@@ -45,4 +48,5 @@ class NormalizerDsl:
             catalog=catalog,
             sink_spec=sink_spec,
             row_builder=row_builder,
+            options=self.options,
         )

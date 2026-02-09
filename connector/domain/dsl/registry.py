@@ -53,7 +53,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     Назначение:
         Зарегистрировать базовый набор операций DSL.
     """
-    from connector.domain.transform.dsl.ops import (
+    from connector.domain.dsl.ops import (
         op_trim,
         op_lower,
         op_upper,
