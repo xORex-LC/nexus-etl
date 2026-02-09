@@ -3,13 +3,13 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any, Iterator
 
-from connector.domain.ports.cache.repository import CacheMeta, CacheRepositoryProtocol, UpsertResult
+from connector.domain.ports.cache.models import CacheMeta, UpsertResult
 from connector.infra.cache.cache_spec import CacheSpec
 from connector.infra.cache.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
 
-class SqliteCacheRepository(CacheRepositoryProtocol):
+class SqliteCacheRepository:
     """
     Назначение/ответственность:
         Реализация репозитория кэша на SQLite.

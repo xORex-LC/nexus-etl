@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from connector.domain.ports.cache.identity import IdentityRepository
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
 
-class SqliteIdentityRepository(IdentityRepository):
+class SqliteIdentityRepository:
     """
     Назначение/ответственность:
         SQLite реализация identity_index.
