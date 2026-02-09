@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Iterable, Iterator
 
-from connector.domain.ports.cache.identity import IdentityRepository
+from connector.domain.ports.cache.gateway import CacheGatewayPort
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.stages.stages import MatchStage
@@ -21,7 +21,7 @@ class MatchRuntime:
     match_stage: MatchStage
     match_usecase: MatchUseCase
     runtime_scope: str
-    identity_repo: IdentityRepository
+    cache_gateway: CacheGatewayPort
 
 
 @contextmanager
@@ -29,7 +29,7 @@ def open_match_runtime(
     *,
     run_id: str,
     match_stage: MatchStage,
-    identity_repo: IdentityRepository,
+    cache_gateway: CacheGatewayPort,
     report_items_limit: int,
     include_matched_items: bool,
     batch_size: int,
@@ -50,12 +50,12 @@ def open_match_runtime(
         match_stage=match_stage,
         match_usecase=match_usecase,
         runtime_scope=runtime_scope,
-        identity_repo=identity_repo,
+        cache_gateway=cache_gateway,
     )
     try:
         yield runtime
     finally:
-        identity_repo.clear_runtime_scope(runtime_scope)
+        cache_gateway.clear_runtime_scope(runtime_scope)
 
 
 def iter_matched_ok(

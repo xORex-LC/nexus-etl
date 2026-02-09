@@ -10,7 +10,6 @@ from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import log_sqlite_cache_error, result_with
 from connector.delivery.cli.bootstrap import (
     build_cache,
-    build_identity_repos,
     build_api_client,
     build_api_executor,
     build_diagnostics_catalog,
@@ -67,8 +66,9 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     identity_keys: dict[str, set[str]] = {}
     identity_id_fields: dict[str, str] = {}
     try:
-        conn, engine, _cache_repo, _cache_specs = build_cache(settings)
-        identity_repo, pending_repo = build_identity_repos(engine)
+        conn, _engine, cache_gateway, _cache_specs = build_cache(settings)
+        identity_repo = cache_gateway
+        pending_repo = cache_gateway
         identity_keys, identity_id_fields = build_identity_index_plan()
     except sqlite3.Error as exc:
         log_sqlite_cache_error(logger=ctx.logger, run_id=run_id, exc=exc)

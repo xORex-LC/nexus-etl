@@ -12,9 +12,8 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.transform.matcher.identity_keys import format_identity_key
-from connector.domain.ports.cache.repository import CacheRepositoryProtocol, UpsertResult
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.pending_links import PendingLinksRepository
+from connector.domain.ports.cache.gateway import CacheGatewayPort
+from connector.domain.ports.cache.repository import UpsertResult
 from connector.domain.ports.target.read import TargetPagedReaderProtocol
 from connector.infra.logging.setup import logEvent
 
@@ -25,19 +24,19 @@ class CacheRefreshUseCase:
         Обновление кэша из целевой системы через порты read/repo.
     Взаимодействия:
         - TargetPagedReaderProtocol для чтения страниц.
-        - CacheRepositoryProtocol для записи в кэш.
+        - CacheGatewayPort для записи в кэш и runtime-состояния.
         - CacheSyncAdapterProtocol для маппинга и upsert.
     """
 
     def __init__(
         self,
         target_reader: TargetPagedReaderProtocol,
-        cache_repo: CacheRepositoryProtocol,
+        cache_repo: CacheGatewayPort,
         adapters: list[CacheSyncAdapterProtocol],
-        identity_repo: IdentityRepository | None = None,
+        identity_repo: CacheGatewayPort | None = None,
         identity_keys: dict[str, set[str]] | None = None,
         identity_id_fields: dict[str, str] | None = None,
-        pending_repo: PendingLinksRepository | None = None,
+        pending_repo: CacheGatewayPort | None = None,
     ):
         self.target_reader = target_reader
         self.cache_repo = cache_repo

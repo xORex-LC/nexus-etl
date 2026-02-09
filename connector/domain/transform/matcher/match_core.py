@@ -30,8 +30,7 @@ from connector.domain.transform.matcher.rules import (
     ResolveRules,
 )
 from connector.domain.transform.matcher.scoring import is_tie, rank_candidates
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.repository import CacheRepositoryProtocol
+from connector.domain.ports.cache.gateway import CacheGatewayPort
 from connector.domain.transform.core.result import TransformResult
 
 
@@ -45,12 +44,12 @@ class MatchCore:
     def __init__(
         self,
         dataset: str,
-        cache_repo: CacheRepositoryProtocol,
+        cache_repo: CacheGatewayPort,
         matching_rules: MatchingRules,
         resolve_rules: ResolveRules,
         include_deleted: bool,
         catalog: ErrorCatalog,
-        identity_repo: IdentityRepository | None = None,
+        identity_repo: CacheGatewayPort | None = None,
     ) -> None:
         self.dataset = dataset
         self.cache_repo = cache_repo

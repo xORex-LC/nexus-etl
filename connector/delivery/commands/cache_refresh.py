@@ -10,7 +10,6 @@ from connector.delivery.commands.common import ensure_supported_cache_dataset, r
 from connector.delivery.cli.bootstrap import (
     build_cache,
     build_api_reader,
-    build_identity_repos,
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -41,7 +40,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
     conn = None
     try:
-        conn, engine, cache_repo, _cache_specs = build_cache(settings)
+        conn, _engine, cache_gateway, _cache_specs = build_cache(settings)
+        cache_repo = cache_gateway
         unsupported_result = ensure_supported_cache_dataset(cache_repo, opts.dataset)
         if unsupported_result is not None:
             return unsupported_result
@@ -53,7 +53,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
         adapters = list_cache_sync_adapters()
         identity_keys, identity_id_fields = build_identity_index_plan()
-        identity_repo, pending_repo = build_identity_repos(engine)
+        identity_repo = cache_gateway
+        pending_repo = cache_gateway
 
         cache_refresh = CacheRefreshUseCase(
             reader,

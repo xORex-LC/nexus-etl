@@ -1,12 +1,10 @@
-"""Порты доступа к кэшу (репозиторий + идентичности + pending)."""
+"""Порты доступа к кэшу."""
 
-from connector.domain.ports.cache.repository import CacheRepositoryProtocol
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.pending_links import PendingLinksRepository, PendingLink
+from connector.domain.ports.cache.gateway import CacheGatewayPort
+from connector.domain.ports.cache.pending_links import PendingLink, PendingRow
 
 __all__ = [
-    "CacheRepositoryProtocol",
-    "IdentityRepository",
-    "PendingLinksRepository",
+    "CacheGatewayPort",
     "PendingLink",
+    "PendingRow",
 ]

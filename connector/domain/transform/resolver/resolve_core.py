@@ -27,8 +27,8 @@ from connector.domain.transform.matcher.match_models import (
     resolve_decision_status,
 )
 from connector.domain.transform.matcher.rules import LinkFieldRule, LinkRules, ResolveRules
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.pending_links import PendingLink, PendingLinksRepository
+from connector.domain.ports.cache.gateway import CacheGatewayPort
+from connector.domain.ports.cache.pending_links import PendingLink
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,8 @@ class ResolveCore:
         resolve_rules: ResolveRules,
         link_rules: LinkRules | None = None,
         *,
-        identity_repo: IdentityRepository | None = None,
-        pending_repo: PendingLinksRepository | None = None,
+        identity_repo: CacheGatewayPort | None = None,
+        pending_repo: CacheGatewayPort | None = None,
         settings: ResolverSettings | None = None,
         catalog: ErrorCatalog,
         sink_spec: SinkSpec | None = None,
@@ -489,7 +489,7 @@ def _resolve_with_rules(
     rule: LinkFieldRule,
     key_values: dict[str, str],
     desired_state: dict[str, Any],
-    identity_repo: IdentityRepository,
+    identity_repo: CacheGatewayPort,
     batch_index: dict[str, dict[str, list[str]]] | None,
 ) -> tuple[str | None, str | None, str | None]:
     """
@@ -529,7 +529,7 @@ def _apply_dedup_rules(
     rule: LinkFieldRule,
     key_values: dict[str, str],
     desired_state: dict[str, Any],
-    identity_repo: IdentityRepository,
+    identity_repo: CacheGatewayPort,
     batch_index: dict[str, dict[str, list[str]]] | None,
 ) -> list[str]:
     """
@@ -566,7 +566,7 @@ def _apply_dedup_rules(
 
 def _lookup_candidates(
     batch_index: dict[str, dict[str, list[str]]] | None,
-    identity_repo: IdentityRepository,
+    identity_repo: CacheGatewayPort,
     dataset: str,
     lookup_key: str,
 ) -> list[str]:

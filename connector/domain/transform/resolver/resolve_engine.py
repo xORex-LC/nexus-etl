@@ -8,8 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.pending_links import PendingLinksRepository
+from connector.domain.ports.cache.gateway import CacheGatewayPort
 from connector.domain.dsl.build_options import ResolveDslBuildOptions
 from connector.domain.dsl.specs import ResolveSpec, SinkSpec
 from connector.domain.transform.resolver.resolve_core import ResolveCore
@@ -28,8 +27,8 @@ class ResolveEngine:
         self,
         *,
         spec: ResolveSpec,
-        identity_repo: IdentityRepository | None,
-        pending_repo: PendingLinksRepository | None,
+        identity_repo: CacheGatewayPort | None,
+        pending_repo: CacheGatewayPort | None,
         settings: ResolverSettings | None,
         catalog: ErrorCatalog,
         sink_spec: SinkSpec | None = None,
