@@ -7,10 +7,10 @@ from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.transform.core.iterators import iter_micro_batches
+from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.result_processor import PlanningResultProcessor
 from connector.domain.transform.stages.stages import ResolveStage
 
@@ -36,26 +36,26 @@ class ResolveUseCase:
     def iter_resolved(
         self,
         matched_source: Iterable[TransformResult],
-        resolver: ResolveCore,
+        resolve_stage: ResolveStage,
         *,
         dataset: str | None = None,
-        catalog: ErrorCatalog,
     ):
         """
         Назначение:
             Итератор разрешённых строк (для plan).
         """
-        return self._iter_resolved(matched_source, resolver, dataset=dataset, catalog=catalog)
+        return self._iter_resolved(matched_source, resolve_stage, dataset=dataset)
 
     def run(
         self,
         matched_source: Iterable[TransformResult],
-        resolver: ResolveCore,
+        resolve_stage: ResolveStage,
         dataset: str,
         report,
         catalog: ErrorCatalog,
     ) -> CommandResult:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
+        resolver = resolve_stage.resolver
         _report_expired(report, resolver.drain_expired(), resolver.settings, catalog)
         processor = PlanningResultProcessor(
             report=report,
@@ -67,7 +67,7 @@ class ResolveUseCase:
             should_skip=lambda r: _resolve_status(r) is None and r.row is None,
         )
 
-        for resolved in self._iter_resolved(matched_source, resolver, dataset=dataset, catalog=catalog):
+        for resolved in self._iter_resolved(matched_source, resolve_stage, dataset=dataset):
             _count_special_ops(report, resolved.errors, resolved.warnings)
             processor.process(resolved)
             _report_expired(report, resolver.drain_expired(), resolver.settings, catalog)
@@ -80,22 +80,20 @@ class ResolveUseCase:
     def _iter_resolved(
         self,
         matched_source: Iterable[TransformResult],
-        resolver: ResolveCore,
+        resolve_stage: ResolveStage,
         *,
         dataset: str | None = None,
-        catalog: ErrorCatalog,
     ):
-        stage = ResolveStage(resolver, catalog)
         for batch in iter_micro_batches(
             matched_source,
             batch_size=self.batch_size,
             flush_interval_ms=self.flush_interval_ms,
         ):
-            for resolved in stage.run(batch, dataset=dataset):
+            for resolved in resolve_stage.run(batch, dataset=dataset):
                 yield resolved
 
 
-def _purge_pending(resolver: ResolveCore) -> None:
+def _purge_pending(resolver) -> None:
     # Чистим обработанные pending-записи по retention, если включено.
     settings = resolver.settings
     if settings is None:

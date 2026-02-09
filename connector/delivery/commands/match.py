@@ -63,16 +63,20 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             pipeline_ctx.stage_pipeline.run(Extractor(pipeline_ctx.row_source, catalog=pipeline_ctx.catalog).run()),
             should_skip=lambda item: item.row is None,
         )
-
-        planning_bundle = dataset_spec.build_planning_bundle(settings=settings)
+        match_stage, _resolve_stage = dataset_spec.build_planning_stages(
+            planning_deps=planning_deps,
+            catalog=catalog,
+            include_deleted=include_deleted_value,
+            settings=settings,
+        )
+        identity_repo = planning_deps.identity_repo
+        if identity_repo is None:
+            raise ValueError("planning identity_repo is not configured")
 
         with open_match_runtime(
-            dataset=dataset_name,
-            include_deleted=include_deleted_value,
             run_id=run_id,
-            planning_deps=planning_deps,
-            planning_bundle=planning_bundle,
-            catalog=catalog,
+            match_stage=match_stage,
+            identity_repo=identity_repo,
             report_items_limit=report_items_limit_value,
             include_matched_items=include_matched_items_value,
             batch_size=settings.match_batch_size,
@@ -80,10 +84,9 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         ) as match_runtime:
             return match_runtime.match_usecase.run(
                 enriched_source=enriched_rows,
-                matcher=match_runtime.matcher,
+                match_stage=match_runtime.match_stage,
                 dataset=dataset_name,
                 report=report,
-                catalog=catalog,
                 run_scope=match_runtime.runtime_scope,
             )
     except sqlite3.Error as exc:
