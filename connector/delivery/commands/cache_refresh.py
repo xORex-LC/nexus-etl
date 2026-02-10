@@ -30,7 +30,7 @@ class Options:
     retry_backoff_seconds: float | None = None
     api_transport: object | None = None
     include_deleted: bool | None = None
-    include_dependencies: bool = True
+    include_dependencies: bool | None = None
     report_items_limit: int | None = None
     dataset: str | None = None
 
@@ -74,7 +74,11 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 report=report,
                 run_id=run_id,
                 include_deleted=opts.include_deleted,
-                include_dependencies=opts.include_dependencies,
+                include_dependencies=(
+                    opts.include_dependencies
+                    if opts.include_dependencies is not None
+                    else runtime_policy.refresh_with_deps_default
+                ),
                 report_items_limit=opts.report_items_limit or settings.report_items_limit,
                 api_base_url=base_url,
                 retries=opts.retries or settings.retries,

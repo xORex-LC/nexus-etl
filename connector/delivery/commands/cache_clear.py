@@ -19,7 +19,7 @@ from connector.usecases.cache_command_service import CacheCommandService
 @dataclass(frozen=True)
 class Options:
     dataset: str | None = None
-    cascade: bool = False
+    cascade: bool | None = None
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
@@ -27,18 +27,19 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
 
     try:
-        with open_cache(settings) as (_gateway, cache_roles, _cache_specs):
+        with open_cache(settings) as (_gateway, cache_roles, cache_dsl_bundle):
             unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
             if unsupported_result is not None:
                 return unsupported_result
             cache_clear = CacheClearUseCase(cache_roles.cache_admin)
             service = CacheCommandService(cache_roles.cache_admin, cache_clear=cache_clear)
+            runtime_policy = cache_dsl_bundle.runtime.policy
             result = service.clear(
                 ctx.logger,
                 report,
                 run_id,
                 dataset=opts.dataset,
-                cascade=opts.cascade,
+                cascade=opts.cascade if opts.cascade is not None else runtime_policy.clear_cascade_default,
             )
             exit_code = result.exit_code()
             if exit_code != 0:
