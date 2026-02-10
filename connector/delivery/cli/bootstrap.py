@@ -15,6 +15,7 @@ from connector.domain.transform.stages.stages import StagePipeline, MapStage, No
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.infra.cache.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.schema import ensure_cache_ready
 from connector.infra.cache.sqlite_engine import SqliteEngine
 from connector.infra.cache.factory import build_sqlite_cache_gateway
 from connector.infra.cache.gateway import SqliteCacheGateway
@@ -52,12 +53,13 @@ def build_dataset_spec(
 def build_cache(settings: Settings) -> tuple[sqlite3.Connection, SqliteEngine, SqliteCacheGateway, list[Any]]:
     """
     Назначение:
-        Сконфигурировать cache-хранилище (sqlite) и gateway.
+        Сконфигурировать cache-хранилище (sqlite) и репозиторий.
     """
     cache_db_path = getCacheDbPath(settings.cache_dir)
     conn = openCacheDb(cache_db_path)
     engine = SqliteEngine(conn)
     cache_specs = list_cache_specs()
+    ensure_cache_ready(engine, cache_specs)
     gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=cache_specs)
     return conn, engine, gateway, cache_specs
 

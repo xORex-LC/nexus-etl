@@ -12,8 +12,10 @@ from connector.domain.transform.stages.stages import (
     ResolveStage,
 )
 from connector.domain.transform.providers import TransformProviderDeps
-from connector.infra.cache.factory import build_sqlite_cache_gateway
 from connector.infra.cache.gateway import SqliteCacheGateway
+from connector.infra.cache.identity_repository import SqliteIdentityRepository
+from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
+from connector.infra.cache.repository import SqliteCacheRepository
 from connector.infra.cache.sqlite_engine import SqliteEngine
 
 
@@ -58,4 +60,11 @@ def test_employees_build_planning_stages_contract():
 
 def _build_gateway(*, conn, spec) -> SqliteCacheGateway:
     engine = SqliteEngine(conn)
-    return build_sqlite_cache_gateway(engine=engine, cache_specs=spec.build_cache_specs())
+    cache_repo = SqliteCacheRepository(engine, spec.build_cache_specs())
+    identity_repo = SqliteIdentityRepository(engine)
+    pending_repo = SqlitePendingLinksRepository(engine)
+    return SqliteCacheGateway(
+        cache_repo=cache_repo,
+        identity_repo=identity_repo,
+        pending_repo=pending_repo,
+    )
