@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from connector.domain.ports.cache.models import UpsertResult
 from connector.infra.cache.cache_spec import CacheSpec, FieldSpec, map_sqlite_type
-from connector.infra.cache.handlers.base import CacheDatasetHandler
-from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.backends.sqlite.handlers.base import CacheDatasetHandler
+from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 
 
 class GenericCacheHandler(CacheDatasetHandler):

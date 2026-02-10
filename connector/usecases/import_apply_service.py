@@ -33,14 +33,14 @@ class ImportApplyService:
         executor: RequestExecutorProtocol,
         secrets: SecretProviderProtocol | None = None,
         spec_resolver: Callable[..., DatasetSpec] = get_spec,
-        cache_gateway: ApplyRuntimePort | None = None,
+        apply_runtime: ApplyRuntimePort | None = None,
         identity_keys: dict[str, set[str]] | None = None,
         identity_id_fields: dict[str, str] | None = None,
     ):
         self.executor = executor
         self.secrets = secrets
         self.spec_resolver = spec_resolver
-        self.cache_gateway = cache_gateway
+        self.apply_runtime = apply_runtime
         self.identity_keys = identity_keys or {}
         self.identity_id_fields = identity_id_fields or {}
 
@@ -360,7 +360,7 @@ class ImportApplyService:
         response_json: Any | None,
         source_ref: dict[str, Any] | None,
     ) -> None:
-        if self.cache_gateway is None:
+        if self.apply_runtime is None:
             return
         key_names = self.identity_keys.get(dataset)
         if not key_names:
@@ -386,12 +386,12 @@ class ImportApplyService:
             if value_str == "":
                 continue
             identity_key = format_identity_key(key_name, value_str)
-            self.cache_gateway.upsert_identity(dataset, identity_key, resolved_id_str)
+            self.apply_runtime.upsert_identity(dataset, identity_key, resolved_id_str)
             self._resolve_pending_for_key(dataset, identity_key)
 
     def _resolve_pending_for_key(self, dataset: str, identity_key: str) -> None:
-        if self.cache_gateway is None:
+        if self.apply_runtime is None:
             return
-        pending = self.cache_gateway.list_pending_for_key(dataset, identity_key)
+        pending = self.apply_runtime.list_pending_for_key(dataset, identity_key)
         for item in pending:
-            self.cache_gateway.mark_resolved(item.pending_id)
+            self.apply_runtime.mark_resolved(item.pending_id)

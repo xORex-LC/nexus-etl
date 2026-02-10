@@ -61,11 +61,12 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     dataset_name = plan.meta.dataset
     catalog = ctx.catalog or build_diagnostics_catalog(dataset_name, strict=settings.diagnostics_strict)
     conn = None
-    cache_gateway = None
+    apply_runtime = None
     identity_keys: dict[str, set[str]] = {}
     identity_id_fields: dict[str, str] = {}
     try:
-        conn, _engine, cache_gateway, _cache_specs = build_cache(settings)
+        conn, _engine, _gateway, cache_roles, _cache_specs = build_cache(settings)
+        apply_runtime = cache_roles.apply_runtime
         identity_keys, identity_id_fields = build_identity_index_plan()
     except sqlite3.Error as exc:
         log_sqlite_cache_error(logger=ctx.logger, run_id=run_id, exc=exc)
@@ -102,7 +103,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         executor,
         secrets=secrets_provider,
         spec_resolver=get_spec,
-        cache_gateway=cache_gateway,
+        apply_runtime=apply_runtime,
         identity_keys=identity_keys,
         identity_id_fields=identity_id_fields,
     )

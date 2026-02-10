@@ -20,14 +20,14 @@ class CacheCommandService:
 
     def __init__(
         self,
-        cache_gateway: CacheAdminPort,
+        cache_admin: CacheAdminPort,
         cache_refresh: CacheRefreshUseCase | None = None,
         cache_status: CacheStatusUseCase | None = None,
         cache_clear: CacheClearUseCase | None = None,
     ):
-        self.cache_gateway = cache_gateway
+        self.cache_admin = cache_admin
         self.cache_refresh = cache_refresh
-        self.cache_status = cache_status or CacheStatusUseCase(cache_gateway)
+        self.cache_status = cache_status or CacheStatusUseCase(cache_admin)
         self.cache_clear = cache_clear
 
     def refresh(

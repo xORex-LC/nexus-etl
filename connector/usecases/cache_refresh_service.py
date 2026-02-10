@@ -31,13 +31,13 @@ class CacheRefreshUseCase:
     def __init__(
         self,
         target_reader: TargetPagedReaderProtocol,
-        cache_gateway: CacheRefreshPort,
+        cache_refresh: CacheRefreshPort,
         adapters: list[CacheSyncAdapterProtocol],
         identity_keys: dict[str, set[str]] | None = None,
         identity_id_fields: dict[str, str] | None = None,
     ):
         self.target_reader = target_reader
-        self.cache_gateway = cache_gateway
+        self.cache_refresh = cache_refresh
         self.adapters = adapters
         self.identity_keys = identity_keys or {}
         self.identity_id_fields = identity_id_fields or {}
@@ -80,7 +80,7 @@ class CacheRefreshUseCase:
                 raise ValueError(f"Unsupported cache dataset: {dataset}")
 
         try:
-            with self.cache_gateway.transaction():
+            with self.cache_refresh.transaction():
                 for adapter in active_adapters:
                     stats = stats_by_dataset.setdefault(
                         adapter.dataset,
@@ -131,7 +131,7 @@ class CacheRefreshUseCase:
                                         continue
 
                                 mapped = adapter.map_target_to_cache(raw)
-                                result = self.cache_gateway.upsert(adapter.dataset, mapped)
+                                result = self.cache_refresh.upsert(adapter.dataset, mapped)
                                 if result == UpsertResult.INSERTED:
                                     stats["inserted"] += 1
                                 else:
@@ -183,12 +183,12 @@ class CacheRefreshUseCase:
                 now_iso = getNowIso()
 
                 for name in stats_by_dataset.keys():
-                    count_total = self.cache_gateway.count(name)
+                    count_total = self.cache_refresh.count(name)
                     stats_by_dataset[name]["count_total"] = count_total
-                    self.cache_gateway.set_meta(name, "last_refresh_at", now_iso)
-                    self.cache_gateway.set_meta(name, "last_refresh_run_id", run_id)
-                    self.cache_gateway.set_meta(name, "last_refresh_pages", str(stats_by_dataset[name]["pages"]))
-                    self.cache_gateway.set_meta(
+                    self.cache_refresh.set_meta(name, "last_refresh_at", now_iso)
+                    self.cache_refresh.set_meta(name, "last_refresh_run_id", run_id)
+                    self.cache_refresh.set_meta(name, "last_refresh_pages", str(stats_by_dataset[name]["pages"]))
+                    self.cache_refresh.set_meta(
                         name,
                         "last_refresh_items",
                         str(
@@ -198,9 +198,9 @@ class CacheRefreshUseCase:
                             + stats_by_dataset[name]["skipped"]
                         ),
                     )
-                    self.cache_gateway.set_meta(name, "count_total", str(count_total))
+                    self.cache_refresh.set_meta(name, "count_total", str(count_total))
                 if api_base_url:
-                    self.cache_gateway.set_meta(None, "source_api_base", api_base_url)
+                    self.cache_refresh.set_meta(None, "source_api_base", api_base_url)
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
             raise
@@ -263,13 +263,13 @@ class CacheRefreshUseCase:
             if value_str == "":
                 continue
             identity_key = format_identity_key(key_name, value_str)
-            self.cache_gateway.upsert_identity(dataset, identity_key, resolved_id_str)
+            self.cache_refresh.upsert_identity(dataset, identity_key, resolved_id_str)
             self._resolve_pending_for_key(dataset, identity_key)
 
     def _resolve_pending_for_key(self, dataset: str, identity_key: str) -> None:
-        pending = self.cache_gateway.list_pending_for_key(dataset, identity_key)
+        pending = self.cache_refresh.list_pending_for_key(dataset, identity_key)
         for item in pending:
-            self.cache_gateway.mark_resolved(item.pending_id)
+            self.cache_refresh.mark_resolved(item.pending_id)
 
 
 def _sum_stats(stats_by_dataset: dict[str, dict[str, int]]) -> dict[str, int]:

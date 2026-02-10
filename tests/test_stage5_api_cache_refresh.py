@@ -6,9 +6,9 @@ import httpx
 from typer.testing import CliRunner
 
 from connector.datasets.cache_registry import list_cache_specs
-from connector.infra.cache.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.repository import SqliteCacheRepository
-from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
+from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 from connector.main import app
 
 runner = CliRunner()

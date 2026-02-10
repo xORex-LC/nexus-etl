@@ -10,11 +10,12 @@ from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.domain.transform.matcher.rules import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
 from connector.domain.dsl.loader import load_sink_spec_for_dataset
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.infra.cache.sqlite_engine import SqliteEngine
-from connector.infra.cache.schema import ensure_cache_ready
-from connector.infra.cache.identity_repository import SqliteIdentityRepository
-from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
-from connector.infra.cache.factory import build_sqlite_cache_gateway
+from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
+from connector.infra.cache.repository.identity_repository import SqliteIdentityRepository
+from connector.infra.cache.repository.pending_links_repository import SqlitePendingLinksRepository
+from connector.infra.cache.cache_gateway import SqliteCacheGateway
+from connector.infra.cache.roles import build_sqlite_cache_role_ports
 
 
 def _make_engine() -> SqliteEngine:
@@ -28,7 +29,8 @@ def _make_engine() -> SqliteEngine:
 def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[ResolveCore, SqlitePendingLinksRepository]:
     catalog = build_catalog("employees", strict=True)
     pending_repo = SqlitePendingLinksRepository(engine)
-    cache_gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
+    cache_gateway = SqliteCacheGateway.from_engine(engine=engine, cache_specs=[])
+    cache_roles = build_sqlite_cache_role_ports(cache_gateway)
     link_rules = LinkRules(
         fields=(
             LinkFieldRule(
@@ -45,7 +47,7 @@ def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[Re
     resolver = ResolveCore(
         resolve_rules,
         link_rules,
-        cache_gateway=cache_gateway,
+        cache_gateway=cache_roles.planning_runtime,
         settings=settings,
         catalog=catalog,
     )
@@ -289,7 +291,8 @@ def test_resolver_hard_error_on_unresolved_rule():
     catalog = build_catalog("employees", strict=True)
     identity_repo = SqliteIdentityRepository(engine)
     pending_repo = SqlitePendingLinksRepository(engine)
-    cache_gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
+    cache_gateway = SqliteCacheGateway.from_engine(engine=engine, cache_specs=[])
+    cache_roles = build_sqlite_cache_role_ports(cache_gateway)
     resolver = ResolveCore(
         ResolveRules(build_desired_state=lambda *_: {}),
         LinkRules(
@@ -302,7 +305,7 @@ def test_resolver_hard_error_on_unresolved_rule():
                 ),
             )
         ),
-        cache_gateway=cache_gateway,
+        cache_gateway=cache_roles.planning_runtime,
         settings=settings,
         catalog=catalog,
     )
@@ -333,7 +336,8 @@ def test_resolver_validates_sink_for_resolved_mutations():
     catalog = build_catalog("employees", strict=True)
     identity_repo = SqliteIdentityRepository(engine)
     pending_repo = SqlitePendingLinksRepository(engine)
-    cache_gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
+    cache_gateway = SqliteCacheGateway.from_engine(engine=engine, cache_specs=[])
+    cache_roles = build_sqlite_cache_role_ports(cache_gateway)
     # manager_id in sink schema is int; here we intentionally produce non-int resolved value.
     identity_repo.upsert_identity("employees", format_identity_key("match_key", "mgr"), "bad-int")
 
@@ -350,7 +354,7 @@ def test_resolver_validates_sink_for_resolved_mutations():
                 ),
             )
         ),
-        cache_gateway=cache_gateway,
+        cache_gateway=cache_roles.planning_runtime,
         settings=settings,
         catalog=catalog,
         sink_spec=load_sink_spec_for_dataset("employees"),

@@ -35,7 +35,7 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
     conn = None
     try:
         dataset_name, _spec = build_dataset_spec(opts.dataset, settings)
-        conn, _engine, _cache_gateway, _cache_specs = build_cache(settings)
+        conn, _engine, _gateway, cache_roles, _cache_specs = build_cache(settings)
 
         include_deleted_value = opts.include_deleted if opts.include_deleted is not None else settings.include_deleted
         report_items_limit_value = (
@@ -45,7 +45,9 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
 
         service = ImportPlanService()
         return service.run(
-            conn=conn,
+            pending_replay=cache_roles.pending_replay,
+            enrich_lookup=cache_roles.enrich_lookup,
+            planning_runtime=cache_roles.planning_runtime,
             csv_has_header=csv_has_header_value,
             include_deleted=include_deleted_value,
             settings=settings,

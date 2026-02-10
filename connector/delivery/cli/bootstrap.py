@@ -14,11 +14,10 @@ from connector.datasets.spec import DatasetSpec
 from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
-from connector.infra.cache.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.schema import ensure_cache_ready
-from connector.infra.cache.sqlite_engine import SqliteEngine
-from connector.infra.cache.factory import build_sqlite_cache_gateway
-from connector.infra.cache.gateway import SqliteCacheGateway
+from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.cache_gateway import SqliteCacheGateway
+from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
+from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 from connector.infra.http.ankey_client import AnkeyApiClient
 from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
@@ -50,18 +49,20 @@ def build_dataset_spec(
     return dataset_name, get_spec(dataset_name, secrets=secrets)
 
 
-def build_cache(settings: Settings) -> tuple[sqlite3.Connection, SqliteEngine, SqliteCacheGateway, list[Any]]:
+def build_cache(
+    settings: Settings,
+) -> tuple[sqlite3.Connection, SqliteEngine, SqliteCacheGateway, SqliteCacheRolePorts, list[Any]]:
     """
     Назначение:
         Сконфигурировать cache-хранилище (sqlite) и репозиторий.
     """
-    cache_db_path = getCacheDbPath(settings.cache_dir)
-    conn = openCacheDb(cache_db_path)
-    engine = SqliteEngine(conn)
     cache_specs = list_cache_specs()
-    ensure_cache_ready(engine, cache_specs)
-    gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=cache_specs)
-    return conn, engine, gateway, cache_specs
+    gateway = SqliteCacheGateway.open(
+        settings=settings,
+        cache_specs=cache_specs,
+    )
+    roles = build_sqlite_cache_role_ports(gateway)
+    return gateway.connection, gateway.engine, gateway, roles, cache_specs
 
 
 def build_api_client(settings: Settings, *, transport: Any | None = None) -> AnkeyApiClient:
@@ -158,15 +159,16 @@ def build_pipeline_context(
     Назначение:
         Единая сборка map/normalize/enrich цепочки.
     """
-    cache_gateway = build_dataset_cache_gateway(conn=conn, dataset_spec=dataset_spec)
+    dataset_cache_gateway = build_dataset_cache_gateway(conn=conn, dataset_spec=dataset_spec)
+    cache_roles = build_sqlite_cache_role_ports(dataset_cache_gateway)
     enrich_deps = dataset_spec.build_enrich_deps(
         settings,
-        cache_gateway=cache_gateway,
+        enrich_lookup=cache_roles.enrich_lookup,
         secret_store=secret_store,
     )
     planning_deps = dataset_spec.build_planning_deps(
         settings,
-        cache_gateway=cache_gateway,
+        planning_runtime=cache_roles.planning_runtime,
     )
 
     map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
@@ -203,7 +205,7 @@ def build_dataset_cache_gateway(conn, dataset_spec: DatasetSpec) -> SqliteCacheG
         Построить единый cache gateway из sqlite-соединения и cache-specs датасета.
     """
     engine = SqliteEngine(conn)
-    return build_sqlite_cache_gateway(
+    return SqliteCacheGateway.from_engine(
         engine=engine,
         cache_specs=dataset_spec.build_cache_specs(),
     )

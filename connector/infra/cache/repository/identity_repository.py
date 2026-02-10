@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 
 
 class SqliteIdentityRepository:

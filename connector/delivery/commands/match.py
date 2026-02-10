@@ -48,7 +48,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
     conn = None
     try:
-        conn, _engine, _cache_gateway, _cache_specs = build_cache(settings)
+        conn, _engine, _gateway, _cache_roles, _cache_specs = build_cache(settings)
 
         pipeline_ctx = build_pipeline_context(
             dataset_spec=dataset_spec,
@@ -69,14 +69,14 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             include_deleted=include_deleted_value,
             settings=settings,
         )
-        cache_gateway = planning_deps.cache_gateway
-        if cache_gateway is None:
-            raise ValueError("planning cache_gateway is not configured")
+        planning_runtime = planning_deps.cache_gateway
+        if planning_runtime is None:
+            raise ValueError("planning runtime is not configured")
 
         with open_match_runtime(
             run_id=run_id,
             match_stage=match_stage,
-            cache_gateway=cache_gateway,
+            match_runtime=planning_runtime,
             report_items_limit=report_items_limit_value,
             include_matched_items=include_matched_items_value,
             batch_size=settings.match_batch_size,

@@ -75,11 +75,11 @@ class EmployeesSpec(DatasetSpec):
         self,
         settings,
         *,
-        cache_gateway: PlanningRuntimePort,
+        planning_runtime: PlanningRuntimePort,
     ) -> PlanningDependencies:
         resolver_settings = _build_resolver_settings(settings)
         return PlanningDependencies(
-            cache_gateway=cache_gateway,
+            cache_gateway=planning_runtime,
             resolver_settings=resolver_settings,
         )
 
@@ -87,12 +87,12 @@ class EmployeesSpec(DatasetSpec):
         self,
         settings,
         *,
-        cache_gateway: EnrichLookupPort,
+        enrich_lookup: EnrichLookupPort,
         secret_store=None,
     ) -> TransformProviderDeps:
         _ = settings
         return TransformProviderDeps(
-            cache_gateway=cache_gateway,
+            cache_gateway=enrich_lookup,
             secret_store=secret_store,
         )
 
@@ -167,15 +167,15 @@ class EmployeesSpec(DatasetSpec):
         include_deleted: bool,
         settings=None,
     ) -> MatchStage:
-        cache_gateway = planning_deps.cache_gateway
-        if cache_gateway is None:
-            raise ValueError("planning cache_gateway is not configured")
+        planning_runtime = planning_deps.cache_gateway
+        if planning_runtime is None:
+            raise ValueError("planning runtime is not configured")
         compiled_resolve = self._compile_resolve(settings=settings)
         options = load_match_build_options_for_dataset(self.dataset_name)
         matcher = MatchEngine(
             spec=self.build_match_spec(settings=settings),
             dataset=self.dataset_name,
-            cache_gateway=cache_gateway,
+            cache_gateway=planning_runtime,
             resolve_rules=compiled_resolve.resolve_rules,
             include_deleted=include_deleted,
             catalog=catalog,
@@ -191,12 +191,12 @@ class EmployeesSpec(DatasetSpec):
         settings=None,
     ) -> ResolveStage:
         options = load_resolve_build_options_for_dataset(self.dataset_name)
-        cache_gateway = planning_deps.cache_gateway
-        if cache_gateway is None:
-            raise ValueError("planning cache_gateway is not configured")
+        planning_runtime = planning_deps.cache_gateway
+        if planning_runtime is None:
+            raise ValueError("planning runtime is not configured")
         resolver = ResolveEngine(
             spec=self.build_resolve_spec(settings=settings),
-            cache_gateway=cache_gateway,
+            cache_gateway=planning_runtime,
             settings=planning_deps.resolver_settings,
             catalog=catalog,
             sink_spec=self.build_sink_spec(settings=settings),

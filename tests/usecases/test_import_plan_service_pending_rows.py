@@ -13,7 +13,7 @@ class _PendingRow:
     payload: str
 
 
-class _CacheGateway:
+class _PendingReplay:
     def __init__(self, rows: list[_PendingRow], by_identity: dict[str, list[dict]]) -> None:
         self._rows = rows
         self._by_identity = by_identity
@@ -49,7 +49,7 @@ def _payload(*, row_id: str, match_key: str) -> str:
 
 
 def test_pending_replay_rows_include_typed_match_decision_for_all_statuses():
-    cache_gateway = _CacheGateway(
+    pending_replay = _PendingReplay(
         [
             _PendingRow(source_row_id="row-amb", payload=_payload(row_id="row-amb", match_key="amb")),
             _PendingRow(source_row_id="row-match", payload=_payload(row_id="row-match", match_key="matched")),
@@ -63,7 +63,7 @@ def test_pending_replay_rows_include_typed_match_decision_for_all_statuses():
 
     rows = _load_pending_rows(
         dataset="employees",
-        cache_gateway=cache_gateway,
+        pending_replay=pending_replay,
         include_deleted=False,
         ignored_fields=set(),
     )
