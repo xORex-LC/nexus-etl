@@ -23,7 +23,6 @@ from connector.domain.transform.stages.stages import (
 )
 from connector.domain.ports.target.execution import RequestSpec, ExecutionResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.infra.cache.cache_spec import CacheSpec
 
 
 class ApplyAdapter(Protocol):
@@ -118,7 +117,6 @@ class DatasetSpec(Protocol):
         include_deleted: bool,
         settings=None,
     ) -> tuple[MatchStage, ResolveStage]: ...
-    def build_cache_specs(self) -> list[CacheSpec]: ...
     def build_record_source(
         self,
         csv_has_header: bool,

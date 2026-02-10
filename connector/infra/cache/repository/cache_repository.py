@@ -34,6 +34,10 @@ class SqliteCacheRepository:
         handler = _get_handler(self._handlers, dataset)
         handler.clear(self.engine)
 
+    def rebuild(self, dataset: str) -> None:
+        handler = _get_handler(self._handlers, dataset)
+        handler.rebuild(self.engine)
+
     def list_datasets(self) -> list[str]:
         return list(self._handlers.keys())
 

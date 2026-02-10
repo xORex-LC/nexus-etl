@@ -19,6 +19,7 @@ from connector.usecases.cache_command_service import CacheCommandService
 @dataclass(frozen=True)
 class Options:
     dataset: str | None = None
+    cascade: bool = False
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
@@ -32,7 +33,13 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 return unsupported_result
             cache_clear = CacheClearUseCase(cache_roles.cache_admin)
             service = CacheCommandService(cache_roles.cache_admin, cache_clear=cache_clear)
-            result = service.clear(ctx.logger, report, run_id, dataset=opts.dataset)
+            result = service.clear(
+                ctx.logger,
+                report,
+                run_id,
+                dataset=opts.dataset,
+                cascade=opts.cascade,
+            )
             exit_code = result.exit_code()
             if exit_code != 0:
                 typer.echo("ERROR: cache clear failed (see logs/report)", err=True)

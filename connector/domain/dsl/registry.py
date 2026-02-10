@@ -60,6 +60,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_to_int,
         op_to_float,
         op_to_bool,
+        op_to_string,
         op_int_if_digits,
         op_uuid,
         op_default_uuid,
@@ -68,6 +69,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_const,
         op_coalesce,
         op_concat,
+        op_build_delimited_key,
         op_extract_patterns,
         op_regex_extract,
         op_regex_replace,
@@ -85,6 +87,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("to_int", op_to_int)
     registry.register("to_float", op_to_float)
     registry.register("to_bool", op_to_bool)
+    registry.register("to_string", op_to_string)
     registry.register("int_if_digits", op_int_if_digits)
     registry.register("uuid", op_uuid)
     registry.register("default_uuid", op_default_uuid)
@@ -93,6 +96,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("const", op_const)
     registry.register("coalesce", op_coalesce)
     registry.register("concat", op_concat)
+    registry.register("build_delimited_key", op_build_delimited_key)
     registry.register("extract_patterns", op_extract_patterns)
     registry.register("split", op_split)
     registry.register("split_name", op_split_name)

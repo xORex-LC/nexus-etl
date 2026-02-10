@@ -17,7 +17,6 @@ package "dataset wiring" {
     +build_enrich_stage(catalog, enrich_deps): EnrichStage
     +build_match_stage(planning_deps, catalog, include_deleted, settings): MatchStage
     +build_resolve_stage(planning_deps, catalog, settings): ResolveStage
-    +build_cache_specs(): list[CacheSpec]
   }
 
   class EmployeesSpec

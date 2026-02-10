@@ -28,3 +28,6 @@ class CacheDatasetHandler:
 
     def clear(self, engine: SqliteEngine) -> None:
         raise NotImplementedError
+
+    def rebuild(self, engine: SqliteEngine) -> None:
+        raise NotImplementedError

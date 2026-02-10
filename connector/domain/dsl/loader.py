@@ -29,7 +29,10 @@ from connector.domain.dsl.specs import (
     MatchSpec,
     ResolveSpec,
     SinkSpec,
+    CacheRegistrySpec,
+    CacheDatasetSpec,
 )
+from connector.domain.dsl.issues import DslLoadError
 
 
 def load_mapping_spec(path: str | Path) -> MappingSpec:
@@ -151,6 +154,89 @@ def load_sink_spec_for_dataset(dataset: str) -> SinkSpec:
     return SinkSpec.model_validate(raw)
 
 
+def load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpec:
+    """
+    Назначение:
+        Загрузить cache registry spec (из отдельного файла или datasets/registry.yml).
+    """
+    try:
+        raw = _read_yaml(path) if path is not None else _load_registry()
+    except Exception as exc:
+        raise DslLoadError(
+            code="CACHE_DSL_REGISTRY_INVALID",
+            message=f"Failed to read cache registry: {exc}",
+            details={"path": str(path) if path is not None else "datasets/registry.yml"},
+        ) from exc
+
+    cache_payload = _extract_cache_registry_payload(raw)
+    try:
+        return CacheRegistrySpec.model_validate(cache_payload)
+    except Exception as exc:
+        raise DslLoadError(
+            code="CACHE_DSL_REGISTRY_INVALID",
+            message=f"Invalid cache registry DSL: {exc}",
+            details={"path": str(path) if path is not None else "datasets/registry.yml"},
+        ) from exc
+
+
+def load_cache_registry_spec_for_runtime() -> CacheRegistrySpec:
+    """
+    Назначение:
+        Runtime helper для загрузки cache registry из datasets/registry.yml.
+    """
+    return load_cache_registry_spec(None)
+
+
+def load_cache_dataset_spec(path: str | Path) -> CacheDatasetSpec:
+    """
+    Назначение:
+        Прочитать YAML и сформировать CacheDatasetSpec.
+    """
+    try:
+        raw = _read_yaml(path)
+    except Exception as exc:
+        raise DslLoadError(
+            code="CACHE_DSL_SPEC_INVALID",
+            message=f"Failed to read cache dataset spec: {exc}",
+            details={"path": str(path)},
+        ) from exc
+    try:
+        return CacheDatasetSpec.model_validate(raw)
+    except Exception as exc:
+        raise DslLoadError(
+            code="CACHE_DSL_SPEC_INVALID",
+            message=f"Invalid cache dataset DSL: {exc}",
+            details={"path": str(path)},
+        ) from exc
+
+
+def load_cache_dataset_spec_for_dataset(dataset: str) -> CacheDatasetSpec:
+    """
+    Назначение:
+        Загрузить cache dataset spec по имени датасета из cache registry.
+    """
+    registry = load_cache_registry_spec_for_runtime()
+    dataset_entry = registry.datasets.get(dataset)
+    if dataset_entry is None:
+        raise DslLoadError(
+            code="CACHE_DSL_DEP_MISSING",
+            message=f"Dataset '{dataset}' is not present in cache registry",
+            details={"dataset": dataset},
+        )
+    spec_path = _repo_root() / "datasets" / dataset_entry.cache_spec
+    spec = load_cache_dataset_spec(spec_path)
+    if spec.dataset != dataset:
+        raise DslLoadError(
+            code="CACHE_DSL_SPEC_INVALID",
+            message=(
+                f"Cache dataset spec mismatch: registry key '{dataset}' "
+                f"!= spec.dataset '{spec.dataset}'"
+            ),
+            details={"dataset": dataset, "path": str(spec_path)},
+        )
+    return spec
+
+
 def load_map_build_options_for_dataset(dataset: str) -> MapDslBuildOptions:
     return _load_stage_build_options(dataset, "mapping", MapDslBuildOptions)
 
@@ -236,6 +322,22 @@ def _repo_root() -> Path:
     # loader.py moved from domain/transform/dsl to domain/dsl.
     # parents[3] points to repository root: <repo>/connector/domain/dsl/loader.py
     return Path(__file__).resolve().parents[3]
+
+
+def _extract_cache_registry_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    """
+    Назначение:
+        Выделить payload cache registry из общего registry.yml.
+    """
+    if "cache" in raw and isinstance(raw.get("cache"), dict):
+        return raw["cache"]
+    # fallback: допускаем отдельный cache-registry файл без верхнего ключа "cache"
+    if {"version", "datasets"} <= set(raw.keys()):
+        return raw
+    raise DslLoadError(
+        code="CACHE_DSL_REGISTRY_INVALID",
+        message="cache section is missing in registry file",
+    )
 
 
 def _load_stage_build_options(

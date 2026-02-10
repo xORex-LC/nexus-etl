@@ -4,7 +4,14 @@
 """
 
 from connector.domain.dsl.engine import EngineResult, TransformationEngine
-from connector.domain.dsl.issues import DslIssue, DslSeverity
+from connector.domain.dsl.issues import DslIssue, DslSeverity, DslLoadError
+from connector.domain.dsl.cache_compiler import (
+    CacheDslRuntime,
+    CacheDslRuntimePolicy,
+    compile_cache_runtime,
+    build_schema_hash,
+    build_sync_hash,
+)
 from connector.domain.dsl.loader import (
     load_source_spec_for_dataset,
     load_mapping_spec,
@@ -20,6 +27,10 @@ from connector.domain.dsl.loader import (
     load_enrich_build_options_for_dataset,
     load_match_build_options_for_dataset,
     load_resolve_build_options_for_dataset,
+    load_cache_registry_spec,
+    load_cache_registry_spec_for_runtime,
+    load_cache_dataset_spec,
+    load_cache_dataset_spec_for_dataset,
 )
 from connector.domain.dsl.build_options import (
     BaseDslBuildOptions,
@@ -41,6 +52,8 @@ from connector.domain.dsl.specs import (
     ValidationSpec,
     MatchSpec,
     ResolveSpec,
+    CacheRegistrySpec,
+    CacheDatasetSpec,
 )
 
 __all__ = [
@@ -48,6 +61,12 @@ __all__ = [
     "TransformationEngine",
     "DslIssue",
     "DslSeverity",
+    "DslLoadError",
+    "CacheDslRuntime",
+    "CacheDslRuntimePolicy",
+    "compile_cache_runtime",
+    "build_schema_hash",
+    "build_sync_hash",
     "load_mapping_spec",
     "load_mapping_spec_for_dataset",
     "load_source_spec_for_dataset",
@@ -62,6 +81,10 @@ __all__ = [
     "load_enrich_build_options_for_dataset",
     "load_match_build_options_for_dataset",
     "load_resolve_build_options_for_dataset",
+    "load_cache_registry_spec",
+    "load_cache_registry_spec_for_runtime",
+    "load_cache_dataset_spec",
+    "load_cache_dataset_spec_for_dataset",
     "BaseDslBuildOptions",
     "MapDslBuildOptions",
     "NormalizeDslBuildOptions",
@@ -80,4 +103,6 @@ __all__ = [
     "ValidationSpec",
     "MatchSpec",
     "ResolveSpec",
+    "CacheRegistrySpec",
+    "CacheDatasetSpec",
 ]

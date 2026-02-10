@@ -20,6 +20,28 @@ class DslSeverity(str, Enum):
     WARNING = "warning"
 
 
+class DslLoadError(ValueError):
+    """
+    Назначение:
+        Ошибка загрузки/валидации DSL-конфигурации.
+
+    Контракт:
+        - code: доменный код ошибки (например, CACHE_DSL_SPEC_INVALID)
+        - details: контекст для отчета/логов.
+    """
+
+    def __init__(
+        self,
+        *,
+        code: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
+
+
 @dataclass(frozen=True)
 class DslIssue:
     """

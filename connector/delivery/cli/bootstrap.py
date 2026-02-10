@@ -9,12 +9,12 @@ from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.datasets.registry import get_spec, resolve_dataset_name
-from connector.datasets.cache_registry import list_cache_specs
 from connector.datasets.spec import DatasetSpec
 from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
+from connector.infra.cache.dsl_runtime import CacheDslRuntimeBundle, load_cache_dsl_runtime
 from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
 from connector.infra.http.ankey_client import AnkeyApiClient
 from connector.infra.http.request_executor import AnkeyRequestExecutor
@@ -49,29 +49,31 @@ def build_dataset_spec(
 
 def build_cache(
     settings: Settings,
-) -> tuple[SqliteCacheGateway, SqliteCacheRolePorts, list[Any]]:
+) -> tuple[SqliteCacheGateway, SqliteCacheRolePorts, CacheDslRuntimeBundle]:
     """
     Назначение:
         Сконфигурировать cache-хранилище (sqlite) и репозиторий.
     """
-    cache_specs = list_cache_specs()
+    cache_dsl_bundle = load_cache_dsl_runtime()
     gateway = SqliteCacheGateway.open(
         settings=settings,
-        cache_specs=cache_specs,
+        cache_specs=cache_dsl_bundle.cache_specs,
     )
     roles = build_sqlite_cache_role_ports(gateway)
-    return gateway, roles, cache_specs
+    return gateway, roles, cache_dsl_bundle
 
 
 @contextmanager
-def open_cache(settings: Settings) -> Iterator[tuple[SqliteCacheGateway, SqliteCacheRolePorts, list[Any]]]:
+def open_cache(
+    settings: Settings,
+) -> Iterator[tuple[SqliteCacheGateway, SqliteCacheRolePorts, CacheDslRuntimeBundle]]:
     """
     Назначение:
         Единая lifecycle-обертка для cache gateway в CLI runtime.
     """
-    gateway, roles, cache_specs = build_cache(settings)
+    gateway, roles, cache_dsl_bundle = build_cache(settings)
     try:
-        yield gateway, roles, cache_specs
+        yield gateway, roles, cache_dsl_bundle
     finally:
         gateway.close()
 

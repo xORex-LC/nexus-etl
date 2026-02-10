@@ -19,9 +19,17 @@ class CacheClearUseCase:
         self._clear_planner = clear_planner
 
     def clear(self, dataset: str | None = None) -> dict[str, int]:
+        return self.clear_with_options(dataset=dataset, cascade=False)
+
+    def clear_with_options(
+        self,
+        *,
+        dataset: str | None = None,
+        cascade: bool = False,
+    ) -> dict[str, int]:
         available_datasets = self.cache_admin.list_datasets()
         planner = self._clear_planner or CacheClearPlanner(CacheDependencyGraph(available_datasets))
-        clear_plan = planner.plan(dataset=dataset, cascade=False)
+        clear_plan = planner.plan(dataset=dataset, cascade=cascade)
         targets = list(clear_plan.datasets)
 
         deleted: dict[str, int] = {}
