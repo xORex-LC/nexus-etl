@@ -11,18 +11,23 @@ from connector.domain.transform.matcher.rules import LinkFieldRule, LinkKeyRule,
 from connector.domain.dsl.loader import load_sink_spec_for_dataset
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.schema import ensure_cache_ready
+from connector.infra.cache.identity_repository import SqliteIdentityRepository
+from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
 from connector.infra.cache.factory import build_sqlite_cache_gateway
-from connector.infra.cache.gateway import SqliteCacheGateway
 
 
 def _make_engine() -> SqliteEngine:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    return SqliteEngine(conn)
+    engine = SqliteEngine(conn)
+    ensure_cache_ready(engine, [])
+    return engine
 
 
-def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[ResolveCore, SqliteCacheGateway]:
+def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[ResolveCore, SqlitePendingLinksRepository]:
     catalog = build_catalog("employees", strict=True)
+    pending_repo = SqlitePendingLinksRepository(engine)
     cache_gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
     link_rules = LinkRules(
         fields=(
@@ -44,7 +49,7 @@ def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[Re
         settings=settings,
         catalog=catalog,
     )
-    return resolver, cache_gateway
+    return resolver, pending_repo
 
 
 def _make_matched_row() -> MatchedRow:
@@ -76,7 +81,7 @@ def test_resolver_stops_on_ambiguous_match_status():
         pending_allow_partial=False,
         pending_retention_days=14,
     )
-    resolver, _cache_gateway = _make_resolver(engine, settings)
+    resolver, _pending_repo = _make_resolver(engine, settings)
 
     matched = _make_matched_row()
     matched = MatchedRow(
@@ -110,8 +115,9 @@ def test_resolver_resolves_link_from_identity_index():
         pending_allow_partial=False,
         pending_retention_days=14,
     )
-    resolver, cache_gateway = _make_resolver(engine, settings)
-    cache_gateway.upsert_identity("employees", format_identity_key("match_key", "mgr"), "42")
+    resolver, pending_repo = _make_resolver(engine, settings)
+    identity_repo = SqliteIdentityRepository(engine)
+    identity_repo.upsert_identity("employees", format_identity_key("match_key", "mgr"), "42")
 
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
@@ -124,7 +130,7 @@ def test_resolver_resolves_link_from_identity_index():
     assert warnings == []
     assert resolved is not None
     assert resolved.desired_state["manager_id"] == 42
-    assert cache_gateway.list_pending_for_key("employees", format_identity_key("match_key", "mgr")) == []
+    assert pending_repo.list_pending_for_key("employees", format_identity_key("match_key", "mgr")) == []
 
 
 def test_resolver_creates_pending_when_no_candidate():
@@ -137,7 +143,7 @@ def test_resolver_creates_pending_when_no_candidate():
         pending_allow_partial=False,
         pending_retention_days=14,
     )
-    resolver, cache_gateway = _make_resolver(engine, settings)
+    resolver, pending_repo = _make_resolver(engine, settings)
 
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
@@ -149,7 +155,7 @@ def test_resolver_creates_pending_when_no_candidate():
     assert resolved is None
     assert errors == []
     assert any(w.code == "RESOLVE_PENDING" for w in warnings)
-    pending = cache_gateway.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
+    pending = pending_repo.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
     assert len(pending) == 1
 
 
@@ -163,7 +169,7 @@ def test_resolver_stops_after_max_attempts():
         pending_allow_partial=False,
         pending_retention_days=14,
     )
-    resolver, cache_gateway = _make_resolver(engine, settings)
+    resolver, pending_repo = _make_resolver(engine, settings)
 
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
@@ -175,7 +181,7 @@ def test_resolver_stops_after_max_attempts():
     assert resolved is None
     assert any(err.code == "RESOLVE_MAX_ATTEMPTS" for err in errors)
     assert warnings == []
-    pending = cache_gateway.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
+    pending = pending_repo.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
     assert pending == []
 
 
@@ -189,7 +195,7 @@ def test_resolver_allows_partial_when_configured():
         pending_allow_partial=True,
         pending_retention_days=14,
     )
-    resolver, cache_gateway = _make_resolver(engine, settings)
+    resolver, pending_repo = _make_resolver(engine, settings)
 
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
@@ -202,7 +208,7 @@ def test_resolver_allows_partial_when_configured():
     assert resolved.desired_state["manager_id"] == "mgr"
     assert errors == []
     assert any(w.code == "RESOLVE_PENDING" for w in warnings)
-    pending = cache_gateway.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
+    pending = pending_repo.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
     assert len(pending) == 1
 
 
@@ -216,7 +222,7 @@ def test_resolver_uses_batch_index_for_candidates():
         pending_allow_partial=False,
         pending_retention_days=14,
     )
-    resolver, cache_gateway = _make_resolver(engine, settings)
+    resolver, pending_repo = _make_resolver(engine, settings)
 
     matched = _make_matched_row()
     batch_index = {
@@ -235,7 +241,7 @@ def test_resolver_uses_batch_index_for_candidates():
     assert warnings == []
     assert resolved is not None
     assert resolved.desired_state["manager_id"] == 99
-    pending = cache_gateway.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
+    pending = pending_repo.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
     assert pending == []
 
 
@@ -249,10 +255,11 @@ def test_resolver_dedup_rules_narrow_candidates():
         pending_allow_partial=False,
         pending_retention_days=14,
     )
-    resolver, cache_gateway = _make_resolver(engine, settings)
-    cache_gateway.upsert_identity("employees", format_identity_key("match_key", "mgr"), "42")
-    cache_gateway.upsert_identity("employees", format_identity_key("match_key", "mgr"), "43")
-    cache_gateway.upsert_identity("employees", format_identity_key("organization_id", "10"), "42")
+    resolver, pending_repo = _make_resolver(engine, settings)
+    identity_repo = SqliteIdentityRepository(engine)
+    identity_repo.upsert_identity("employees", format_identity_key("match_key", "mgr"), "42")
+    identity_repo.upsert_identity("employees", format_identity_key("match_key", "mgr"), "43")
+    identity_repo.upsert_identity("employees", format_identity_key("organization_id", "10"), "42")
 
     matched = _make_matched_row()
     resolved, errors, warnings = resolver.resolve(
@@ -265,7 +272,7 @@ def test_resolver_dedup_rules_narrow_candidates():
     assert warnings == []
     assert resolved is not None
     assert resolved.desired_state["manager_id"] == 42
-    pending = cache_gateway.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
+    pending = pending_repo.list_pending_for_key("employees", format_identity_key("match_key", "mgr"))
     assert pending == []
 
 
@@ -280,6 +287,8 @@ def test_resolver_hard_error_on_unresolved_rule():
         pending_retention_days=14,
     )
     catalog = build_catalog("employees", strict=True)
+    identity_repo = SqliteIdentityRepository(engine)
+    pending_repo = SqlitePendingLinksRepository(engine)
     cache_gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
     resolver = ResolveCore(
         ResolveRules(build_desired_state=lambda *_: {}),
@@ -308,7 +317,7 @@ def test_resolver_hard_error_on_unresolved_rule():
     assert resolved is None
     assert warnings == []
     assert any(err.code == "RESOLVE_CONFLICT" for err in errors)
-    assert cache_gateway.list_pending_for_key("employees", format_identity_key("match_key", "mgr")) == []
+    assert pending_repo.list_pending_for_key("employees", format_identity_key("match_key", "mgr")) == []
 
 
 def test_resolver_validates_sink_for_resolved_mutations():
@@ -322,9 +331,11 @@ def test_resolver_validates_sink_for_resolved_mutations():
         pending_retention_days=14,
     )
     catalog = build_catalog("employees", strict=True)
+    identity_repo = SqliteIdentityRepository(engine)
+    pending_repo = SqlitePendingLinksRepository(engine)
     cache_gateway = build_sqlite_cache_gateway(engine=engine, cache_specs=[])
     # manager_id in sink schema is int; here we intentionally produce non-int resolved value.
-    cache_gateway.upsert_identity("employees", format_identity_key("match_key", "mgr"), "bad-int")
+    identity_repo.upsert_identity("employees", format_identity_key("match_key", "mgr"), "bad-int")
 
     resolver = ResolveCore(
         ResolveRules(build_desired_state=lambda *_: {}),
