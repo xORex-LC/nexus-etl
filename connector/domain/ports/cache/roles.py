@@ -133,9 +133,9 @@ class CacheRefreshPort(CacheAdminPort, ApplyRuntimePort, Protocol):
     """
 
 
-class PendingReplayPort(ResolveRuntimePort, EnrichLookupPort, Protocol):
+class PendingReplayPort(ResolveRuntimePort, Protocol):
     """
-    Назначение:
+        Назначение:
         Контракт для replay pending rows в import-plan path.
     """
 
