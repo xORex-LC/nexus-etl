@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from connector.domain.cache_core import CacheDatasetSnapshot, CacheStatusEvaluator
 from connector.domain.ports.cache.roles import CacheAdminPort
 
 
@@ -9,35 +10,27 @@ class CacheStatusUseCase:
         Получение статуса кэша (counts/meta).
     """
 
-    def __init__(self, cache_admin: CacheAdminPort):
+    def __init__(
+        self,
+        cache_admin: CacheAdminPort,
+        evaluator: CacheStatusEvaluator | None = None,
+    ):
         self.cache_admin = cache_admin
+        self._evaluator = evaluator or CacheStatusEvaluator()
 
     def status(self, dataset: str | None = None) -> dict:
         global_meta = self.cache_admin.get_meta(None).values
-        if dataset:
-            counts = self.cache_admin.count_by_table(dataset)
-            return {
-                "dataset": dataset,
-                "schema_version": global_meta.get("schema_version"),
-                "counts": counts,
-                "meta": self.cache_admin.get_meta(dataset).values,
-            }
-
-        by_dataset: dict[str, dict] = {}
-        total = 0
-        for name in self.cache_admin.list_datasets():
-            counts = self.cache_admin.count_by_table(name)
-            dataset_total = sum(counts.values())
-            total += dataset_total
-            by_dataset[name] = {
-                "count": dataset_total,
-                "counts": counts,
-                "meta": self.cache_admin.get_meta(name).values,
-            }
-
-        return {
-            "schema_version": global_meta.get("schema_version"),
-            "meta": global_meta,
-            "by_dataset": by_dataset,
-            "total": total,
-        }
+        snapshots = [
+            CacheDatasetSnapshot(
+                dataset=name,
+                counts=self.cache_admin.count_by_table(name),
+                meta=self.cache_admin.get_meta(name).values,
+            )
+            for name in self.cache_admin.list_datasets()
+        ]
+        return self._evaluator.evaluate(
+            schema_version=global_meta.get("schema_version"),
+            global_meta=global_meta,
+            snapshots=snapshots,
+            dataset=dataset,
+        )

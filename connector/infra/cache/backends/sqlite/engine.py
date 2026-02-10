@@ -13,6 +13,7 @@ class SqliteEngine:
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+        self._transaction_depth = 0
 
     def execute(self, sql: str, params: tuple | dict | None = None) -> sqlite3.Cursor:
         if params is None:
@@ -32,10 +33,19 @@ class SqliteEngine:
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
-        self.conn.execute("BEGIN")
+        if self._transaction_depth > 0 or self.conn.in_transaction:
+            raise RuntimeError("Nested cache transactions are not supported")
+        self._transaction_depth += 1
+        try:
+            self.conn.execute("BEGIN")
+        except Exception:
+            self._transaction_depth = 0
+            raise
         try:
             yield
             self.conn.commit()
         except Exception:
             self.conn.rollback()
             raise
+        finally:
+            self._transaction_depth = 0

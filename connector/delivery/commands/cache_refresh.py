@@ -8,7 +8,7 @@ import typer
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import ensure_supported_cache_dataset, result_with
 from connector.delivery.cli.bootstrap import (
-    build_cache,
+    open_cache,
     build_api_reader,
 )
 from connector.domain.diagnostics.command_result import CommandResult
@@ -38,43 +38,42 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     settings = ctx.settings
     run_id = ctx.run_id
 
-    gateway = None
     try:
-        gateway, cache_roles, _cache_specs = build_cache(settings)
-        unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
-        if unsupported_result is not None:
-            return unsupported_result
+        with open_cache(settings) as (_gateway, cache_roles, _cache_specs):
+            unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
+            if unsupported_result is not None:
+                return unsupported_result
 
-        base_url = f"https://{settings.host}:{settings.port}"
-        client = _build_api_client(settings, opts.api_transport)
-        client.resetRetryAttempts()
-        reader = build_api_reader(client)
+            base_url = f"https://{settings.host}:{settings.port}"
+            client = _build_api_client(settings, opts.api_transport)
+            client.resetRetryAttempts()
+            reader = build_api_reader(client)
 
-        adapters = list_cache_sync_adapters()
-        identity_keys, identity_id_fields = build_identity_index_plan()
-        cache_refresh = CacheRefreshUseCase(
-            reader,
-            cache_roles.cache_refresh,
-            adapters,
-            identity_keys=identity_keys,
-            identity_id_fields=identity_id_fields,
-        )
-        service = CacheCommandService(cache_roles.cache_admin, cache_refresh)
+            adapters = list_cache_sync_adapters()
+            identity_keys, identity_id_fields = build_identity_index_plan()
+            cache_refresh = CacheRefreshUseCase(
+                reader,
+                cache_roles.cache_refresh,
+                adapters,
+                identity_keys=identity_keys,
+                identity_id_fields=identity_id_fields,
+            )
+            service = CacheCommandService(cache_roles.cache_admin, cache_refresh)
 
-        return service.refresh(
-            page_size=opts.page_size or settings.page_size,
-            max_pages=opts.max_pages or settings.max_pages,
-            logger=ctx.logger,
-            report=report,
-            run_id=run_id,
-            include_deleted=opts.include_deleted if opts.include_deleted is not None else settings.include_deleted,
-            report_items_limit=opts.report_items_limit or settings.report_items_limit,
-            api_base_url=base_url,
-            retries=opts.retries or settings.retries,
-            retry_backoff_seconds=opts.retry_backoff_seconds or settings.retry_backoff_seconds,
-            dataset=opts.dataset,
-            catalog=ctx.catalog,
-        )
+            return service.refresh(
+                page_size=opts.page_size or settings.page_size,
+                max_pages=opts.max_pages or settings.max_pages,
+                logger=ctx.logger,
+                report=report,
+                run_id=run_id,
+                include_deleted=opts.include_deleted if opts.include_deleted is not None else settings.include_deleted,
+                report_items_limit=opts.report_items_limit or settings.report_items_limit,
+                api_base_url=base_url,
+                retries=opts.retries or settings.retries,
+                retry_backoff_seconds=opts.retry_backoff_seconds or settings.retry_backoff_seconds,
+                dataset=opts.dataset,
+                catalog=ctx.catalog,
+            )
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
@@ -82,9 +81,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
         typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
-    finally:
-        if gateway is not None:
-            gateway.close()
 
 def _build_api_client(settings, transport=None) -> AnkeyApiClient:
     return AnkeyApiClient(
