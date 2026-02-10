@@ -88,6 +88,10 @@ class GenericCacheHandler(CacheDatasetHandler):
     def clear(self, engine: SqliteEngine) -> None:
         engine.execute(f"DELETE FROM {self.spec.table}")
 
+    def rebuild(self, engine: SqliteEngine) -> None:
+        engine.execute(f"DROP TABLE IF EXISTS {self.spec.table}")
+        self.ensure_schema(engine)
+
 
 def _index_name(table: str, columns: tuple[str, ...], *, unique: bool) -> str:
     prefix = "uidx" if unique else "idx"

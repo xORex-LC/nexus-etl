@@ -47,8 +47,6 @@ from connector.domain.transform.stages.stages import (
 )
 from connector.domain.transform.providers import TransformProviderDeps
 from connector.infra.sources.csv_reader import CsvRecordSource
-from connector.datasets.employees.load.cache_spec import employees_cache_spec
-from connector.datasets.organizations.load.cache_spec import organizations_cache_spec
 from connector.datasets.employees.diagnostic_catalog import build_employees_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
 
@@ -237,9 +235,6 @@ class EmployeesSpec(DatasetSpec):
                 settings=settings,
             ),
         )
-
-    def build_cache_specs(self) -> list:
-        return [organizations_cache_spec, employees_cache_spec]
 
     def build_record_source(
         self,

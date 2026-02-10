@@ -11,3 +11,33 @@ datasets:
     build_options:
       enrich:
         require_match_key: true
+
+cache:
+  version: 1
+  policy:
+    refresh:
+      with_deps_default: true
+    drift:
+      mode: strict
+      on_hash_mismatch: fail
+      rebuild_scope: dataset
+    clear:
+      cascade_default: false
+      preserve_service_tables: true
+      reset_meta_on_clear: true
+    status:
+      enable_orphan_check: true
+      degraded_on_hash_mismatch: true
+  datasets:
+    organizations:
+      cache_spec: organizations.cache.yaml
+      depends_on: []
+      order_hint: 10
+      allow_partial_refresh: false
+      enabled: true
+    employees:
+      cache_spec: employees.cache.yaml
+      depends_on: [organizations]
+      order_hint: 20
+      allow_partial_refresh: false
+      enabled: true

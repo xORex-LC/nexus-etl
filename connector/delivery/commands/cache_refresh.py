@@ -13,9 +13,9 @@ from connector.delivery.cli.bootstrap import (
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.datasets.cache_registry import list_cache_sync_adapters
 from connector.datasets.registry import build_identity_index_plan
 from connector.infra.http.ankey_client import AnkeyApiClient
+from connector.infra.cache.dsl_runtime import build_sync_adapters
 from connector.infra.logging.setup import logEvent
 from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
@@ -30,6 +30,7 @@ class Options:
     retry_backoff_seconds: float | None = None
     api_transport: object | None = None
     include_deleted: bool | None = None
+    include_dependencies: bool = True
     report_items_limit: int | None = None
     dataset: str | None = None
 
@@ -39,7 +40,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
 
     try:
-        with open_cache(settings) as (_gateway, cache_roles, _cache_specs):
+        with open_cache(settings) as (_gateway, cache_roles, cache_dsl_bundle):
             unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
             if unsupported_result is not None:
                 return unsupported_result
@@ -49,14 +50,20 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             client.resetRetryAttempts()
             reader = build_api_reader(client)
 
-            adapters = list_cache_sync_adapters()
+            adapters = build_sync_adapters(cache_dsl_bundle)
             identity_keys, identity_id_fields = build_identity_index_plan()
+            runtime_policy = cache_dsl_bundle.runtime.policy
             cache_refresh = CacheRefreshUseCase(
                 reader,
                 cache_roles.cache_refresh,
                 adapters,
                 identity_keys=identity_keys,
                 identity_id_fields=identity_id_fields,
+                dependency_graph=cache_dsl_bundle.runtime.dependency_graph,
+                schema_hashes=cache_dsl_bundle.runtime.schema_hashes,
+                drift_mode=runtime_policy.drift_mode,
+                drift_on_hash_mismatch=runtime_policy.drift_on_hash_mismatch,
+                drift_rebuild_scope=runtime_policy.drift_rebuild_scope,
             )
             service = CacheCommandService(cache_roles.cache_admin, cache_refresh)
 
@@ -66,7 +73,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 logger=ctx.logger,
                 report=report,
                 run_id=run_id,
-                include_deleted=opts.include_deleted if opts.include_deleted is not None else settings.include_deleted,
+                include_deleted=opts.include_deleted,
+                include_dependencies=opts.include_dependencies,
                 report_items_limit=opts.report_items_limit or settings.report_items_limit,
                 api_base_url=base_url,
                 retries=opts.retries or settings.retries,

@@ -27,6 +27,9 @@ class SqliteCacheRefreshAdapter(CacheRefreshPort):
     def clear(self, dataset: str) -> None:
         self._admin.clear(dataset)
 
+    def rebuild(self, dataset: str) -> None:
+        self._admin.rebuild(dataset)
+
     def list_datasets(self) -> list[str]:
         return self._admin.list_datasets()
 
@@ -47,4 +50,3 @@ class SqliteCacheRefreshAdapter(CacheRefreshPort):
 
     def mark_resolved(self, pending_id: int) -> None:
         self._apply_runtime.mark_resolved(pending_id)
-

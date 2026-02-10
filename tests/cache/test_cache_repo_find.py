@@ -7,7 +7,7 @@ from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.backends.sqlite.engine import SqliteEngine
-from connector.datasets.cache_registry import list_cache_specs
+from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 
 
 def _build_repo(tmp_path: Path) -> tuple[SqliteCacheRepository, sqlite3.Connection]:
@@ -15,7 +15,7 @@ def _build_repo(tmp_path: Path) -> tuple[SqliteCacheRepository, sqlite3.Connecti
     db_path = Path(getCacheDbPath(cache_dir))
     conn = openCacheDb(str(db_path))
     engine = SqliteEngine(conn)
-    cache_specs = list_cache_specs()
+    cache_specs = list(load_cache_dsl_runtime().cache_specs)
     ensure_cache_ready(engine, cache_specs)
     return SqliteCacheRepository(engine, cache_specs), conn
 

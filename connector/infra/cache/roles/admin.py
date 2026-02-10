@@ -27,6 +27,9 @@ class SqliteCacheAdminAdapter(CacheAdminPort):
     def clear(self, dataset: str) -> None:
         self._gateway.cache.clear(dataset)
 
+    def rebuild(self, dataset: str) -> None:
+        self._gateway.cache.rebuild(dataset)
+
     def list_datasets(self) -> list[str]:
         return self._gateway.cache.list_datasets()
 
@@ -38,4 +41,3 @@ class SqliteCacheAdminAdapter(CacheAdminPort):
 
     def reset_meta(self, dataset: str) -> None:
         self._gateway.cache.reset_meta(dataset)
-

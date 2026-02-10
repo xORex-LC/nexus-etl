@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 
 from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.backends.sqlite.engine import SqliteEngine
-from connector.datasets.cache_registry import list_cache_specs
+from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 
@@ -54,7 +54,7 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
 
 def _build_repo(conn) -> SqliteCacheRepository:
     engine = SqliteEngine(conn)
-    cache_specs = list_cache_specs()
+    cache_specs = list(load_cache_dsl_runtime().cache_specs)
     ensure_cache_ready(engine, cache_specs)
     return SqliteCacheRepository(engine, cache_specs)
 

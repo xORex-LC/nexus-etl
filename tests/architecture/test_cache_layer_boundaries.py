@@ -105,3 +105,19 @@ def test_no_legacy_cache_factory_imports() -> None:
             if module.startswith("connector.infra.cache.factory"):
                 violations.append(f"{_rel(path)} imports legacy cache factory: {module}")
     assert violations == [], "Legacy factory imports found:\n" + "\n".join(violations)
+
+
+def test_no_legacy_cache_registry_module() -> None:
+    legacy_registry = REPO_ROOT / "connector" / "datasets" / "cache_registry.py"
+    assert not legacy_registry.exists(), "Legacy datasets/cache_registry.py must be removed"
+
+
+def test_no_legacy_dataset_cache_sync_adapters() -> None:
+    legacy_paths = [
+        REPO_ROOT / "connector" / "datasets" / "employees" / "load" / "cache_sync_adapter.py",
+        REPO_ROOT / "connector" / "datasets" / "organizations" / "load" / "cache_sync_adapter.py",
+        REPO_ROOT / "connector" / "datasets" / "employees" / "load" / "cache_spec.py",
+        REPO_ROOT / "connector" / "datasets" / "organizations" / "load" / "cache_spec.py",
+    ]
+    existing = [str(path.relative_to(REPO_ROOT)) for path in legacy_paths if path.exists()]
+    assert existing == [], "Legacy dataset cache modules must be removed:\n" + "\n".join(existing)

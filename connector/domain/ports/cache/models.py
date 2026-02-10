@@ -20,6 +20,34 @@ class UpsertResult(str, Enum):
 
 
 @dataclass(frozen=True)
+class FieldSpec:
+    """
+    Назначение:
+        Компилированное описание поля cache snapshot таблицы.
+    """
+
+    name: str
+    type: str
+    nullable: bool = True
+    source: str | None = None
+
+
+@dataclass(frozen=True)
+class CacheSpec:
+    """
+    Назначение:
+        Компилированная схема cache snapshot таблицы датасета.
+    """
+
+    dataset: str
+    table: str
+    primary_key: tuple[str, ...]
+    fields: tuple[FieldSpec, ...]
+    unique_indexes: tuple[tuple[str, ...], ...] = ()
+    indexes: tuple[tuple[str, ...], ...] = ()
+
+
+@dataclass(frozen=True)
 class CacheMeta:
     """
     Назначение:
@@ -72,4 +100,3 @@ class PendingRow:
     dataset: str
     source_row_id: str
     payload: str
-

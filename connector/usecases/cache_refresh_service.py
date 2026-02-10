@@ -38,6 +38,10 @@ class CacheRefreshUseCase:
         identity_id_fields: dict[str, str] | None = None,
         refresh_planner: CacheRefreshPlanner | None = None,
         dependency_graph: CacheDependencyGraph | None = None,
+        schema_hashes: dict[str, str] | None = None,
+        drift_mode: str = "strict",
+        drift_on_hash_mismatch: str = "fail",
+        drift_rebuild_scope: str = "dataset",
     ):
         self.target_reader = target_reader
         self.cache_refresh = cache_refresh
@@ -50,6 +54,10 @@ class CacheRefreshUseCase:
 
         graph = dependency_graph or CacheDependencyGraph([adapter.dataset for adapter in adapters])
         self._refresh_planner = refresh_planner or CacheRefreshPlanner(graph)
+        self._schema_hashes = schema_hashes or {}
+        self._drift_mode = drift_mode
+        self._drift_on_hash_mismatch = drift_on_hash_mismatch
+        self._drift_rebuild_scope = drift_rebuild_scope
 
     def refresh(
         self,
@@ -60,7 +68,8 @@ class CacheRefreshUseCase:
         run_id: str,
         *,
         catalog: ErrorCatalog,
-        include_deleted: bool = False,
+        include_deleted: bool | None = None,
+        include_dependencies: bool = False,
         report_items_limit: int = 200,
         api_base_url: str | None = None,
         retries: int | None = None,
@@ -82,7 +91,10 @@ class CacheRefreshUseCase:
         stats_by_dataset: dict[str, dict[str, int]] = {}
         error_stats: dict[str, int] = {}
 
-        refresh_plan = self._refresh_planner.plan(dataset=dataset)
+        refresh_plan = self._refresh_planner.plan(
+            dataset=dataset,
+            include_dependencies=include_dependencies,
+        )
         active_adapters: list[CacheSyncAdapterProtocol] = []
         for dataset_name in refresh_plan.datasets:
             adapter = self._adapters_by_dataset.get(dataset_name)
@@ -92,6 +104,14 @@ class CacheRefreshUseCase:
 
         try:
             with self.cache_refresh.transaction():
+                _apply_drift_policy_for_scope(
+                    cache_refresh=self.cache_refresh,
+                    schema_hashes=self._schema_hashes,
+                    scope_datasets=tuple(adapter.dataset for adapter in active_adapters),
+                    drift_mode=self._drift_mode,
+                    drift_on_hash_mismatch=self._drift_on_hash_mismatch,
+                    drift_rebuild_scope=self._drift_rebuild_scope,
+                )
                 for adapter in active_adapters:
                     stats = stats_by_dataset.setdefault(
                         adapter.dataset,
@@ -122,8 +142,13 @@ class CacheRefreshUseCase:
                         for raw in items:
                             key = adapter.get_item_key(raw)
                             try:
+                                effective_include_deleted = include_deleted
+                                if effective_include_deleted is None:
+                                    effective_include_deleted = bool(
+                                        getattr(adapter, "include_deleted_default", False)
+                                    )
                                 if adapter.is_deleted(raw):
-                                    if include_deleted:
+                                    if effective_include_deleted:
                                         pass
                                     else:
                                         stats["skipped"] += 1
@@ -196,6 +221,9 @@ class CacheRefreshUseCase:
                 for name in stats_by_dataset.keys():
                     count_total = self.cache_refresh.count(name)
                     stats_by_dataset[name]["count_total"] = count_total
+                    expected_schema_hash = self._schema_hashes.get(name)
+                    if expected_schema_hash:
+                        self.cache_refresh.set_meta(name, "schema_hash", expected_schema_hash)
                     self.cache_refresh.set_meta(name, "last_refresh_at", now_iso)
                     self.cache_refresh.set_meta(name, "last_refresh_run_id", run_id)
                     self.cache_refresh.set_meta(name, "last_refresh_pages", str(stats_by_dataset[name]["pages"]))
@@ -234,6 +262,7 @@ class CacheRefreshUseCase:
                 "retries": retries,
                 "retry_backoff_seconds": retry_backoff_seconds,
                 "include_deleted": include_deleted,
+                "include_dependencies": include_dependencies,
                 "retries_used": retries_used,
                 "by_dataset": stats_by_dataset,
                 "total": totals,
@@ -291,3 +320,43 @@ def _sum_stats(stats_by_dataset: dict[str, dict[str, int]]) -> dict[str, int]:
         totals["failed"] += int(stats.get("failed", 0))
         totals["skipped"] += int(stats.get("skipped", 0))
     return totals
+
+
+def _apply_drift_policy_for_scope(
+    *,
+    cache_refresh: CacheRefreshPort,
+    schema_hashes: dict[str, str],
+    scope_datasets: tuple[str, ...],
+    drift_mode: str,
+    drift_on_hash_mismatch: str,
+    drift_rebuild_scope: str,
+) -> None:
+    if not schema_hashes:
+        return
+
+    mismatched: list[str] = []
+    for dataset in scope_datasets:
+        expected = schema_hashes.get(dataset)
+        if not expected:
+            continue
+        current = cache_refresh.get_meta(dataset).values.get("schema_hash")
+        if current and current != expected:
+            mismatched.append(dataset)
+
+    if not mismatched:
+        return
+
+    if drift_mode == "strict" or drift_on_hash_mismatch == "fail":
+        joined = ", ".join(mismatched)
+        raise RuntimeError(f"CACHE_DSL_HASH_MISMATCH: {joined}")
+
+    if drift_on_hash_mismatch != "rebuild":
+        return
+
+    if drift_rebuild_scope == "all":
+        rebuild_targets = scope_datasets
+    else:
+        rebuild_targets = tuple(dict.fromkeys(mismatched))
+
+    for dataset in rebuild_targets:
+        cache_refresh.rebuild(dataset)

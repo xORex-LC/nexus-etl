@@ -378,6 +378,11 @@ def cacheRefresh(
     retryBackoffSeconds: float | None = cli_options.RETRY_BACKOFF_SECONDS,
     dataset: str | None = cli_options.DATASET,
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
+    deps: bool = typer.Option(
+        True,
+        "--deps/--no-deps",
+        help="Include dataset dependencies in refresh scope",
+    ),
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
 ):
     settings = ctx.obj["settings"]
@@ -388,6 +393,7 @@ def cacheRefresh(
         retries=retries,
         retry_backoff_seconds=retryBackoffSeconds,
         include_deleted=includeDeleted,
+        include_dependencies=deps,
         report_items_limit=reportItemsLimit,
         dataset=dataset,
         api_transport=None,
@@ -422,8 +428,9 @@ def cacheStatus(
 def cacheClear(
     ctx: typer.Context,
     dataset: str | None = cli_options.DATASET,
+    cascade: bool = typer.Option(False, "--cascade", help="Cascade clear to dependent datasets"),
 ):
-    opts = cache_clear_command.Options(dataset=dataset)
+    opts = cache_clear_command.Options(dataset=dataset, cascade=cascade)
     command_ctx = _build_ctx(ctx, dataset)
     run_with_report(
         ctx=command_ctx,

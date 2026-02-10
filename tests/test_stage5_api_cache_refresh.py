@@ -5,10 +5,10 @@ from typing import Callable
 import httpx
 from typer.testing import CliRunner
 
-from connector.datasets.cache_registry import list_cache_specs
 from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.main import app
 
 runner = CliRunner()
@@ -192,7 +192,7 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
     conn = openCacheDb(str(db_path))
     try:
         engine = SqliteEngine(conn)
-        cache_specs = list_cache_specs()
+        cache_specs = list(load_cache_dsl_runtime().cache_specs)
         repo = SqliteCacheRepository(engine, cache_specs)
         users_count = repo.count("employees")
         org_count = repo.count("organizations")
