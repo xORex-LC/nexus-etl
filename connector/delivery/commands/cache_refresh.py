@@ -38,9 +38,9 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     settings = ctx.settings
     run_id = ctx.run_id
 
-    conn = None
+    gateway = None
     try:
-        conn, _engine, _gateway, cache_roles, _cache_specs = build_cache(settings)
+        gateway, cache_roles, _cache_specs = build_cache(settings)
         unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
         if unsupported_result is not None:
             return unsupported_result
@@ -83,8 +83,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     finally:
-        if conn is not None:
-            conn.close()
+        if gateway is not None:
+            gateway.close()
 
 def _build_api_client(settings, transport=None) -> AnkeyApiClient:
     return AnkeyApiClient(

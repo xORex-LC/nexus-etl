@@ -51,3 +51,39 @@ def test_purge_stale_removes_only_processed_statuses():
 
     statuses = [row[0] for row in engine.fetchall("SELECT status FROM pending_links ORDER BY pending_id")]
     assert statuses == ["pending", "resolved"]
+
+
+def test_list_pending_rows_returns_latest_payload_per_source_row():
+    engine = _make_engine()
+    repo = SqlitePendingLinksRepository(engine)
+
+    first_id = repo.add_pending(
+        "employees",
+        "row-1",
+        "manager_id",
+        "lookup-1",
+        None,
+        payload='{"v": 1}',
+    )
+    second_id = repo.add_pending(
+        "employees",
+        "row-1",
+        "organization_id",
+        "lookup-2",
+        None,
+        payload='{"v": 2}',
+    )
+
+    engine.execute(
+        "UPDATE pending_links SET created_at = ?, last_attempt_at = ? WHERE pending_id = ?",
+        ("2024-01-01T00:00:00+00:00", "2024-01-01T00:00:00+00:00", first_id),
+    )
+    engine.execute(
+        "UPDATE pending_links SET created_at = ?, last_attempt_at = ? WHERE pending_id = ?",
+        ("2024-01-02T00:00:00+00:00", "2024-01-02T00:00:00+00:00", second_id),
+    )
+
+    rows = repo.list_pending_rows("employees")
+    assert len(rows) == 1
+    assert rows[0].source_row_id == "row-1"
+    assert rows[0].payload == '{"v": 2}'

@@ -23,7 +23,7 @@ def _build_repo(tmp_path: Path) -> tuple[SqliteCacheRepository, sqlite3.Connecti
 def test_find_exact_and_include_deleted(tmp_path: Path):
     repo, conn = _build_repo(tmp_path)
     try:
-        with repo.transaction():
+        with repo.engine.transaction():
             repo.upsert(
                 "employees",
                 {
@@ -86,7 +86,7 @@ def test_find_exact_and_include_deleted(tmp_path: Path):
 def test_find_like_and_in(tmp_path: Path):
     repo, conn = _build_repo(tmp_path)
     try:
-        with repo.transaction():
+        with repo.engine.transaction():
             repo.upsert(
                 "organizations",
                 {"_ouid": 1, "code": "ORG-1", "name": "Alpha", "parent_id": None, "updated_at": None},

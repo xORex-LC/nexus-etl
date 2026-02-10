@@ -82,9 +82,19 @@ class SqlitePendingLinksRepository:
         rows = self.engine.fetchall(
             """
             SELECT dataset, source_row_id, payload
-            FROM pending_links
-            WHERE dataset = ? AND status = ? AND payload IS NOT NULL
-            GROUP BY source_row_id
+            FROM (
+                SELECT
+                    dataset,
+                    source_row_id,
+                    payload,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY source_row_id
+                        ORDER BY COALESCE(last_attempt_at, created_at) DESC, pending_id DESC
+                    ) AS rn
+                FROM pending_links
+                WHERE dataset = ? AND status = ? AND payload IS NOT NULL
+            )
+            WHERE rn = 1
             """,
             (dataset, PendingStatus.PENDING.value),
         )

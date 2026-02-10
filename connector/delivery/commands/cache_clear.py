@@ -25,9 +25,9 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     settings = ctx.settings
     run_id = ctx.run_id
 
-    conn = None
+    gateway = None
     try:
-        conn, _engine, _gateway, cache_roles, _cache_specs = build_cache(settings)
+        gateway, cache_roles, _cache_specs = build_cache(settings)
         unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
         if unsupported_result is not None:
             return unsupported_result
@@ -42,8 +42,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="cache-clear", exc=exc)
     finally:
-        if conn is not None:
-            conn.close()
+        if gateway is not None:
+            gateway.close()
 
 
 __all__ = ["handler", "Options"]

@@ -4,7 +4,7 @@ from connector.infra.cache.cache_spec import CacheSpec
 from connector.infra.cache.backends.sqlite.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def ensure_base_schema(engine: SqliteEngine) -> int:
@@ -29,6 +29,8 @@ def ensure_base_schema(engine: SqliteEngine) -> int:
             _migrate_to_v4(engine)
         if current_version < 5:
             _migrate_to_v5(engine)
+        if current_version < 6:
+            _migrate_to_v6(engine)
         _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
@@ -125,6 +127,18 @@ def _migrate_to_v5(engine: SqliteEngine) -> None:
     _create_runtime_state_table(engine)
 
 
+def _migrate_to_v6(engine: SqliteEngine) -> None:
+    """
+    Миграция с v5: добавляем индекс для детерминированного replay pending rows.
+    """
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pending_replay_rows
+        ON pending_links(dataset, status, source_row_id, last_attempt_at, created_at, pending_id)
+        """
+    )
+
+
 def _create_service_tables(engine: SqliteEngine) -> None:
     engine.execute(
         """
@@ -183,6 +197,12 @@ def _create_service_tables(engine: SqliteEngine) -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_pending_expires
         ON pending_links(expires_at)
+        """
+    )
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pending_replay_rows
+        ON pending_links(dataset, status, source_row_id, last_attempt_at, created_at, pending_id)
         """
     )
     _create_runtime_state_table(engine)

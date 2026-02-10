@@ -32,10 +32,10 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
     settings = ctx.settings
     run_id = ctx.run_id
 
-    conn = None
+    gateway = None
     try:
         dataset_name, _spec = build_dataset_spec(opts.dataset, settings)
-        conn, _engine, _gateway, cache_roles, _cache_specs = build_cache(settings)
+        gateway, cache_roles, _cache_specs = build_cache(settings)
 
         include_deleted_value = opts.include_deleted if opts.include_deleted is not None else settings.include_deleted
         report_items_limit_value = (
@@ -68,8 +68,8 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
         typer.echo("ERROR: import plan failed (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     finally:
-        if conn is not None:
-            conn.close()
+        if gateway is not None:
+            gateway.close()
 
 
 __all__ = ["handler", "Options"]
