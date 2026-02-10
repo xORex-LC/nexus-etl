@@ -1,104 +1,129 @@
 @startuml
-title Cache Infra View (SQLite Gateway Composition)
-
-skinparam classAttributeIconSize 0
+title Cache Infra Class View (Finalized)
+set namespaceSeparator none
+skinparam backgroundColor white
 skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 hide empty members
 
-package "domain contracts" {
-  interface CacheAdminPort <<protocol>>
-  interface EnrichLookupPort <<protocol>>
-  interface MatchRuntimePort <<protocol>>
-  interface ResolveRuntimePort <<protocol>>
-  interface ApplyRuntimePort <<protocol>>
+package "domain.ports.cache.roles" {
+  interface CacheAdminPort <<protocol>> {
+    +transaction()
+    +upsert(dataset, write_model)
+    +count(dataset)
+    +clear(dataset)
+  }
 
-  class CacheMeta
-  class PendingLink
-  class PendingRow
-  enum UpsertResult
+  interface EnrichLookupPort <<protocol>> {
+    +find(dataset, filters, include_deleted, mode)
+    +find_one(dataset, filters, include_deleted, mode)
+  }
+
+  interface PlanningRuntimePort <<protocol>> {
+    +find(dataset, filters, include_deleted, mode)
+    +find_candidates(dataset, identity_key)
+    +set_runtime_state(scope, dataset, key, value)
+    +add_pending(dataset, source_row_id, field, lookup_key, expires_at, payload)
+    +sweep_expired(now, reason)
+  }
+
+  interface ApplyRuntimePort <<protocol>> {
+    +upsert_identity(dataset, identity_key, resolved_id)
+    +list_pending_for_key(dataset, lookup_key)
+    +mark_resolved(pending_id)
+  }
+
+  interface CacheRefreshPort <<protocol>>
+  interface PendingReplayPort <<protocol>>
 }
 
 package "infra.cache" {
   class SqliteEngine {
     +transaction()
-    +execute(sql: str, params: tuple = ())
-    +fetchone(sql: str, params: tuple = ())
-    +fetchall(sql: str, params: tuple = ())
+    +execute(sql, params)
+    +fetchone(sql, params)
+    +fetchall(sql, params)
   }
 
   class SqliteCacheRepository {
-    -engine: SqliteEngine
-    -_handlers: dict[str, GenericCacheHandler]
-    +transaction(): Iterator[None]
-    +upsert(dataset: str, write_model: dict): UpsertResult
-    +count(dataset: str): int
-    +count_by_table(dataset: str): dict[str, int]
-    +clear(dataset: str): None
-    +list_datasets(): list[str]
-    +get_meta(dataset: str | None): CacheMeta
-    +set_meta(dataset: str | None, key: str, value: str | None): None
-    +reset_meta(dataset: str): None
-    +find(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): list[dict]
-    +find_one(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): dict | None
+    +upsert(dataset, write_model)
+    +find(dataset, filters, include_deleted, mode)
+    +find_one(dataset, filters, include_deleted, mode)
+    +count(dataset)
+    +clear(dataset)
+    +get_meta(dataset)
   }
 
   class SqliteIdentityRepository {
-    -engine: SqliteEngine
-    +upsert_identity(dataset: str, identity_key: str, resolved_id: str): None
-    +find_candidates(dataset: str, identity_key: str): list[str]
-    +set_runtime_state(scope: str, dataset: str, state_key: str, state_value: str): None
-    +get_runtime_state(scope: str, dataset: str, state_key: str): str | None
-    +clear_runtime_scope(scope: str): None
+    +upsert_identity(dataset, identity_key, resolved_id)
+    +find_candidates(dataset, identity_key)
+    +set_runtime_state(scope, dataset, key, value)
+    +get_runtime_state(scope, dataset, key)
+    +clear_runtime_scope(scope)
   }
 
   class SqlitePendingLinksRepository {
-    -engine: SqliteEngine
-    +add_pending(dataset: str, source_row_id: str, field: str, lookup_key: str, expires_at: str | None, payload: str | None): int
-    +list_pending_for_key(dataset: str, lookup_key: str): list[PendingLink]
-    +list_pending_rows(dataset: str): list[PendingRow]
-    +mark_resolved(pending_id: int): None
-    +mark_resolved_for_source(source_row_id: str): None
-    +mark_conflict(pending_id: int, reason: str | None): None
-    +mark_expired(pending_id: int, reason: str | None): None
-    +touch_attempt(pending_id: int): int
-    +sweep_expired(now: str, reason: str | None): list[PendingLink]
-    +purge_stale(cutoff: str, statuses: tuple[str, ...] | None): int
+    +add_pending(dataset, source_row_id, field, lookup_key, expires_at, payload)
+    +list_pending_for_key(dataset, lookup_key)
+    +list_pending_rows(dataset)
+    +mark_resolved(pending_id)
+    +mark_resolved_for_source(source_row_id)
+    +mark_conflict(pending_id, reason)
+    +sweep_expired(now, reason)
+    +purge_stale(cutoff, statuses)
   }
 
   class SqliteCacheGateway {
-    -_cache_repo: SqliteCacheRepository
-    -_identity_repo: SqliteIdentityRepository
-    -_pending_repo: SqlitePendingLinksRepository
+    +cache: SqliteCacheRepository
+    +identity: SqliteIdentityRepository
+    +pending: SqlitePendingLinksRepository
+    +open(settings, cache_specs)
+    +from_engine(engine, cache_specs, owns_connection)
     +transaction()
-    +upsert(dataset: str, write_model: dict): UpsertResult
-    +count(dataset: str): int
-    +count_by_table(dataset: str): dict[str, int]
-    +clear(dataset: str): None
-    +list_datasets(): list[str]
-    +get_meta(dataset: str | None): CacheMeta
-    +set_meta(dataset: str | None, key: str, value: str | None): None
-    +reset_meta(dataset: str): None
-    +find(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): list[dict]
-    +find_one(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): dict | None
-    +upsert_identity(dataset: str, identity_key: str, resolved_id: str): None
-    +find_candidates(dataset: str, identity_key: str): list[str]
-    +set_runtime_state(scope: str, dataset: str, state_key: str, state_value: str): None
-    +get_runtime_state(scope: str, dataset: str, state_key: str): str | None
-    +clear_runtime_scope(scope: str): None
-    +add_pending(dataset: str, source_row_id: str, field: str, lookup_key: str, expires_at: str | None, payload: str | None): int
-    +list_pending_for_key(dataset: str, lookup_key: str): list[PendingLink]
-    +list_pending_rows(dataset: str): list[PendingRow]
-    +mark_resolved(pending_id: int): None
-    +mark_resolved_for_source(source_row_id: str): None
-    +mark_conflict(pending_id: int, reason: str | None): None
-    +mark_expired(pending_id: int, reason: str | None): None
-    +touch_attempt(pending_id: int): int
-    +sweep_expired(now: str, reason: str | None): list[PendingLink]
-    +purge_stale(cutoff: str, statuses: tuple[str, ...] | None): int
+    +close()
+  }
+}
+
+package "infra.cache.roles" {
+  class SqliteCacheAdminAdapter {
+    +transaction()
+    +upsert(dataset, write_model)
+    +count(dataset)
+    +clear(dataset)
   }
 
-  class build_sqlite_cache_gateway <<factory>> {
-    +build_sqlite_cache_gateway(engine: SqliteEngine, cache_specs: Iterable[CacheSpec]): SqliteCacheGateway
+  class SqliteEnrichLookupAdapter {
+    +find(dataset, filters, include_deleted, mode)
+    +find_one(dataset, filters, include_deleted, mode)
+  }
+
+  class SqlitePlanningRuntimeAdapter {
+    +find(dataset, filters, include_deleted, mode)
+    +find_candidates(dataset, identity_key)
+    +set_runtime_state(scope, dataset, key, value)
+    +add_pending(dataset, source_row_id, field, lookup_key, expires_at, payload)
+    +sweep_expired(now, reason)
+  }
+
+  class SqliteApplyRuntimeAdapter {
+    +upsert_identity(dataset, identity_key, resolved_id)
+    +list_pending_for_key(dataset, lookup_key)
+    +mark_resolved(pending_id)
+  }
+
+  class SqliteCacheRefreshAdapter
+
+  class SqliteCacheRolePorts {
+    +cache_admin: CacheAdminPort
+    +cache_refresh: CacheRefreshPort
+    +enrich_lookup: EnrichLookupPort
+    +planning_runtime: PlanningRuntimePort
+    +pending_replay: PendingReplayPort
+    +apply_runtime: ApplyRuntimePort
   }
 }
 
@@ -109,22 +134,33 @@ SqliteCacheGateway *-- SqlitePendingLinksRepository
 SqliteCacheRepository --> SqliteEngine
 SqliteIdentityRepository --> SqliteEngine
 SqlitePendingLinksRepository --> SqliteEngine
+SqliteCacheGateway --> SqliteEngine
 
-build_sqlite_cache_gateway ..> SqliteCacheGateway : creates
-build_sqlite_cache_gateway ..> SqliteCacheRepository : creates
-build_sqlite_cache_gateway ..> SqliteIdentityRepository : creates
-build_sqlite_cache_gateway ..> SqlitePendingLinksRepository : creates
+SqliteCacheAdminAdapter --> SqliteCacheGateway
+SqliteEnrichLookupAdapter --> SqliteCacheGateway
+SqlitePlanningRuntimeAdapter --> SqliteCacheGateway
+SqliteApplyRuntimeAdapter --> SqliteCacheGateway
+SqliteCacheRefreshAdapter --> SqliteCacheAdminAdapter
+SqliteCacheRefreshAdapter --> SqliteApplyRuntimeAdapter
 
-SqliteCacheGateway ..|> CacheAdminPort
-SqliteCacheGateway ..|> EnrichLookupPort
-SqliteCacheGateway ..|> MatchRuntimePort
-SqliteCacheGateway ..|> ResolveRuntimePort
-SqliteCacheGateway ..|> ApplyRuntimePort
+SqliteCacheAdminAdapter ..|> CacheAdminPort
+SqliteEnrichLookupAdapter ..|> EnrichLookupPort
+SqlitePlanningRuntimeAdapter ..|> PlanningRuntimePort
+SqlitePlanningRuntimeAdapter ..|> PendingReplayPort
+SqliteApplyRuntimeAdapter ..|> ApplyRuntimePort
+SqliteCacheRefreshAdapter ..|> CacheRefreshPort
+
+SqliteCacheRolePorts ..> CacheAdminPort
+SqliteCacheRolePorts ..> CacheRefreshPort
+SqliteCacheRolePorts ..> EnrichLookupPort
+SqliteCacheRolePorts ..> PlanningRuntimePort
+SqliteCacheRolePorts ..> PendingReplayPort
+SqliteCacheRolePorts ..> ApplyRuntimePort
 
 note right of SqliteCacheGateway
-Single runtime object for DI.
-Internally composes three specialized
-SQLite repositories.
+Runtime facade for wiring/lifecycle.
+Domain/use-cases consume role ports,
+not this class directly.
 end note
 
 @enduml

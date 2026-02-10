@@ -1,143 +1,67 @@
 @startuml
-title Cache Interaction for Transform Stages (Domain + Infra)
-
-skinparam classAttributeIconSize 0
+title Cache Overall Interaction (Dataset Spec -> Stages -> Roles -> Infra)
+set namespaceSeparator none
+skinparam backgroundColor white
 skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 hide empty members
 
 package "dataset wiring" {
   interface DatasetSpec <<protocol>> {
-    +build_enrich_deps(settings, cache_gateway: EnrichLookupPort, secret_store): TransformProviderDeps
-    +build_planning_deps(settings, cache_gateway: PlanningRuntimePort): PlanningDependencies
-    +build_enrich_stage(catalog: ErrorCatalog, enrich_deps: TransformProviderDeps): EnrichStage
-    +build_match_stage(planning_deps: PlanningDependencies, catalog: ErrorCatalog, include_deleted: bool, settings): MatchStage
-    +build_resolve_stage(planning_deps: PlanningDependencies, catalog: ErrorCatalog, settings): ResolveStage
+    +build_enrich_deps(settings, enrich_lookup, secret_store): TransformProviderDeps
+    +build_planning_deps(settings, planning_runtime): PlanningDependencies
+    +build_enrich_stage(catalog, enrich_deps): EnrichStage
+    +build_match_stage(planning_deps, catalog, include_deleted, settings): MatchStage
+    +build_resolve_stage(planning_deps, catalog, settings): ResolveStage
   }
 
-  class EmployeesSpec {
-    +dataset_name: str
-    +build_enrich_deps(settings, cache_gateway: EnrichLookupPort, secret_store): TransformProviderDeps
-    +build_planning_deps(settings, cache_gateway: PlanningRuntimePort): PlanningDependencies
-    +build_enrich_stage(catalog: ErrorCatalog, enrich_deps: TransformProviderDeps): EnrichStage
-    +build_match_stage(planning_deps: PlanningDependencies, catalog: ErrorCatalog, include_deleted: bool, settings): MatchStage
-    +build_resolve_stage(planning_deps: PlanningDependencies, catalog: ErrorCatalog, settings): ResolveStage
-  }
+  class EmployeesSpec
 }
 
-package "stage deps and role ports" {
+package "stage deps (domain)" {
   class TransformProviderDeps {
     +cache_gateway: EnrichLookupPort
-    +secret_store: SecretStoreProtocol | None
-    +dictionaries: DictionaryProviderPort | None
   }
 
   class PlanningDependencies {
-    +cache_gateway: PlanningRuntimePort | None
+    +planning_runtime: PlanningRuntimePort | None
     +resolver_settings: ResolverSettings | None
   }
+}
 
-  interface EnrichLookupPort <<protocol>> {
-    +find(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): list[dict]
-    +find_one(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): dict | None
-  }
+package "stages" {
+  class EnrichStage
+  class MatchStage
+  class ResolveStage
 
-  interface MatchRuntimePort <<protocol>> {
-    +find(dataset: str, filters: dict[str, Any], include_deleted: bool, mode: str): list[dict]
-    +set_runtime_state(scope: str, dataset: str, state_key: str, state_value: str): None
-    +get_runtime_state(scope: str, dataset: str, state_key: str): str | None
-    +clear_runtime_scope(scope: str): None
-  }
+  class EnricherEngine
+  class MatchEngine
+  class ResolveEngine
+}
 
-  interface ResolveRuntimePort <<protocol>> {
-    +find_candidates(dataset: str, identity_key: str): list[str]
-    +add_pending(dataset: str, source_row_id: str, field: str, lookup_key: str, expires_at: str | None, payload: str | None): int
-    +list_pending_rows(dataset: str): list[PendingRow]
-    +mark_resolved_for_source(source_row_id: str): None
-    +mark_conflict(pending_id: int, reason: str | None): None
-    +touch_attempt(pending_id: int): int
-    +sweep_expired(now: str, reason: str | None): list[PendingLink]
-    +purge_stale(cutoff: str, statuses: tuple[str, ...] | None): int
-  }
-
+package "domain role ports" {
+  interface EnrichLookupPort <<protocol>>
   interface PlanningRuntimePort <<protocol>>
 }
 
-package "stage layer" {
-  class EnrichStage {
-    -enricher: EnricherEngine
-    -catalog: ErrorCatalog
-    +run(source: Iterable[TransformResult]): Iterable[TransformResult]
-  }
-
-  class MatchStage {
-    -matcher: MatchProcessor
-    -catalog: ErrorCatalog
-    +run(source: Iterable[TransformResult]): Iterable[TransformResult[MatchedRow]]
-  }
-
-  class ResolveStage {
-    -resolver: ResolveProcessor
-    -catalog: ErrorCatalog
-    +run(source: Iterable[TransformResult[MatchedRow]], dataset: str | None): Iterable[TransformResult]
-  }
-}
-
-package "engines and cores" {
-  class EnricherEngine {
-    -core: EnricherCore
-    +enrich(result: TransformResult): TransformResult
-  }
-
-  class EnricherCore {
-    -deps: TransformProviderDeps
-    +enrich(result: TransformResult): TransformResult
-  }
-
-  class MatchEngine {
-    -core: MatchCore
-    +match(enriched: TransformResult): TransformResult[MatchedRow]
-    +match_with_source_dedup(enriched: TransformResult): TransformResult[MatchedRow]
-    +bind_runtime_scope(scope: str | None): None
-    +reset_source_dedup(): None
-  }
-
-  class MatchCore {
-    -dataset: str
-    -cache_gateway: MatchRuntimePort
-    +match(enriched: TransformResult): TransformResult[MatchedRow]
-    +match_with_source_dedup(enriched: TransformResult): TransformResult[MatchedRow]
-    +match_stream(enriched_source: Iterable[TransformResult]): Iterable[TransformResult[MatchedRow]]
-    +bind_runtime_scope(scope: str | None): None
-    +reset_source_dedup(): None
-  }
-
-  class ResolveEngine {
-    -core: ResolveCore
-    +build_batch_index(matched_rows: list, dataset: str): dict[str, dict[str, list[str]]]
-    +resolve(matched: MatchedRow, target_id_map: dict[str, str], meta: dict | None, batch_index: dict | None)
-    +drain_expired()
-  }
-
-  class ResolveCore {
-    -cache_gateway: ResolveRuntimePort | None
-    +build_batch_index(matched_rows: list, dataset: str): dict[str, dict[str, list[str]]]
-    +resolve(matched: MatchedRow, target_id_map: dict[str, str], meta: dict | None, batch_index: dict | None)
-    +drain_expired(): list[PendingLink]
-  }
-}
-
-package "infra runtime object" {
+package "infra runtime + adapters" {
   class SqliteCacheGateway {
-    +find(...)
-    +find_one(...)
-    +find_candidates(...)
-    +set_runtime_state(...)
-    +get_runtime_state(...)
-    +clear_runtime_scope(...)
-    +add_pending(...)
-    +mark_resolved_for_source(...)
-    +sweep_expired(...)
-    +purge_stale(...)
+    +cache: SqliteCacheRepository
+    +identity: SqliteIdentityRepository
+    +pending: SqlitePendingLinksRepository
+    +open(settings, cache_specs)
+    +from_engine(engine, cache_specs, owns_connection)
+  }
+
+  class SqliteEnrichLookupAdapter
+  class SqlitePlanningRuntimeAdapter
+  class SqliteCacheRolePorts {
+    +enrich_lookup: EnrichLookupPort
+    +planning_runtime: PlanningRuntimePort
   }
 }
 
@@ -149,9 +73,6 @@ EmployeesSpec ..> EnrichStage : builds
 EmployeesSpec ..> MatchStage : builds
 EmployeesSpec ..> ResolveStage : builds
 
-PlanningRuntimePort --|> MatchRuntimePort
-PlanningRuntimePort --|> ResolveRuntimePort
-
 TransformProviderDeps ..> EnrichLookupPort
 PlanningDependencies ..> PlanningRuntimePort
 
@@ -159,23 +80,22 @@ EnrichStage --> EnricherEngine
 MatchStage --> MatchEngine
 ResolveStage --> ResolveEngine
 
-EnricherEngine --> EnricherCore
-MatchEngine --> MatchCore
-ResolveEngine --> ResolveCore
+SqliteEnrichLookupAdapter ..|> EnrichLookupPort
+SqlitePlanningRuntimeAdapter ..|> PlanningRuntimePort
+SqliteEnrichLookupAdapter --> SqliteCacheGateway
+SqlitePlanningRuntimeAdapter --> SqliteCacheGateway
 
-EnricherCore ..> TransformProviderDeps
-MatchCore ..> MatchRuntimePort
-ResolveCore ..> ResolveRuntimePort
+SqliteCacheRolePorts ..> EnrichLookupPort
+SqliteCacheRolePorts ..> PlanningRuntimePort
 
-SqliteCacheGateway ..|> EnrichLookupPort
-SqliteCacheGateway ..|> MatchRuntimePort
-SqliteCacheGateway ..|> ResolveRuntimePort
+note right of SqliteCacheRolePorts
+Built in wiring:
+build_sqlite_cache_role_ports(gateway)
+end note
 
-note right of SqliteCacheGateway
-Single cache runtime dependency
-injected into stage builders.
-Role-typed at usage points.
+note right of EmployeesSpec
+Domain stays role-typed.
+No direct dependency on Sqlite classes.
 end note
 
 @enduml
-
