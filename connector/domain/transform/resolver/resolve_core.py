@@ -692,10 +692,50 @@ def _serialize_pending_payload(
             "identity_value": matched.row_ref.identity_value,
         },
         "desired_state": desired_state,
+        "existing": matched.existing,
+        "fingerprint": matched.fingerprint,
+        "fingerprint_fields": list(matched.fingerprint_fields),
+        "match_decision": _serialize_match_decision(matched),
+        "source_links": _serialize_source_links(matched),
         "target_id": matched.target_id,
         "meta": meta or {},
     }
     return json.dumps(payload, ensure_ascii=True, default=str)
+
+
+def _serialize_source_links(matched: MatchedRow) -> dict[str, dict[str, Any]]:
+    return {
+        field: {
+            "primary": identity.primary,
+            "values": dict(identity.values),
+        }
+        for field, identity in matched.source_links.items()
+    }
+
+
+def _serialize_match_decision(matched: MatchedRow) -> dict[str, Any]:
+    decision = matched.match_decision
+    return {
+        "status": decision.status.value,
+        "reason_code": decision.reason_code,
+        "message": decision.message,
+        "score": decision.score,
+        "meta": decision.meta,
+        "selected": _serialize_candidate(decision.selected),
+        "candidates": [_serialize_candidate(candidate) for candidate in decision.candidates],
+    }
+
+
+def _serialize_candidate(candidate) -> dict[str, Any] | None:
+    if candidate is None:
+        return None
+    return {
+        "target_id": candidate.target_id,
+        "identity": candidate.identity,
+        "score": candidate.score,
+        "match_mode": candidate.match_mode,
+        "evidence": candidate.evidence,
+    }
 
 
 __all__ = ["ResolveCore"]

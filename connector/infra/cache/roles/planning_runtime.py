@@ -14,7 +14,7 @@ class SqlitePlanningRuntimeAdapter(PlanningRuntimePort, PendingReplayPort):
     def __init__(self, gateway: SqliteCacheGateway) -> None:
         self._gateway = gateway
 
-    # MatchRuntimePort + EnrichLookupPort
+    # MatchRuntimePort
     def find(
         self,
         dataset: str,
@@ -24,16 +24,6 @@ class SqlitePlanningRuntimeAdapter(PlanningRuntimePort, PendingReplayPort):
         mode: str = "exact",
     ) -> list[dict]:
         return self._gateway.cache.find(dataset, filters, include_deleted=include_deleted, mode=mode)
-
-    def find_one(
-        self,
-        dataset: str,
-        filters: dict[str, Any],
-        *,
-        include_deleted: bool = False,
-        mode: str = "exact",
-    ) -> dict | None:
-        return self._gateway.cache.find_one(dataset, filters, include_deleted=include_deleted, mode=mode)
 
     def set_runtime_state(
         self,
@@ -98,4 +88,3 @@ class SqlitePlanningRuntimeAdapter(PlanningRuntimePort, PendingReplayPort):
         statuses: tuple[str, ...] | None = None,
     ) -> int:
         return self._gateway.pending.purge_stale(cutoff, statuses=statuses)
-

@@ -1,0 +1,879 @@
+# Cache DSL
+
+## Цель
+Сделать кэш-слой декларативным и расширяемым, сохранив безопасное поведение в runtime:
+- конфигурация кэша и зависимостей датасетов описывается в YAML;
+- домен и use-case работают через role-based порты;
+- infra/wiring использует namespaced gateway;
+- исключаются dataset-specific ветки в общих миграциях SQLite.
+
+---
+
+## Принятые решения
+
+### 1) Порядок и зависимости датасетов
+Канонический механизм в `registry.yml`:
+- `depends_on`: обязательные зависимости;
+- `order_hint`: опциональный приоритет для tie-break.
+
+Порядок исполнения:
+1. строится topological order по `depends_on`;
+2. при равных зависимостях сортировка по `order_hint`.
+
+Это лучше, чем фиксированный ручной порядок, потому что:
+- не ломается при добавлении нового датасета;
+- явно отражает архитектурные зависимости.
+
+### 2) Границы API
+- **Канонический API домена/use-case:** role-based порты.
+- **Канонический API внутри infra/wiring:** namespaced gateway (`gateway.cache`, `gateway.identity`, `gateway.pending`).
+
+Gateway не должен становиться главной зависимостью домена; он отвечает за сборку, lifecycle и orchestration infra-слоя.
+
+### 3) Разделение схем
+Схемы кэша делятся на два класса:
+
+1. **Service schema** (общесистемные таблицы):
+   - `cache_meta`
+   - `identity_map`
+   - `pending_links`
+   Эти таблицы живут в `infra/cache/backends/sqlite/schema.py` и обновляются версионированно (миграции).
+
+2. **Dataset schema** (snapshot-таблицы датасетов):
+   - описываются декларативно в `datasets/*.cache.yaml`;
+   - создаются/обновляются idempotent ensure-механикой из DSL spec;
+   - не должны быть захардкожены в общих миграциях.
+
+### 4) Стратегия prod/dev по схеме
+Полный rebuild всей схемы при старте не выбран как канон для prod, так как можно потерять runtime-состояние (`pending`, `identity`, мета).
+
+Принят гибрид:
+- service schema: минимальные версионированные миграции;
+- dataset schema: декларативный ensure/rebuild.
+
+### 5) Drift control через `spec_hash`
+Для dataset schema вводится контроль рассинхрона:
+- вычисляется hash канонизированного `CacheSpec`;
+- сохраняется в `cache_meta` на уровень датасета;
+- при старте сравнивается текущий hash и сохраненный.
+
+Режимы:
+- `strict`: mismatch => ошибка (fail fast);
+- `soft`: mismatch => rebuild snapshot-таблицы датасета.
+
+Назначение:
+- предотвращение тихого рассинхрона между YAML и реальной таблицей;
+- предсказуемость поведения при обновлении DSL spec.
+
+---
+
+## Что сейчас не декларативно (цели миграции)
+1. Dataset cache specs заданы кодом в `connector/datasets/*/load/cache_spec.py`.
+2. Реестр и порядок cache specs заданы кодом в `connector/datasets/cache_registry.py`.
+3. `DatasetSpec.build_cache_specs()` всё еще возвращает кодовые связи.
+4. В sqlite schema есть dataset-specific участки, которые должны уйти в DSL-driven путь.
+
+---
+
+## Встраивание в текущий dsl-core
+Кэш использует тот же контур, что и другие DSL-слои:
+1. Loader читает YAML (`domain/dsl/loader.py`).
+2. Pydantic валидирует spec (`domain/dsl/specs.py`).
+3. Compiler переводит в runtime `CacheSpec` (`infra/cache/cache_spec.py`).
+4. `SqliteCacheGateway.open(..., cache_specs=...)` применяет ensure.
+5. Loader/validator ошибки поднимаются как `DslLoadError`; в orchestration слое они переводятся в `DslIssue` -> `DiagnosticItem(stage=CACHE)`.
+
+---
+
+## Loader Contract (расширение под cache)
+
+Loader для cache DSL расширяется без дублирования существующего поведения.
+
+### Что переиспользуем
+1. `_read_yaml(path)` — базовое чтение YAML mapping.
+2. `_repo_root()` — разрешение путей.
+3. Паттерн `raw -> pydantic.model_validate(raw)`.
+4. Единый путь диагностики: `DslLoadError` -> (`DslIssue` в orchestration) -> `DiagnosticItem(stage=CACHE)`.
+
+### Что добавляем
+1. `load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpec`
+2. `load_cache_registry_spec_for_runtime() -> CacheRegistrySpec`
+3. `load_cache_dataset_spec(path: str | Path) -> CacheDatasetSpec`
+4. `load_cache_dataset_spec_for_dataset(dataset: str) -> CacheDatasetSpec`
+5. `load_cache_policy() -> CachePolicySpec`
+6. `list_cache_enabled_datasets() -> list[str]`
+
+Канон:
+1. Sync-описание читается из секции `sync` внутри `CacheDatasetSpec` (`*.cache.yaml`).
+2. Отдельный `*.cache_sync.yaml` допустим только как transitional-совместимость до cutover.
+
+### Что НЕ делает loader
+1. Не строит граф зависимостей (`depends_on`) и не сортирует порядок.
+2. Не выполняет semantic-check между несколькими спеками.
+3. Не компилирует `soft_delete -> is_deleted`.
+4. Не проверяет drift/hash.
+
+Это зона compile/runtime orchestration слоя.
+
+### Семантические проверки (где должны быть)
+1. `depends_on` cycles/missing deps.
+2. `primary_key/index.fields` ссылочная корректность.
+3. уникальность имен колонок/индексов.
+4. соответствие `sync.projection.target` колонкам cache schema.
+5. политика `soft_delete` vs `is_deleted`.
+
+---
+
+## Sink-spec и sink-storage-spec (границы и применение)
+
+Чтобы не смешивать модель данных и транспорт/хранилище, фиксируются два независимых декларативных контракта.
+
+### 1) `SinkModelSpec` (dataset-level)
+Назначение:
+1. Описывает, как выглядят данные сущности в sink:
+   - поля, типы, required/nullable;
+   - системные поля;
+   - primary/identity keys;
+   - managed/immutable поля.
+
+Использование:
+1. `map/normalize` — структура и типовая валидация.
+2. `enrich` — targeted check только по изменяемым полям.
+3. `match/resolve` — правила identity/op decision на основе контрактных полей.
+4. `plan` — diff по managed полям и policy `ignored_fields`.
+5. `apply` — формирование payload строго по контракту.
+
+### 2) `SinkStorageSpec` (integration-level)
+Назначение:
+1. Описывает способ работы с конкретным sink backend/API:
+   - endpoints/paths;
+   - batch limits;
+   - retry/timeout policy;
+   - поддерживаемые операции (`create/update/delete`);
+   - особенности формата идентификаторов/soft-delete.
+
+Использование:
+1. `apply` и `cache-refresh/sync` для transport/runtime поведения.
+2. Не содержит бизнес-валидацию полей датасета.
+
+### 3) Практическая граница
+1. `SinkModelSpec` отвечает на вопрос: "какие данные допустимы".
+2. `SinkStorageSpec` отвечает на вопрос: "как/куда отправляем и читаем".
+3. Runtime использует только скомпилированные объекты spec, не raw YAML.
+
+---
+
+## Границы с TransformationEngine
+
+### Базовое правило
+`cache` не использует `TransformationEngine` напрямую внутри `gateway/repository` слоя.
+
+Причины:
+1. Разделение ответственности: cache отвечает за storage/lifecycle, не за бизнес-трансформацию.
+2. Снижение связности: infra cache остаётся независимым от stage-движков.
+3. Проще миграция backend (SQLite -> другой storage), без DSL transform-runtime внутри cache infra.
+
+### Допустимый сценарий использования
+Если нужны вычисления для snapshot (projection/derived fields), они выполняются:
+1. в orchestration/use-case слое;
+2. как pre-cache шаг;
+3. и только затем в cache передается готовый `write_model`.
+
+То есть: `transform/projection -> cache upsert`, но не `cache -> transform`.
+
+---
+
+## Cache архитектурная модель (Spec / Dsl / Engine / Core)
+
+Для cache используется та же идея слоёв, что и в DSL-подходе, но с поправкой на природу cache:
+cache — это lifecycle/infra orchestration, а не row-by-row stage transform.
+
+### 1) `CacheSpec`
+Назначение:
+1. Pydantic-контракты (`registry/cache/sync/policy`).
+2. Описание данных и поведения без runtime-логики.
+
+### 2) `CacheDsl`
+Назначение:
+1. Компиляция YAML-описаний в runtime-конфиг.
+2. Нормализация policy/defaults и подготовка compile-объектов.
+
+### 3) `CacheEngine` (лучше `CacheLifecycleEngine`)
+Назначение:
+1. Оркестрация сценариев `refresh/status/clear`.
+2. Работа с dependency-graph, drift-policy, clear-policy.
+3. Координация вызовов только через role-based порты (infra gateway используется лишь во wiring/bootstrap).
+
+Важно:
+1. Это command-level engine, а не stage-engine обработки одной записи.
+
+### 4) `CacheCore`
+Назначение:
+1. Чистая доменная логика lifecycle-решений без SQL/I/O:
+   - вычисление порядка выполнения (`depends_on`);
+   - вычисление drift-состояния;
+   - выбор `rebuild/fail/skip`;
+   - выбор clear-scope и каскада.
+
+Важно:
+1. `CacheCore` не равен `CacheGateway`.
+
+### 5) `CacheGateway`
+Назначение:
+1. Infra adapter к конкретному backend (SQLite и др.).
+2. Выполнение storage-операций (`ensure`, `upsert`, `meta`, `pending`, `identity`).
+
+Граница:
+1. `CacheCore` принимает решения.
+2. `CacheGateway` выполняет I/O.
+
+### Резюме границ
+1. `Spec + Dsl + LifecycleEngine + Core` — доменно-орchestration часть cache DSL.
+2. `Gateway + repositories/backends` — инфраструктурное исполнение.
+
+---
+
+## Cache Rules Model
+
+Набор правил для cache DSL фиксируется отдельно от transform-rules.
+
+### Категории правил
+1. `DependencyRules`
+   - `depends_on`, `order_hint`, `allow_partial_refresh`.
+2. `SchemaRules`
+   - `table`, `columns`, `indexes`, `primary_key`, `unique`, service flags.
+3. `DriftRules`
+   - `mode: strict|soft`,
+   - `on_hash_mismatch: fail|rebuild`,
+   - `rebuild_scope: dataset|all`.
+4. `ClearRules`
+   - `cascade_default`,
+   - `preserve_service_tables`,
+   - `reset_meta_on_clear`.
+5. `StatusRules`
+   - критерии `OK/DEGRADED/MISSING/BROKEN_DEPENDENCY`,
+   - orphan-check policy.
+6. `RetentionRules` (опционально)
+   - `pending_retention_days`,
+   - `identity_retention_days`,
+   - `sweep_interval_seconds`.
+
+### Пример YAML-скелета
+
+```yaml
+cache:
+  policy:
+    drift:
+      mode: strict
+      on_hash_mismatch: fail
+      rebuild_scope: dataset
+    clear:
+      cascade_default: false
+      preserve_service_tables: true
+      reset_meta_on_clear: true
+    status:
+      enable_orphan_check: true
+      degraded_on_hash_mismatch: true
+    retention:
+      pending_retention_days: 30
+      identity_retention_days: 90
+      sweep_interval_seconds: 300
+
+datasets:
+  organizations:
+    cache_spec: organizations.cache.yaml
+    depends_on: []
+    order_hint: 10
+    allow_partial_refresh: false
+
+  employees:
+    cache_spec: employees.cache.yaml
+    depends_on: [organizations]
+    order_hint: 20
+    allow_partial_refresh: false
+```
+
+Пример `employees.cache.yaml`:
+```yaml
+dataset: employees
+table: users
+schema:
+  primary_key: _id
+  columns:
+    - name: _id
+      type: text
+      required: true
+    - name: login
+      type: text
+      required: true
+    - name: email
+      type: text
+      required: false
+  indexes:
+    - name: idx_users_login
+      fields: [login]
+      unique: false
+flags:
+  include_deleted: true
+```
+
+---
+
+## Cache Sync DSL (миграция адаптеров)
+
+### Текущее состояние
+Сейчас dataset-specific адаптеры живут в коде:
+1. `connector/datasets/employees/load/cache_sync_adapter.py`
+2. `connector/datasets/organizations/load/cache_sync_adapter.py`
+3. реестр адаптеров — `connector/datasets/cache_registry.py`
+
+Проблема:
+1. rules `key/deleted/projection` захардкожены в Python;
+2. добавление нового датасета требует новый класс адаптера;
+3. дублируются утилиты преобразования (`to_str`, `to_int`, `pick first` и т.д.).
+
+### Целевая модель
+1. Оставить runtime-контракт `CacheSyncAdapterProtocol`.
+2. Заменить dataset-specific классы на один generic `DslCacheSyncAdapter`.
+3. Dataset-специфику перенести в YAML (`*.cache.yaml`, секция `sync`):
+   - `dataset`
+   - `list_path`
+   - `report_entity`
+   - `item_key` правило
+   - `is_deleted` правило
+   - `projection` в cache write-model.
+   - канон: секция `sync` внутри `*.cache.yaml`;
+   - отдельный `*.cache_sync.yaml` допустим только как transitional-совместимость до cutover.
+4. Удалить кодовый `cache_registry.py` после полного перехода на DSL registry.
+
+### Границы ответственности
+1. `DslCacheSyncAdapter` работает в orchestration-слое cache-refresh.
+2. `SqliteCacheGateway` и репозитории остаются без DSL-логики.
+3. Поток: `target payload -> DslCacheSyncAdapter -> write_model -> cache upsert`.
+
+### План перехода без риска
+1. Ввести generic `DslCacheSyncAdapter`.
+2. Перевести сначала `organizations` (минимальная сложность).
+3. Перевести `employees` с полным паритетом полей/правил.
+4. Удалить legacy адаптеры и кодовый registry.
+
+---
+
+## Cache Sync Ops Policy
+
+### Ops, которые переиспользуются из dsl-core
+1. `coalesce`
+2. `default_if_null`
+3. `to_string`
+4. `to_int`
+5. `to_bool` (или эквивалент)
+6. `trim`
+7. `lowercase` / `uppercase`
+8. `parse_date` / `to_iso8601` (при необходимости)
+
+### Ops, которые добавляются как универсальные
+1. `pick_first` — первое непустое значение из списка полей.
+2. `required` — fail/issue при пустом обязательном поле.
+3. `normalize_text` — каноническая нормализация текстовых полей.
+4. `to_bool_int` — приведение bool-представлений к `0/1`.
+5. `build_delimited_key` — универсальная сборка составного ключа.
+6. `deleted_when` — декларативная логика soft-delete.
+7. `from_path` (опционально) — чтение вложенных полей по пути.
+
+### Ограничения
+1. Имена ops не должны быть dataset-specific.
+2. Ops для cache-sync не превращаются в validate-движок.
+3. Если логика нужна только одному датасету и не повторяется, сначала проверяем, стоит ли вообще выносить её в op.
+
+---
+
+## Набор Pydantic Specs (канон)
+
+Этот раздел фиксирует целевой набор Pydantic-моделей для cache DSL.
+
+### A) Registry-level specs
+
+1. `CacheRegistrySpec`
+- Назначение: корневой контракт реестра cache-конфигураций.
+- Поля:
+  - `version: int`
+  - `policy: CachePolicySpec`
+  - `datasets: dict[str, CacheRegistryDatasetSpec]`
+
+2. `CacheRegistryDatasetSpec`
+- Назначение: описание одного dataset в registry.
+- Поля:
+  - `cache_spec: str` — путь до `*.cache.yaml`
+  - `depends_on: list[str] = []`
+  - `order_hint: int = 100`
+  - `allow_partial_refresh: bool = False`
+  - `enabled: bool = True`
+
+3. `CachePolicySpec`
+- Назначение: общие политики поведения cache-команд.
+- Поля:
+  - `drift: DriftPolicySpec`
+  - `clear: ClearPolicySpec`
+  - `status: StatusPolicySpec`
+  - `retention: RetentionPolicySpec | None`
+
+4. `DriftPolicySpec`
+- Назначение: поведение при рассинхроне DSL-спеки и БД.
+- Поля:
+  - `mode: Literal["strict", "soft"]`
+  - `on_hash_mismatch: Literal["fail", "rebuild"]`
+  - `rebuild_scope: Literal["dataset", "all"]`
+
+5. `ClearPolicySpec`
+- Назначение: поведение `cache-clear`.
+- Поля:
+  - `cascade_default: bool`
+  - `preserve_service_tables: bool`
+  - `reset_meta_on_clear: bool`
+
+6. `StatusPolicySpec`
+- Назначение: поведение `cache-status`.
+- Поля:
+  - `enable_orphan_check: bool`
+  - `degraded_on_hash_mismatch: bool`
+
+7. `RetentionPolicySpec`
+- Назначение: политики очистки runtime-данных.
+- Поля:
+  - `pending_retention_days: int | None`
+  - `identity_retention_days: int | None`
+  - `sweep_interval_seconds: int | None`
+
+### B) Dataset cache schema specs
+
+1. `CacheDatasetSpec`
+- Назначение: декларативный контракт snapshot-таблицы dataset.
+- Поля:
+  - `dataset: str`
+  - `table: str`
+  - `schema: CacheTableSchemaSpec`
+  - `sync: CacheSyncSpec | None = None`
+  - `flags: CacheDatasetFlagsSpec = ...`
+  - `policy_overrides: CacheDatasetPolicyOverridesSpec | None = None`
+
+2. `CacheTableSchemaSpec`
+- Назначение: схема таблицы и индексов.
+- Поля:
+  - `primary_key: str`
+  - `columns: list[CacheColumnSpec]`
+  - `indexes: list[CacheIndexSpec] = []`
+
+3. `CacheColumnSpec`
+- Назначение: описание колонки snapshot-таблицы.
+- Поля:
+  - `name: str`
+  - `type: Literal["text", "int", "real", "bool", "json"]`
+  - `required: bool = False`
+  - `default: Any | None = None`
+
+4. `CacheIndexSpec`
+- Назначение: индекс таблицы.
+- Поля:
+  - `name: str`
+  - `fields: list[str]`
+  - `unique: bool = False`
+
+5. `CacheDatasetFlagsSpec`
+- Назначение: служебные флаги dataset.
+- Поля:
+  - `include_deleted: bool = False`
+
+6. `CacheDatasetPolicyOverridesSpec`
+- Назначение: dataset-level overrides поверх `registry.policy`.
+- Поля:
+  - `drift: DriftPolicySpec | None`
+  - `clear: ClearPolicySpec | None`
+  - `status: StatusPolicySpec | None`
+  - `retention: RetentionPolicySpec | None`
+
+### C) Cache sync specs (внутри `CacheDatasetSpec.sync`)
+
+1. `CacheSyncSpec`
+- Назначение: контракт преобразования payload из target в cache write-model.
+- Поля:
+  - `dataset: str`
+  - `list_path: str`
+  - `report_entity: str`
+  - `item_key: ValueExprSpec`
+  - `is_deleted: ValueExprSpec | None`
+  - `soft_delete: SoftDeleteSpec | None`
+  - `projection: list[CacheProjectionRuleSpec]`
+
+2. `CacheProjectionRuleSpec`
+- Назначение: правило проекции поля в cache write-model.
+- Поля:
+  - `target: str`
+  - `source: str | list[str] | None`
+  - `ops: list[OperationSpec] = []`
+  - `required: bool = False`
+  - `on_error: Literal["error", "warning", "skip", "set_null"] = "error"`
+
+3. `SoftDeleteSpec`
+- Назначение: декларативное описание soft-delete без дублирования runtime-логики.
+- Поля:
+  - `mode: Literal["any_of", "all_of"] = "any_of"`
+  - `rules: list[SoftDeleteRuleSpec]`
+
+4. `SoftDeleteRuleSpec` (минимальный набор)
+- `field_equals`:
+  - `field: str`
+  - `value: Any`
+  - `normalize: list[str] = []` (например: `["trim", "lowercase"]`)
+- `field_not_null`:
+  - `field: str`
+
+### D) Compile-time правило для soft-delete
+
+1. В runtime используется только `is_deleted`.
+2. Если задан `soft_delete`, компилятор обязан преобразовать его в `is_deleted`-выражение.
+3. Одновременное задание `is_deleted` и `soft_delete`:
+   - либо запрещаем (ошибка compile),
+   - либо объявляем явный приоритет.
+4. Рекомендуемый канон: запрещать совместное использование, чтобы избежать неявной логики.
+
+### E) Что валидирует Pydantic, а что компилятор
+
+1. Pydantic:
+- структура YAML;
+- типы полей;
+- обязательные/enum значения.
+
+2. Compiler/semantic validation:
+- граф `depends_on` (cycles/missing deps);
+- корректность `primary_key` и `indexes.fields`;
+- уникальность имен колонок/индексов;
+- совместимость `projection.target` с `CacheDatasetSpec.schema.columns`;
+- политика `soft_delete` vs `is_deleted`.
+
+---
+
+## Поведенческая матрица (refresh/status/clear)
+
+Этот раздел фиксирует целевую операционную семантику cache DSL.
+
+### Глобальные правила
+1. Источник истины для dataset cache — `datasets/registry.yml` + `datasets/*.cache.yaml`.
+2. Любая операция сначала валидирует registry/spec.
+3. Порядок исполнения всегда topological (`depends_on`, `order_hint` только tie-break).
+4. Service schema (`cache_meta`, `identity_map`, `pending_links`) не удаляется в dataset-операциях.
+
+### `cache-refresh`
+
+#### Режимы вызова
+1. `cache-refresh` (без `--dataset`):
+   - обрабатывает все датасеты из registry в topological порядке.
+2. `cache-refresh --dataset X`:
+   - по умолчанию включает зависимости `X` (режим `with_deps=true`).
+   - `--no-deps` отключает автодогрузку зависимостей (экспертный режим).
+
+#### Поведение
+1. Валидирует registry/spec.
+2. Применяет service schema migrations (если нужны).
+3. Для каждого dataset:
+   - ensure dataset schema по DSL;
+   - проверка `spec_hash`;
+   - при mismatch:
+     - `strict`: ошибка, refresh для dataset не выполняется;
+     - `soft`: rebuild snapshot-таблицы dataset и запись нового hash.
+4. Обновляет dataset meta (`last_refresh_at`, `spec_hash`, `row_count`).
+
+#### Что не делает
+1. Не очищает `pending_links` и `identity_map` автоматически.
+2. Не удаляет dataset, отсутствующие в текущем запуске (если вызов точечный).
+
+### `cache-status`
+
+#### Режимы вызова
+1. `cache-status`:
+   - показывает все датасеты из registry и service schema.
+2. `cache-status --dataset X`:
+   - показывает состояние только X + его dependencies summary.
+
+#### Состояния dataset
+1. `OK`:
+   - таблица существует, schema валидна, `spec_hash` совпадает.
+2. `DEGRADED`:
+   - таблица есть, но `spec_hash` mismatch или частичное несоответствие индексов/колонок.
+3. `MISSING`:
+   - dataset объявлен в registry, но таблица отсутствует.
+4. `INVALID_SPEC`:
+   - YAML невалиден или отсутствует обязательная часть spec.
+5. `BROKEN_DEPENDENCY`:
+   - зависимость датасета отсутствует/невалидна/в цикле.
+
+#### Дополнительно в статусе
+1. Признак циклов/ошибок графа зависимостей.
+2. Признак `orphan` таблиц (есть в БД, но нет в registry).
+3. Сервисные метрики (`pending_count`, `identity_count`) как справочная секция.
+
+### `cache-clear`
+
+#### Режимы вызова
+1. `cache-clear`:
+   - очищает snapshot-таблицы всех датасетов из registry в reverse-topological порядке.
+2. `cache-clear --dataset X`:
+   - по умолчанию очищает только X.
+   - `--cascade` очищает X и все зависимые datasets (dependents).
+
+#### Поведение
+1. Удаляет/очищает только dataset snapshot-данные.
+2. Service schema сохраняется.
+3. Для очищенных datasets сбрасывает dataset-мета (`last_refresh_at`, `row_count`, `spec_hash`).
+
+#### Что не делает
+1. Не удаляет записи `pending_links`/`identity_map` для других датасетов.
+2. Не удаляет service tables.
+
+### Drift-policy (унифицировано для команд)
+1. `strict`:
+   - `refresh`: fail fast на mismatch.
+   - `status`: `DEGRADED/INVALID_SPEC`.
+   - `clear`: выполняется только при валидном registry/spec; при DSL/config ошибке — fail fast (`exit 2`).
+2. `soft`:
+   - `refresh`: auto-rebuild dataset snapshot на mismatch.
+   - `status`: `DEGRADED` с рекомендацией refresh.
+   - `clear`: выполняется только при валидном registry/spec; режим `soft` не понижает DSL/config ошибки.
+
+### Ошибки и диагностические коды (целевые)
+1. `CACHE_DSL_REGISTRY_INVALID`
+2. `CACHE_DSL_SPEC_INVALID`
+3. `CACHE_DSL_DEP_CYCLE`
+4. `CACHE_DSL_DEP_MISSING`
+5. `CACHE_DSL_HASH_MISMATCH`
+6. `CACHE_SCHEMA_ENSURE_FAILED`
+7. `CACHE_SCHEMA_REBUILD_FAILED`
+
+Все ошибки маппятся в `DiagnosticItem(stage=CACHE)`.
+
+---
+
+## CLI Contract (точные флаги и дефолты)
+
+Этот раздел фиксирует внешний контракт CLI для cache DSL.
+
+### Общие флаги для cache-команд
+1. `--dataset <name>`:
+   - ограничивает операцию одним dataset.
+2. `--strict/--no-strict`:
+   - переопределяет глобальный diagnostics/cache strict-режим.
+3. `--format table|json` (для status):
+   - формат вывода.
+
+### `cache-refresh` (контракт)
+1. Синтаксис:
+   - `cache-refresh`
+   - `cache-refresh --dataset employees`
+   - `cache-refresh --dataset employees --no-deps`
+2. Флаги:
+   - `--dataset <name>`
+   - `--deps/--no-deps` (default: `--deps`)
+   - `--strict/--no-strict` (default: из settings)
+3. Дефолты:
+   - без dataset: refresh всех datasets;
+   - с dataset: refresh dataset + dependencies.
+4. Exit semantics:
+   - `0`: refresh выполнен;
+   - `2`: DSL/config error (`CACHE_DSL_*`);
+   - `3`: schema/runtime error (`CACHE_SCHEMA_*`).
+
+### `cache-status` (контракт)
+1. Синтаксис:
+   - `cache-status`
+   - `cache-status --dataset employees`
+   - `cache-status --format json`
+2. Флаги:
+   - `--dataset <name>`
+   - `--format table|json` (default: `table`)
+   - `--strict/--no-strict` (влияет на итоговый код возврата при деградации)
+3. Дефолты:
+   - показывает все datasets + service schema summary.
+4. Exit semantics:
+   - `0`: все `OK`;
+   - `1`: есть `DEGRADED/MISSING/BROKEN_DEPENDENCY` (операция не упала, но система не в green);
+   - `2`: DSL/config error (`CACHE_DSL_*`).
+
+### `cache-clear` (контракт)
+1. Синтаксис:
+   - `cache-clear`
+   - `cache-clear --dataset employees`
+   - `cache-clear --dataset organizations --cascade`
+2. Флаги:
+   - `--dataset <name>`
+   - `--cascade` (default: `false`)
+   - `--strict/--no-strict`
+3. Дефолты:
+   - без dataset: clear всех snapshot datasets в reverse-topological порядке;
+   - с dataset без cascade: clear только выбранного dataset.
+4. Exit semantics:
+   - `0`: clear завершен;
+   - `2`: DSL/config error (`CACHE_DSL_*`);
+   - `3`: runtime clear error.
+
+### Политика совместимости и перехода
+1. До завершения миграции допустим fallback на кодовый registry только в dev-режиме, с warning.
+2. После finalize:
+   - fallback отключается;
+   - отсутствие/невалидность YAML registry/spec считается ошибкой запуска.
+
+---
+
+## Черновой YAML-контракт (минимум)
+
+### `datasets/registry.yml`
+```yaml
+version: 1
+policy:
+  drift:
+    mode: strict
+    on_hash_mismatch: fail
+    rebuild_scope: dataset
+  clear:
+    cascade_default: false
+    preserve_service_tables: true
+    reset_meta_on_clear: true
+  status:
+    enable_orphan_check: true
+    degraded_on_hash_mismatch: true
+  retention: null
+
+datasets:
+  organizations:
+    cache_spec: organizations.cache.yaml
+    depends_on: []
+    order_hint: 10
+  employees:
+    cache_spec: employees.cache.yaml
+    depends_on: [organizations]
+    order_hint: 20
+```
+
+### `datasets/employees.cache.yaml`
+```yaml
+dataset: employees
+table: users
+schema:
+  primary_key: _id
+  columns:
+    - name: _id
+      type: text
+      required: true
+    - name: login
+      type: text
+      required: true
+    - name: email
+      type: text
+      required: false
+  indexes:
+    - name: idx_users_login
+      fields: [login]
+      unique: false
+sync:
+  list_path: users
+  report_entity: users
+  item_key:
+    source: _id
+    ops: [to_string]
+  is_deleted:
+    source: is_deleted
+    ops: [to_bool]
+  projection:
+    - target: _id
+      source: _id
+      required: true
+      on_error: error
+      ops: [to_string]
+    - target: login
+      source: login
+      required: true
+      on_error: error
+      ops: [trim]
+flags:
+  include_deleted: true
+policy_overrides: {}
+```
+
+Примечание: точный набор полей (`type`, `required`, `flags`, `policy_overrides`) доуточняется при реализации компилятора.
+
+---
+
+## План внедрения (кратко)
+1. Ввести Pydantic cache-spec в `domain/dsl/specs.py`.
+2. Добавить loader функции для `registry.yml` и `*.cache.yaml`.
+3. Реализовать компиляцию YAML -> `CacheSpec`.
+4. Перевести `build_cache()` и `build_cache_specs()` на loader/compile путь.
+5. Убрать legacy `connector/datasets/cache_registry.py` и кодовые `load/cache_spec.py`.
+6. Оставить в SQLite schema только service schema миграции.
+7. Добавить `spec_hash` в `cache_meta` и проверку drift.
+8. Добавить архитектурные тесты границ и порядка.
+
+---
+
+## Критерии завершения
+1. Добавление нового dataset cache не требует Python-кода (только YAML + регистрация).
+2. Порядок определяется зависимостями, а не ручным hardcode.
+3. В schema-модулях нет dataset-specific SQL.
+4. Drift между DSL и БД обнаруживается детерминированно.
+5. Домен/use-case не зависит от infra gateway напрямую.
+
+---
+
+## Execution Checklist (оформлено, без реализации)
+
+### A) Решения, которые надо финализировать до старта реализации
+1. Финальный layout `*.cache.yaml`:
+   - подтверждаем разделы `schema/sync/flags/policy_overrides`;
+   - фиксируем обязательные поля и default-значения.
+2. Приоритет политик:
+   - `defaults -> registry.policy -> dataset.policy_overrides -> CLI flags`.
+3. Контракт `spec_hash`:
+   - canonical JSON (sorted keys, stable serialization);
+   - место хранения в `cache_meta`;
+   - поведение на mismatch по `strict/soft`.
+4. Rebuild semantics при drift:
+   - фиксировано: `drop+create` для dataset snapshot-таблицы;
+   - `truncate+ensure` не используется как drift-strategy;
+   - service schema (`pending/identity/meta`) не затрагивается;
+   - dataset meta (`row_count`, `last_refresh_at`) пересчитывается после rebuild, `spec_hash` обновляется.
+5. Поведение команд с зависимостями:
+   - `cache-refresh --dataset X`: default `--deps`;
+   - `cache-clear --dataset X`: default без каскада, `--cascade` для dependents.
+6. Loader API формально:
+   - фиксировано: loader работает через `raise DslLoadError`;
+   - `DslIssue` формируется на уровне orchestration/diagnostics-adapter;
+   - список `CACHE_DSL_*` кодов задается на каждом failure point.
+7. Semantic compile checks (обязательный минимум):
+   - dep cycles/missing deps;
+   - pk/index field refs;
+   - projection target compatibility;
+   - правило `soft_delete` vs `is_deleted`.
+   - фиксировано: перечисленные нарушения считаются `error` (fail-fast).
+   - `warning` используется для observational проблем (например, orphan tables в status).
+8. План отключения legacy:
+   - когда удаляем `datasets/cache_registry.py`;
+   - когда удаляем `datasets/*/load/cache_sync_adapter.py`;
+   - фиксировано: временный dev-fallback допустим только до финального cutover и удаляется в конце миграции.
+
+### B) Что считаем done по миграции cache DSL
+1. Runtime не использует кодовый registry/adapters для dataset cache/sync.
+2. Новая cache-интеграция датасета:
+   - добавляется через YAML + запись в `registry.yml`;
+   - без новых Python-классов адаптеров/спеков датасета.
+3. Все три cache-сценария (`refresh/status/clear`) работают по DSL-конфигу.
+4. Drift контроль (`spec_hash`) включен и покрыт тестами для `strict` и `soft`.
+5. CLI flags и defaults соответствуют разделу `CLI Contract` в этом документе.
+6. Архитектурные тесты проверяют:
+   - отсутствие прямого domain/use-case доступа к infra cache classes;
+   - отсутствие legacy путей после cutover.
+7. Удалены transitional модули и обратная совместимость, если это зафиксировано для текущего этапа.
+
+### C) Выходные артефакты по завершению
+1. Обновленные доки:
+   - `docs/Cache_DSL.md`
+   - `docs/Cache_Architecture.md`
+2. Обновленные UML по cache DSL/runtime.
+3. Набор unit + architecture tests на новый контракт.

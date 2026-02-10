@@ -15,6 +15,17 @@
 - `resolve`
 - (опционально) `plan/apply` правила на следующих этапах.
 
+## Связь с Cache DSL / Loader / Sink Specs
+Чтобы не смешивать разные домены ответственности, фиксируем:
+1) Cache DSL живет отдельным контуром (`docs/Cache_DSL.md`) и использует тот же `domain/dsl/loader.py` как transport+validation entrypoint.
+2) Loader под cache расширяется функциями `load_cache_registry_spec/load_cache_dataset_spec/load_cache_sync_spec`, но не выполняет semantic compile/check графа зависимостей.
+3) Sink-контракты разделяются:
+   - `SinkModelSpec` (модель данных датасета),
+   - `SinkStorageSpec` (transport/backend поведение).
+4) `plan/apply/cache` используют эти контракты совместно:
+   - `SinkModelSpec` для структуры/валидации/диффа,
+   - `SinkStorageSpec` для runtime I/O политики.
+
 Движок читает DSL и собирает исполняемую конфигурацию стадий.
 Для редких кейсов остаются `custom`-правила, но они подключаются как расширения, а не как второй pipeline-путь.
 
