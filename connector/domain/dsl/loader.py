@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import yaml
 import os
@@ -34,15 +34,15 @@ from connector.domain.dsl.specs import (
 )
 from connector.domain.dsl.issues import DslLoadError
 
+TSpec = TypeVar("TSpec")
+
 
 def load_mapping_spec(path: str | Path) -> MappingSpec:
     """
     Назначение:
         Прочитать YAML и сформировать MappingSpec.
     """
-
-    raw = _read_yaml(path)
-    return MappingSpec.model_validate(raw)
+    return _load_spec_from_path(path, MappingSpec, code="MAP_DSL_SPEC_INVALID")
 
 
 def load_mapping_spec_for_dataset(dataset: str) -> MappingSpec:
@@ -50,9 +50,12 @@ def load_mapping_spec_for_dataset(dataset: str) -> MappingSpec:
     Назначение:
         Загрузить mapping DSL по имени датасета из datasets/registry.yml.
     """
-    registry = _load_registry()
-    mapping_path = _resolve_registry_path(registry, dataset, "mapping")
-    return load_mapping_spec(mapping_path)
+    return _load_dataset_stage_spec(
+        dataset=dataset,
+        stage="mapping",
+        spec_cls=MappingSpec,
+        code="MAP_DSL_SPEC_INVALID",
+    )
 
 
 def load_source_spec_for_dataset(dataset: str) -> SourceSpec:
@@ -60,10 +63,12 @@ def load_source_spec_for_dataset(dataset: str) -> SourceSpec:
     Назначение:
         Загрузить source DSL по имени датасета из datasets/registry.yml.
     """
-    registry = _load_registry()
-    source_path = _resolve_registry_path(registry, dataset, "source")
-    raw = _read_yaml(source_path)
-    return SourceSpec.model_validate(raw)
+    return _load_dataset_stage_spec(
+        dataset=dataset,
+        stage="source",
+        spec_cls=SourceSpec,
+        code="SOURCE_DSL_SPEC_INVALID",
+    )
 
 
 def resolve_source_location(spec: SourceSpec) -> str:
@@ -74,7 +79,7 @@ def resolve_source_location(spec: SourceSpec) -> str:
     Алгоритм:
         - Если задан `location_ref`, берём значение из env.
         - Если env-переменная пуста, fallback на `location`.
-        - Если итоговое значение пустое, бросаем ValueError.
+        - Если итоговое значение пустое, бросаем DslLoadError.
     """
     ref = spec.source.location_ref
     if ref:
@@ -84,7 +89,11 @@ def resolve_source_location(spec: SourceSpec) -> str:
     location = spec.source.location
     if location and location.strip():
         return location.strip()
-    raise ValueError("source location is not configured (location_ref/location)")
+    raise DslLoadError(
+        code="SOURCE_DSL_LOCATION_INVALID",
+        message="source location is not configured (location_ref/location)",
+        details={"dataset": spec.dataset},
+    )
 
 
 def load_normalize_spec_for_dataset(dataset: str) -> NormalizeSpec:
@@ -92,10 +101,12 @@ def load_normalize_spec_for_dataset(dataset: str) -> NormalizeSpec:
     Назначение:
         Загрузить normalize DSL по имени датасета из datasets/registry.yml.
     """
-    registry = _load_registry()
-    normalize_path = _resolve_registry_path(registry, dataset, "normalize")
-    raw = _read_yaml(normalize_path)
-    return NormalizeSpec.model_validate(raw)
+    return _load_dataset_stage_spec(
+        dataset=dataset,
+        stage="normalize",
+        spec_cls=NormalizeSpec,
+        code="NORMALIZE_DSL_SPEC_INVALID",
+    )
 
 
 def load_enrich_spec_for_dataset(dataset: str) -> EnrichSpec:
@@ -103,11 +114,13 @@ def load_enrich_spec_for_dataset(dataset: str) -> EnrichSpec:
     Назначение:
         Загрузить enrich DSL по имени датасета из datasets/registry.yml.
     """
-    registry = _load_registry()
-    enrich_path = _resolve_registry_path(registry, dataset, "enrich")
-    raw = _read_yaml(enrich_path)
-    raw = _expand_enrich_templates(raw)
-    return EnrichSpec.model_validate(raw)
+    return _load_dataset_stage_spec(
+        dataset=dataset,
+        stage="enrich",
+        spec_cls=EnrichSpec,
+        code="ENRICH_DSL_SPEC_INVALID",
+        post_load=_expand_enrich_templates,
+    )
 
 
 def load_validate_spec_for_dataset(dataset: str) -> ValidationSpec:
@@ -115,10 +128,12 @@ def load_validate_spec_for_dataset(dataset: str) -> ValidationSpec:
     Назначение:
         Загрузить validate DSL по имени датасета из datasets/registry.yml.
     """
-    registry = _load_registry()
-    validate_path = _resolve_registry_path(registry, dataset, "validate")
-    raw = _read_yaml(validate_path)
-    return ValidationSpec.model_validate(raw)
+    return _load_dataset_stage_spec(
+        dataset=dataset,
+        stage="validate",
+        spec_cls=ValidationSpec,
+        code="VALIDATE_DSL_SPEC_INVALID",
+    )
 
 
 def load_match_spec_for_dataset(dataset: str) -> MatchSpec:
@@ -126,10 +141,12 @@ def load_match_spec_for_dataset(dataset: str) -> MatchSpec:
     Назначение:
         Загрузить match DSL по имени датасета из datasets/registry.yml.
     """
-    registry = _load_registry()
-    match_path = _resolve_registry_path(registry, dataset, "match")
-    raw = _read_yaml(match_path)
-    return MatchSpec.model_validate(raw)
+    return _load_dataset_stage_spec(
+        dataset=dataset,
+        stage="match",
+        spec_cls=MatchSpec,
+        code="MATCH_DSL_SPEC_INVALID",
+    )
 
 
 def load_resolve_spec_for_dataset(dataset: str) -> ResolveSpec:
@@ -137,10 +154,12 @@ def load_resolve_spec_for_dataset(dataset: str) -> ResolveSpec:
     Назначение:
         Загрузить resolve DSL по имени датасета из datasets/registry.yml.
     """
-    registry = _load_registry()
-    resolve_path = _resolve_registry_path(registry, dataset, "resolve")
-    raw = _read_yaml(resolve_path)
-    return ResolveSpec.model_validate(raw)
+    return _load_dataset_stage_spec(
+        dataset=dataset,
+        stage="resolve",
+        spec_cls=ResolveSpec,
+        code="RESOLVE_DSL_SPEC_INVALID",
+    )
 
 
 def load_sink_spec_for_dataset(dataset: str) -> SinkSpec:
@@ -148,10 +167,12 @@ def load_sink_spec_for_dataset(dataset: str) -> SinkSpec:
     Назначение:
         Загрузить sink-модель по имени датасета из datasets/registry.yml.
     """
-    registry = _load_registry()
-    sink_path = _resolve_registry_path(registry, dataset, "sink")
-    raw = _read_yaml(sink_path)
-    return SinkSpec.model_validate(raw)
+    return _load_dataset_stage_spec(
+        dataset=dataset,
+        stage="sink",
+        spec_cls=SinkSpec,
+        code="SINK_DSL_SPEC_INVALID",
+    )
 
 
 def load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpec:
@@ -287,7 +308,11 @@ def _expand_enrich_templates(raw: dict[str, Any]) -> dict[str, Any]:
         if template_name:
             template = templates.get(template_name)
             if not template:
-                raise ValueError(f"Unknown lookup template: {template_name}")
+                raise DslLoadError(
+                    code="ENRICH_DSL_TEMPLATE_INVALID",
+                    message=f"Unknown lookup template: {template_name}",
+                    details={"template": template_name},
+                )
             merged = {**template, **rule}
             if "name" not in merged:
                 merged["name"] = rule.get("name") or template_name
@@ -303,18 +328,25 @@ def _expand_enrich_templates(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_registry() -> dict[str, Any]:
-    registry_path = _repo_root() / "datasets" / "registry.yml"
-    return _read_yaml(registry_path)
+    return _load_registry_or_raise()
 
 
 def _resolve_registry_path(registry: dict[str, Any], dataset: str, stage: str) -> Path:
     datasets = registry.get("datasets") or {}
     if dataset not in datasets:
-        raise ValueError(f"Dataset '{dataset}' not found in registry.yml")
+        raise DslLoadError(
+            code="DSL_REGISTRY_INVALID",
+            message=f"Dataset '{dataset}' not found in registry.yml",
+            details={"dataset": dataset, "stage": stage},
+        )
     entry = datasets[dataset] or {}
     filename = entry.get(stage)
     if not filename:
-        raise ValueError(f"Dataset '{dataset}' does not define '{stage}' in registry.yml")
+        raise DslLoadError(
+            code="DSL_REGISTRY_INVALID",
+            message=f"Dataset '{dataset}' does not define '{stage}' in registry.yml",
+            details={"dataset": dataset, "stage": stage},
+        )
     return _repo_root() / "datasets" / filename
 
 
@@ -350,7 +382,7 @@ def _load_stage_build_options(
         Загрузить compile-policy build options с merge-приоритетом:
         defaults -> global.base/global.stages[stage] -> datasets[dataset].build_options[stage]
     """
-    registry = _load_registry()
+    registry = _load_registry_or_raise()
     root_build_options = registry.get("build_options") or {}
     datasets = registry.get("datasets") or {}
     dataset_entry = datasets.get(dataset) or {}
@@ -365,3 +397,90 @@ def _load_stage_build_options(
     merged.update(global_stage)
     merged.update(dataset_stage)
     return build_options_from_mapping(options_cls, merged)
+
+
+def _load_registry_or_raise() -> dict[str, Any]:
+    registry_path = _repo_root() / "datasets" / "registry.yml"
+    try:
+        return _read_yaml(registry_path)
+    except Exception as exc:
+        raise DslLoadError(
+            code="DSL_REGISTRY_INVALID",
+            message=f"Failed to read registry.yml: {exc}",
+            details={"path": str(registry_path)},
+        ) from exc
+
+
+def _load_dataset_stage_spec(
+    *,
+    dataset: str,
+    stage: str,
+    spec_cls: type[TSpec],
+    code: str,
+    post_load=None,
+) -> TSpec:
+    registry = _load_registry_or_raise()
+    stage_path = _resolve_registry_path(registry, dataset, stage)
+    raw = _read_yaml_or_raise(stage_path, code=code, dataset=dataset, stage=stage)
+    if post_load is not None:
+        try:
+            raw = post_load(raw)
+        except DslLoadError:
+            raise
+        except Exception as exc:
+            raise DslLoadError(
+                code=code,
+                message=f"Failed to preprocess DSL stage '{stage}': {exc}",
+                details={"dataset": dataset, "stage": stage, "path": str(stage_path)},
+            ) from exc
+    return _validate_spec_or_raise(
+        raw,
+        spec_cls,
+        code=code,
+        details={"dataset": dataset, "stage": stage, "path": str(stage_path)},
+    )
+
+
+def _load_spec_from_path(path: str | Path, spec_cls: type[TSpec], *, code: str) -> TSpec:
+    path_obj = Path(path)
+    raw = _read_yaml_or_raise(path_obj, code=code)
+    return _validate_spec_or_raise(raw, spec_cls, code=code, details={"path": str(path_obj)})
+
+
+def _read_yaml_or_raise(
+    path: str | Path,
+    *,
+    code: str,
+    dataset: str | None = None,
+    stage: str | None = None,
+) -> dict[str, Any]:
+    try:
+        return _read_yaml(path)
+    except Exception as exc:
+        details: dict[str, Any] = {"path": str(path)}
+        if dataset is not None:
+            details["dataset"] = dataset
+        if stage is not None:
+            details["stage"] = stage
+        raise DslLoadError(
+            code=code,
+            message=f"Failed to read DSL file: {exc}",
+            details=details,
+        ) from exc
+
+
+def _validate_spec_or_raise(
+    raw: dict[str, Any],
+    spec_cls: type[TSpec],
+    *,
+    code: str,
+    details: dict[str, Any] | None = None,
+) -> TSpec:
+    try:
+        return spec_cls.model_validate(raw)
+    except Exception as exc:
+        raise DslLoadError(
+            code=code,
+            message=f"Invalid DSL spec: {exc}",
+            details=details or {},
+        ) from exc

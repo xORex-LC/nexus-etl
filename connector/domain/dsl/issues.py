@@ -23,10 +23,10 @@ class DslSeverity(str, Enum):
 class DslLoadError(ValueError):
     """
     Назначение:
-        Ошибка загрузки/валидации DSL-конфигурации.
+        Ошибка загрузки/валидации/компиляции DSL-конфигурации.
 
     Контракт:
-        - code: доменный код ошибки (например, CACHE_DSL_SPEC_INVALID)
+        - code: доменный код ошибки (например, MAP_DSL_SPEC_INVALID)
         - details: контекст для отчета/логов.
     """
 
