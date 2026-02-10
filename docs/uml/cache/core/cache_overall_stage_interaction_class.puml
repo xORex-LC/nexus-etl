@@ -1,5 +1,5 @@
 @startuml
-title Cache Overall Interaction (Dataset Spec -> Stages -> Roles -> Infra)
+title Cache Interaction with Transform/Planning Stages (Current)
 set namespaceSeparator none
 skinparam backgroundColor white
 skinparam linetype ortho
@@ -17,6 +17,7 @@ package "dataset wiring" {
     +build_enrich_stage(catalog, enrich_deps): EnrichStage
     +build_match_stage(planning_deps, catalog, include_deleted, settings): MatchStage
     +build_resolve_stage(planning_deps, catalog, settings): ResolveStage
+    +build_cache_specs(): list[CacheSpec]
   }
 
   class EmployeesSpec
@@ -25,10 +26,11 @@ package "dataset wiring" {
 package "stage deps (domain)" {
   class TransformProviderDeps {
     +cache_gateway: EnrichLookupPort
+    +secret_store: SecretStoreProtocol | None
   }
 
   class PlanningDependencies {
-    +planning_runtime: PlanningRuntimePort | None
+    +cache_gateway: PlanningRuntimePort | None
     +resolver_settings: ResolverSettings | None
   }
 }
@@ -48,21 +50,12 @@ package "domain role ports" {
   interface PlanningRuntimePort <<protocol>>
 }
 
-package "infra runtime + adapters" {
-  class SqliteCacheGateway {
-    +cache: SqliteCacheRepository
-    +identity: SqliteIdentityRepository
-    +pending: SqlitePendingLinksRepository
-    +open(settings, cache_specs)
-    +from_engine(engine, cache_specs, owns_connection)
-  }
-
-  class SqliteEnrichLookupAdapter
-  class SqlitePlanningRuntimeAdapter
+package "infra roles/runtime" {
   class SqliteCacheRolePorts {
     +enrich_lookup: EnrichLookupPort
     +planning_runtime: PlanningRuntimePort
   }
+  class SqliteCacheGateway
 }
 
 DatasetSpec <|.. EmployeesSpec
@@ -80,22 +73,13 @@ EnrichStage --> EnricherEngine
 MatchStage --> MatchEngine
 ResolveStage --> ResolveEngine
 
-SqliteEnrichLookupAdapter ..|> EnrichLookupPort
-SqlitePlanningRuntimeAdapter ..|> PlanningRuntimePort
-SqliteEnrichLookupAdapter --> SqliteCacheGateway
-SqlitePlanningRuntimeAdapter --> SqliteCacheGateway
-
 SqliteCacheRolePorts ..> EnrichLookupPort
 SqliteCacheRolePorts ..> PlanningRuntimePort
-
-note right of SqliteCacheRolePorts
-Built in wiring:
-build_sqlite_cache_role_ports(gateway)
-end note
+SqliteCacheRolePorts ..> SqliteCacheGateway : wraps
 
 note right of EmployeesSpec
-Domain stays role-typed.
-No direct dependency on Sqlite classes.
+Spec builds stages with role-based dependencies only.
+No direct calls to SQLite repositories.
 end note
 
 @enduml

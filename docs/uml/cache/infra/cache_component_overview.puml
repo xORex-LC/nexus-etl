@@ -1,0 +1,99 @@
+@startuml
+title Cache Component Overview (Current Runtime)
+
+left to right direction
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+actor CLI
+
+package "Delivery commands" {
+  [cache refresh]
+  [cache status]
+  [cache clear]
+}
+
+package "CLI wiring" {
+  [open_cache(settings)]
+  [build_sqlite_cache_role_ports(gateway)]
+}
+
+package "UseCases" {
+  [CacheRefreshUseCase]
+  [CacheStatusUseCase]
+  [CacheClearUseCase]
+}
+
+package "Domain cache_core" {
+  [CacheDependencyGraph]
+  [CacheRefreshPlanner]
+  [CacheStatusEvaluator]
+  [CacheClearPlanner]
+}
+
+package "Role ports" {
+  interface "CacheRefreshPort" as CacheRefreshPort
+  interface "CacheAdminPort" as CacheAdminPort
+}
+
+package "Infra cache roles" {
+  [SqliteCacheRefreshAdapter]
+  [SqliteCacheAdminAdapter]
+  [SqliteCacheRolePorts]
+}
+
+package "Infra cache runtime" {
+  [SqliteCacheGateway]
+  [SqliteCacheRepository]
+  [SqliteIdentityRepository]
+  [SqlitePendingLinksRepository]
+  database "SQLite DB" as SQLiteDB
+}
+
+CLI --> [cache refresh]
+CLI --> [cache status]
+CLI --> [cache clear]
+
+[cache refresh] --> [open_cache(settings)]
+[cache status] --> [open_cache(settings)]
+[cache clear] --> [open_cache(settings)]
+
+[open_cache(settings)] --> [SqliteCacheGateway]
+[open_cache(settings)] --> [build_sqlite_cache_role_ports(gateway)]
+[build_sqlite_cache_role_ports(gateway)] --> [SqliteCacheRolePorts]
+
+[SqliteCacheRolePorts] --> [SqliteCacheRefreshAdapter]
+[SqliteCacheRolePorts] --> [SqliteCacheAdminAdapter]
+
+[SqliteCacheRefreshAdapter] ..|> CacheRefreshPort
+[SqliteCacheAdminAdapter] ..|> CacheAdminPort
+
+[cache refresh] --> [CacheRefreshUseCase]
+[cache status] --> [CacheStatusUseCase]
+[cache clear] --> [CacheClearUseCase]
+
+[CacheRefreshUseCase] ..> CacheRefreshPort
+[CacheStatusUseCase] ..> CacheAdminPort
+[CacheClearUseCase] ..> CacheAdminPort
+
+[CacheRefreshUseCase] --> [CacheRefreshPlanner]
+[CacheRefreshPlanner] --> [CacheDependencyGraph]
+[CacheStatusUseCase] --> [CacheStatusEvaluator]
+[CacheClearUseCase] --> [CacheClearPlanner]
+[CacheClearPlanner] --> [CacheDependencyGraph]
+
+[SqliteCacheRefreshAdapter] --> [SqliteCacheGateway]
+[SqliteCacheAdminAdapter] --> [SqliteCacheGateway]
+[SqliteCacheGateway] *--> [SqliteCacheRepository]
+[SqliteCacheGateway] *--> [SqliteIdentityRepository]
+[SqliteCacheGateway] *--> [SqlitePendingLinksRepository]
+[SqliteCacheRepository] --> SQLiteDB
+[SqliteIdentityRepository] --> SQLiteDB
+[SqlitePendingLinksRepository] --> SQLiteDB
+
+note right of [open_cache(settings)]
+Single lifecycle boundary:
+open + close gateway in one place.
+end note
+
+@enduml

@@ -1,5 +1,5 @@
 @startuml
-title Cache Domain View (Role Ports and Stage Deps)
+title Cache Domain Class View (Plan A, Infra-first)
 set namespaceSeparator none
 skinparam backgroundColor white
 skinparam linetype ortho
@@ -26,9 +26,12 @@ package "domain.ports.cache.roles" {
     +transaction()
     +upsert(dataset, write_model): UpsertResult
     +count(dataset): int
+    +count_by_table(dataset): dict[str,int]
     +clear(dataset)
     +list_datasets(): list[str]
     +get_meta(dataset): CacheMeta
+    +set_meta(dataset, key, value)
+    +reset_meta(dataset)
   }
 
   interface EnrichLookupPort <<protocol>> {
@@ -65,25 +68,46 @@ package "domain.ports.cache.roles" {
   interface PlanningRuntimePort <<protocol>>
 }
 
-package "domain.transform deps" {
-  class TransformProviderDeps {
-    +cache_gateway: EnrichLookupPort
-    +secret_store: SecretStoreProtocol | None
-    +dictionaries: DictionaryProviderPort | None
+package "domain.cache_core" {
+  class CacheDependencyGraph {
+    +refresh_order(dataset, include_dependencies): list[str]
+    +clear_order(dataset, cascade): list[str]
   }
 
-  class PlanningDependencies {
-    +planning_runtime: PlanningRuntimePort | None
-    +resolver_settings: ResolverSettings | None
+  class CacheRefreshPlanner {
+    +plan(dataset): CacheRefreshPlan
+  }
+
+  class CacheClearPlanner {
+    +plan(dataset, cascade): CacheClearPlan
+  }
+
+  class CacheStatusEvaluator {
+    +evaluate(schema_version, global_meta, snapshots, dataset): dict
+  }
+
+  class CacheDriftService {
+    +evaluate_schema_version(expected, actual): CacheDriftResult
+  }
+}
+
+package "usecases" {
+  class CacheRefreshUseCase {
+    +refresh(...)
+  }
+
+  class CacheClearUseCase {
+    +clear(dataset): dict[str,int]
+  }
+
+  class CacheStatusUseCase {
+    +status(dataset): dict
   }
 }
 
 CacheRefreshPort --|> CacheAdminPort
 CacheRefreshPort --|> ApplyRuntimePort
-
 PendingReplayPort --|> ResolveRuntimePort
-PendingReplayPort --|> EnrichLookupPort
-
 PlanningRuntimePort --|> MatchRuntimePort
 PlanningRuntimePort --|> ResolveRuntimePort
 
@@ -93,17 +117,26 @@ ResolveRuntimePort ..> PendingLink
 ResolveRuntimePort ..> PendingRow
 ApplyRuntimePort ..> PendingLink
 
-TransformProviderDeps ..> EnrichLookupPort
-PlanningDependencies ..> PlanningRuntimePort
+CacheRefreshUseCase ..> CacheRefreshPort
+CacheRefreshUseCase ..> CacheRefreshPlanner
+CacheRefreshPlanner --> CacheDependencyGraph
 
-note right of TransformProviderDeps
-Enrich layer depends only
-on lookup role (not infra facade).
+CacheClearUseCase ..> CacheAdminPort
+CacheClearUseCase ..> CacheClearPlanner
+CacheClearPlanner --> CacheDependencyGraph
+
+CacheStatusUseCase ..> CacheAdminPort
+CacheStatusUseCase ..> CacheStatusEvaluator
+CacheStatusUseCase ..> CacheDriftService
+
+note right of CacheDependencyGraph
+Dependency topology and deterministic order
+are pure domain rules (no SQLite dependency).
 end note
 
-note right of PlanningDependencies
-Match/Resolve use a combined
-planning runtime role.
+note right of CacheRefreshUseCase
+UseCase orchestration only:
+IO via ports, policy via cache_core planners.
 end note
 
 @enduml

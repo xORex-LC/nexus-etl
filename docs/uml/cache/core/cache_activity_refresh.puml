@@ -1,0 +1,36 @@
+@startuml
+title Cache Activity - Refresh Flow (Current)
+
+start
+:open_cache(settings);
+:Build refresh plan via CacheRefreshPlanner;
+:Begin gateway.transaction();
+
+repeat
+  :Read next API page;
+  if (Page read error?) then (yes)
+    :Rollback transaction;
+    stop
+  endif
+
+  if (Rows in page?) then (yes)
+    repeat
+      :Map source row -> cache write-model;
+      if (Deleted and include_deleted=false?) then (yes)
+        :Mark skipped in report;
+      else (no)
+        :cache.upsert(dataset, model);
+        :identity.upsert_identity(...);
+        :pending.list_pending_for_key(...);
+        :pending.mark_resolved(...);
+      endif
+    repeat while (More rows in page?) is (yes)
+  endif
+repeat while (More pages?) is (yes)
+
+:Update meta (last_refresh_at/pages/items/count_total);
+:Commit transaction;
+:Return summary by dataset;
+stop
+
+@enduml
