@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable
+from contextlib import contextmanager
+from typing import Any, Iterable, Iterator
 
 from connector.config.config import Settings
 from connector.domain.diagnostics import build_catalog
@@ -60,6 +61,19 @@ def build_cache(
     )
     roles = build_sqlite_cache_role_ports(gateway)
     return gateway, roles, cache_specs
+
+
+@contextmanager
+def open_cache(settings: Settings) -> Iterator[tuple[SqliteCacheGateway, SqliteCacheRolePorts, list[Any]]]:
+    """
+    Назначение:
+        Единая lifecycle-обертка для cache gateway в CLI runtime.
+    """
+    gateway, roles, cache_specs = build_cache(settings)
+    try:
+        yield gateway, roles, cache_specs
+    finally:
+        gateway.close()
 
 
 def build_api_client(settings: Settings, *, transport: Any | None = None) -> AnkeyApiClient:
@@ -198,6 +212,7 @@ __all__ = [
     "build_diagnostics_catalog",
     "build_dataset_spec",
     "build_cache",
+    "open_cache",
     "build_api_client",
     "build_api_executor",
     "build_api_reader",

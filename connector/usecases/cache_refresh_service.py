@@ -6,6 +6,7 @@ import hashlib
 from typing import Any
 
 from connector.common.time import getNowIso
+from connector.domain.cache_core import CacheDependencyGraph, CacheRefreshPlanner
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.models import DiagnosticStage
 from connector.domain.diagnostics.catalog import ErrorCatalog
@@ -35,12 +36,20 @@ class CacheRefreshUseCase:
         adapters: list[CacheSyncAdapterProtocol],
         identity_keys: dict[str, set[str]] | None = None,
         identity_id_fields: dict[str, str] | None = None,
+        refresh_planner: CacheRefreshPlanner | None = None,
+        dependency_graph: CacheDependencyGraph | None = None,
     ):
         self.target_reader = target_reader
         self.cache_refresh = cache_refresh
         self.adapters = adapters
         self.identity_keys = identity_keys or {}
         self.identity_id_fields = identity_id_fields or {}
+        self._adapters_by_dataset = {adapter.dataset: adapter for adapter in adapters}
+        if len(self._adapters_by_dataset) != len(adapters):
+            raise ValueError("Duplicate cache adapter dataset names are not allowed")
+
+        graph = dependency_graph or CacheDependencyGraph([adapter.dataset for adapter in adapters])
+        self._refresh_planner = refresh_planner or CacheRefreshPlanner(graph)
 
     def refresh(
         self,
@@ -73,11 +82,13 @@ class CacheRefreshUseCase:
         stats_by_dataset: dict[str, dict[str, int]] = {}
         error_stats: dict[str, int] = {}
 
-        active_adapters = self.adapters
-        if dataset is not None:
-            active_adapters = [a for a in self.adapters if a.dataset == dataset]
-            if not active_adapters:
-                raise ValueError(f"Unsupported cache dataset: {dataset}")
+        refresh_plan = self._refresh_planner.plan(dataset=dataset)
+        active_adapters: list[CacheSyncAdapterProtocol] = []
+        for dataset_name in refresh_plan.datasets:
+            adapter = self._adapters_by_dataset.get(dataset_name)
+            if adapter is None:
+                raise ValueError(f"Unsupported cache dataset: {dataset_name}")
+            active_adapters.append(adapter)
 
         try:
             with self.cache_refresh.transaction():
