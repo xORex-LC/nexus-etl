@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 
-from connector.infra.cache.pending_links_repository import SqlitePendingLinksRepository
-from connector.infra.cache.schema import ensure_cache_ready
-from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.repository.pending_links_repository import SqlitePendingLinksRepository
+from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
+from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 
 
 def _make_engine() -> SqliteEngine:

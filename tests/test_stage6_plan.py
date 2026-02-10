@@ -3,12 +3,12 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from connector.infra.cache.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
+from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 from connector.datasets.cache_registry import list_cache_specs
-from connector.infra.cache.schema import ensure_cache_ready
-from connector.infra.cache.repository import SqliteCacheRepository
-from connector.infra.cache.identity_repository import SqliteIdentityRepository
+from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
+from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
+from connector.infra.cache.repository.identity_repository import SqliteIdentityRepository
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.main import app
 

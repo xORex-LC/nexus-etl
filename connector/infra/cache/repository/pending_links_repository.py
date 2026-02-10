@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from connector.domain.ports.cache.models import PendingLink, PendingRow, PendingStatus
-from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 
 
 class SqlitePendingLinksRepository:

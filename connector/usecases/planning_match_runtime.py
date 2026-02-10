@@ -21,7 +21,7 @@ class MatchRuntime:
     match_stage: MatchStage
     match_usecase: MatchUseCase
     runtime_scope: str
-    cache_gateway: MatchRuntimePort
+    match_runtime: MatchRuntimePort
 
 
 @contextmanager
@@ -29,7 +29,7 @@ def open_match_runtime(
     *,
     run_id: str,
     match_stage: MatchStage,
-    cache_gateway: MatchRuntimePort,
+    match_runtime: MatchRuntimePort,
     report_items_limit: int,
     include_matched_items: bool,
     batch_size: int,
@@ -50,12 +50,12 @@ def open_match_runtime(
         match_stage=match_stage,
         match_usecase=match_usecase,
         runtime_scope=runtime_scope,
-        cache_gateway=cache_gateway,
+        match_runtime=match_runtime,
     )
     try:
         yield runtime
     finally:
-        cache_gateway.clear_runtime_scope(runtime_scope)
+        match_runtime.clear_runtime_scope(runtime_scope)
 
 
 def iter_matched_ok(

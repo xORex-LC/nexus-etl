@@ -38,7 +38,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
     conn = None
     try:
-        conn, _engine, _cache_gateway, _cache_specs = build_cache(settings)
+        conn, _engine, _gateway, _cache_roles, _cache_specs = build_cache(settings)
         pipeline_ctx = build_pipeline_context(
             dataset_spec=dataset_spec,
             dataset_name=dataset_name,

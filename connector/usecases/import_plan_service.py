@@ -28,9 +28,7 @@ from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.domain.ports.cache.roles import PendingReplayPort
-from connector.infra.cache.factory import build_sqlite_cache_gateway
-from connector.infra.cache.sqlite_engine import SqliteEngine
+from connector.domain.ports.cache.roles import EnrichLookupPort, PendingReplayPort, PlanningRuntimePort
 
 
 class ImportPlanService:
@@ -40,7 +38,10 @@ class ImportPlanService:
 
     def run(
         self,
-        conn,
+        *,
+        pending_replay: PendingReplayPort,
+        enrich_lookup: EnrichLookupPort,
+        planning_runtime: PlanningRuntimePort,
         csv_has_header: bool,
         include_deleted: bool,
         dataset: str,
@@ -61,18 +62,14 @@ class ImportPlanService:
             from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
 
             secret_store = FileVaultSecretStore(vault_file)
-        cache_gateway = build_sqlite_cache_gateway(
-            engine=SqliteEngine(conn),
-            cache_specs=dataset_spec.build_cache_specs(),
-        )
         enrich_deps = dataset_spec.build_enrich_deps(
             settings,
-            cache_gateway=cache_gateway,
+            enrich_lookup=enrich_lookup,
             secret_store=secret_store,
         )
         planning_deps = dataset_spec.build_planning_deps(
             settings,
-            cache_gateway=cache_gateway,
+            planning_runtime=planning_runtime,
         )
         row_source = dataset_spec.build_record_source(
             csv_has_header=csv_has_header,
@@ -100,13 +97,13 @@ class ImportPlanService:
             settings=settings,
         )
         match_spec = dataset_spec.build_match_spec(settings=settings)
-        cache_gateway = planning_deps.cache_gateway
-        if cache_gateway is None:
-            raise ValueError("planning cache_gateway is not configured")
+        planning_runtime_dep = planning_deps.cache_gateway
+        if planning_runtime_dep is None:
+            raise ValueError("planning runtime is not configured")
         with open_match_runtime(
             run_id=run_id,
             match_stage=match_stage,
-            cache_gateway=cache_gateway,
+            match_runtime=planning_runtime_dep,
             report_items_limit=report_items_limit,
             include_matched_items=False,
             batch_size=getattr(settings, "match_batch_size", 500),
@@ -119,7 +116,7 @@ class ImportPlanService:
 
             pending_rows = _load_pending_rows(
                 dataset=dataset,
-                cache_gateway=cache_gateway,
+                pending_replay=pending_replay,
                 include_deleted=include_deleted,
                 ignored_fields=set(match_spec.match.ignored_fields),
             )
@@ -164,7 +161,7 @@ class ImportPlanService:
 def _load_pending_rows(
     *,
     dataset: str,
-    cache_gateway: PendingReplayPort,
+    pending_replay: PendingReplayPort,
     include_deleted: bool,
     ignored_fields: set[str],
 ) -> list[TransformResult[MatchedRow]]:
@@ -172,7 +169,7 @@ def _load_pending_rows(
     # inside usecase-level orchestration. After plan/resolve DSL migration,
     # move to a single source of truth (deserialize stored typed decision or
     # resolve via core), so usecase does not contain match decision logic.
-    pending_rows = cache_gateway.list_pending_rows(dataset)
+    pending_rows = pending_replay.list_pending_rows(dataset)
     if not pending_rows:
         return []
     results: list[TransformResult[MatchedRow]] = []
@@ -200,7 +197,7 @@ def _load_pending_rows(
             target_id = payload.get("resource_id")
         meta = payload.get("meta") or {}
 
-        candidates = cache_gateway.find(
+        candidates = pending_replay.find(
             dataset,
             {identity.primary: identity.primary_value},
             include_deleted=include_deleted,
