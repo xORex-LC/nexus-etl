@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 from connector.domain.ports.cache.models import CacheMeta, UpsertResult
 from connector.infra.cache.cache_spec import CacheSpec
@@ -18,11 +17,6 @@ class SqliteCacheRepository:
     def __init__(self, engine: SqliteEngine, cache_specs: list[CacheSpec]):
         self.engine = engine
         self._handlers = _build_handlers(cache_specs)
-
-    @contextmanager
-    def transaction(self) -> Iterator[None]:
-        with self.engine.transaction():
-            yield
 
     def upsert(self, dataset: str, write_model: dict) -> UpsertResult:
         handler = _get_handler(self._handlers, dataset)

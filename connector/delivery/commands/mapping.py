@@ -36,13 +36,13 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     catalog = ctx.catalog or build_diagnostics_catalog(dataset_name, strict=settings.diagnostics_strict)
     report.set_meta(dataset=dataset_name, items_limit=report_items_limit_value)
 
-    conn = None
+    gateway = None
     try:
-        conn, _engine, _gateway, _cache_roles, _cache_specs = build_cache(settings)
+        gateway, cache_roles, _cache_specs = build_cache(settings)
         pipeline_ctx = build_pipeline_context(
             dataset_spec=dataset_spec,
             dataset_name=dataset_name,
-            conn=conn,
+            cache_roles=cache_roles,
             settings=settings,
             catalog=catalog,
             csv_has_header=csv_has_header_value,
@@ -63,8 +63,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="mapping", exc=exc)
     finally:
-        if conn is not None:
-            conn.close()
+        if gateway is not None:
+            gateway.close()
 
 
 __all__ = ["handler", "Options"]

@@ -59,7 +59,7 @@ def _build_repo(conn) -> SqliteCacheRepository:
 
 def _seed_org(repo: SqliteCacheRepository, ouid: int) -> None:
     identity_repo = SqliteIdentityRepository(repo.engine)
-    with repo.transaction():
+    with repo.engine.transaction():
         repo.upsert(
             "organizations",
             {"_ouid": ouid, "code": f"ORG-{ouid}", "name": f"Org {ouid}", "parent_id": None, "updated_at": None},
@@ -71,7 +71,7 @@ def _seed_org(repo: SqliteCacheRepository, ouid: int) -> None:
 def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: str, organization_id: int) -> None:
     identity_repo = SqliteIdentityRepository(repo.engine)
     ouid = int(_id.replace("u", "")) if _id.startswith("u") else 1
-    with repo.transaction():
+    with repo.engine.transaction():
         repo.upsert(
             "employees",
             {

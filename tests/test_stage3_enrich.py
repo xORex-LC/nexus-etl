@@ -65,7 +65,7 @@ def _seed_org(tmp_path: Path, org_ouid: int) -> None:
     conn = openCacheDb(str(db_path))
     try:
         repo = _build_repo(conn)
-        with repo.transaction():
+        with repo.engine.transaction():
             repo.upsert(
                 "organizations",
                 {"_ouid": org_ouid, "code": f"ORG-{org_ouid}", "name": f"Org {org_ouid}", "parent_id": None, "updated_at": None},
