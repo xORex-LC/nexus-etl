@@ -76,6 +76,22 @@ class ResolveDslBuildOptions(BaseDslBuildOptions):
     allow_pending_links: bool = True
 
 
+@dataclass(frozen=True)
+class CacheDslBuildOptions(BaseDslBuildOptions):
+    """
+    Назначение:
+        Compile-policy опции cache DSL компиляции.
+    """
+
+    require_sync_dataset_match: bool = True
+    fail_on_unknown_dependencies: bool = True
+    fail_on_unknown_pk_fields: bool = True
+    fail_on_unknown_index_fields: bool = True
+    fail_on_duplicate_projection_targets: bool = True
+    fail_on_unknown_projection_targets: bool = True
+    forbid_is_deleted_and_soft_delete_together: bool = True
+
+
 TBuildOptions = TypeVar("TBuildOptions", bound=BaseDslBuildOptions)
 
 
@@ -93,4 +109,3 @@ def build_options_from_mapping(cls: type[TBuildOptions], data: dict[str, Any] | 
     allowed = {item.name for item in fields(cls)}
     kwargs = {key: value for key, value in data.items() if key in allowed}
     return cls(**kwargs)
-

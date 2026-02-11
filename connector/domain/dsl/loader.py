@@ -13,6 +13,7 @@ import os
 
 from connector.domain.dsl.build_options import (
     BaseDslBuildOptions,
+    CacheDslBuildOptions,
     EnrichDslBuildOptions,
     MapDslBuildOptions,
     MatchDslBuildOptions,
@@ -255,6 +256,26 @@ def load_match_build_options_for_dataset(dataset: str) -> MatchDslBuildOptions:
 
 def load_resolve_build_options_for_dataset(dataset: str) -> ResolveDslBuildOptions:
     return _load_stage_build_options(dataset, "resolve", ResolveDslBuildOptions)
+
+
+def load_cache_build_options_for_runtime() -> CacheDslBuildOptions:
+    """
+    Назначение:
+        Загрузить compile-policy build options для cache runtime.
+
+    Контракт:
+        - merge-приоритет: defaults -> global.base -> global.stages.cache.
+        - dataset-level override для cache не применяется, т.к. compile выполняется
+          сразу для набора датасетов из cache registry.
+    """
+    registry = _load_registry()
+    root_build_options = registry.get("build_options") or {}
+    global_base = root_build_options.get("base") or {}
+    global_stage = (root_build_options.get("stages") or {}).get("cache") or {}
+    merged: dict[str, Any] = {}
+    merged.update(global_base)
+    merged.update(global_stage)
+    return build_options_from_mapping(CacheDslBuildOptions, merged)
 
 
 def _read_yaml(path: str | Path) -> dict[str, Any]:
