@@ -13,6 +13,8 @@ import typer
 from connector.common.time import getDurationMs
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.dsl.diagnostics import translate_dsl_load_error
+from connector.domain.dsl.issues import DslLoadError
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.reporting.collector import ReportCollector
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
@@ -22,6 +24,7 @@ from connector.domain.dsl.loader import load_source_spec_for_dataset, resolve_so
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.result import CommandResult as CliCommandResult
+from connector.domain.models import DiagnosticStage
 
 
 ReportHandler = Callable[..., Any]
@@ -105,6 +108,28 @@ def run_with_report(
 
         _apply_cli_result_to_report(report, exit_result)
 
+    except DslLoadError as exc:
+        stage = _stage_for_command(command_name)
+        diag = translate_dsl_load_error(
+            catalog=ctx.catalog,
+            stage=stage,
+            error=exc,
+            record_ref=None,
+        )
+        logEvent(logger, logging.ERROR, run_id, "dsl", f"{exc.code}: {exc}")
+        typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
+        report_errors, report_warnings = split_report_diagnostics([diag], [])
+        report.add_item(
+            status="FAILED",
+            row_ref=None,
+            payload=None,
+            errors=report_errors,
+            warnings=report_warnings,
+            meta={"exception": "DslLoadError", "code": exc.code},
+        )
+        result = DomainCommandResult()
+        result.add_diagnostics([diag], ctx.catalog)
+        exit_result = result
     except RuntimeErrorWithCode as exc:
         logEvent(logger, logging.ERROR, run_id, "config", str(exc))
         typer.echo(f"ERROR: {exc}", err=True)
@@ -175,6 +200,19 @@ def run_without_report(
 
         exit_result = _call_handler(handler, ctx, opts, None)
 
+    except DslLoadError as exc:
+        stage = _stage_for_command(command_name)
+        diag = translate_dsl_load_error(
+            catalog=ctx.catalog,
+            stage=stage,
+            error=exc,
+            record_ref=None,
+        )
+        logEvent(logger, logging.ERROR, run_id, "dsl", f"{exc.code}: {exc}")
+        typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
+        result = DomainCommandResult()
+        result.add_diagnostics([diag], ctx.catalog)
+        exit_result = result
     except RuntimeErrorWithCode as exc:
         logEvent(logger, logging.ERROR, run_id, "config", str(exc))
         typer.echo(f"ERROR: {exc}", err=True)
@@ -227,10 +265,20 @@ def _require_source(dataset: str | None) -> None:
         raise RuntimeErrorWithCode("Dataset is required for source resolution", exit_code=2)
     try:
         source_spec = load_source_spec_for_dataset(dataset)
+    except DslLoadError as exc:
+        raise RuntimeErrorWithCode(
+            f"Source spec is not configured for dataset '{dataset}': {exc.code}: {exc}",
+            exit_code=2,
+        ) from exc
     except Exception as exc:
         raise RuntimeErrorWithCode(f"Source spec is not configured for dataset '{dataset}': {exc}", exit_code=2) from exc
     try:
         location = resolve_source_location(source_spec)
+    except DslLoadError as exc:
+        raise RuntimeErrorWithCode(
+            f"Source location is not configured for dataset '{dataset}': {exc.code}: {exc}",
+            exit_code=2,
+        ) from exc
     except ValueError as exc:
         raise RuntimeErrorWithCode(f"Source location is not configured for dataset '{dataset}': {exc}", exit_code=2) from exc
     if source_spec.source.type == "file":
@@ -371,3 +419,20 @@ def _config_sources(ctx: CommandContext) -> list[str]:
     extra = ctx.extra or {}
     sources = extra.get("sources") or extra.get("config_sources")
     return list(sources) if sources else []
+
+
+def _stage_for_command(command_name: str) -> DiagnosticStage:
+    normalized = command_name.replace("-", "_").lower()
+    stage_map = {
+        "mapping": DiagnosticStage.MAP,
+        "normalize": DiagnosticStage.NORMALIZE,
+        "enrich": DiagnosticStage.ENRICH,
+        "match": DiagnosticStage.MATCH,
+        "resolve": DiagnosticStage.RESOLVE,
+        "import_plan": DiagnosticStage.PLAN,
+        "import_apply": DiagnosticStage.APPLY,
+        "cache_refresh": DiagnosticStage.CACHE,
+        "cache_clear": DiagnosticStage.CACHE,
+        "cache_status": DiagnosticStage.CACHE,
+    }
+    return stage_map.get(normalized, DiagnosticStage.SINK)

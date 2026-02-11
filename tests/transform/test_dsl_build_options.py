@@ -11,10 +11,9 @@ from connector.domain.dsl.loader import (
 
 
 def test_build_options_defaults_without_policy(monkeypatch):
-    monkeypatch.setattr(
-        "connector.domain.dsl.loader._load_registry",
-        lambda: {"datasets": {"employees": {}}},
-    )
+    registry = {"datasets": {"employees": {}}}
+    monkeypatch.setattr("connector.domain.dsl.loader._load_registry", lambda: registry)
+    monkeypatch.setattr("connector.domain.dsl.loader._load_registry_or_raise", lambda: registry)
 
     mapping = load_map_build_options_for_dataset("employees")
     normalize = load_normalize_build_options_for_dataset("employees")
@@ -32,33 +31,32 @@ def test_build_options_defaults_without_policy(monkeypatch):
 
 
 def test_build_options_merge_order(monkeypatch):
-    monkeypatch.setattr(
-        "connector.domain.dsl.loader._load_registry",
-        lambda: {
-            "build_options": {
-                "base": {
-                    "strict": False,
-                    "fail_on_unknown_ops": True,
-                },
-                "stages": {
-                    "normalize": {
-                        "validate_only_touched_fields": False,
-                        "strict": False,
-                    }
-                },
+    registry = {
+        "build_options": {
+            "base": {
+                "strict": False,
+                "fail_on_unknown_ops": True,
             },
-            "datasets": {
-                "employees": {
-                    "build_options": {
-                        "normalize": {
-                            "validate_only_touched_fields": True,
-                            "strict": True,
-                        }
-                    }
+            "stages": {
+                "normalize": {
+                    "validate_only_touched_fields": False,
+                    "strict": False,
                 }
             },
         },
-    )
+        "datasets": {
+            "employees": {
+                "build_options": {
+                    "normalize": {
+                        "validate_only_touched_fields": True,
+                        "strict": True,
+                    }
+                }
+            }
+        },
+    }
+    monkeypatch.setattr("connector.domain.dsl.loader._load_registry", lambda: registry)
+    monkeypatch.setattr("connector.domain.dsl.loader._load_registry_or_raise", lambda: registry)
 
     options = load_normalize_build_options_for_dataset("employees")
 

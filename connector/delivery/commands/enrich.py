@@ -57,6 +57,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
         return usecase.run(
             row_source=pipeline_ctx.row_source,
+            map_stage=pipeline_ctx.map_stage,
+            normalize_stage=pipeline_ctx.normalize_stage,
             enrich_stage=pipeline_ctx.enrich_stage,
             dataset=dataset_name,
             logger=ctx.logger,

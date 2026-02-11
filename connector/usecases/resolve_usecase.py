@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
@@ -65,6 +66,8 @@ class ResolveUseCase:
             failed_label="resolve_failed",
             meta_builder=lambda r: {"op": r.row.op if r.row else None},
             should_skip=lambda r: _resolve_status(r) is None and r.row is None,
+            report_stage=DiagnosticStage.RESOLVE,
+            include_upstream_diagnostics=False,
         )
 
         for resolved in self._iter_resolved(matched_source, resolve_stage, dataset=dataset):
@@ -84,13 +87,21 @@ class ResolveUseCase:
         *,
         dataset: str | None = None,
     ):
-        for batch in iter_micro_batches(
-            matched_source,
-            batch_size=self.batch_size,
-            flush_interval_ms=self.flush_interval_ms,
-        ):
-            for resolved in resolve_stage.run(batch, dataset=dataset):
-                yield resolved
+        batches = iter(
+            iter_micro_batches(
+                matched_source,
+                batch_size=self.batch_size,
+                flush_interval_ms=self.flush_interval_ms,
+            )
+        )
+        while True:
+            with _resolve_transaction(resolve_stage):
+                try:
+                    batch = next(batches)
+                except StopIteration:
+                    return
+                for resolved in resolve_stage.run(batch, dataset=dataset):
+                    yield resolved
 
 
 def _purge_pending(resolver) -> None:
@@ -172,3 +183,14 @@ def _count_special_ops(report, errors, warnings) -> None:
         report.add_op("resolve_max_attempts", failed=1, count=1)
     if any(warn.code == "RESOLVE_PENDING" for warn in warnings or []):
         report.add_op("resolve_pending", ok=1, count=1)
+
+
+def _resolve_transaction(resolve_stage: ResolveStage):
+    resolver = getattr(resolve_stage, "resolver", None)
+    cache_gateway = getattr(resolver, "cache_gateway", None) if resolver is not None else None
+    if cache_gateway is None:
+        return nullcontext()
+    tx = getattr(cache_gateway, "transaction", None)
+    if not callable(tx):
+        return nullcontext()
+    return tx()

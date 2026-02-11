@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.dsl import loader as dsl_loader
+from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.dsl.specs import EnrichSpec
 from connector.domain.transform.enrich.enricher_dsl import build_enricher_spec_from_dsl
@@ -185,3 +188,63 @@ def test_lookup_rule_supports_nested_value_path() -> None:
     candidates = provider.fetch(ctx, result, _Deps(), {})
     assert len(candidates) == 1
     assert candidates[0].value == "nested-1"
+
+
+def test_lookup_rule_requires_provider_code() -> None:
+    raw = {
+        "dataset": "employees",
+        "enrich": {
+            "lookup": [
+                {
+                    "name": "manager_id",
+                    "target": "manager_id",
+                    "source": "manager_full_name",
+                }
+            ]
+        },
+    }
+
+    with pytest.raises(DslLoadError) as exc_info:
+        _build_enricher_spec(raw)
+    assert exc_info.value.code == "ENRICH_DSL_LOOKUP_PROVIDER_MISSING"
+
+
+def test_lookup_key_ops_fail_with_explicit_dsl_code() -> None:
+    class _Deps:
+        class _CacheRepo:
+            @staticmethod
+            def find(dataset: str, filters: dict[str, object], *, include_deleted: bool = False, mode: str = "exact"):
+                _ = (dataset, filters, include_deleted, mode)
+                return []
+
+        cache_gateway = _CacheRepo()
+
+    raw = {
+        "dataset": "employees",
+        "enrich": {
+            "lookup": [
+                {
+                    "name": "manager_id",
+                    "target": "manager_id",
+                    "source": "manager_full_name",
+                    "provider": {
+                        "name": "cache.by_field",
+                        "args": {
+                            "dataset": "employees",
+                            "field": "full_name",
+                        },
+                    },
+                    "ops": [{"op": "to_int"}],
+                }
+            ]
+        },
+    }
+    spec = _build_enricher_spec(raw)
+    op = next(op for op in spec.operations if op.op_type == EnrichOperationType.LOOKUP)
+    provider = op.providers[0]
+    result = _make_result(row={"manager_full_name": "John Doe"})
+    ctx = EnrichContext(dataset="employees")
+
+    with pytest.raises(DslLoadError) as exc_info:
+        provider.fetch(ctx, result, _Deps(), {})
+    assert exc_info.value.code == "ENRICH_DSL_LOOKUP_KEY_OP_FAILED"

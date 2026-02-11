@@ -6,6 +6,7 @@ from connector.domain.transform.core.extractor import Extractor
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.stages.stages import MapStage
 from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.models import DiagnosticStage
 from connector.domain.transform.core.result_processor import TransformResultProcessor
 
 
@@ -41,6 +42,8 @@ class MappingUseCase:
             context_key="mapping",
             ok_label="mapped_ok",
             failed_label="mapping_failed",
+            report_stage=DiagnosticStage.MAP,
+            include_upstream_diagnostics=False,
         )
 
         extractor = Extractor(row_source, catalog=catalog)

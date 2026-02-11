@@ -203,6 +203,7 @@ class NormalizeRule(BaseModel):
 
 
 class NormalizeBlock(BaseModel):
+    on_error: Literal["error", "warn"] = "error"
     rules: list[NormalizeRule] = Field(default_factory=list)
 
 

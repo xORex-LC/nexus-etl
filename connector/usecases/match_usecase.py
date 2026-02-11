@@ -5,6 +5,7 @@ from typing import Iterable
 from connector.domain.transform.matcher.match_models import MatchedRow
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.models import DiagnosticStage
 from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.core.result_processor import PlanningResultProcessor
 from connector.domain.transform.core.result import TransformResult
@@ -64,6 +65,8 @@ class MatchUseCase:
             meta_builder=lambda r: {
                 "match_status": (r.row.match_decision.status.value if r.row else None)
             },
+            report_stage=DiagnosticStage.MATCH,
+            include_upstream_diagnostics=False,
         )
 
         for matched in self._iter_matched(

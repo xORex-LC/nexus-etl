@@ -103,7 +103,14 @@ class NormalizerCore(Generic[T]):
             else:
                 issues = validate_sink_row(normalized_values, self.sink_spec, check_types=True)
             for issue in issues:
-                self._append_issue(errors, warnings, rule=None, source=source, issue=issue)
+                self._append_issue(
+                    errors,
+                    warnings,
+                    rule=None,
+                    source=source,
+                    issue=issue,
+                    on_error=self.spec.normalize.on_error,
+                )
 
         row: T | None
         if errors:
@@ -134,7 +141,9 @@ class NormalizerCore(Generic[T]):
         rule: NormalizeRule | None,
         source: TransformResult[Any],
         issue: DslIssue,
+        on_error: str | None = None,
     ) -> None:
+        effective_on_error = on_error if on_error is not None else (rule.on_error if rule else "error")
         append_dsl_issue(
             errors=errors,
             warnings=warnings,
@@ -142,5 +151,5 @@ class NormalizerCore(Generic[T]):
             issue=issue,
             catalog=self.catalog,
             record_ref=source.row_ref,
-            on_error=rule.on_error if rule else "error",
+            on_error=effective_on_error,
         )
