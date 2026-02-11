@@ -10,6 +10,7 @@ from hashlib import sha256
 import json
 
 from connector.domain.cache_core.cache_dependency_graph import CacheDependencyGraph
+from connector.domain.dsl.build_options import CacheDslBuildOptions
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.specs import (
     CacheDatasetSpec,
@@ -59,6 +60,7 @@ def compile_cache_runtime(
     *,
     registry_spec: CacheRegistrySpec,
     dataset_specs: dict[str, CacheDatasetSpec],
+    options: CacheDslBuildOptions | None = None,
 ) -> CacheDslRuntime:
     """
     Назначение:
@@ -73,8 +75,9 @@ def compile_cache_runtime(
             message="No enabled datasets in cache registry",
         )
 
+    compile_options = options or CacheDslBuildOptions()
     _validate_dataset_specs(enabled_entries, dataset_specs)
-    dependencies = _build_dependencies(enabled_entries)
+    dependencies = _build_dependencies(enabled_entries, compile_options)
     dataset_order = _build_dataset_order(enabled_entries)
 
     try:
@@ -91,7 +94,7 @@ def compile_cache_runtime(
 
     for dataset in graph.refresh_order():
         spec = dataset_specs[dataset]
-        _validate_semantics(dataset, spec)
+        _validate_semantics(dataset, spec, compile_options)
         compiled = _compile_cache_spec(dataset, spec)
         compiled_specs.append(compiled)
         schema_hashes[dataset] = build_schema_hash(compiled)
@@ -228,18 +231,23 @@ def _validate_dataset_specs(
             )
 
 
-def _build_dependencies(enabled_entries: dict[str, object]) -> dict[str, tuple[str, ...]]:
+def _build_dependencies(
+    enabled_entries: dict[str, object],
+    options: CacheDslBuildOptions,
+) -> dict[str, tuple[str, ...]]:
     result: dict[str, tuple[str, ...]] = {}
     enabled_set = set(enabled_entries.keys())
     for dataset, entry in enabled_entries.items():
         deps = tuple(dict.fromkeys(entry.depends_on))
         unknown = [dep for dep in deps if dep not in enabled_set]
         if unknown:
-            raise DslLoadError(
-                code="CACHE_DSL_DEP_MISSING",
-                message=f"Dataset '{dataset}' has unknown dependencies: {unknown}",
-                details={"dataset": dataset, "unknown_dependencies": unknown},
-            )
+            if options.fail_on_unknown_dependencies:
+                raise DslLoadError(
+                    code="CACHE_DSL_DEP_MISSING",
+                    message=f"Dataset '{dataset}' has unknown dependencies: {unknown}",
+                    details={"dataset": dataset, "unknown_dependencies": unknown},
+                )
+            deps = tuple(dep for dep in deps if dep in enabled_set)
         result[dataset] = deps
     return result
 
@@ -252,7 +260,11 @@ def _build_dataset_order(enabled_entries: dict[str, object]) -> tuple[str, ...]:
     return tuple(name for name, _ in ordered)
 
 
-def _validate_semantics(dataset: str, spec: CacheDatasetSpec) -> None:
+def _validate_semantics(
+    dataset: str,
+    spec: CacheDatasetSpec,
+    options: CacheDslBuildOptions,
+) -> None:
     column_names = [col.name for col in spec.schema_.columns]
     duplicates = sorted({name for name in column_names if column_names.count(name) > 1})
     if duplicates:
@@ -267,44 +279,57 @@ def _validate_semantics(dataset: str, spec: CacheDatasetSpec) -> None:
     pk_fields = [primary_key] if isinstance(primary_key, str) else list(primary_key)
     for field in pk_fields:
         if field not in known_columns:
-            raise DslLoadError(
-                code="CACHE_DSL_SPEC_INVALID",
-                message=f"Primary key field '{field}' is not declared in columns",
-                details={"dataset": dataset, "field": field},
-            )
+            if options.fail_on_unknown_pk_fields:
+                raise DslLoadError(
+                    code="CACHE_DSL_SPEC_INVALID",
+                    message=f"Primary key field '{field}' is not declared in columns",
+                    details={"dataset": dataset, "field": field},
+                )
 
     for idx in spec.schema_.indexes:
         unknown = [field for field in idx.fields if field not in known_columns]
         if unknown:
-            raise DslLoadError(
-                code="CACHE_DSL_SPEC_INVALID",
-                message=f"Index '{idx.name}' references unknown fields: {unknown}",
-                details={"dataset": dataset, "index": idx.name, "fields": unknown},
-            )
+            if options.fail_on_unknown_index_fields:
+                raise DslLoadError(
+                    code="CACHE_DSL_SPEC_INVALID",
+                    message=f"Index '{idx.name}' references unknown fields: {unknown}",
+                    details={"dataset": dataset, "index": idx.name, "fields": unknown},
+                )
 
     if spec.sync is None:
         return
 
+    if options.forbid_is_deleted_and_soft_delete_together:
+        if spec.sync.is_deleted is not None and spec.sync.soft_delete is not None:
+            raise DslLoadError(
+                code="CACHE_DSL_SPEC_INVALID",
+                message="cache.sync.is_deleted and cache.sync.soft_delete are mutually exclusive",
+                details={"dataset": dataset},
+            )
+
     if spec.sync.dataset is not None and spec.sync.dataset != dataset:
-        raise DslLoadError(
-            code="CACHE_DSL_SPEC_INVALID",
-            message=f"cache.sync.dataset mismatch: expected '{dataset}', got '{spec.sync.dataset}'",
-            details={"dataset": dataset},
-        )
+        if options.require_sync_dataset_match:
+            raise DslLoadError(
+                code="CACHE_DSL_SPEC_INVALID",
+                message=f"cache.sync.dataset mismatch: expected '{dataset}', got '{spec.sync.dataset}'",
+                details={"dataset": dataset},
+            )
 
     projection_targets = [rule.target for rule in spec.sync.projection]
     dup_targets = sorted({name for name in projection_targets if projection_targets.count(name) > 1})
     if dup_targets:
-        raise DslLoadError(
-            code="CACHE_DSL_SPEC_INVALID",
-            message=f"cache.sync.projection has duplicate targets: {dup_targets}",
-            details={"dataset": dataset, "targets": dup_targets},
-        )
+        if options.fail_on_duplicate_projection_targets:
+            raise DslLoadError(
+                code="CACHE_DSL_SPEC_INVALID",
+                message=f"cache.sync.projection has duplicate targets: {dup_targets}",
+                details={"dataset": dataset, "targets": dup_targets},
+            )
 
     unknown_targets = [name for name in projection_targets if name not in known_columns]
     if unknown_targets:
-        raise DslLoadError(
-            code="CACHE_DSL_SPEC_INVALID",
-            message=f"cache.sync.projection references unknown target columns: {unknown_targets}",
-            details={"dataset": dataset, "targets": unknown_targets},
-        )
+        if options.fail_on_unknown_projection_targets:
+            raise DslLoadError(
+                code="CACHE_DSL_SPEC_INVALID",
+                message=f"cache.sync.projection references unknown target columns: {unknown_targets}",
+                details={"dataset": dataset, "targets": unknown_targets},
+            )

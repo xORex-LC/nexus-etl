@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from connector.domain.dsl import (
     CacheDatasetSpec,
     CacheRegistrySpec,
+    load_cache_build_options_for_runtime,
     compile_cache_runtime,
     load_cache_dataset_spec_for_dataset,
     load_cache_registry_spec_for_runtime,
@@ -43,6 +44,7 @@ def load_cache_dsl_runtime() -> CacheDslRuntimeBundle:
     runtime = compile_cache_runtime(
         registry_spec=registry_spec,
         dataset_specs=dataset_specs,
+        options=load_cache_build_options_for_runtime(),
     )
     return CacheDslRuntimeBundle(
         registry_spec=registry_spec,
