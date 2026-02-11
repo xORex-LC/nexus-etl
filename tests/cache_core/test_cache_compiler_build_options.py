@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from connector.domain.dsl.build_options import CacheDslBuildOptions
-from connector.domain.dsl.cache_compiler import compile_cache_runtime
+from connector.domain.cache_core.cache_dsl import compile_cache_runtime
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.specs import CacheDatasetSpec, CacheRegistrySpec
 

@@ -84,11 +84,27 @@ def test_cache_build_options_merge_order(monkeypatch):
                 },
             },
             "datasets": {"employees": {}},
+            "cache": {
+                "datasets": {
+                    "employees": {
+                        "build_options": {
+                            "cache": {
+                                "strict": False,
+                                "fail_on_unknown_projection_targets": False,
+                            }
+                        }
+                    }
+                }
+            },
         },
     )
 
-    options = load_cache_build_options_for_runtime()
+    options = load_cache_build_options_for_runtime(
+        cli_overrides={"strict": True},
+    )
 
+    # CLI override > dataset override > global stage > global base
     assert options.strict is True
     assert options.fail_on_unknown_dependencies is False
+    assert options.fail_on_unknown_projection_targets is False
     assert options.fail_on_unknown_ops is True

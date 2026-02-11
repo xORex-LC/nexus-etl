@@ -6,11 +6,10 @@ from connector.domain.dsl import (
     CacheDatasetSpec,
     CacheRegistrySpec,
     load_cache_build_options_for_runtime,
-    compile_cache_runtime,
     load_cache_dataset_spec_for_dataset,
     load_cache_registry_spec_for_runtime,
 )
-from connector.domain.dsl.cache_compiler import CacheDslRuntime
+from connector.domain.cache_core import CacheDsl, CacheDslRuntime
 from connector.infra.cache.sync import build_dsl_cache_sync_adapter
 
 
@@ -41,10 +40,11 @@ def load_cache_dsl_runtime() -> CacheDslRuntimeBundle:
             continue
         dataset_specs[dataset] = load_cache_dataset_spec_for_dataset(dataset)
 
-    runtime = compile_cache_runtime(
+    runtime = CacheDsl(
+        options=load_cache_build_options_for_runtime()
+    ).compile_runtime(
         registry_spec=registry_spec,
         dataset_specs=dataset_specs,
-        options=load_cache_build_options_for_runtime(),
     )
     return CacheDslRuntimeBundle(
         registry_spec=registry_spec,

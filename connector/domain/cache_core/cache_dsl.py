@@ -1,6 +1,6 @@
 """
 Назначение:
-    Компиляция cache DSL (registry + dataset specs) в runtime модель.
+    Cache DSL compile-слой (Spec -> Runtime).
 """
 
 from __future__ import annotations
@@ -56,6 +56,28 @@ class CacheDslRuntime:
     policy: CacheDslRuntimePolicy
 
 
+class CacheDsl:
+    """
+    Назначение:
+        Явный DSL-компилятор cache-runtime (канонический вход compile-процесса).
+    """
+
+    def __init__(self, *, options: CacheDslBuildOptions | None = None) -> None:
+        self.options = options or CacheDslBuildOptions()
+
+    def compile_runtime(
+        self,
+        *,
+        registry_spec: CacheRegistrySpec,
+        dataset_specs: dict[str, CacheDatasetSpec],
+    ) -> CacheDslRuntime:
+        return compile_cache_runtime(
+            registry_spec=registry_spec,
+            dataset_specs=dataset_specs,
+            options=self.options,
+        )
+
+
 def compile_cache_runtime(
     *,
     registry_spec: CacheRegistrySpec,
@@ -101,7 +123,6 @@ def compile_cache_runtime(
         if spec.sync is not None:
             sync_spec = spec.sync
             if sync_spec.dataset is None:
-                # Нормализуем dataset в runtime-модели.
                 sync_spec = sync_spec.model_copy(update={"dataset": dataset})
             sync_specs[dataset] = sync_spec
             sync_hashes[dataset] = build_sync_hash(sync_spec)
@@ -325,7 +346,7 @@ def _validate_semantics(
                 details={"dataset": dataset, "targets": dup_targets},
             )
 
-    unknown_targets = [name for name in projection_targets if name not in known_columns]
+    unknown_targets = sorted({target for target in projection_targets if target not in known_columns})
     if unknown_targets:
         if options.fail_on_unknown_projection_targets:
             raise DslLoadError(
