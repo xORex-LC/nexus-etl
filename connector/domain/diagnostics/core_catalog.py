@@ -26,7 +26,7 @@ def build_core_catalog(*, strict: bool) -> ErrorCatalog:
         CatalogEntry("MAP_DSL_SPEC_INVALID", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("MAP_DSL_COMPILE_INVALID", SystemErrorCode.INTERNAL_ERROR, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("NORMALIZE_DSL_SPEC_INVALID", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
-        CatalogEntry("NORMALIZE_DSL_COMPILE_INVALID",SystemErrorCode.INTERNAL_ERROR, severity=DiagnosticSeverity.ERROR, severity=DiagnosticSeverity.ERROR),
+        CatalogEntry("NORMALIZE_DSL_COMPILE_INVALID", SystemErrorCode.INTERNAL_ERROR, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("ENRICH_DSL_SPEC_INVALID", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("ENRICH_DSL_TEMPLATE_INVALID", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("ENRICH_DSL_COMPILE_INVALID", SystemErrorCode.INTERNAL_ERROR, severity=DiagnosticSeverity.ERROR),
