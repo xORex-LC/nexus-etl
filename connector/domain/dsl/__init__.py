@@ -5,13 +5,6 @@
 
 from connector.domain.dsl.engine import EngineResult, TransformationEngine
 from connector.domain.dsl.issues import DslIssue, DslSeverity, DslLoadError
-from connector.domain.dsl.cache_compiler import (
-    CacheDslRuntime,
-    CacheDslRuntimePolicy,
-    compile_cache_runtime,
-    build_schema_hash,
-    build_sync_hash,
-)
 from connector.domain.dsl.loader import (
     load_source_spec_for_dataset,
     load_mapping_spec,
@@ -64,11 +57,6 @@ __all__ = [
     "DslIssue",
     "DslSeverity",
     "DslLoadError",
-    "CacheDslRuntime",
-    "CacheDslRuntimePolicy",
-    "compile_cache_runtime",
-    "build_schema_hash",
-    "build_sync_hash",
     "load_mapping_spec",
     "load_mapping_spec_for_dataset",
     "load_source_spec_for_dataset",

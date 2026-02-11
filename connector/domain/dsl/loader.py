@@ -279,15 +279,20 @@ def load_resolve_build_options_for_dataset(dataset: str) -> ResolveDslBuildOptio
     return _load_stage_build_options(dataset, "resolve", ResolveDslBuildOptions)
 
 
-def load_cache_build_options_for_runtime() -> CacheDslBuildOptions:
+def load_cache_build_options_for_runtime(
+    *,
+    dataset_overrides: dict[str, dict[str, Any]] | None = None,
+    cli_overrides: dict[str, Any] | None = None,
+) -> CacheDslBuildOptions:
     """
     Назначение:
         Загрузить compile-policy build options для cache runtime.
 
     Контракт:
-        - merge-приоритет: defaults -> global.base -> global.stages.cache.
-        - dataset-level override для cache не применяется, т.к. compile выполняется
-          сразу для набора датасетов из cache registry.
+        - merge-приоритет:
+          defaults -> global.base -> global.stages.cache -> dataset overrides (optional) -> CLI overrides.
+        - dataset_overrides может быть передан явно из orchestration слоя.
+        - Если dataset_overrides не передан, используются cache.datasets.*.build_options.cache (если есть).
     """
     registry = _load_registry()
     root_build_options = registry.get("build_options") or {}
@@ -296,6 +301,21 @@ def load_cache_build_options_for_runtime() -> CacheDslBuildOptions:
     merged: dict[str, Any] = {}
     merged.update(global_base)
     merged.update(global_stage)
+    if dataset_overrides is None:
+        cache_payload = registry.get("cache") or {}
+        cache_datasets = cache_payload.get("datasets") or {}
+        dataset_overrides = {}
+        for dataset_name, entry in cache_datasets.items():
+            if not isinstance(entry, dict):
+                continue
+            stage_override = ((entry.get("build_options") or {}).get("cache") or {})
+            if stage_override:
+                dataset_overrides[dataset_name] = stage_override
+    if dataset_overrides:
+        for dataset_name in sorted(dataset_overrides.keys()):
+            merged.update(dataset_overrides[dataset_name] or {})
+    if cli_overrides:
+        merged.update(cli_overrides)
     return build_options_from_mapping(CacheDslBuildOptions, merged)
 
 
