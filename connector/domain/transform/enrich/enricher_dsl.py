@@ -19,7 +19,7 @@ from connector.domain.transform.enrich.models import (
 from connector.domain.transform.enrich.spec import EnricherSpec, EnrichmentOperation, KeyRegistry
 from connector.domain.dsl.build_options import EnrichDslBuildOptions
 from connector.domain.dsl.engine import TransformationEngine
-from connector.domain.dsl.issues import DslSeverity
+from connector.domain.dsl.issues import DslLoadError, DslSeverity
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
 from connector.domain.dsl.helpers import apply_ops
@@ -50,12 +50,24 @@ class EnricherDsl:
         self.options = options
 
     def compile(self, spec: EnrichSpec) -> EnricherSpec:
-        return build_enricher_spec_from_dsl(
-            spec,
-            registry=self.registry,
-            providers=self.providers,
-            options=self.options,
-        )
+        """
+        Назначение:
+            Скомпилировать EnrichSpec в EnricherSpec.
+        """
+        try:
+            return build_enricher_spec_from_dsl(
+                spec,
+                registry=self.registry,
+                providers=self.providers,
+                options=self.options,
+            )
+        except DslLoadError:
+            raise
+        except Exception as exc:
+            raise DslLoadError(
+                code="ENRICH_DSL_COMPILE_INVALID",
+                message=f"Failed to compile enrich DSL: {exc}",
+            ) from exc
 
 
 def build_enricher_spec_from_dsl(
@@ -70,37 +82,48 @@ def build_enricher_spec_from_dsl(
         Построить EnricherSpec из EnrichSpec (DSL).
     """
 
-    if options is None:
-        options = EnrichDslBuildOptions()
-    if providers is None:
-        providers = ProviderGateway.with_defaults()
-    engine = TransformationEngine(registry)
-    operations: list[EnrichmentOperation] = []
+    try:
+        if options is None:
+            options = EnrichDslBuildOptions()
+        if providers is None:
+            providers = ProviderGateway.with_defaults()
+        engine = TransformationEngine(registry)
+        operations: list[EnrichmentOperation] = []
 
-    match_key_spec = enrich_spec.enrich.match_key
-    if match_key_spec is not None:
-        operations.append(_build_match_key_operation(match_key_spec))
-    elif options.require_match_key:
-        raise ValueError("enrich spec must define match_key")
-
-    secrets_spec = enrich_spec.enrich.secrets or SecretsSpec()
-    for rule in enrich_spec.enrich.generate:
-        operations.append(
-            _build_generate_operation(
-                rule,
-                engine,
-                secrets_spec,
-                providers,
+        match_key_spec = enrich_spec.enrich.match_key
+        if match_key_spec is not None:
+            operations.append(_build_match_key_operation(match_key_spec))
+        elif options.require_match_key:
+            raise DslLoadError(
+                code="ENRICH_DSL_COMPILE_INVALID",
+                message="enrich spec must define match_key",
             )
+
+        secrets_spec = enrich_spec.enrich.secrets or SecretsSpec()
+        for rule in enrich_spec.enrich.generate:
+            operations.append(
+                _build_generate_operation(
+                    rule,
+                    engine,
+                    secrets_spec,
+                    providers,
+                )
+            )
+
+        for rule in enrich_spec.enrich.lookup:
+            operations.append(_build_lookup_operation(rule, engine, providers))
+
+        return EnricherSpec(
+            operations=tuple(operations),
+            key_registry=KeyRegistry(builders={}),
         )
-
-    for rule in enrich_spec.enrich.lookup:
-        operations.append(_build_lookup_operation(rule, engine, providers))
-
-    return EnricherSpec(
-        operations=tuple(operations),
-        key_registry=KeyRegistry(builders={}),
-    )
+    except DslLoadError:
+        raise
+    except Exception as exc:
+        raise DslLoadError(
+            code="ENRICH_DSL_COMPILE_INVALID",
+            message=f"Invalid enrich DSL runtime contract: {exc}",
+        ) from exc
 
 
 def _build_match_key_operation(match_key_spec: MatchKeySpec) -> EnrichmentOperation:
