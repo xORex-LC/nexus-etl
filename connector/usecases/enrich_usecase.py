@@ -5,8 +5,9 @@ import logging
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.models import DiagnosticStage
 from connector.domain.transform.core.result_processor import TransformResultProcessor
-from connector.domain.transform.stages.stages import EnrichStage
+from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage, StagePipeline
 
 
 class EnrichUseCase:
@@ -26,6 +27,8 @@ class EnrichUseCase:
     def run(
         self,
         row_source,
+        map_stage: MapStage,
+        normalize_stage: NormalizeStage,
         enrich_stage: EnrichStage,
         dataset: str,
         logger: logging.Logger,
@@ -41,10 +44,13 @@ class EnrichUseCase:
             context_key="enrich",
             ok_label="enriched_ok",
             failed_label="enrich_failed",
+            report_stage=DiagnosticStage.ENRICH,
+            include_upstream_diagnostics=False,
         )
 
         extractor = Extractor(row_source, catalog=catalog)
-        for map_result in enrich_stage.run(extractor.run()):
+        stage_pipeline = StagePipeline([map_stage, normalize_stage, enrich_stage])
+        for map_result in stage_pipeline.run(extractor.run()):
             processor.process(map_result)
 
         return processor.finalize()

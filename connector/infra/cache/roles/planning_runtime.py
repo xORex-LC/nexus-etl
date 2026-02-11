@@ -14,6 +14,9 @@ class SqlitePlanningRuntimeAdapter(PlanningRuntimePort, PendingReplayPort):
     def __init__(self, gateway: SqliteCacheGateway) -> None:
         self._gateway = gateway
 
+    def transaction(self):
+        return self._gateway.transaction()
+
     # MatchRuntimePort
     def find(
         self,

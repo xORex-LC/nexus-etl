@@ -219,13 +219,21 @@ class _DslLookupProvider:
         if row is None:
             return []
         if not self.rule.provider:
-            raise ValueError("lookup rule requires provider")
+            raise DslLoadError(
+                code="ENRICH_DSL_LOOKUP_PROVIDER_MISSING",
+                message=f"lookup rule '{self.rule.name}' requires provider",
+                details={"rule": self.rule.name, "target": self.rule.target},
+            )
 
         value = _read_rule_value(row, self.rule)
         if self.rule.ops:
             resolved, op_issues = apply_ops(self.engine, value, self.rule.ops)
             if any(issue.severity == DslSeverity.ERROR for issue in op_issues):
-                raise ValueError("lookup key ops failed")
+                raise DslLoadError(
+                    code="ENRICH_DSL_LOOKUP_KEY_OP_FAILED",
+                    message=f"lookup rule '{self.rule.name}' key operations failed",
+                    details={"rule": self.rule.name, "target": self.rule.target},
+                )
             value = resolved
 
         if value is None or value == "":
@@ -308,7 +316,11 @@ def _build_lookup_operation(
     providers: ProviderGateway,
 ) -> EnrichmentOperation:
     if not rule.provider:
-        raise ValueError("lookup rule requires provider")
+        raise DslLoadError(
+            code="ENRICH_DSL_LOOKUP_PROVIDER_MISSING",
+            message=f"lookup rule '{rule.name}' requires provider",
+            details={"rule": rule.name, "target": rule.target},
+        )
     merge_policy = _merge_policy_for(rule)
     strictness = _strictness_for(rule)
     run_when_errors = _run_when_errors_for(rule)
@@ -339,7 +351,11 @@ def _merge_policy_for(rule: EnrichRule) -> MergePolicy | None:
     }
     mode = mapping.get(rule.merge)
     if mode is None:
-        raise ValueError(f"Unknown merge policy: {rule.merge}")
+        raise DslLoadError(
+            code="ENRICH_DSL_MERGE_POLICY_INVALID",
+            message=f"Unknown merge policy: {rule.merge}",
+            details={"rule": rule.name, "merge": rule.merge},
+        )
     return MergePolicy(mode=mode)
 
 

@@ -92,6 +92,8 @@ class ResolveRuntimePort(Protocol):
         Контракт resolve-стадии для identity/pending lifecycle.
     """
 
+    def transaction(self) -> ContextManager[None]: ...
+
     def find_candidates(self, dataset: str, identity_key: str) -> list[str]: ...
 
     def add_pending(

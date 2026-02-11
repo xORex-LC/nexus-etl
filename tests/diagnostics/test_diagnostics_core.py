@@ -6,6 +6,8 @@ from connector.domain.diagnostics.catalog import ErrorCatalog, CatalogEntry, bui
 from connector.domain.diagnostics.exceptions import UnknownDiagnosticCodeError
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.translator import translate_execution_result
+from connector.domain.dsl.diagnostics import translate_dsl_load_error
+from connector.domain.dsl.issues import DslLoadError
 from connector.domain.models import DiagnosticSeverity, DiagnosticStage, RowRef
 from connector.domain.ports.target.execution import ExecutionResult
 from connector.domain.transform.core.result import TransformResult
@@ -99,3 +101,23 @@ def test_translator_preserves_infra_timeout_code() -> None:
     )
     diag = translate_execution_result(catalog, DiagnosticStage.SINK, result)
     assert diag.code == "SINK_TIMEOUT"
+
+
+def test_translate_dsl_load_error_to_diagnostic_item() -> None:
+    catalog = build_catalog(None, strict=True)
+    error = DslLoadError(
+        code="MAP_DSL_SPEC_INVALID",
+        message="invalid map yaml",
+        details={"path": "datasets/employees.mapping.yaml"},
+    )
+
+    diag = translate_dsl_load_error(
+        catalog=catalog,
+        stage=DiagnosticStage.MAP,
+        error=error,
+        record_ref=None,
+    )
+
+    assert diag.code == "MAP_DSL_SPEC_INVALID"
+    assert diag.stage == DiagnosticStage.MAP
+    assert diag.details == {"path": "datasets/employees.mapping.yaml"}
