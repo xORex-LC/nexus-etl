@@ -8,6 +8,7 @@ from __future__ import annotations
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.dsl.build_options import NormalizeDslBuildOptions
 from connector.domain.dsl.engine import TransformationEngine
+from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.registry import OperationRegistry
 from connector.domain.dsl.specs import NormalizeSpec, SinkSpec
 from connector.domain.transform.normalize.normalizer_core import NormalizerCore, RowBuilder
@@ -42,11 +43,23 @@ class NormalizerDsl:
         sink_spec: SinkSpec | None = None,
         row_builder: RowBuilder | None = None,
     ) -> NormalizerCore:
-        return NormalizerCore(
-            spec,
-            engine=self.engine,
-            catalog=catalog,
-            sink_spec=sink_spec,
-            row_builder=row_builder,
-            options=self.options,
-        )
+        """
+        Назначение:
+            Скомпилировать NormalizeSpec в NormalizerCore.
+        """
+        try:
+            return NormalizerCore(
+                spec,
+                engine=self.engine,
+                catalog=catalog,
+                sink_spec=sink_spec,
+                row_builder=row_builder,
+                options=self.options,
+            )
+        except DslLoadError:
+            raise
+        except Exception as exc:
+            raise DslLoadError(
+                code="NORMALIZE_DSL_COMPILE_INVALID",
+                message=f"Failed to compile normalize DSL: {exc}",
+            ) from exc

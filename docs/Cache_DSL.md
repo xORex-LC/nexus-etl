@@ -80,6 +80,8 @@
 2. Переход на generic `DslCacheSyncAdapter`.
 3. Удаление legacy `cache_registry.py`, `load/cache_spec.py`, `load/cache_sync_adapter.py`.
 4. Role-based границы и единый `open_cache(...)` lifecycle.
+5. CLI дефолты `cache refresh --deps/--no-deps` и `cache clear --cascade/--no-cascade`
+   теперь берутся из compiled cache policy, если флаг не задан явно.
 
 В работе / не доведено:
 1. Выделение отдельного `CacheLifecycleEngine` (сейчас orchestration распределен по use-case слою).
