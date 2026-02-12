@@ -45,6 +45,13 @@ docs/adr/
 | [CACHE-PROBLEM-001](./cache/CACHE-PROBLEM-001-circular-refresh-deadlock.md) | Problem | Circular refresh deadlock | Решена в CACHE-DEC-001 | 2026-02-11 |
 | [CACHE-DEC-001](./cache/CACHE-DEC-001-topological-sort-for-dependencies.md) | Decision | Топологическая сортировка для зависимостей | Принято | 2026-02-11 |
 
+### Config
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [CONFIG-PROBLEM-001](./config/CONFIG-PROBLEM-001-settings-layer-complexity.md) | Problem | Перегруженный Settings-слой и неявные ошибки мерджа | Закрыта (решена) | 2026-02-12 |
+| [CONFIG-DEC-001](./config/CONFIG-DEC-001-modular-settings-and-slice-wiring.md) | Decision | Модульный Settings и slice-based wiring | Принято / реализовано | 2026-02-12 |
+
 ### Transform (Resolve)
 
 | ID | Тип | Название | Статус | Дата |
@@ -52,7 +59,7 @@ docs/adr/
 | [RESOLVE-PROBLEM-001](./transform/RESOLVE-PROBLEM-001-unresolved-fk-blocking-pipeline.md) | Problem | Unresolved FK blocking pipeline | Решена в RESOLVE-DEC-001 | 2026-02-11 |
 | [RESOLVE-DEC-001](./transform/RESOLVE-DEC-001-pending-links-with-retry.md) | Decision | Pending links с механизмом retry | Принято | 2026-02-11 |
 
-_(Примечание: это примеры структуры. Реальные ADR создаются по мере возникновения проблем и решений)_
+_(Список поддерживается как актуальный реестр ADR по слоям.)_
 
 ---
 
