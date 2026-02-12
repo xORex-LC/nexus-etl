@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from connector.domain.ports.cache.repository import CacheRepositoryProtocol
+from connector.domain.cache_core import CacheClearPlanner, CacheLifecycleEngine
+from connector.domain.ports.cache.roles import CacheAdminPort
+
 
 class CacheClearUseCase:
     """
@@ -8,21 +10,24 @@ class CacheClearUseCase:
         Очистка кэша (по датасету или полностью).
     """
 
-    def __init__(self, cache_repo: CacheRepositoryProtocol):
-        self.cache_repo = cache_repo
+    def __init__(
+        self,
+        cache_admin: CacheAdminPort,
+        clear_planner: CacheClearPlanner | None = None,
+        lifecycle_engine: CacheLifecycleEngine | None = None,
+    ):
+        self._engine = lifecycle_engine or CacheLifecycleEngine(
+            cache_admin=cache_admin,
+            clear_planner=clear_planner,
+        )
 
     def clear(self, dataset: str | None = None) -> dict[str, int]:
-        targets = self.cache_repo.list_datasets()
-        if dataset:
-            if dataset not in targets:
-                raise ValueError(f"Unsupported cache dataset: {dataset}")
-            targets = [dataset]
+        return self.clear_with_options(dataset=dataset, cascade=False)
 
-        deleted: dict[str, int] = {}
-        with self.cache_repo.transaction():
-            for name in targets:
-                deleted[name] = self.cache_repo.count(name)
-                self.cache_repo.clear(name)
-                self.cache_repo.reset_meta(name)
-
-        return deleted
+    def clear_with_options(
+        self,
+        *,
+        dataset: str | None = None,
+        cascade: bool = False,
+    ) -> dict[str, int]:
+        return self._engine.clear(dataset=dataset, cascade=cascade)

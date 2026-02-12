@@ -7,9 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.ports.cache.repository import CacheRepositoryProtocol
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.pending_links import PendingLinksRepository
+from connector.domain.ports.cache.roles import PlanningRuntimePort
 
 
 @dataclass(frozen=True)
@@ -35,7 +33,5 @@ class PlanningDependencies:
 
     """
 
-    cache_repo: CacheRepositoryProtocol | None = None
-    identity_repo: IdentityRepository | None = None
-    pending_repo: PendingLinksRepository | None = None
+    cache_gateway: PlanningRuntimePort | None = None
     resolver_settings: ResolverSettings | None = None

@@ -99,6 +99,18 @@ def op_to_bool(value: Any, **_: Any) -> bool | None:
     raise ValueError("Invalid boolean value")
 
 
+def op_to_string(value: Any, **_: Any) -> str | None:
+    """
+    Назначение:
+        Преобразовать значение в строку (trim), пустую строку -> None.
+    """
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def op_int_if_digits(value: Any, **_: Any) -> int | str | None:
     """
     Назначение:
@@ -204,6 +216,48 @@ def op_concat(values: Any, *, sep: str = "") -> str | None:
             continue
         parts.append(str(value))
     if not parts:
+        return None
+    return sep.join(parts)
+
+
+def op_build_delimited_key(
+    values: Any,
+    *,
+    sep: str = "|",
+    strict: bool = True,
+) -> str | None:
+    """
+    Назначение:
+        Собрать составной ключ из списка значений с фиксированным разделителем.
+
+    Поведение:
+        - strict=True: пустые/None значения запрещены.
+        - strict=False: пустые элементы пропускаются.
+    """
+
+    if values is None:
+        if strict:
+            raise ValueError("build_delimited_key requires non-empty values")
+        return None
+    if not isinstance(values, (list, tuple)):
+        values = [values]
+
+    parts: list[str] = []
+    for value in values:
+        if value is None:
+            if strict:
+                raise ValueError("build_delimited_key contains None value")
+            continue
+        part = str(value).strip()
+        if part == "":
+            if strict:
+                raise ValueError("build_delimited_key contains empty value")
+            continue
+        parts.append(part)
+
+    if not parts:
+        if strict:
+            raise ValueError("build_delimited_key produced empty result")
         return None
     return sep.join(parts)
 

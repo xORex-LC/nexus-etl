@@ -1,0 +1,30 @@
+@startuml
+title DSL Core - Compilation Activity
+
+skinparam backgroundColor white
+skinparam defaultFontName Arial
+skinparam linetype ortho
+skinparam activity {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+start
+:Load YAML text;
+:Parse YAML -> raw mapping;
+:Resolve dataset/stage payload;
+:Pydantic model validation;
+
+if (Model valid?) then (yes)
+  :Merge compile options\n(defaults -> global -> dataset/stage);
+  :Compile stage/cache contract;
+  :Build immutable runtime object;
+  :Return compiled contract;
+  stop
+else (no)
+  :Build DslLoadError/DslIssue;
+  :Translate to DiagnosticItem via DSL diagnostics bridge;
+  stop
+endif
+
+@enduml

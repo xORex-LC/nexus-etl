@@ -29,31 +29,43 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
     Назначение:
         Запустить сценарий import-plan через CLI handler.
     """
-    settings = ctx.settings
+    app_settings = ctx.app_settings
+    if app_settings is None:
+        raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 
-    conn = None
+    gateway = None
     try:
-        dataset_name, _spec = build_dataset_spec(opts.dataset, settings)
-        conn, _engine, _cache_repo, _cache_specs = build_cache(settings)
+        dataset_name, _spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
 
-        include_deleted_value = opts.include_deleted if opts.include_deleted is not None else settings.include_deleted
-        report_items_limit_value = (
-            opts.report_items_limit if opts.report_items_limit is not None else settings.report_items_limit
+        include_deleted_value = (
+            opts.include_deleted if opts.include_deleted is not None else app_settings.dataset.include_deleted
         )
-        csv_has_header_value = opts.csv_has_header if opts.csv_has_header is not None else settings.csv_has_header
+        report_items_limit_value = (
+            opts.report_items_limit
+            if opts.report_items_limit is not None
+            else app_settings.observability.report_items_limit
+        )
+        csv_has_header_value = (
+            opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
+        )
 
         service = ImportPlanService()
         return service.run(
-            conn=conn,
+            pending_replay=cache_roles.pending_replay,
+            enrich_lookup=cache_roles.enrich_lookup,
+            planning_runtime=cache_roles.planning_runtime,
             csv_has_header=csv_has_header_value,
             include_deleted=include_deleted_value,
-            settings=settings,
+            observability_settings=app_settings.observability,
+            pending_settings=app_settings.pending,
+            matching_runtime_settings=app_settings.matching_runtime,
             dataset=dataset_name,
             logger=ctx.logger,
             run_id=run_id,
             report_items_limit=report_items_limit_value,
-            report_dir=settings.report_dir,
+            report_dir=app_settings.paths.report_dir,
             vault_file=opts.vault_file,
         )
     except ValueError as exc:
@@ -66,8 +78,8 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
         typer.echo("ERROR: import plan failed (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     finally:
-        if conn is not None:
-            conn.close()
+        if gateway is not None:
+            gateway.close()
 
 
 __all__ = ["handler", "Options"]

@@ -27,26 +27,37 @@ class Options:
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
-    settings = ctx.settings
-    csv_has_header_value = opts.csv_has_header if opts.csv_has_header is not None else settings.csv_has_header
+    app_settings = ctx.app_settings
+    if app_settings is None:
+        raise ValueError("App settings are not initialized")
+
+    csv_has_header_value = (
+        opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
+    )
     report_items_limit_value = (
-        opts.report_items_limit if opts.report_items_limit is not None else settings.report_items_limit
+        opts.report_items_limit
+        if opts.report_items_limit is not None
+        else app_settings.observability.report_items_limit
     )
     include_enriched_items_value = opts.include_enriched_items if opts.include_enriched_items is not None else True
 
-    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, settings)
-    catalog = ctx.catalog or build_diagnostics_catalog(dataset_name, strict=settings.diagnostics_strict)
+    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+    catalog = ctx.catalog or build_diagnostics_catalog(
+        dataset_name,
+        strict=app_settings.observability.diagnostics_strict,
+    )
     report.set_meta(dataset=dataset_name, items_limit=report_items_limit_value)
 
-    conn = None
+    gateway = None
     try:
-        conn, _engine, _cache_repo, _cache_specs = build_cache(settings)
+        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
         secret_store = FileVaultSecretStore(opts.vault_file) if opts.vault_file else None
         pipeline_ctx = build_pipeline_context(
             dataset_spec=dataset_spec,
             dataset_name=dataset_name,
-            conn=conn,
-            settings=settings,
+            cache_roles=cache_roles,
+            pending_settings=app_settings.pending,
+            observability_settings=app_settings.observability,
             catalog=catalog,
             csv_has_header=csv_has_header_value,
             secret_store=secret_store,
@@ -57,6 +68,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
         return usecase.run(
             row_source=pipeline_ctx.row_source,
+            map_stage=pipeline_ctx.map_stage,
+            normalize_stage=pipeline_ctx.normalize_stage,
             enrich_stage=pipeline_ctx.enrich_stage,
             dataset=dataset_name,
             logger=ctx.logger,
@@ -67,8 +80,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="enrich", exc=exc)
     finally:
-        if conn is not None:
-            conn.close()
+        if gateway is not None:
+            gateway.close()
 
 
 __all__ = ["handler", "Options"]

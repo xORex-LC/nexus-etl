@@ -11,7 +11,7 @@ from typing import Any, Callable
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.models import RowRef, DiagnosticItem
+from connector.domain.models import RowRef, DiagnosticItem, DiagnosticStage
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.transform.core.result import TransformResult
 
@@ -36,6 +36,8 @@ class TransformResultProcessor:
         ok_label: str,
         failed_label: str,
         payload_builder: Callable[[TransformResult], Any] | None = None,
+        report_stage: DiagnosticStage | None = None,
+        include_upstream_diagnostics: bool = False,
     ) -> None:
         self.report = report
         self.include_items = include_items
@@ -43,6 +45,8 @@ class TransformResultProcessor:
         self.ok_label = ok_label
         self.failed_label = failed_label
         self.payload_builder = payload_builder
+        self.report_stage = report_stage
+        self.include_upstream_diagnostics = include_upstream_diagnostics
 
         self.rows_total = 0
         self.ok_rows = 0
@@ -72,11 +76,20 @@ class TransformResultProcessor:
         """
         self.rows_total += 1
 
-        eff_errors = errors_override if errors_override is not None else (result.errors if result else [])
-        eff_warnings = warnings_override if warnings_override is not None else (result.warnings if result else [])
+        eff_errors_all = list(errors_override) if errors_override is not None else list(result.errors if result else [])
+        eff_warnings_all = list(warnings_override) if warnings_override is not None else list(result.warnings if result else [])
 
-        has_errors = force_failed or bool(eff_errors)
+        has_errors = force_failed or bool(eff_errors_all)
         status = "FAILED" if has_errors else "OK"
+        (
+            eff_errors,
+            eff_warnings,
+            upstream_errors_count,
+            upstream_warnings_count,
+        ) = self._filter_for_report(
+            errors=eff_errors_all,
+            warnings=eff_warnings_all,
+        )
 
         if has_errors:
             self.failed_rows += 1
@@ -132,9 +145,25 @@ class TransformResultProcessor:
             meta={
                 "match_key": result.match_key.value if result and result.match_key else None,
                 "secret_candidate_fields": secret_fields,
+                "upstream_errors_count": upstream_errors_count,
+                "upstream_warnings_count": upstream_warnings_count,
             },
             store=should_store,
         )
+
+    def _filter_for_report(
+        self,
+        *,
+        errors: list[DiagnosticItem],
+        warnings: list[DiagnosticItem],
+    ) -> tuple[list[DiagnosticItem], list[DiagnosticItem], int, int]:
+        if self.include_upstream_diagnostics or self.report_stage is None:
+            return errors, warnings, 0, 0
+        report_errors = [item for item in errors if _diag_stage_equals(item, self.report_stage)]
+        report_warnings = [item for item in warnings if _diag_stage_equals(item, self.report_stage)]
+        upstream_errors_count = len(errors) - len(report_errors)
+        upstream_warnings_count = len(warnings) - len(report_warnings)
+        return report_errors, report_warnings, upstream_errors_count, upstream_warnings_count
 
     def finalize(self) -> CommandResult:
         """
@@ -177,6 +206,8 @@ class PlanningResultProcessor(TransformResultProcessor):
         meta_builder: Callable[[TransformResult], dict[str, Any] | None],
         should_skip: Callable[[TransformResult], bool] | None = None,
         payload_builder: Callable[[TransformResult], Any] | None = None,
+        report_stage: DiagnosticStage | None = None,
+        include_upstream_diagnostics: bool = False,
     ) -> None:
         super().__init__(
             report=report,
@@ -185,6 +216,8 @@ class PlanningResultProcessor(TransformResultProcessor):
             ok_label=ok_label,
             failed_label=failed_label,
             payload_builder=payload_builder,
+            report_stage=report_stage,
+            include_upstream_diagnostics=include_upstream_diagnostics,
         )
         self.meta_builder = meta_builder
         self.should_skip = should_skip
@@ -219,11 +252,17 @@ class PlanningResultProcessor(TransformResultProcessor):
             return
         self.rows_total += 1
 
-        eff_errors = errors_override if errors_override is not None else result.errors
-        eff_warnings = warnings_override if warnings_override is not None else result.warnings
+        eff_errors_all = list(errors_override) if errors_override is not None else list(result.errors)
+        eff_warnings_all = list(warnings_override) if warnings_override is not None else list(result.warnings)
 
-        has_errors = force_failed or bool(eff_errors)
+        has_errors = force_failed or bool(eff_errors_all)
         status = "FAILED" if has_errors else "OK"
+        (
+            eff_errors,
+            eff_warnings,
+            upstream_errors_count,
+            upstream_warnings_count,
+        ) = self._filter_for_report(errors=eff_errors_all, warnings=eff_warnings_all)
 
         if has_errors:
             self.failed_rows += 1
@@ -261,6 +300,8 @@ class PlanningResultProcessor(TransformResultProcessor):
                         row_payload[field] = "***"
 
         meta = self.meta_builder(result) or {}
+        meta.setdefault("upstream_errors_count", upstream_errors_count)
+        meta.setdefault("upstream_warnings_count", upstream_warnings_count)
 
         report_errors, report_warnings = split_report_diagnostics(eff_errors, eff_warnings)
         self.report.add_item(
@@ -272,3 +313,12 @@ class PlanningResultProcessor(TransformResultProcessor):
             meta=meta,
             store=should_store,
         )
+
+
+def _diag_stage_equals(item: DiagnosticItem, stage: DiagnosticStage) -> bool:
+    item_stage = item.stage
+    if item_stage == stage:
+        return True
+    if isinstance(item_stage, str):
+        return item_stage.upper() == stage.value
+    return False

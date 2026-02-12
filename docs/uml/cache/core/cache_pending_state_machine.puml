@@ -1,0 +1,36 @@
+@startuml
+title Cache State Machine - PendingLink Lifecycle
+
+[*] --> PENDING : add_pending()
+
+state PENDING {
+  [*] --> AwaitingResolution
+  AwaitingResolution --> AwaitingResolution : touch_attempt()
+  AwaitingResolution --> AwaitingResolution : add_pending() / upsert payload
+}
+
+PENDING --> RESOLVED : mark_resolved()\nmark_resolved_for_source()
+PENDING --> CONFLICT : mark_conflict()
+PENDING --> EXPIRED : sweep_expired()\nmark_expired()
+
+RESOLVED --> [*]
+CONFLICT --> [*]
+EXPIRED --> [*]
+
+note right of RESOLVED
+May be removed later by
+purge_stale(cutoff,...)
+end note
+
+note right of CONFLICT
+May be removed later by
+purge_stale(cutoff,...)
+end note
+
+note right of EXPIRED
+May be removed later by
+purge_stale(cutoff,...)
+end note
+
+@enduml
+

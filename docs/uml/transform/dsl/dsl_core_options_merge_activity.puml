@@ -1,0 +1,27 @@
+@startuml
+title DSL Core - Build Options Merge
+
+skinparam backgroundColor white
+skinparam defaultFontName Arial
+skinparam linetype ortho
+skinparam activity {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+start
+:Load defaults from dataclass;
+:Read global DSL policy (config);
+
+if (Has dataset/stage override?) then (yes)
+  :Apply override mapping;
+else (no)
+  :Keep global/default values;
+endif
+
+:Filter unknown keys;
+:Build typed *DslBuildOptions;
+:Return effective options;
+stop
+
+@enduml

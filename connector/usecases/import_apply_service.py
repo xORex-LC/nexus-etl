@@ -11,8 +11,7 @@ from connector.domain.ports.target.execution import ExecutionResult, RequestExec
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
 from connector.domain.transform.matcher.identity_keys import format_identity_key
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.pending_links import PendingLinksRepository
+from connector.domain.ports.cache.roles import ApplyRuntimePort
 from connector.common.sanitize import maskSecretsInObject
 from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.diagnostics.context import error as diag_error
@@ -34,18 +33,16 @@ class ImportApplyService:
         executor: RequestExecutorProtocol,
         secrets: SecretProviderProtocol | None = None,
         spec_resolver: Callable[..., DatasetSpec] = get_spec,
-        identity_repo: IdentityRepository | None = None,
+        apply_runtime: ApplyRuntimePort | None = None,
         identity_keys: dict[str, set[str]] | None = None,
         identity_id_fields: dict[str, str] | None = None,
-        pending_repo: PendingLinksRepository | None = None,
     ):
         self.executor = executor
         self.secrets = secrets
         self.spec_resolver = spec_resolver
-        self.identity_repo = identity_repo
+        self.apply_runtime = apply_runtime
         self.identity_keys = identity_keys or {}
         self.identity_id_fields = identity_id_fields or {}
-        self.pending_repo = pending_repo
 
     def applyPlan(
         self,
@@ -363,7 +360,7 @@ class ImportApplyService:
         response_json: Any | None,
         source_ref: dict[str, Any] | None,
     ) -> None:
-        if self.identity_repo is None:
+        if self.apply_runtime is None:
             return
         key_names = self.identity_keys.get(dataset)
         if not key_names:
@@ -389,12 +386,12 @@ class ImportApplyService:
             if value_str == "":
                 continue
             identity_key = format_identity_key(key_name, value_str)
-            self.identity_repo.upsert_identity(dataset, identity_key, resolved_id_str)
+            self.apply_runtime.upsert_identity(dataset, identity_key, resolved_id_str)
             self._resolve_pending_for_key(dataset, identity_key)
 
     def _resolve_pending_for_key(self, dataset: str, identity_key: str) -> None:
-        if self.pending_repo is None:
+        if self.apply_runtime is None:
             return
-        pending = self.pending_repo.list_pending_for_key(dataset, identity_key)
+        pending = self.apply_runtime.list_pending_for_key(dataset, identity_key)
         for item in pending:
-            self.pending_repo.mark_resolved(item.pending_id)
+            self.apply_runtime.mark_resolved(item.pending_id)

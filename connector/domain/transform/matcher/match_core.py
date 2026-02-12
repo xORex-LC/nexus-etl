@@ -30,8 +30,7 @@ from connector.domain.transform.matcher.rules import (
     ResolveRules,
 )
 from connector.domain.transform.matcher.scoring import is_tie, rank_candidates
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.repository import CacheRepositoryProtocol
+from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.core.result import TransformResult
 
 
@@ -45,22 +44,20 @@ class MatchCore:
     def __init__(
         self,
         dataset: str,
-        cache_repo: CacheRepositoryProtocol,
+        cache_gateway: MatchRuntimePort,
         matching_rules: MatchingRules,
         resolve_rules: ResolveRules,
         include_deleted: bool,
         catalog: ErrorCatalog,
-        identity_repo: IdentityRepository | None = None,
     ) -> None:
         self.dataset = dataset
-        self.cache_repo = cache_repo
+        self.cache_gateway = cache_gateway
         self.matching_rules = matching_rules
         if not self.matching_rules.identity_rules:
             raise ValueError("matching identity_rules must not be empty")
         self.resolve_rules = resolve_rules
         self.include_deleted = include_deleted
         self.catalog = catalog
-        self.identity_repo = identity_repo
         self._seen_source: dict[str, str] = {}
         self._runtime_scope: str | None = None
 
@@ -137,8 +134,8 @@ class MatchCore:
 
     def _read_seen_fingerprint(self, dedup_key: str) -> str | None:
         scope = self._runtime_scope
-        if scope and self.identity_repo is not None:
-            value = self.identity_repo.get_runtime_state(scope, self.dataset, dedup_key)
+        if scope:
+            value = self.cache_gateway.get_runtime_state(scope, self.dataset, dedup_key)
             if value is not None:
                 return value
         return self._seen_source.get(dedup_key)
@@ -146,8 +143,8 @@ class MatchCore:
     def _write_seen_fingerprint(self, dedup_key: str, fingerprint: str) -> None:
         self._seen_source[dedup_key] = fingerprint
         scope = self._runtime_scope
-        if scope and self.identity_repo is not None:
-            self.identity_repo.set_runtime_state(scope, self.dataset, dedup_key, fingerprint)
+        if scope:
+            self.cache_gateway.set_runtime_state(scope, self.dataset, dedup_key, fingerprint)
 
     def match(self, enriched: TransformResult[Any]) -> TransformResult[MatchedRow]:
         """
@@ -414,7 +411,7 @@ class MatchCore:
             if key_value in (None, ""):
                 continue
             try:
-                matches = self.cache_repo.find(
+                matches = self.cache_gateway.find(
                     self.dataset,
                     {key_name: key_value},
                     include_deleted=self.include_deleted,
@@ -493,7 +490,7 @@ class MatchCore:
             if identity is None:
                 identity = candidate
 
-            candidates = self.cache_repo.find(
+            candidates = self.cache_gateway.find(
                 self.dataset,
                 {candidate.primary: candidate_value},
                 include_deleted=self.include_deleted,

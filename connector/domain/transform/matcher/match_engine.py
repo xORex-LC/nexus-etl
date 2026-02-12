@@ -6,8 +6,7 @@
 from __future__ import annotations
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.repository import CacheRepositoryProtocol
+from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.dsl.build_options import MatchDslBuildOptions
 from connector.domain.dsl.specs import MatchSpec
@@ -28,11 +27,10 @@ class MatchEngine:
         *,
         spec: MatchSpec,
         dataset: str,
-        cache_repo: CacheRepositoryProtocol,
+        cache_gateway: MatchRuntimePort,
         resolve_rules: ResolveRules,
         include_deleted: bool,
         catalog: ErrorCatalog,
-        identity_repo: IdentityRepository | None = None,
         dsl: MatchDsl | None = None,
         options: MatchDslBuildOptions | None = None,
     ) -> None:
@@ -40,12 +38,11 @@ class MatchEngine:
         self.matching_rules = self.dsl.compile(spec)
         self.core = MatchCore(
             dataset=dataset,
-            cache_repo=cache_repo,
+            cache_gateway=cache_gateway,
             matching_rules=self.matching_rules,
             resolve_rules=resolve_rules,
             include_deleted=include_deleted,
             catalog=catalog,
-            identity_repo=identity_repo,
         )
 
     def match(self, enriched: TransformResult) -> TransformResult[MatchedRow]:

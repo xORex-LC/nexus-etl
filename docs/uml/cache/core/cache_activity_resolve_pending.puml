@@ -1,0 +1,38 @@
+@startuml
+title Cache Activity - Resolve with Pending
+
+start
+:Receive MatchedRow in resolve stage;
+:Build lookup identity key(s);
+:Read candidates from identity index;
+
+if (Candidates found?) then (yes)
+  if (Single candidate?) then (yes)
+    :Resolve link field(s);
+    :Mark pending for source as resolved;
+    :Return ResolvedRow;
+  else (no)
+    :Apply dedup rules;
+    if (Unique after dedup?) then (yes)
+      :Resolve link field(s);
+      :Mark pending resolved;
+      :Return ResolvedRow;
+    else (no)
+      :Mark conflict / emit RESOLVE_CONFLICT;
+      :Return error;
+    endif
+  endif
+else (no)
+  :Create or update pending link;
+  if (Allow partial?) then (yes)
+    :Keep unresolved value and return row + warning;
+  else (no)
+    :Stop row and return warning/error;
+  endif
+endif
+
+:Sweep expired pending by policy interval;
+stop
+
+@enduml
+

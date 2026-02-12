@@ -37,14 +37,14 @@ def log_sqlite_cache_error(*, logger, run_id: str, exc: Exception) -> None:
     logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
 
 
-def ensure_supported_cache_dataset(cache_repo, dataset: str | None) -> CommandResult | None:
+def ensure_supported_cache_dataset(cache_admin, dataset: str | None) -> CommandResult | None:
     """
     Назначение:
-        Проверить, что dataset поддерживается cache-репозиторием.
+        Проверить, что dataset поддерживается cache admin портом.
     """
     if dataset is None:
         return None
-    if dataset in cache_repo.list_datasets():
+    if dataset in cache_admin.list_datasets():
         return None
     typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
     return result_with(SystemErrorCode.CACHE_ERROR)

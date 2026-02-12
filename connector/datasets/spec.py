@@ -12,6 +12,7 @@ from connector.domain.dsl.specs import (
     ResolveSpec,
     SinkSpec,
 )
+from connector.domain.ports.cache.roles import EnrichLookupPort, PlanningRuntimePort
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.domain.transform.stages.stages import (
     EnrichStage,
@@ -22,7 +23,6 @@ from connector.domain.transform.stages.stages import (
 )
 from connector.domain.ports.target.execution import RequestSpec, ExecutionResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.infra.cache.cache_spec import CacheSpec
 
 
 class ApplyAdapter(Protocol):
@@ -64,8 +64,8 @@ class DatasetSpec(Protocol):
 
     dataset_name: str
 
-    def build_planning_deps(self, conn, settings) -> PlanningDependencies: ...
-    def build_enrich_deps(self, conn, settings, secret_store=None): ...
+    def build_planning_deps(self, settings, *, planning_runtime: PlanningRuntimePort) -> PlanningDependencies: ...
+    def build_enrich_deps(self, settings, *, enrich_lookup: EnrichLookupPort, secret_store=None): ...
     def build_map_spec(self, settings=None) -> MappingSpec: ...
     def build_normalize_spec(self, settings=None) -> NormalizeSpec: ...
     def build_enrich_spec(self, settings=None) -> EnrichSpec: ...
@@ -117,7 +117,6 @@ class DatasetSpec(Protocol):
         include_deleted: bool,
         settings=None,
     ) -> tuple[MatchStage, ResolveStage]: ...
-    def build_cache_specs(self) -> list[CacheSpec]: ...
     def build_record_source(
         self,
         csv_has_header: bool,

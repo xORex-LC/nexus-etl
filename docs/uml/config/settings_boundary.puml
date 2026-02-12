@@ -1,0 +1,55 @@
+@startuml
+title Settings - Boundary & Ownership Rules
+
+left to right direction
+skinparam backgroundColor white
+skinparam componentStyle rectangle
+skinparam defaultFontName Arial
+skinparam linetype ortho
+skinparam component {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+rectangle "Allowed Zone" #EAF7FF {
+  [connector/delivery/cli/app.py] as AppMain
+  [connector/config/app_settings.py] as AppSettingsModule
+}
+
+rectangle "Settings Consumer Zone" #FFF5E8 {
+  [runtime.py] as Runtime
+  [bootstrap.py] as Bootstrap
+  [commands/*] as Commands
+  [usecases/*] as UseCases
+}
+
+rectangle "Forbidden Legacy API" #FFECEC {
+  [loadSettings] as LegacyLoad
+  [from_legacy] as LegacyFrom
+}
+
+AppMain --> AppSettingsModule : load_app_settings(...)
+AppSettingsModule --> Runtime : AppSettings
+Runtime --> Commands : CommandContext.app_settings
+Commands --> Bootstrap : pass only slices
+Commands --> UseCases : pass only slices
+
+LegacyLoad -[hidden]-> LegacyFrom
+
+LegacyLoad -[#red,dashed]-> Commands : forbidden
+LegacyLoad -[#red,dashed]-> UseCases : forbidden
+LegacyFrom -[#red,dashed]-> Runtime : forbidden
+LegacyFrom -[#red,dashed]-> Commands : forbidden
+LegacyFrom -[#red,dashed]-> UseCases : forbidden
+
+note right of Runtime
+Full AppSettings allowed only
+in composition/wiring path.
+end note
+
+note bottom of Commands
+Per-command/per-usecase
+slice-only contracts.
+end note
+
+@enduml
