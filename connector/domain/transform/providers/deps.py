@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.ports.cache.repository import CacheRepositoryProtocol
+from connector.domain.ports.cache.roles import EnrichLookupPort
 from connector.domain.ports.secrets.provider import SecretStoreProtocol
 from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 
@@ -19,7 +19,6 @@ class TransformProviderDeps:
         Общие зависимости, которые могут использовать lookup/exists провайдеры.
     """
 
-    cache_repo: CacheRepositoryProtocol
+    cache_gateway: EnrichLookupPort
     secret_store: SecretStoreProtocol | None = None
     dictionaries: DictionaryProviderPort | None = None
-

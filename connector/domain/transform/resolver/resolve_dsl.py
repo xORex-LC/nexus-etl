@@ -10,6 +10,7 @@ from typing import Any
 
 from connector.domain.transform.common import normalize_text
 from connector.domain.dsl.build_options import ResolveDslBuildOptions
+from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.specs import (
     ResolveDiffFieldSpec,
     ResolveDiffSpec,
@@ -59,18 +60,33 @@ class ResolveDsl:
         *,
         sink_spec: SinkSpec | None = None,
     ) -> CompiledResolveRules:
-        if not self.options.allow_pending_links:
-            pending_links = [item.field for item in spec.resolve.links if item.on_unresolved == "pending"]
-            if pending_links:
-                raise ValueError(
-                    "resolve links with on_unresolved='pending' are disabled by build options: "
-                    + ", ".join(pending_links)
-                )
-        link_rules = LinkRules(
-            fields=tuple(self._compile_link_rule(item) for item in spec.resolve.links),
-        )
-        resolve_rules = self._compile_v2(spec, sink_spec=sink_spec)
-        return CompiledResolveRules(resolve_rules=resolve_rules, link_rules=link_rules)
+        """
+        Назначение:
+            Скомпилировать ResolveSpec в ResolveRules/LinkRules.
+        """
+        try:
+            if not self.options.allow_pending_links:
+                pending_links = [item.field for item in spec.resolve.links if item.on_unresolved == "pending"]
+                if pending_links:
+                    raise DslLoadError(
+                        code="RESOLVE_DSL_COMPILE_INVALID",
+                        message=(
+                            "resolve links with on_unresolved='pending' are disabled by build options: "
+                            + ", ".join(pending_links)
+                        ),
+                    )
+            link_rules = LinkRules(
+                fields=tuple(self._compile_link_rule(item) for item in spec.resolve.links),
+            )
+            resolve_rules = self._compile_v2(spec, sink_spec=sink_spec)
+            return CompiledResolveRules(resolve_rules=resolve_rules, link_rules=link_rules)
+        except DslLoadError:
+            raise
+        except Exception as exc:
+            raise DslLoadError(
+                code="RESOLVE_DSL_COMPILE_INVALID",
+                message=f"Failed to compile resolve DSL: {exc}",
+            ) from exc
 
     def _compile_v2(
         self,
@@ -82,7 +98,10 @@ class ResolveDsl:
         desired_spec = block.desired_state
         diff_spec = block.diff
         if desired_spec is None or diff_spec is None:
-            raise ValueError("resolve.desired_state and resolve.diff are required for Resolve DSL v2")
+            raise DslLoadError(
+                code="RESOLVE_DSL_COMPILE_INVALID",
+                message="resolve.desired_state and resolve.diff are required for Resolve DSL v2",
+            )
 
         return ResolveRules(
             build_desired_state=self._compile_desired_state(desired_spec.fields, desired_spec.drop_fields),
@@ -256,7 +275,10 @@ def _build_diff_rules(
     if not spec.from_sink.enabled:
         return list(spec.fields)
     if sink_spec is None:
-        raise ValueError("resolve.diff.from_sink.enabled=true requires sink_spec for ResolveDsl.compile()")
+        raise DslLoadError(
+            code="RESOLVE_DSL_COMPILE_INVALID",
+            message="resolve.diff.from_sink.enabled=true requires sink_spec for ResolveDsl.compile()",
+        )
 
     excluded = set(spec.from_sink.exclude_fields)
     rules: list[ResolveDiffFieldSpec] = []

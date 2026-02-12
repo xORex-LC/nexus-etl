@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
+from typing import Any, get_args, get_type_hints
 import os
 import yaml
+
+
+UNSET = object()
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -11,38 +16,8 @@ class Settings:
     Назначение:
         Консолидированные настройки приложения после мерджа:
         CLI > ENV > config > defaults.
-
-    Поля:
-        host: str | None
-            IP/hostname API.
-        port: int | None
-            Порт API.
-        api_username: str | None
-            Пользователь API.
-        api_password: str | None
-            Пароль пользователя API.
-
-        cache_dir: str
-            Каталог кэша.
-        log_dir: str
-            Каталог логов.
-        report_dir: str
-            Каталог отчётов.
-
-        tls_skip_verify: bool
-            Отключить проверку TLS сертификата.
-        ca_file: str | None
-            Путь к CA-файлу (если используется проверка TLS через CA).
-
-        log_level: str
-            Уровень логирования.
-        log_json: bool
-            Логировать в JSON формате.
-        report_format: str
-            Формат отчётов.
-        diagnostics_strict: bool
-            Строгая проверка неизвестных диагностических кодов.
     """
+
     host: str | None = None
     port: int | None = None
     api_username: str | None = None
@@ -91,420 +66,472 @@ class Settings:
     # Срок хранения обработанных pending-записей (в днях). 0 = не чистить.
     pending_retention_days: int = 14
 
+
+@dataclass(frozen=True)
+class SettingsIssue:
+    """
+    Унифицированный payload ошибки/предупреждения конфигурации.
+    """
+
+    code: str
+    field_path: str
+    source: str
+    raw_value: Any
+    message: str
+    hint: str
+
+
+class SettingsLoadError(RuntimeError):
+    """
+    Базовая типизированная ошибка загрузки настроек.
+    """
+
+    def __init__(self, message: str, issues: list[SettingsIssue]) -> None:
+        super().__init__(message)
+        self.issues = issues
+
+
+class SettingsSourceError(SettingsLoadError):
+    """Ошибка чтения источника config/env/cli."""
+
+
+class SettingsParseError(SettingsLoadError):
+    """Ошибка приведения типа/формата."""
+
+
+class SettingsValidationError(SettingsLoadError):
+    """Ошибка инвариантов/валидации после merge."""
+
+
+class SettingsConflictError(SettingsLoadError):
+    """Ошибка конфликтующих параметров."""
+
+
 @dataclass(frozen=True)
 class LoadedSettings:
     """
     Назначение:
         Результат загрузки настроек с информацией об источниках.
-
-    Поля:
-        settings: Settings
-            Итоговые настройки.
-        sources_used: list[str]
-            Список источников, которые реально участвовали в формировании
-            настроек (например: ["config", "env", "cli"]).
     """
+
     settings: Settings
     sources_used: list[str]
+    source_trace: dict[str, str] = field(default_factory=dict)
+    warnings: list[SettingsIssue] = field(default_factory=list)
 
-def readYamlConfig(path: Path) -> dict:
+
+@dataclass(frozen=True)
+class _FieldSpec:
+    name: str
+    base_type: type[Any]
+    optional: bool
+    env_name: str
+
+
+def read_yaml_config(path: Path) -> dict:
     """
     Назначение:
         Читает YAML конфиг, возвращает словарь настроек.
-
-    Входные данные:
-        path: Path
-            Путь к YAML файлу конфигурации.
-
-    Выходные данные:
-        dict
-            Словарь с настройками из YAML или пустой dict, если файл
-            отсутствует/некорректен.
-
-    Алгоритм:
-        - Проверить существование и тип файла.
-        - Прочитать YAML и убедиться, что верхний уровень — dict.
     """
     if not path.exists():
-        return {}
+        raise FileNotFoundError(f"Config file does not exist: {path}")
     if not path.is_file():
-        return {}
+        raise IsADirectoryError(f"Config path is not a file: {path}")
     with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
-        if not isinstance(data, dict):
-            return {}
-        return data
+    if not isinstance(data, dict):
+        raise ValueError("Top-level YAML structure must be a mapping/object")
+    return data
 
-def envGet(name: str) -> str | None:
+
+def env_get(name: str) -> str | None:
     """
     Назначение:
         Получает переменную окружения и нормализует значение.
-
-    Входные данные:
-        name: str
-            Имя переменной окружения.
-
-    Выходные данные:
-        str | None
-            Строка без пробелов по краям или None, если пусто/не задано.
     """
     v = os.getenv(name)
-    if v is None or v.strip() == "":
+    if v is None:
         return None
-    return v.strip()
+    vv = v.strip()
+    if vv == "":
+        return None
+    return vv
 
-def parseInt(value: str | None) -> int | None:
+
+def load_settings_model(config_path: str | None, cli_overrides: dict[str, Any]) -> LoadedSettings:
     """
     Назначение:
-        Преобразует строку в int, если значение задано.
+        Внутренний загрузчик плоской settings-модели, применяющий приоритет:
+        CLI > ENV > config > defaults.
 
-    Входные данные:
-        value: str | None
+    Фаза 2:
+        - централизованный parse/normalize по типам;
+        - явная UNSET-семантика;
+        - field-level source trace.
 
-    Выходные данные:
-        int | None
-
-    Исключения:
-        ValueError — если строка не является целым числом.
+    Фаза 3:
+        - типизированные ошибки загрузки;
+        - агрегированная выдача field-level parse ошибок;
+        - unknown-keys policy: warn (default) / error (strict).
     """
+    defaults = Settings()
+    specs = _build_field_specs()
+    specs_by_name = {spec.name: spec for spec in specs}
+
+    cfg: dict[str, Any] = {}
+    if config_path:
+        cfg = _load_config_source(config_path)
+
+    env_raw = {spec.name: env_get(spec.env_name) for spec in specs}
+    cli_raw = dict(cli_overrides or {})
+
+    strict_unknown = _resolve_strict_unknown(defaults=defaults, cfg=cfg, env_raw=env_raw, cli_raw=cli_raw)
+    unknown_issues = _collect_unknown_key_issues(cfg=cfg, cli_raw=cli_raw, specs_by_name=specs_by_name)
+    if strict_unknown and unknown_issues:
+        raise SettingsValidationError(
+            "Unknown configuration keys are not allowed in strict mode",
+            unknown_issues,
+        )
+    warnings = [] if strict_unknown else unknown_issues
+
+    merged = asdict(defaults)
+    source_trace = {spec.name: "default" for spec in specs}
+    parse_issues: list[SettingsIssue] = []
+
+    _apply_source(
+        source_name="config",
+        raw_values=cfg,
+        merged=merged,
+        source_trace=source_trace,
+        specs_by_name=specs_by_name,
+        skip_none=False,
+        issues=parse_issues,
+    )
+    _apply_source(
+        source_name="env",
+        raw_values=env_raw,
+        merged=merged,
+        source_trace=source_trace,
+        specs_by_name=specs_by_name,
+        skip_none=True,
+        issues=parse_issues,
+    )
+    _apply_source(
+        source_name="cli",
+        raw_values=cli_raw,
+        merged=merged,
+        source_trace=source_trace,
+        specs_by_name=specs_by_name,
+        skip_none=True,
+        issues=parse_issues,
+    )
+
+    if parse_issues:
+        raise SettingsParseError("Settings contain invalid values", parse_issues)
+
+    settings = Settings(**merged)
+
+    validation_issues = _validate_settings(settings)
+    if validation_issues:
+        conflict_codes = {"settings.conflict.api_credentials"}
+        if any(issue.code in conflict_codes for issue in validation_issues):
+            raise SettingsConflictError("Settings contain conflicting values", validation_issues)
+        raise SettingsValidationError("Settings validation failed", validation_issues)
+
+    sources_used = _sources_used(cfg=cfg, env_raw=env_raw, cli_raw=cli_raw)
+    return LoadedSettings(
+        settings=settings,
+        sources_used=sources_used,
+        source_trace=source_trace,
+        warnings=warnings,
+    )
+
+
+def _load_config_source(config_path: str) -> dict[str, Any]:
+    path = Path(config_path)
+    try:
+        return read_yaml_config(path)
+    except Exception as exc:  # noqa: BLE001
+        issue = SettingsIssue(
+            code="settings.source.config_read_failed",
+            field_path="config_path",
+            source="config",
+            raw_value=str(path),
+            message=f"Unable to read config: {exc}",
+            hint="Проверьте путь к config.yml и корректность YAML.",
+        )
+        raise SettingsSourceError("Failed to read settings config source", [issue]) from exc
+
+
+def _resolve_strict_unknown(
+    *,
+    defaults: Settings,
+    cfg: dict[str, Any],
+    env_raw: dict[str, Any],
+    cli_raw: dict[str, Any],
+) -> bool:
+    # defaults -> config -> env -> cli
+    candidate: Any = defaults.diagnostics_strict
+    if "diagnostics_strict" in cfg:
+        candidate = cfg.get("diagnostics_strict")
+    if env_raw.get("diagnostics_strict") is not None:
+        candidate = env_raw.get("diagnostics_strict")
+    if cli_raw.get("diagnostics_strict") is not None:
+        candidate = cli_raw.get("diagnostics_strict")
+
+    try:
+        return bool(_parse_bool(candidate, source="policy", field_name="diagnostics_strict", optional=False))
+    except ValueError:
+        # Не ломаем политику unknown keys, если сам флаг невалиден:
+        # это будет поймано parse-этапом как обычная field-ошибка.
+        return bool(defaults.diagnostics_strict)
+
+
+def _collect_unknown_key_issues(
+    *,
+    cfg: dict[str, Any],
+    cli_raw: dict[str, Any],
+    specs_by_name: dict[str, _FieldSpec],
+) -> list[SettingsIssue]:
+    issues: list[SettingsIssue] = []
+    for key, raw in cfg.items():
+        if key not in specs_by_name:
+            issues.append(
+                SettingsIssue(
+                    code="settings.unknown_key",
+                    field_path=key,
+                    source="config",
+                    raw_value=raw,
+                    message=f"Unknown config key: '{key}'",
+                    hint="Удалите ключ или добавьте его в модель Settings.",
+                )
+            )
+    for key, raw in cli_raw.items():
+        if raw is None:
+            continue
+        if key not in specs_by_name:
+            issues.append(
+                SettingsIssue(
+                    code="settings.unknown_key",
+                    field_path=key,
+                    source="cli",
+                    raw_value=raw,
+                    message=f"Unknown CLI override key: '{key}'",
+                    hint="Проверьте маппинг CLI overrides в app callback.",
+                )
+            )
+    return issues
+
+
+def _sources_used(*, cfg: dict[str, Any], env_raw: dict[str, Any], cli_raw: dict[str, Any]) -> list[str]:
+    sources: list[str] = []
+    if cfg:
+        sources.append("config")
+    if any(v is not None for v in env_raw.values()):
+        sources.append("env")
+    if any(v is not None for v in cli_raw.values()):
+        sources.append("cli")
+    return sources
+
+
+def _apply_source(
+    *,
+    source_name: str,
+    raw_values: dict[str, Any],
+    merged: dict[str, Any],
+    source_trace: dict[str, str],
+    specs_by_name: dict[str, _FieldSpec],
+    skip_none: bool,
+    issues: list[SettingsIssue],
+) -> None:
+    for key, raw in raw_values.items():
+        spec = specs_by_name.get(key)
+        if spec is None:
+            continue
+        if skip_none and raw is None:
+            continue
+        try:
+            parsed = _parse_by_spec(spec, raw, source_name)
+        except ValueError as exc:
+            issues.append(
+                SettingsIssue(
+                    code="settings.parse.invalid_value",
+                    field_path=spec.name,
+                    source=source_name,
+                    raw_value=raw,
+                    message=str(exc),
+                    hint=f"Проверьте значение '{spec.name}' и его тип ({spec.base_type.__name__}).",
+                )
+            )
+            continue
+        if parsed is UNSET:
+            continue
+        merged[key] = parsed
+        source_trace[key] = source_name
+
+
+def _field_to_env_name(name: str) -> str:
+    return f"ANKEY_{name.upper()}"
+
+
+def _build_field_specs() -> list[_FieldSpec]:
+    hints = get_type_hints(Settings)
+    specs: list[_FieldSpec] = []
+    for f in fields(Settings):
+        hint = hints[f.name]
+        optional, base_type = _resolve_optional(hint)
+        if base_type not in (str, int, float, bool):
+            raise ValueError(f"Unsupported settings field type for '{f.name}': {hint}")
+        specs.append(
+            _FieldSpec(
+                name=f.name,
+                base_type=base_type,
+                optional=optional,
+                env_name=_field_to_env_name(f.name),
+            )
+        )
+    return specs
+
+
+def _resolve_optional(annotation: Any) -> tuple[bool, type[Any]]:
+    args = get_args(annotation)
+    if args and type(None) in args and len(args) == 2:  # noqa: E721
+        filtered = [a for a in args if a is not type(None)]  # noqa: E721
+        return True, filtered[0]
+    return False, annotation
+
+
+def _parse_by_spec(spec: _FieldSpec, raw: Any, source_name: str) -> Any:
+    if spec.base_type is str:
+        return _parse_str(raw, source_name, spec.name, optional=spec.optional)
+    if spec.base_type is int:
+        return _parse_int(raw, source_name, spec.name, optional=spec.optional)
+    if spec.base_type is float:
+        return _parse_float(raw, source_name, spec.name, optional=spec.optional)
+    if spec.base_type is bool:
+        return _parse_bool(raw, source_name, spec.name, optional=spec.optional)
+    raise ValueError(f"Unsupported field type for '{spec.name}'")
+
+
+def _parse_str(value: Any, source: str, field_name: str, *, optional: bool) -> Any:
     if value is None:
-        return None
-    return int(value)
+        return None if optional else UNSET
+    if isinstance(value, str):
+        return value
+    raise ValueError(f"[{source}] Invalid string for '{field_name}': {value!r}")
 
-def parseFloat(value: str | None) -> float | None:
-    """
-    Назначение:
-        Преобразует строку в float, если значение задано.
-    """
+
+def _parse_int(value: Any, source: str, field_name: str, *, optional: bool) -> Any:
     if value is None:
-        return None
-    return float(value)
-
-def parseBool(value: str | None) -> bool | None:
-    """
-    Назначение:
-        Преобразует строковое значение в bool по набору допустимых вариантов.
-
-    Входные данные:
-        value: str | None
-
-    Выходные данные:
-        bool | None
-
-    Допустимые значения (case-insensitive):
-        true/1/yes/y  -> True
-        false/0/no/n  -> False
-
-    Исключения:
-        ValueError — если значение не распознано как bool.
-    """
-    if value is None:
-        return None
-    vv = value.lower()
-    if vv in ("1", "true", "yes", "y"):
-        return True
-    if vv in ("0", "false", "no", "n"):
-        return False
-    raise ValueError(f"Invalid boolean env value: {value}")
-
-def parseIntAny(value: int | str | None) -> int | None:
-    """
-    Назначение:
-        Нормализует целочисленное значение (int/str/None) в int|None.
-
-    Входные данные:
-        value: int | str | None
-
-    Выходные данные:
-        int | None
-    """
-    if value is None:
-        return None
+        return None if optional else UNSET
+    if isinstance(value, bool):
+        raise ValueError(f"[{source}] Invalid int for '{field_name}': {value!r}")
     if isinstance(value, int):
         return value
     if isinstance(value, str):
-        return int(value.strip())
-    raise ValueError(f"Invalid int value type: {type(value)}")
+        vv = value.strip()
+        if vv == "":
+            return None if optional else UNSET
+        return int(vv)
+    raise ValueError(f"[{source}] Invalid int for '{field_name}': {value!r}")
 
-def parseBoolAny(value: bool | str | None) -> bool | None:
-    """
-    Назначение:
-        Нормализует булевое значение (bool/str/None) в bool|None.
 
-    Входные данные:
-        value: bool | str | None
-
-    Выходные данные:
-        bool | None
-    """
+def _parse_float(value: Any, source: str, field_name: str, *, optional: bool) -> Any:
     if value is None:
-        return None
+        return None if optional else UNSET
     if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return parseBool(value.strip())
-    raise ValueError(f"Invalid bool value type: {type(value)}")
-
-def parseFloatAny(value: float | str | None) -> float | None:
-    """
-    Назначение:
-        Нормализует значение (float/str/None) в float|None.
-    """
-    if value is None:
-        return None
-    if isinstance(value, (float, int)):
+        raise ValueError(f"[{source}] Invalid float for '{field_name}': {value!r}")
+    if isinstance(value, (int, float)):
         return float(value)
     if isinstance(value, str):
-        return float(value.strip())
-    raise ValueError(f"Invalid float value type: {type(value)}")
+        vv = value.strip()
+        if vv == "":
+            return None if optional else UNSET
+        return float(vv)
+    raise ValueError(f"[{source}] Invalid float for '{field_name}': {value!r}")
 
-def loadSettings(config_path: str | None, cli_overrides: dict) -> LoadedSettings:
-    """
-    Назначение:
-        Загружает настройки приложения, применяя приоритет:
-        CLI > ENV > config > defaults.
 
-    Входные данные:
-        config_path: str | None
-            Путь к YAML конфигу. Если None — конфиг не читается.
-        cli_overrides: dict
-            Словарь значений из CLI. Значения None считаются "не задано".
+def _parse_bool(value: Any, source: str, field_name: str, *, optional: bool) -> Any:
+    if value is None:
+        return None if optional else UNSET
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        if value in (0, 1):
+            return bool(value)
+        raise ValueError(f"[{source}] Invalid bool for '{field_name}': {value!r}")
+    if isinstance(value, str):
+        vv = value.strip().lower()
+        if vv == "":
+            return None if optional else UNSET
+        if vv in ("1", "true", "yes", "y"):
+            return True
+        if vv in ("0", "false", "no", "n"):
+            return False
+    raise ValueError(f"[{source}] Invalid bool for '{field_name}': {value!r}")
 
-    Выходные данные:
-        LoadedSettings
-            Итоговые настройки и список использованных источников.
 
-    Алгоритм:
-        1) Сформировать defaults.
-        2) Прочитать config (если задан).
-        3) Прочитать ENV (если задано хоть что-то).
-        4) Наложить CLI overrides (только не-None).
-    """
-    sources: list[str] = []
-    defaults = Settings()
+_RANGE_RULES: list[tuple[str, str, str, str]] = [
+    ("page_size", ">0", "page_size must be greater than 0", "Укажите положительное значение page_size."),
+    ("retries", ">=0", "retries must be >= 0", "Укажите retries >= 0."),
+    ("match_batch_size", ">0", "match_batch_size must be greater than 0", "Укажите положительное значение match_batch_size."),
+    ("resolve_batch_size", ">0", "resolve_batch_size must be greater than 0", "Укажите положительное значение resolve_batch_size."),
+    ("pending_ttl_seconds", ">0", "pending_ttl_seconds must be greater than 0", "Укажите положительное значение pending_ttl_seconds."),
+]
 
-    cfg: dict = {}
-    if config_path:
-        cfg = readYamlConfig(Path(config_path))
-        if cfg:
-            sources.append("config")
+_ENUM_RULES: list[tuple[str, frozenset[str], str, str]] = [
+    (
+        "pending_on_expire",
+        frozenset({"error", "report_only", "skip"}),
+        "pending_on_expire must be one of: error, report_only, skip",
+        "Используйте значение error, report_only или skip.",
+    ),
+]
 
-    env = {
-        "host": envGet("ANKEY_API_HOST"),
-        "port": envGet("ANKEY_API_PORT"),
-        "api_username": envGet("ANKEY_API_USERNAME"),
-        "api_password": envGet("ANKEY_API_PASSWORD"),
-        "cache_dir": envGet("ANKEY_CACHE_DIR"),
-        "log_dir": envGet("ANKEY_LOG_DIR"),
-        "report_dir": envGet("ANKEY_REPORT_DIR"),
-        "tls_skip_verify": envGet("ANKEY_TLS_SKIP_VERIFY"),
-        "ca_file": envGet("ANKEY_CA_FILE"),
-        "log_level": envGet("ANKEY_LOG_LEVEL"),
-        "log_json": envGet("ANKEY_LOG_JSON"),
-        "report_format": envGet("ANKEY_REPORT_FORMAT"),
-        "page_size": envGet("ANKEY_PAGE_SIZE"),
-        "max_pages": envGet("ANKEY_MAX_PAGES"),
-        "timeout_seconds": envGet("ANKEY_TIMEOUT_SECONDS"),
-        "retries": envGet("ANKEY_RETRIES"),
-        "retry_backoff_seconds": envGet("ANKEY_RETRY_BACKOFF_SECONDS"),
-        "include_deleted": envGet("ANKEY_INCLUDE_DELETED"),
-        "dataset_name": envGet("ANKEY_DATASET_NAME"),
-        "report_items_limit": envGet("ANKEY_REPORT_ITEMS_LIMIT"),
-        "report_include_skipped": envGet("ANKEY_REPORT_INCLUDE_SKIPPED"),
-        "resource_exists_retries": envGet("ANKEY_RESOURCE_EXISTS_RETRIES"),
-        "csv_has_header": envGet("ANKEY_CSV_HAS_HEADER"),
-        "stop_on_first_error": envGet("ANKEY_STOP_ON_FIRST_ERROR"),
-        "max_actions": envGet("ANKEY_MAX_ACTIONS"),
-        "dry_run": envGet("ANKEY_DRY_RUN"),
-        "pending_ttl_seconds": envGet("ANKEY_PENDING_TTL_SECONDS"),
-        "pending_max_attempts": envGet("ANKEY_PENDING_MAX_ATTEMPTS"),
-        "pending_sweep_interval_seconds": envGet("ANKEY_PENDING_SWEEP_INTERVAL_SECONDS"),
-        "pending_on_expire": envGet("ANKEY_PENDING_ON_EXPIRE"),
-        "pending_allow_partial": envGet("ANKEY_PENDING_ALLOW_PARTIAL"),
-        "pending_retention_days": envGet("ANKEY_PENDING_RETENTION_DAYS"),
-        "diagnostics_strict": envGet("ANKEY_DIAGNOSTICS_STRICT"),
-        "match_batch_size": envGet("ANKEY_MATCH_BATCH_SIZE"),
-        "match_flush_interval_ms": envGet("ANKEY_MATCH_FLUSH_INTERVAL_MS"),
-        "resolve_batch_size": envGet("ANKEY_RESOLVE_BATCH_SIZE"),
-        "resolve_flush_interval_ms": envGet("ANKEY_RESOLVE_FLUSH_INTERVAL_MS"),
-    }
-    if any(v is not None for v in env.values()):
-        sources.append("env")
 
-    merged = {
-        "host": cfg.get("host", defaults.host),
-        "port": cfg.get("port", defaults.port),
-        "api_username": cfg.get("api_username", defaults.api_username),
-        "api_password": cfg.get("api_password", defaults.api_password),
+def _check_range(value: int | float, op: str) -> bool:
+    if op == ">0":
+        return value > 0
+    if op == ">=0":
+        return value >= 0
+    raise ValueError(f"Unknown range operator: {op}")
 
-        "cache_dir": cfg.get("cache_dir", defaults.cache_dir),
-        "log_dir": cfg.get("log_dir", defaults.log_dir),
-        "report_dir": cfg.get("report_dir", defaults.report_dir),
 
-        "tls_skip_verify": cfg.get("tls_skip_verify", defaults.tls_skip_verify),
-        "ca_file": cfg.get("ca_file", defaults.ca_file),
+def _validate_settings(settings: Settings) -> list[SettingsIssue]:
+    issues: list[SettingsIssue] = []
 
-        "log_level": cfg.get("log_level", defaults.log_level),
-        "log_json": cfg.get("log_json", defaults.log_json),
-        "report_format": cfg.get("report_format", defaults.report_format),
-        "page_size": cfg.get("page_size", defaults.page_size),
-        "max_pages": cfg.get("max_pages", defaults.max_pages),
-        "timeout_seconds": cfg.get("timeout_seconds", defaults.timeout_seconds),
-        "retries": cfg.get("retries", defaults.retries),
-        "retry_backoff_seconds": cfg.get("retry_backoff_seconds", defaults.retry_backoff_seconds),
-        "include_deleted": cfg.get("include_deleted", defaults.include_deleted),
-        "dataset_name": cfg.get("dataset_name", defaults.dataset_name),
-        "report_items_limit": cfg.get("report_items_limit", defaults.report_items_limit),
-        "report_include_skipped": cfg.get("report_include_skipped", defaults.report_include_skipped),
-        "resource_exists_retries": cfg.get("resource_exists_retries", defaults.resource_exists_retries),
-        "csv_has_header": cfg.get("csv_has_header", defaults.csv_has_header),
-        "stop_on_first_error": cfg.get("stop_on_first_error", defaults.stop_on_first_error),
-        "max_actions": cfg.get("max_actions", defaults.max_actions),
-        "dry_run": cfg.get("dry_run", defaults.dry_run),
-        "pending_ttl_seconds": cfg.get("pending_ttl_seconds", defaults.pending_ttl_seconds),
-        "pending_max_attempts": cfg.get("pending_max_attempts", defaults.pending_max_attempts),
-        "pending_sweep_interval_seconds": cfg.get(
-            "pending_sweep_interval_seconds",
-            defaults.pending_sweep_interval_seconds,
-        ),
-        "pending_on_expire": cfg.get("pending_on_expire", defaults.pending_on_expire),
-        "pending_allow_partial": cfg.get("pending_allow_partial", defaults.pending_allow_partial),
-        "pending_retention_days": cfg.get("pending_retention_days", defaults.pending_retention_days),
-        "diagnostics_strict": cfg.get("diagnostics_strict", defaults.diagnostics_strict),
-        "match_batch_size": cfg.get("match_batch_size", defaults.match_batch_size),
-        "match_flush_interval_ms": cfg.get("match_flush_interval_ms", defaults.match_flush_interval_ms),
-        "resolve_batch_size": cfg.get("resolve_batch_size", defaults.resolve_batch_size),
-        "resolve_flush_interval_ms": cfg.get("resolve_flush_interval_ms", defaults.resolve_flush_interval_ms),
-    }
+    for field_name, op, message, hint in _RANGE_RULES:
+        value = getattr(settings, field_name)
+        if not _check_range(value, op):
+            issues.append(SettingsIssue(
+                code="settings.validation.range",
+                field_path=field_name,
+                source="validation",
+                raw_value=value,
+                message=message,
+                hint=hint,
+            ))
 
-    if env["host"] is not None:
-        merged["host"] = env["host"]
-    if env["port"] is not None:
-        merged["port"] = parseInt(env["port"])
-    if env["api_username"] is not None:
-        merged["api_username"] = env["api_username"]
-    if env["api_password"] is not None:
-        merged["api_password"] = env["api_password"]
+    for field_name, allowed, message, hint in _ENUM_RULES:
+        value = getattr(settings, field_name)
+        if value not in allowed:
+            issues.append(SettingsIssue(
+                code="settings.validation.enum",
+                field_path=field_name,
+                source="validation",
+                raw_value=value,
+                message=message,
+                hint=hint,
+            ))
 
-    if env["cache_dir"] is not None:
-        merged["cache_dir"] = env["cache_dir"]
-    if env["log_dir"] is not None:
-        merged["log_dir"] = env["log_dir"]
-    if env["report_dir"] is not None:
-        merged["report_dir"] = env["report_dir"]
+    if (settings.host is None) != (settings.port is None):
+        issues.append(SettingsIssue(
+            code="settings.conflict.api_credentials",
+            field_path="host/port",
+            source="validation",
+            raw_value={"host": settings.host, "port": settings.port},
+            message="host and port must be provided together",
+            hint="Либо укажите оба поля host и port, либо не указывайте оба.",
+        ))
 
-    if env["tls_skip_verify"] is not None:
-        merged["tls_skip_verify"] = parseBool(env["tls_skip_verify"])
-    if env["ca_file"] is not None:
-        merged["ca_file"] = env["ca_file"]
-
-    if env["log_level"] is not None:
-        merged["log_level"] = env["log_level"]
-    if env["log_json"] is not None:
-        merged["log_json"] = parseBool(env["log_json"])
-    if env["report_format"] is not None:
-        merged["report_format"] = env["report_format"]
-    if env["page_size"] is not None:
-        merged["page_size"] = parseInt(env["page_size"])
-    if env["max_pages"] is not None:
-        merged["max_pages"] = parseInt(env["max_pages"])
-    if env["timeout_seconds"] is not None:
-        merged["timeout_seconds"] = parseFloat(env["timeout_seconds"])
-    if env["retries"] is not None:
-        merged["retries"] = parseInt(env["retries"])
-    if env["retry_backoff_seconds"] is not None:
-        merged["retry_backoff_seconds"] = parseFloat(env["retry_backoff_seconds"])
-    if env["include_deleted"] is not None:
-        merged["include_deleted"] = parseBool(env["include_deleted"])
-    if env["dataset_name"] is not None:
-        merged["dataset_name"] = env["dataset_name"]
-    if env["report_items_limit"] is not None:
-        merged["report_items_limit"] = parseInt(env["report_items_limit"])
-    if env.get("report_include_skipped") is not None:
-        merged["report_include_skipped"] = parseBool(env["report_include_skipped"])
-    if env["resource_exists_retries"] is not None:
-        merged["resource_exists_retries"] = parseInt(env["resource_exists_retries"])
-    if env["csv_has_header"] is not None:
-        merged["csv_has_header"] = parseBool(env["csv_has_header"])
-    if env["stop_on_first_error"] is not None:
-        merged["stop_on_first_error"] = parseBool(env["stop_on_first_error"])
-    if env["max_actions"] is not None:
-        merged["max_actions"] = parseInt(env["max_actions"])
-    if env["dry_run"] is not None:
-        merged["dry_run"] = parseBool(env["dry_run"])
-    if env["pending_ttl_seconds"] is not None:
-        merged["pending_ttl_seconds"] = parseInt(env["pending_ttl_seconds"])
-    if env["pending_max_attempts"] is not None:
-        merged["pending_max_attempts"] = parseInt(env["pending_max_attempts"])
-    if env["pending_sweep_interval_seconds"] is not None:
-        merged["pending_sweep_interval_seconds"] = parseInt(env["pending_sweep_interval_seconds"])
-    if env["pending_on_expire"] is not None:
-        merged["pending_on_expire"] = env["pending_on_expire"]
-    if env["pending_allow_partial"] is not None:
-        merged["pending_allow_partial"] = parseBool(env["pending_allow_partial"])
-    if env["pending_retention_days"] is not None:
-        merged["pending_retention_days"] = parseInt(env["pending_retention_days"])
-    if env["diagnostics_strict"] is not None:
-        merged["diagnostics_strict"] = parseBool(env["diagnostics_strict"])
-    if env["match_batch_size"] is not None:
-        merged["match_batch_size"] = parseInt(env["match_batch_size"])
-    if env["match_flush_interval_ms"] is not None:
-        merged["match_flush_interval_ms"] = parseInt(env["match_flush_interval_ms"])
-    if env["resolve_batch_size"] is not None:
-        merged["resolve_batch_size"] = parseInt(env["resolve_batch_size"])
-    if env["resolve_flush_interval_ms"] is not None:
-        merged["resolve_flush_interval_ms"] = parseInt(env["resolve_flush_interval_ms"])
-
-    if any(v is not None for v in cli_overrides.values()):
-        sources.append("cli")
-    for k, v in cli_overrides.items():
-        if v is None:
-            continue
-        merged[k] = v
-
-    settings = Settings(
-        host=merged["host"],
-        port=parseIntAny(merged["port"]),
-        api_username=merged["api_username"],
-        api_password=merged["api_password"],
-        cache_dir=merged["cache_dir"],
-        log_dir=merged["log_dir"],
-        report_dir=merged["report_dir"],
-        tls_skip_verify=parseBoolAny(merged["tls_skip_verify"]) or False,
-        ca_file=merged["ca_file"],
-        log_level=merged["log_level"],
-        log_json=parseBoolAny(merged["log_json"]) or False,
-        report_format=merged["report_format"],
-        page_size=parseIntAny(merged["page_size"]) or defaults.page_size,
-        max_pages=parseIntAny(merged["max_pages"]) or defaults.max_pages,
-        timeout_seconds=parseFloatAny(merged["timeout_seconds"]) or defaults.timeout_seconds,
-        retries=parseIntAny(merged["retries"]) or defaults.retries,
-        retry_backoff_seconds=parseFloatAny(merged["retry_backoff_seconds"]) or defaults.retry_backoff_seconds,
-        include_deleted=parseBoolAny(merged["include_deleted"]) or False,
-        report_items_limit=parseIntAny(merged["report_items_limit"]) or defaults.report_items_limit,
-        report_include_skipped=parseBoolAny(merged.get("report_include_skipped")) if merged.get("report_include_skipped") is not None else defaults.report_include_skipped,
-        resource_exists_retries=parseIntAny(merged["resource_exists_retries"]) or defaults.resource_exists_retries,
-        csv_has_header=parseBoolAny(merged["csv_has_header"]) or False,
-        stop_on_first_error=parseBoolAny(merged["stop_on_first_error"]) or False,
-        max_actions=parseIntAny(merged["max_actions"]),
-        dry_run=parseBoolAny(merged["dry_run"]) or False,
-        dataset_name=merged.get("dataset_name") or defaults.dataset_name,
-        pending_ttl_seconds=parseIntAny(merged["pending_ttl_seconds"]) or defaults.pending_ttl_seconds,
-        pending_max_attempts=parseIntAny(merged["pending_max_attempts"]) or defaults.pending_max_attempts,
-        pending_sweep_interval_seconds=parseIntAny(merged["pending_sweep_interval_seconds"])
-        or defaults.pending_sweep_interval_seconds,
-        pending_on_expire=merged["pending_on_expire"] or defaults.pending_on_expire,
-        pending_allow_partial=parseBoolAny(merged["pending_allow_partial"]) or False,
-        pending_retention_days=parseIntAny(merged["pending_retention_days"])
-        or defaults.pending_retention_days,
-        diagnostics_strict=parseBoolAny(merged.get("diagnostics_strict"))
-        if merged.get("diagnostics_strict") is not None
-        else defaults.diagnostics_strict,
-        match_batch_size=parseIntAny(merged.get("match_batch_size")) or defaults.match_batch_size,
-        match_flush_interval_ms=parseIntAny(merged.get("match_flush_interval_ms")) or defaults.match_flush_interval_ms,
-        resolve_batch_size=parseIntAny(merged.get("resolve_batch_size")) or defaults.resolve_batch_size,
-        resolve_flush_interval_ms=parseIntAny(merged.get("resolve_flush_interval_ms"))
-        or defaults.resolve_flush_interval_ms,
-    )
-
-    return LoadedSettings(settings=settings, sources_used=sources)
+    return issues

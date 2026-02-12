@@ -1,0 +1,84 @@
+@startuml
+title Cache Interaction with Transform/Planning Stages (Current)
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+hide empty members
+
+package "dataset wiring" {
+  interface DatasetSpec <<protocol>> {
+    +build_enrich_deps(settings, enrich_lookup, secret_store): TransformProviderDeps
+    +build_planning_deps(settings, planning_runtime): PlanningDependencies
+    +build_enrich_stage(catalog, enrich_deps): EnrichStage
+    +build_match_stage(planning_deps, catalog, include_deleted, settings): MatchStage
+    +build_resolve_stage(planning_deps, catalog, settings): ResolveStage
+  }
+
+  class EmployeesSpec
+}
+
+package "stage deps (domain)" {
+  class TransformProviderDeps {
+    +cache_gateway: EnrichLookupPort
+    +secret_store: SecretStoreProtocol | None
+  }
+
+  class PlanningDependencies {
+    +cache_gateway: PlanningRuntimePort | None
+    +resolver_settings: ResolverSettings | None
+  }
+}
+
+package "stages" {
+  class EnrichStage
+  class MatchStage
+  class ResolveStage
+
+  class EnricherEngine
+  class MatchEngine
+  class ResolveEngine
+}
+
+package "domain role ports" {
+  interface EnrichLookupPort <<protocol>>
+  interface PlanningRuntimePort <<protocol>>
+}
+
+package "infra roles/runtime" {
+  class SqliteCacheRolePorts {
+    +enrich_lookup: EnrichLookupPort
+    +planning_runtime: PlanningRuntimePort
+  }
+  class SqliteCacheGateway
+}
+
+DatasetSpec <|.. EmployeesSpec
+
+EmployeesSpec ..> TransformProviderDeps : builds
+EmployeesSpec ..> PlanningDependencies : builds
+EmployeesSpec ..> EnrichStage : builds
+EmployeesSpec ..> MatchStage : builds
+EmployeesSpec ..> ResolveStage : builds
+
+TransformProviderDeps ..> EnrichLookupPort
+PlanningDependencies ..> PlanningRuntimePort
+
+EnrichStage --> EnricherEngine
+MatchStage --> MatchEngine
+ResolveStage --> ResolveEngine
+
+SqliteCacheRolePorts ..> EnrichLookupPort
+SqliteCacheRolePorts ..> PlanningRuntimePort
+SqliteCacheRolePorts ..> SqliteCacheGateway : wraps
+
+note right of EmployeesSpec
+Spec builds stages with role-based dependencies only.
+No direct calls to SQLite repositories.
+end note
+
+@enduml

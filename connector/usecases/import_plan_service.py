@@ -4,6 +4,11 @@ import logging
 import json
 from itertools import chain
 
+from connector.config.app_settings import (
+    MatchingRuntimeSettings,
+    ObservabilitySettings,
+    PendingSettings,
+)
 from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.common.time import getNowIso
@@ -17,9 +22,7 @@ from connector.domain.transform.matcher.match_models import (
     MatchedRow,
     MatchCandidate,
     MatchDecision,
-    MatchDecisionReason,
     MatchDecisionStatus,
-    build_fingerprint,
 )
 from connector.domain.models import Identity, RowRef
 from connector.domain.transform.core.source_record import SourceRecord
@@ -28,6 +31,7 @@ from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.catalog import build_catalog
+from connector.domain.ports.cache.roles import EnrichLookupPort, PendingReplayPort, PlanningRuntimePort
 
 
 class ImportPlanService:
@@ -37,29 +41,41 @@ class ImportPlanService:
 
     def run(
         self,
-        conn,
+        *,
+        pending_replay: PendingReplayPort,
+        enrich_lookup: EnrichLookupPort,
+        planning_runtime: PlanningRuntimePort,
         csv_has_header: bool,
         include_deleted: bool,
+        observability_settings: ObservabilitySettings,
+        pending_settings: PendingSettings,
+        matching_runtime_settings: MatchingRuntimeSettings,
         dataset: str,
         logger,
         run_id: str,
         report_items_limit: int,
         report_dir: str,
         vault_file: str | None = None,
-        settings=None,
     ) -> CommandResult:
         generated_at = getNowIso()
 
         dataset_spec = get_spec(dataset)
-        strict = getattr(settings, "diagnostics_strict", False)
+        strict = observability_settings.diagnostics_strict
         catalog = build_catalog(dataset, strict=strict)
         secret_store = None
         if vault_file:
             from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
 
             secret_store = FileVaultSecretStore(vault_file)
-        enrich_deps = dataset_spec.build_enrich_deps(conn, settings, secret_store=secret_store)
-        planning_deps = dataset_spec.build_planning_deps(conn, settings)
+        enrich_deps = dataset_spec.build_enrich_deps(
+            None,
+            enrich_lookup=enrich_lookup,
+            secret_store=secret_store,
+        )
+        planning_deps = dataset_spec.build_planning_deps(
+            pending_settings,
+            planning_runtime=planning_runtime,
+        )
         row_source = dataset_spec.build_record_source(
             csv_has_header=csv_has_header,
         )
@@ -83,24 +99,19 @@ class ImportPlanService:
             planning_deps=planning_deps,
             catalog=catalog,
             include_deleted=include_deleted,
-            settings=settings,
+            settings=pending_settings,
         )
-        match_spec = dataset_spec.build_match_spec(settings=settings)
-        cache_repo = planning_deps.cache_repo
-        if cache_repo is None:
-            raise ValueError("planning cache_repo is not configured")
-        if planning_deps.identity_repo is None:
-            raise ValueError("planning identity_repo is not configured")
-        if planning_deps.pending_repo is None:
-            raise ValueError("planning pending_repo is not configured")
+        planning_runtime_dep = planning_deps.cache_gateway
+        if planning_runtime_dep is None:
+            raise ValueError("planning runtime is not configured")
         with open_match_runtime(
             run_id=run_id,
             match_stage=match_stage,
-            identity_repo=planning_deps.identity_repo,
+            match_runtime=planning_runtime_dep,
             report_items_limit=report_items_limit,
             include_matched_items=False,
-            batch_size=getattr(settings, "match_batch_size", 500),
-            flush_interval_ms=getattr(settings, "match_flush_interval_ms", 500),
+            batch_size=matching_runtime_settings.match_batch_size,
+            flush_interval_ms=matching_runtime_settings.match_flush_interval_ms,
         ) as match_runtime:
             matched_rows = iter_matched_ok(
                 runtime=match_runtime,
@@ -109,18 +120,15 @@ class ImportPlanService:
 
             pending_rows = _load_pending_rows(
                 dataset=dataset,
-                pending_repo=planning_deps.pending_repo,
-                cache_repo=cache_repo,
-                include_deleted=include_deleted,
-                ignored_fields=set(match_spec.match.ignored_fields),
+                pending_replay=pending_replay,
             )
             matched_with_pending = chain(matched_rows, pending_rows)
 
             resolve_usecase = ResolveUseCase(
                 report_items_limit=report_items_limit,
                 include_resolved_items=False,
-                batch_size=getattr(settings, "resolve_batch_size", 500),
-                flush_interval_ms=getattr(settings, "resolve_flush_interval_ms", 500),
+                batch_size=matching_runtime_settings.resolve_batch_size,
+                flush_interval_ms=matching_runtime_settings.resolve_flush_interval_ms,
             )
             resolved_rows = iter_ok(
                 resolve_usecase.iter_resolved(
@@ -152,22 +160,12 @@ class ImportPlanService:
         result.add_code(SystemErrorCode.OK)
         return result
 
-
 def _load_pending_rows(
     *,
     dataset: str,
-    pending_repo,
-    cache_repo,
-    include_deleted: bool,
-    ignored_fields: set[str],
+    pending_replay: PendingReplayPort,
 ) -> list[TransformResult[MatchedRow]]:
-    # TODO(DSL plan/resolve): this replay path still reconstructs MatchDecision
-    # inside usecase-level orchestration. After plan/resolve DSL migration,
-    # move to a single source of truth (deserialize stored typed decision or
-    # resolve via core), so usecase does not contain match decision logic.
-    if pending_repo is None:
-        return []
-    pending_rows = pending_repo.list_pending_rows(dataset)
+    pending_rows = pending_replay.list_pending_rows(dataset)
     if not pending_rows:
         return []
     results: list[TransformResult[MatchedRow]] = []
@@ -176,115 +174,11 @@ def _load_pending_rows(
             payload = json.loads(pending.payload)
         except (TypeError, json.JSONDecodeError):
             continue
-        identity_data = payload.get("identity") or {}
-        values = identity_data.get("values") or {}
-        identity = Identity(primary=identity_data.get("primary") or "match_key", values=values)
-        if not identity.primary_value:
+        parsed = _deserialize_pending_matched_row(payload)
+        if parsed is None:
             continue
-        row_ref_data = payload.get("row_ref") or {}
-        row_ref = RowRef(
-            line_no=int(row_ref_data.get("line_no") or 0),
-            row_id=str(row_ref_data.get("row_id") or pending.source_row_id),
-            identity_primary=row_ref_data.get("identity_primary"),
-            identity_value=row_ref_data.get("identity_value"),
-        )
-        desired_state = payload.get("desired_state") or {}
-        target_id = payload.get("target_id")
-        if target_id is None:
-            # Legacy support: pending payload may store resource_id.
-            target_id = payload.get("resource_id")
-        meta = payload.get("meta") or {}
-
-        candidates = cache_repo.find(
-            dataset,
-            {identity.primary: identity.primary_value},
-            include_deleted=include_deleted,
-        )
-        if len(candidates) > 1:
-            existing = None
-            score = None
-            decision_reason = "replay_ambiguous"
-            top_candidates = tuple(
-                {
-                    "target_id": str(item.get("_id") or item.get("target_id"))
-                    if (item.get("_id") or item.get("target_id")) is not None
-                    else None,
-                    "score": None,
-                }
-                for item in candidates[:3]
-            )
-            decision_candidates = tuple(
-                MatchCandidate(
-                    target_id=item.get("target_id"),
-                    identity=identity.primary_value or None,
-                    score=item.get("score"),
-                    match_mode="replay",
-                    evidence=item.get("evidence"),
-                )
-                for item in top_candidates
-            )
-            match_decision = MatchDecision(
-                status=MatchDecisionStatus.AMBIGUOUS,
-                reason_code=decision_reason,
-                selected=None,
-                candidates=decision_candidates,
-                score=score,
-                meta={"match_mode": "replay"},
-            )
-        elif candidates:
-            existing = candidates[0]
-            score = 1.0
-            decision_reason = MatchDecisionReason.IDENTITY_EXACT
-            selected_target = existing.get("_id") or existing.get("target_id")
-            selected = MatchCandidate(
-                target_id=str(selected_target) if selected_target is not None else None,
-                identity=identity.primary_value or None,
-                score=score,
-                match_mode="exact",
-                evidence={"identity_primary": identity.primary},
-            )
-            top_candidates = (
-                {
-                    "target_id": selected.target_id,
-                    "score": score,
-                },
-            )
-            match_decision = MatchDecision(
-                status=MatchDecisionStatus.MATCHED,
-                reason_code=decision_reason,
-                selected=selected,
-                candidates=(selected,),
-                score=score,
-                meta={"match_mode": "exact"},
-            )
-        else:
-            existing = None
-            score = None
-            decision_reason = MatchDecisionReason.IDENTITY_NOT_FOUND
-            match_decision = MatchDecision(
-                status=MatchDecisionStatus.NOT_FOUND,
-                reason_code=decision_reason,
-                selected=None,
-                candidates=(),
-                score=score,
-                meta={"match_mode": "exact"},
-            )
-
-        fingerprint, fingerprint_fields = build_fingerprint(
-            desired_state,
-            ignored_fields=ignored_fields,
-        )
-        matched_row = MatchedRow(
-            row_ref=row_ref,
-            identity=identity,
-            desired_state=desired_state,
-            existing=existing,
-            fingerprint=fingerprint,
-            fingerprint_fields=fingerprint_fields,
-            source_links={},
-            target_id=target_id,
-            match_decision=match_decision,
-        )
+        matched_row, meta = parsed
+        row_ref = matched_row.row_ref
         record = SourceRecord(line_no=row_ref.line_no, record_id=row_ref.row_id, values={})
         results.append(
             TransformResult(
@@ -299,3 +193,180 @@ def _load_pending_rows(
             )
         )
     return results
+
+
+def _deserialize_pending_matched_row(
+    payload: dict,
+) -> tuple[MatchedRow, dict[str, object]] | None:
+    identity_data = payload.get("identity")
+    row_ref_data = payload.get("row_ref")
+    desired_state = payload.get("desired_state")
+    existing = payload.get("existing")
+    fingerprint = payload.get("fingerprint")
+    fingerprint_fields = payload.get("fingerprint_fields")
+    decision_data = payload.get("match_decision")
+    if not isinstance(identity_data, dict):
+        return None
+    if not isinstance(row_ref_data, dict):
+        return None
+    if not isinstance(desired_state, dict):
+        return None
+    if existing is not None and not isinstance(existing, dict):
+        return None
+    if not isinstance(fingerprint, str) or not fingerprint:
+        return None
+    if not isinstance(fingerprint_fields, list):
+        return None
+    if not isinstance(decision_data, dict):
+        return None
+
+    values = identity_data.get("values")
+    primary = identity_data.get("primary")
+    if not isinstance(values, dict):
+        return None
+    if not isinstance(primary, str) or not primary:
+        return None
+    identity = Identity(primary=primary, values={str(k): str(v) for k, v in values.items() if v is not None})
+    if not identity.primary_value:
+        return None
+
+    row_id = row_ref_data.get("row_id")
+    line_no_raw = row_ref_data.get("line_no")
+    if not isinstance(row_id, str) or not row_id:
+        return None
+    try:
+        line_no = int(line_no_raw)
+    except (TypeError, ValueError):
+        return None
+    row_ref = RowRef(
+        line_no=line_no,
+        row_id=row_id,
+        identity_primary=row_ref_data.get("identity_primary"),
+        identity_value=row_ref_data.get("identity_value"),
+    )
+
+    match_decision = _deserialize_match_decision(decision_data)
+    if match_decision is None:
+        return None
+
+    source_links = _deserialize_source_links(payload.get("source_links"))
+    if source_links is None:
+        return None
+
+    fingerprint_fields_tuple = tuple(str(item) for item in fingerprint_fields)
+    target_id = payload.get("target_id")
+    if target_id is not None:
+        target_id = str(target_id)
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+
+    matched_row = MatchedRow(
+        row_ref=row_ref,
+        identity=identity,
+        desired_state=desired_state,
+        existing=existing,
+        fingerprint=fingerprint,
+        fingerprint_fields=fingerprint_fields_tuple,
+        match_decision=match_decision,
+        source_links=source_links,
+        target_id=target_id,
+    )
+    return matched_row, meta
+
+
+def _deserialize_match_decision(payload: dict) -> MatchDecision | None:
+    status_raw = payload.get("status")
+    reason_code = payload.get("reason_code")
+    if not isinstance(status_raw, str):
+        return None
+    if not isinstance(reason_code, str) or not reason_code:
+        return None
+    try:
+        status = MatchDecisionStatus(status_raw)
+    except ValueError:
+        return None
+
+    selected_payload = payload.get("selected")
+    selected = _deserialize_candidate(selected_payload) if selected_payload is not None else None
+    if selected_payload is not None and selected is None:
+        return None
+
+    candidates_payload = payload.get("candidates")
+    if not isinstance(candidates_payload, list):
+        return None
+    candidates: list[MatchCandidate] = []
+    for item in candidates_payload:
+        candidate = _deserialize_candidate(item)
+        if candidate is None:
+            return None
+        candidates.append(candidate)
+
+    score = payload.get("score")
+    if score is not None and not isinstance(score, (int, float)):
+        return None
+    meta = payload.get("meta")
+    if not isinstance(meta, dict):
+        meta = {}
+    message = payload.get("message")
+    if message is not None and not isinstance(message, str):
+        return None
+
+    return MatchDecision(
+        status=status,
+        reason_code=reason_code,
+        message=message,
+        selected=selected,
+        candidates=tuple(candidates),
+        score=float(score) if isinstance(score, (int, float)) else None,
+        meta=meta,
+    )
+
+
+def _deserialize_candidate(payload: object) -> MatchCandidate | None:
+    if not isinstance(payload, dict):
+        return None
+    match_mode = payload.get("match_mode")
+    if not isinstance(match_mode, str) or not match_mode:
+        return None
+    target_id = payload.get("target_id")
+    identity = payload.get("identity")
+    score = payload.get("score")
+    if target_id is not None:
+        target_id = str(target_id)
+    if identity is not None:
+        identity = str(identity)
+    if score is not None and not isinstance(score, (int, float)):
+        return None
+    evidence = payload.get("evidence")
+    if evidence is not None and not isinstance(evidence, dict):
+        return None
+    return MatchCandidate(
+        target_id=target_id,
+        identity=identity,
+        score=float(score) if isinstance(score, (int, float)) else None,
+        match_mode=match_mode,
+        evidence=evidence,
+    )
+
+
+def _deserialize_source_links(payload: object) -> dict[str, Identity] | None:
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        return None
+    source_links: dict[str, Identity] = {}
+    for field, raw_identity in payload.items():
+        if not isinstance(field, str):
+            return None
+        if not isinstance(raw_identity, dict):
+            return None
+        primary = raw_identity.get("primary")
+        values = raw_identity.get("values")
+        if not isinstance(primary, str) or not primary:
+            return None
+        if not isinstance(values, dict):
+            return None
+        source_links[field] = Identity(
+            primary=primary,
+            values={str(k): str(v) for k, v in values.items() if v is not None},
+        )
+    return source_links

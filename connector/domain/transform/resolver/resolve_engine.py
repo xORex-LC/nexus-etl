@@ -8,8 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.pending_links import PendingLinksRepository
+from connector.domain.ports.cache.roles import ResolveRuntimePort
 from connector.domain.dsl.build_options import ResolveDslBuildOptions
 from connector.domain.dsl.specs import ResolveSpec, SinkSpec
 from connector.domain.transform.resolver.resolve_core import ResolveCore
@@ -28,8 +27,7 @@ class ResolveEngine:
         self,
         *,
         spec: ResolveSpec,
-        identity_repo: IdentityRepository | None,
-        pending_repo: PendingLinksRepository | None,
+        cache_gateway: ResolveRuntimePort | None,
         settings: ResolverSettings | None,
         catalog: ErrorCatalog,
         sink_spec: SinkSpec | None = None,
@@ -43,8 +41,7 @@ class ResolveEngine:
         self.core = ResolveCore(
             self.resolve_rules,
             self.link_rules,
-            identity_repo=identity_repo,
-            pending_repo=pending_repo,
+            cache_gateway=cache_gateway,
             settings=settings,
             catalog=catalog,
             sink_spec=sink_spec,
@@ -55,8 +52,8 @@ class ResolveEngine:
         return self.core.settings
 
     @property
-    def pending_repo(self):
-        return self.core.pending_repo
+    def cache_gateway(self):
+        return self.core.cache_gateway
 
     def drain_expired(self):
         return self.core.drain_expired()

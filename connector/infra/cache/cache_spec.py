@@ -1,24 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class FieldSpec:
-    name: str
-    type: str
-    nullable: bool = True
-    source: str | None = None
-
-
-@dataclass(frozen=True)
-class CacheSpec:
-    dataset: str
-    table: str
-    primary_key: tuple[str, ...]
-    fields: tuple[FieldSpec, ...]
-    unique_indexes: tuple[tuple[str, ...], ...] = ()
-    indexes: tuple[tuple[str, ...], ...] = ()
+from connector.domain.ports.cache.models import CacheSpec, FieldSpec
 
 
 SQLITE_TYPE_MAP: dict[str, str] = {
@@ -27,6 +9,7 @@ SQLITE_TYPE_MAP: dict[str, str] = {
     "bool": "INTEGER",
     "float": "REAL",
     "datetime": "TEXT",
+    "json": "TEXT",
 }
 
 

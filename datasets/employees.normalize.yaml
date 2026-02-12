@@ -1,5 +1,6 @@
 dataset: employees
 normalize:
+  on_error: warn
   rules:
     - field: email
       ops:

@@ -1,0 +1,52 @@
+@startuml
+title Cache Deployment - Backend Strategy
+
+skinparam linetype ortho
+
+node "CLI / Commands" as CLI {
+  component "cache refresh/status/clear\n+ transform commands" as Commands
+}
+
+node "Application Runtime" as APP {
+  component "UseCases + Stages" as Stages
+  component "Role ports\n(cache contracts)" as Ports
+  component "SqliteCacheGateway\n(namespaced lifecycle facade)" as SqliteGateway
+}
+
+node "Current Backend (canonical)" as CUR {
+  database "SQLite" as SqliteDB
+  component "Sqlite repositories\n(cache/identity/pending)" as SqliteRepos
+}
+
+node "Future backend option A" as FUT_A {
+  database "PostgreSQL" as PgDB
+  component "PgCacheGateway\n(planned)" as PgGateway
+}
+
+node "Future backend option B" as FUT_B {
+  database "Redis" as RedisDB
+  component "Redis adjunct runtime\n(ephemeral acceleration)" as RedisAdj
+}
+
+CLI --> Commands
+Commands --> Stages
+Stages ..> Ports
+Ports <.. SqliteGateway
+
+SqliteGateway --> SqliteRepos
+SqliteRepos --> SqliteDB
+
+Ports <.. PgGateway : same role contracts
+PgGateway --> PgDB
+
+RedisAdj --> RedisDB
+Stages ..> RedisAdj : optional (non-canonical)
+
+note bottom of APP
+Canonical replacement for SQLite snapshot/search semantics:
+PostgreSQL-like backend.
+Redis is treated as adjunct/ephemeral acceleration,
+not as drop-in replacement for full snapshot semantics.
+end note
+
+@enduml

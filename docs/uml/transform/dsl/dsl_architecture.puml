@@ -1,80 +1,100 @@
 @startuml
-title DSL Stage Architecture (Current + Target)
+title DSL Core - Architecture & Integration Points
 
+left to right direction
+skinparam backgroundColor white
 skinparam componentStyle rectangle
 skinparam defaultFontName Arial
-
-package "Runtime Pipeline" {
-  [MapStage] as MapStage
-  [NormalizeStage] as NormalizeStage
-  [EnrichStage] as EnrichStage
-  [MatchStage] as MatchStage
-  [ResolveStage] as ResolveStage
+skinparam linetype ortho
+skinparam component {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
 }
 
-package "Stage DSL Layer" {
-  [MappingSpec] as MappingSpec
-  [NormalizeSpec] as NormalizeSpec
-  [EnrichSpec] as EnrichSpec
+package "YAML inputs" {
+  [datasets/*.source.yaml] as SourceYaml
+  [datasets/*.sink.yaml] as SinkYaml
+  [datasets/*.mapping.yaml] as MappingYaml
+  [datasets/*.normalize.yaml] as NormalizeYaml
+  [datasets/*.enrich.yaml] as EnrichYaml
+  [datasets/*.match.yaml] as MatchYaml
+  [datasets/*.resolve.yaml] as ResolveYaml
+  [datasets/*.cache.yaml] as CacheYaml
+  [datasets/registry.yml] as RegistryYaml
+}
 
+package "DSL Core (connector/domain/dsl)" #FFF5E8 {
+  [Loader] as Loader
+  [Pydantic Specs] as Specs
+  [Build Options] as BuildOptions
+  [OperationRegistry] as OpRegistry
+  [TransformationEngine] as TransformEngine
+  [Issues + Diagnostics Bridge] as DslDiag
+}
+
+package "Integration Points (stage-specific DSL)" #EAF7FF {
   [MapperDsl] as MapperDsl
   [NormalizerDsl] as NormalizerDsl
   [EnricherDsl] as EnricherDsl
+  [MatchDsl] as MatchDsl
+  [ResolveDsl] as ResolveDsl
+  [CacheDsl] as CacheDsl
 }
 
-package "Stage Engine Layer" {
-  [MapperEngine] as MapperEngine
-  [NormalizerEngine] as NormalizerEngine
-  [EnricherEngine] as EnricherEngine
+package "Stage Engines / Cores (out of scope)" {
+  [MapperEngine -> MapperCore] as MapRuntime
+  [NormalizerEngine -> NormalizerCore] as NormRuntime
+  [EnricherEngine -> EnricherCore] as EnrichRuntime
+  [MatchEngine -> MatchCore] as MatchRuntime
+  [ResolveEngine -> ResolveCore] as ResolveRuntime
+  [CacheLifecycleEngine + cache_core] as CacheRuntime
 }
 
-package "Stage Core Layer" {
-  [MapperCore] as MapperCore
-  [NormalizerCore] as NormalizerCore
-  [EnricherCore] as EnricherCore
-}
+SourceYaml --> Loader
+SinkYaml --> Loader
+MappingYaml --> Loader
+NormalizeYaml --> Loader
+EnrichYaml --> Loader
+MatchYaml --> Loader
+ResolveYaml --> Loader
+CacheYaml --> Loader
+RegistryYaml --> Loader
 
-package "Shared DSL Kernel" {
-  [TransformationEngine] as TEngine
-  [OperationRegistry] as Registry
-  [ProviderGateway] as ProviderGateway
-}
+Loader --> Specs : parse/validate
+Loader --> BuildOptions : policy merge
+TransformEngine --> OpRegistry : lookup/apply ops
 
-package "Dependencies" {
-  [TransformProviderDeps] as ProviderDeps
-  [Cache/Dictionaries/SecretStore] as ExternalDeps
-}
+MapperDsl ..> Specs : consumes
+NormalizerDsl ..> Specs : consumes
+EnricherDsl ..> Specs : consumes
+MatchDsl ..> Specs : consumes
+ResolveDsl ..> Specs : consumes
+CacheDsl ..> Specs : consumes
 
-MapStage --> MapperEngine
-NormalizeStage --> NormalizerEngine
-EnrichStage --> EnricherEngine
+MapperDsl ..> TransformEngine
+NormalizerDsl ..> TransformEngine
+EnricherDsl ..> TransformEngine
+MatchDsl ..> BuildOptions
+ResolveDsl ..> BuildOptions
+CacheDsl ..> BuildOptions
 
-MapperEngine --> MapperCore
-NormalizerEngine --> NormalizerCore
-EnricherEngine --> EnricherCore
+MapperDsl --> MapRuntime : compiled contract
+NormalizerDsl --> NormRuntime : compiled contract
+EnricherDsl --> EnrichRuntime : compiled contract
+MatchDsl --> MatchRuntime : compiled contract
+ResolveDsl --> ResolveRuntime : compiled contract
+CacheDsl --> CacheRuntime : compiled runtime
 
-MapperEngine ..> MapperDsl : compile spec
-NormalizerEngine ..> NormalizerDsl : compile spec
-EnricherEngine ..> EnricherDsl : compile spec
+MapperDsl ..> DslDiag : DslLoadError/DslIssue
+NormalizerDsl ..> DslDiag : DslLoadError/DslIssue
+EnricherDsl ..> DslDiag : DslLoadError/DslIssue
+MatchDsl ..> DslDiag : DslLoadError/DslIssue
+ResolveDsl ..> DslDiag : DslLoadError/DslIssue
+CacheDsl ..> DslDiag : DslLoadError/DslIssue
 
-MapperDsl --> MappingSpec
-NormalizerDsl --> NormalizeSpec
-EnricherDsl --> EnrichSpec
-
-MapperCore ..> TEngine : apply ops
-NormalizerCore ..> TEngine : apply ops
-EnricherDsl ..> TEngine : ops in DSL rules
-TEngine --> Registry
-
-EnricherDsl --> ProviderGateway
-EnricherCore --> ProviderDeps
-ProviderDeps --> ExternalDeps
-ProviderGateway --> ExternalDeps
-
-note right of MatchStage
-Current state:
-Match/Resolve run as transform stages,
-DSL migration planned separately.
+note bottom of "DSL Core (connector/domain/dsl)"
+Shows only shared DSL core responsibilities.
+Stage business logic is intentionally hidden.
 end note
 
 @enduml

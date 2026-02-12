@@ -27,8 +27,8 @@ from connector.domain.transform.matcher.match_models import (
     resolve_decision_status,
 )
 from connector.domain.transform.matcher.rules import LinkFieldRule, LinkRules, ResolveRules
-from connector.domain.ports.cache.identity import IdentityRepository
-from connector.domain.ports.cache.pending_links import PendingLink, PendingLinksRepository
+from connector.domain.ports.cache.models import PendingLink
+from connector.domain.ports.cache.roles import ResolveRuntimePort
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +44,14 @@ class ResolveCore:
         resolve_rules: ResolveRules,
         link_rules: LinkRules | None = None,
         *,
-        identity_repo: IdentityRepository | None = None,
-        pending_repo: PendingLinksRepository | None = None,
+        cache_gateway: ResolveRuntimePort | None = None,
         settings: ResolverSettings | None = None,
         catalog: ErrorCatalog,
         sink_spec: SinkSpec | None = None,
     ) -> None:
         self.resolve_rules = resolve_rules
         self.link_rules = link_rules or LinkRules()
-        self.identity_repo = identity_repo
-        self.pending_repo = pending_repo
+        self.cache_gateway = cache_gateway
         self.settings = settings
         self.catalog = catalog
         self.sink_spec = sink_spec
@@ -95,7 +93,7 @@ class ResolveCore:
         return index
 
     def _maybe_sweep_expired(self) -> None:
-        if self.pending_repo is None:
+        if self.cache_gateway is None:
             return
         interval = self.settings.pending_sweep_interval_seconds if self.settings else 0
         if interval <= 0:
@@ -106,7 +104,7 @@ class ResolveCore:
             if elapsed < interval:
                 return
         self._last_sweep_at = now
-        expired = self.pending_repo.sweep_expired(now.isoformat(), reason="expired")
+        expired = self.cache_gateway.sweep_expired(now.isoformat(), reason="expired")
         if expired:
             self._expired.extend(expired)
 
@@ -231,8 +229,8 @@ class ResolveCore:
             source_ref=source_ref,
             secret_fields=secret_fields,
         )
-        if not pending_created and self.pending_repo is not None:
-            self.pending_repo.mark_resolved_for_source(matched.row_ref.row_id)
+        if not pending_created and self.cache_gateway is not None:
+            self.cache_gateway.mark_resolved_for_source(matched.row_ref.row_id)
         return resolved, errors, warnings
 
     def _resolve_links(
@@ -253,14 +251,14 @@ class ResolveCore:
         """
         if not self.link_rules.fields:
             return False, False, set()
-        if self.identity_repo is None or self.pending_repo is None:
+        if self.cache_gateway is None:
             errors.append(
                 diag_error(
                     catalog=self.catalog,
                     stage=DiagnosticStage.RESOLVE,
                     code="RESOLVE_CONFIG_MISSING",
                     field=None,
-                    message="identity/pending repositories are not configured",
+                    message="cache gateway is not configured",
                     record_ref=matched.row_ref,
                 )
             )
@@ -284,7 +282,7 @@ class ResolveCore:
                 rule,
                 key_values,
                 desired_state,
-                self.identity_repo,
+                self.cache_gateway,
                 batch_index,
             )
             if resolved_id is None:
@@ -305,7 +303,7 @@ class ResolveCore:
                 expires_at = _build_expires_at(self.settings)
                 lookup_key = used_lookup or ""
                 payload = _serialize_pending_payload(matched, desired_state, meta)
-                pending_id = self.pending_repo.add_pending(
+                pending_id = self.cache_gateway.add_pending(
                     dataset=rule.target_dataset,
                     source_row_id=row_id,
                     field=rule.field,
@@ -313,10 +311,10 @@ class ResolveCore:
                     expires_at=expires_at,
                     payload=payload,
                 )
-                attempts = self.pending_repo.touch_attempt(pending_id)
+                attempts = self.cache_gateway.touch_attempt(pending_id)
                 max_attempts = _max_attempts(self.settings)
                 if max_attempts > 0 and attempts >= max_attempts:
-                    self.pending_repo.mark_conflict(pending_id, reason="max attempts reached")
+                    self.cache_gateway.mark_conflict(pending_id, reason="max attempts reached")
                     errors.append(
                         diag_error(
                             catalog=self.catalog,
@@ -489,7 +487,7 @@ def _resolve_with_rules(
     rule: LinkFieldRule,
     key_values: dict[str, str],
     desired_state: dict[str, Any],
-    identity_repo: IdentityRepository,
+    cache_gateway: ResolveRuntimePort,
     batch_index: dict[str, dict[str, list[str]]] | None,
 ) -> tuple[str | None, str | None, str | None]:
     """
@@ -503,7 +501,7 @@ def _resolve_with_rules(
             continue
         lookup_key = format_identity_key(key.name, value)
         used_lookup = lookup_key
-        candidates = _lookup_candidates(batch_index, identity_repo, rule.target_dataset, lookup_key)
+        candidates = _lookup_candidates(batch_index, cache_gateway, rule.target_dataset, lookup_key)
         if not candidates:
             continue
         if len(candidates) == 1:
@@ -514,7 +512,7 @@ def _resolve_with_rules(
             rule,
             key_values,
             desired_state,
-            identity_repo,
+            cache_gateway,
             batch_index,
         )
         if len(narrowed) == 1:
@@ -529,7 +527,7 @@ def _apply_dedup_rules(
     rule: LinkFieldRule,
     key_values: dict[str, str],
     desired_state: dict[str, Any],
-    identity_repo: IdentityRepository,
+    cache_gateway: ResolveRuntimePort,
     batch_index: dict[str, dict[str, list[str]]] | None,
 ) -> list[str]:
     """
@@ -555,7 +553,7 @@ def _apply_dedup_rules(
                 rule_candidates = set()
                 break
             lookup_key = format_identity_key(key_name, lookup_value)
-            ids = _lookup_candidates(batch_index, identity_repo, rule.target_dataset, lookup_key)
+            ids = _lookup_candidates(batch_index, cache_gateway, rule.target_dataset, lookup_key)
             rule_candidates = rule_candidates.intersection(ids)
         if rule_candidates:
             remaining = rule_candidates
@@ -566,7 +564,7 @@ def _apply_dedup_rules(
 
 def _lookup_candidates(
     batch_index: dict[str, dict[str, list[str]]] | None,
-    identity_repo: IdentityRepository,
+    cache_gateway: ResolveRuntimePort,
     dataset: str,
     lookup_key: str,
 ) -> list[str]:
@@ -579,7 +577,7 @@ def _lookup_candidates(
         batch_hits = batch_index.get(dataset, {}).get(lookup_key, [])
     if batch_hits:
         return list(dict.fromkeys(batch_hits))
-    return identity_repo.find_candidates(dataset, lookup_key)
+    return cache_gateway.find_candidates(dataset, lookup_key)
 
 
 def _build_expires_at(settings: ResolverSettings | None) -> str | None:
@@ -694,10 +692,50 @@ def _serialize_pending_payload(
             "identity_value": matched.row_ref.identity_value,
         },
         "desired_state": desired_state,
+        "existing": matched.existing,
+        "fingerprint": matched.fingerprint,
+        "fingerprint_fields": list(matched.fingerprint_fields),
+        "match_decision": _serialize_match_decision(matched),
+        "source_links": _serialize_source_links(matched),
         "target_id": matched.target_id,
         "meta": meta or {},
     }
     return json.dumps(payload, ensure_ascii=True, default=str)
+
+
+def _serialize_source_links(matched: MatchedRow) -> dict[str, dict[str, Any]]:
+    return {
+        field: {
+            "primary": identity.primary,
+            "values": dict(identity.values),
+        }
+        for field, identity in matched.source_links.items()
+    }
+
+
+def _serialize_match_decision(matched: MatchedRow) -> dict[str, Any]:
+    decision = matched.match_decision
+    return {
+        "status": decision.status.value,
+        "reason_code": decision.reason_code,
+        "message": decision.message,
+        "score": decision.score,
+        "meta": decision.meta,
+        "selected": _serialize_candidate(decision.selected),
+        "candidates": [_serialize_candidate(candidate) for candidate in decision.candidates],
+    }
+
+
+def _serialize_candidate(candidate) -> dict[str, Any] | None:
+    if candidate is None:
+        return None
+    return {
+        "target_id": candidate.target_id,
+        "identity": candidate.identity,
+        "score": candidate.score,
+        "match_mode": candidate.match_mode,
+        "evidence": candidate.evidence,
+    }
 
 
 __all__ = ["ResolveCore"]

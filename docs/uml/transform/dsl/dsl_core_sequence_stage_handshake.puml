@@ -1,0 +1,35 @@
+@startuml
+title DSL Core - Stage Handshake Sequence
+
+skinparam backgroundColor white
+skinparam defaultFontName Arial
+skinparam linetype ortho
+skinparam sequence {
+  ArrowColor #4b5563
+  LifeLineBorderColor #9ca3af
+}
+
+actor CLI
+participant "Command/UseCase" as UC
+participant "StageEngine" as StageEngine
+participant "StageDsl" as StageDsl
+participant "DSL Loader" as Loader
+participant "DSL Specs" as Specs
+participant "TransformationEngine" as TransformEngine
+participant "StageCore" as StageCore
+
+CLI -> UC: run stage command
+UC -> StageEngine: execute(...)
+StageEngine -> Loader: load_*_spec_for_dataset(dataset)
+Loader -> Specs: parse + validate YAML
+Specs --> Loader: stage spec
+Loader --> StageEngine: stage spec
+
+StageEngine -> StageDsl: compile(spec, options)
+StageDsl -> TransformEngine: apply ops contract
+StageDsl --> StageEngine: compiled core contract
+StageEngine -> StageCore: run(compiled contract, input)
+StageCore --> StageEngine: stage output
+StageEngine --> UC: result stream
+
+@enduml

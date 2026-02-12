@@ -5,6 +5,7 @@ import logging
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.ports.cache.roles import CacheAdminPort
 
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_status_usecase import CacheStatusUseCase
@@ -19,14 +20,14 @@ class CacheCommandService:
 
     def __init__(
         self,
-        cache_repo,
+        cache_admin: CacheAdminPort,
         cache_refresh: CacheRefreshUseCase | None = None,
         cache_status: CacheStatusUseCase | None = None,
         cache_clear: CacheClearUseCase | None = None,
     ):
-        self.cache_repo = cache_repo
+        self.cache_admin = cache_admin
         self.cache_refresh = cache_refresh
-        self.cache_status = cache_status or CacheStatusUseCase(cache_repo)
+        self.cache_status = cache_status or CacheStatusUseCase(cache_admin)
         self.cache_clear = cache_clear
 
     def refresh(
@@ -36,7 +37,8 @@ class CacheCommandService:
         logger,
         report,
         run_id: str,
-        include_deleted: bool = False,
+        include_deleted: bool | None = None,
+        include_dependencies: bool = False,
         report_items_limit: int = 200,
         api_base_url: str | None = None,
         retries: int | None = None,
@@ -54,6 +56,7 @@ class CacheCommandService:
             report=report,
             run_id=run_id,
             include_deleted=include_deleted,
+            include_dependencies=include_dependencies,
             report_items_limit=report_items_limit,
             api_base_url=api_base_url,
             retries=retries,
@@ -91,12 +94,18 @@ class CacheCommandService:
             return result
 
     def clear(
-        self, logger, report, run_id: str, dataset: str | None = None
+        self,
+        logger,
+        report,
+        run_id: str,
+        dataset: str | None = None,
+        *,
+        cascade: bool = False,
     ) -> CommandResult:
         try:
             if self.cache_clear is None:
                 raise ValueError("Cache clear usecase is not configured")
-            cleared = self.cache_clear.clear(dataset=dataset)
+            cleared = self.cache_clear.clear_with_options(dataset=dataset, cascade=cascade)
             logEvent(
                 logger,
                 logging.INFO,

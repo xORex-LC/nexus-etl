@@ -1,0 +1,67 @@
+@startuml
+title Cache Sequence - Match Runtime State (Source Dedup)
+
+actor CLI
+participant "Match command" as Command
+participant "open_match_runtime()" as RuntimeCtx
+participant MatchUseCase
+participant MatchStage
+participant MatchEngine
+participant MatchCore
+participant "PlanningRuntimePort" as Port
+participant SqlitePlanningRuntimeAdapter as Adapter
+participant SqliteCacheGateway as Gateway
+participant SqliteIdentityRepository as IdentityRepo
+database "SQLite DB" as DB
+
+CLI -> Command: run match
+Command -> RuntimeCtx: open(run_id, match_stage, planning_runtime)
+RuntimeCtx -> MatchUseCase: iter_matched(..., run_scope)
+MatchUseCase -> MatchStage: run(stream)
+MatchStage -> MatchEngine: match_with_source_dedup(result)
+MatchEngine -> MatchCore: match_with_source_dedup(result)
+
+MatchCore -> Port: get_runtime_state(scope,dataset,dedup_key)
+Port -> Adapter: get_runtime_state(...)
+Adapter -> Gateway: identity.get_runtime_state(...)
+Gateway -> IdentityRepo: get_runtime_state(...)
+IdentityRepo -> DB: SELECT state_value ...
+DB --> IdentityRepo: value | null
+IdentityRepo --> Gateway: value | null
+Gateway --> Adapter: value | null
+Adapter --> Port: value | null
+Port --> MatchCore: value | null
+
+alt first seen in scope
+  MatchCore -> Port: set_runtime_state(scope,dataset,dedup_key,fingerprint)
+  Port -> Adapter: set_runtime_state(...)
+  Adapter -> Gateway: identity.set_runtime_state(...)
+  Gateway -> IdentityRepo: set_runtime_state(...)
+  IdentityRepo -> DB: UPSERT identity_runtime_state
+  DB --> IdentityRepo: ok
+  IdentityRepo --> Gateway: ok
+  Gateway --> Adapter: ok
+  Adapter --> Port: ok
+else duplicate/conflict in scope
+  MatchCore -> MatchCore: drop row by source_dedup policy
+end
+
+MatchCore --> MatchEngine: TransformResult[MatchedRow]
+MatchEngine --> MatchStage: TransformResult[MatchedRow]
+MatchStage --> MatchUseCase: stream item
+MatchUseCase --> RuntimeCtx: stream item
+
+RuntimeCtx -> Port: clear_runtime_scope(scope)
+Port -> Adapter: clear_runtime_scope(...)
+Adapter -> Gateway: identity.clear_runtime_scope(...)
+Gateway -> IdentityRepo: clear_runtime_scope(...)
+IdentityRepo -> DB: DELETE identity_runtime_state WHERE scope=...
+DB --> IdentityRepo: ok
+IdentityRepo --> Gateway: ok
+Gateway --> Adapter: ok
+Adapter --> Port: ok
+
+RuntimeCtx --> Command: done
+Command --> CLI: done
+
+@enduml

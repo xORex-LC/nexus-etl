@@ -1,15 +1,16 @@
 """Единый экспорт доменных портов."""
 
-from connector.domain.ports.cache import CacheRepositoryProtocol, IdentityRepository, PendingLinksRepository, PendingLink
+from connector.domain.ports.cache import (
+    PendingLink,
+    PendingRow,
+)
 from connector.domain.ports.target import RequestSpec, ExecutionResult, RequestExecutorProtocol, TargetPageResult, TargetPagedReaderProtocol
 from connector.domain.ports.transform import RowSource, SourceMapper, DictionaryProviderPort
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 
 __all__ = [
-    "CacheRepositoryProtocol",
-    "IdentityRepository",
-    "PendingLinksRepository",
     "PendingLink",
+    "PendingRow",
     "RequestSpec",
     "ExecutionResult",
     "RequestExecutorProtocol",

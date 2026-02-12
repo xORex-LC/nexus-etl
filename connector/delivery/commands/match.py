@@ -32,29 +32,41 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         Запустить match сценарий через delivery-команду.
     """
     run_id = ctx.run_id
-    settings = ctx.settings
+    app_settings = ctx.app_settings
+    if app_settings is None:
+        raise ValueError("App settings are not initialized")
 
-    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, settings)
-    catalog = ctx.catalog or build_diagnostics_catalog(dataset_name, strict=settings.diagnostics_strict)
+    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+    catalog = ctx.catalog or build_diagnostics_catalog(
+        dataset_name,
+        strict=app_settings.observability.diagnostics_strict,
+    )
 
-    csv_has_header_value = opts.csv_has_header if opts.csv_has_header is not None else settings.csv_has_header
-    include_deleted_value = opts.include_deleted if opts.include_deleted is not None else settings.include_deleted
+    csv_has_header_value = (
+        opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
+    )
+    include_deleted_value = (
+        opts.include_deleted if opts.include_deleted is not None else app_settings.dataset.include_deleted
+    )
     report_items_limit_value = (
-        opts.report_items_limit if opts.report_items_limit is not None else settings.report_items_limit
+        opts.report_items_limit
+        if opts.report_items_limit is not None
+        else app_settings.observability.report_items_limit
     )
     include_matched_items_value = (
         opts.include_matched_items if opts.include_matched_items is not None else False
     )
 
-    conn = None
+    gateway = None
     try:
-        conn, _engine, _cache_repo, _cache_specs = build_cache(settings)
+        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
 
         pipeline_ctx = build_pipeline_context(
             dataset_spec=dataset_spec,
             dataset_name=dataset_name,
-            conn=conn,
-            settings=settings,
+            cache_roles=cache_roles,
+            pending_settings=app_settings.pending,
+            observability_settings=app_settings.observability,
             catalog=catalog,
             csv_has_header=csv_has_header_value,
         )
@@ -67,20 +79,20 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             planning_deps=planning_deps,
             catalog=catalog,
             include_deleted=include_deleted_value,
-            settings=settings,
+            settings=app_settings.pending,
         )
-        identity_repo = planning_deps.identity_repo
-        if identity_repo is None:
-            raise ValueError("planning identity_repo is not configured")
+        planning_runtime = planning_deps.cache_gateway
+        if planning_runtime is None:
+            raise ValueError("planning runtime is not configured")
 
         with open_match_runtime(
             run_id=run_id,
             match_stage=match_stage,
-            identity_repo=identity_repo,
+            match_runtime=planning_runtime,
             report_items_limit=report_items_limit_value,
             include_matched_items=include_matched_items_value,
-            batch_size=settings.match_batch_size,
-            flush_interval_ms=settings.match_flush_interval_ms,
+            batch_size=app_settings.matching_runtime.match_batch_size,
+            flush_interval_ms=app_settings.matching_runtime.match_flush_interval_ms,
         ) as match_runtime:
             return match_runtime.match_usecase.run(
                 enriched_source=enriched_rows,
@@ -92,8 +104,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="match", exc=exc)
     finally:
-        if conn is not None:
-            conn.close()
+        if gateway is not None:
+            gateway.close()
 
 
 __all__ = ["handler", "Options"]

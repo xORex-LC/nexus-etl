@@ -8,15 +8,14 @@ import typer
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import ensure_supported_cache_dataset, result_with
 from connector.delivery.cli.bootstrap import (
-    build_cache,
+    build_api_client,
     build_api_reader,
-    build_identity_repos,
+    open_cache,
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.datasets.cache_registry import list_cache_sync_adapters
 from connector.datasets.registry import build_identity_index_plan
-from connector.infra.http.ankey_client import AnkeyApiClient
+from connector.infra.cache.dsl_runtime import build_sync_adapters
 from connector.infra.logging.setup import logEvent
 from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
@@ -31,55 +30,66 @@ class Options:
     retry_backoff_seconds: float | None = None
     api_transport: object | None = None
     include_deleted: bool | None = None
+    include_dependencies: bool | None = None
     report_items_limit: int | None = None
     dataset: str | None = None
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
-    settings = ctx.settings
+    app_settings = ctx.app_settings
+    if app_settings is None:
+        raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 
-    conn = None
     try:
-        conn, engine, cache_repo, _cache_specs = build_cache(settings)
-        unsupported_result = ensure_supported_cache_dataset(cache_repo, opts.dataset)
-        if unsupported_result is not None:
-            return unsupported_result
+        with open_cache(app_settings.paths) as (_gateway, cache_roles, cache_dsl_bundle):
+            unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
+            if unsupported_result is not None:
+                return unsupported_result
 
-        base_url = f"https://{settings.host}:{settings.port}"
-        client = _build_api_client(settings, opts.api_transport)
-        client.resetRetryAttempts()
-        reader = build_api_reader(client)
+            base_url = f"https://{app_settings.api.host}:{app_settings.api.port}"
+            client = build_api_client(app_settings.api, transport=opts.api_transport)
+            client.resetRetryAttempts()
+            reader = build_api_reader(client)
 
-        adapters = list_cache_sync_adapters()
-        identity_keys, identity_id_fields = build_identity_index_plan()
-        identity_repo, pending_repo = build_identity_repos(engine)
+            adapters = build_sync_adapters(cache_dsl_bundle)
+            identity_keys, identity_id_fields = build_identity_index_plan()
+            runtime_policy = cache_dsl_bundle.runtime.policy
+            cache_refresh = CacheRefreshUseCase(
+                reader,
+                cache_roles.cache_refresh,
+                adapters,
+                identity_keys=identity_keys,
+                identity_id_fields=identity_id_fields,
+                dependency_graph=cache_dsl_bundle.runtime.dependency_graph,
+                schema_hashes=cache_dsl_bundle.runtime.schema_hashes,
+                drift_mode=runtime_policy.drift_mode,
+                drift_on_hash_mismatch=runtime_policy.drift_on_hash_mismatch,
+                drift_rebuild_scope=runtime_policy.drift_rebuild_scope,
+            )
+            service = CacheCommandService(cache_roles.cache_admin, cache_refresh)
 
-        cache_refresh = CacheRefreshUseCase(
-            reader,
-            cache_repo,
-            adapters,
-            identity_repo=identity_repo,
-            identity_keys=identity_keys,
-            identity_id_fields=identity_id_fields,
-            pending_repo=pending_repo,
-        )
-        service = CacheCommandService(cache_repo, cache_refresh)
-
-        return service.refresh(
-            page_size=opts.page_size or settings.page_size,
-            max_pages=opts.max_pages or settings.max_pages,
-            logger=ctx.logger,
-            report=report,
-            run_id=run_id,
-            include_deleted=opts.include_deleted if opts.include_deleted is not None else settings.include_deleted,
-            report_items_limit=opts.report_items_limit or settings.report_items_limit,
-            api_base_url=base_url,
-            retries=opts.retries or settings.retries,
-            retry_backoff_seconds=opts.retry_backoff_seconds or settings.retry_backoff_seconds,
-            dataset=opts.dataset,
-            catalog=ctx.catalog,
-        )
+            return service.refresh(
+                page_size=opts.page_size or app_settings.refresh.page_size,
+                max_pages=opts.max_pages or app_settings.refresh.max_pages,
+                logger=ctx.logger,
+                report=report,
+                run_id=run_id,
+                include_deleted=opts.include_deleted,
+                include_dependencies=(
+                    opts.include_dependencies
+                    if opts.include_dependencies is not None
+                    else runtime_policy.refresh_with_deps_default
+                ),
+                report_items_limit=(
+                    opts.report_items_limit or app_settings.observability.report_items_limit
+                ),
+                api_base_url=base_url,
+                retries=opts.retries or app_settings.api.retries,
+                retry_backoff_seconds=opts.retry_backoff_seconds or app_settings.api.retry_backoff_seconds,
+                dataset=opts.dataset,
+                catalog=ctx.catalog,
+            )
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
@@ -87,22 +97,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
         typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
-    finally:
-        if conn is not None:
-            conn.close()
-
-def _build_api_client(settings, transport=None) -> AnkeyApiClient:
-    return AnkeyApiClient(
-        baseUrl=f"https://{settings.host}:{settings.port}",
-        username=settings.api_username or "",
-        password=settings.api_password or "",
-        timeoutSeconds=settings.timeout_seconds,
-        tlsSkipVerify=settings.tls_skip_verify,
-        caFile=settings.ca_file,
-        retries=settings.retries,
-        retryBackoffSeconds=settings.retry_backoff_seconds,
-        transport=transport,
-    )
 
 
 __all__ = ["handler", "Options"]

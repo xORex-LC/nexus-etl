@@ -1,0 +1,142 @@
+@startuml
+title Cache Domain Class View (Plan A, Infra-first)
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+hide empty members
+
+package "domain.ports.cache.models" {
+  enum UpsertResult {
+    INSERTED
+    UPDATED
+  }
+
+  class CacheMeta
+  class PendingLink
+  class PendingRow
+}
+
+package "domain.ports.cache.roles" {
+  interface CacheAdminPort <<protocol>> {
+    +transaction()
+    +upsert(dataset, write_model): UpsertResult
+    +count(dataset): int
+    +count_by_table(dataset): dict[str,int]
+    +clear(dataset)
+    +list_datasets(): list[str]
+    +get_meta(dataset): CacheMeta
+    +set_meta(dataset, key, value)
+    +reset_meta(dataset)
+  }
+
+  interface EnrichLookupPort <<protocol>> {
+    +find(dataset, filters, include_deleted, mode): list[dict]
+    +find_one(dataset, filters, include_deleted, mode): dict | None
+  }
+
+  interface MatchRuntimePort <<protocol>> {
+    +find(dataset, filters, include_deleted, mode): list[dict]
+    +set_runtime_state(scope, dataset, key, value)
+    +get_runtime_state(scope, dataset, key): str | None
+    +clear_runtime_scope(scope)
+  }
+
+  interface ResolveRuntimePort <<protocol>> {
+    +find_candidates(dataset, identity_key): list[str]
+    +add_pending(dataset, source_row_id, field, lookup_key, expires_at, payload): int
+    +list_pending_rows(dataset): list[PendingRow]
+    +mark_resolved_for_source(source_row_id)
+    +mark_conflict(pending_id, reason)
+    +touch_attempt(pending_id): int
+    +sweep_expired(now, reason): list[PendingLink]
+    +purge_stale(cutoff, statuses): int
+  }
+
+  interface ApplyRuntimePort <<protocol>> {
+    +upsert_identity(dataset, identity_key, resolved_id)
+    +list_pending_for_key(dataset, lookup_key): list[PendingLink]
+    +mark_resolved(pending_id)
+  }
+
+  interface CacheRefreshPort <<protocol>>
+  interface PendingReplayPort <<protocol>>
+  interface PlanningRuntimePort <<protocol>>
+}
+
+package "domain.cache_core" {
+  class CacheDependencyGraph {
+    +refresh_order(dataset, include_dependencies): list[str]
+    +clear_order(dataset, cascade): list[str]
+  }
+
+  class CacheRefreshPlanner {
+    +plan(dataset): CacheRefreshPlan
+  }
+
+  class CacheClearPlanner {
+    +plan(dataset, cascade): CacheClearPlan
+  }
+
+  class CacheStatusEvaluator {
+    +evaluate(schema_version, global_meta, snapshots, dataset): dict
+  }
+
+  class CacheDriftService {
+    +evaluate_schema_version(expected, actual): CacheDriftResult
+  }
+}
+
+package "usecases" {
+  class CacheRefreshUseCase {
+    +refresh(...)
+  }
+
+  class CacheClearUseCase {
+    +clear(dataset): dict[str,int]
+  }
+
+  class CacheStatusUseCase {
+    +status(dataset): dict
+  }
+}
+
+CacheRefreshPort --|> CacheAdminPort
+CacheRefreshPort --|> ApplyRuntimePort
+PendingReplayPort --|> ResolveRuntimePort
+PlanningRuntimePort --|> MatchRuntimePort
+PlanningRuntimePort --|> ResolveRuntimePort
+
+CacheAdminPort ..> UpsertResult
+CacheAdminPort ..> CacheMeta
+ResolveRuntimePort ..> PendingLink
+ResolveRuntimePort ..> PendingRow
+ApplyRuntimePort ..> PendingLink
+
+CacheRefreshUseCase ..> CacheRefreshPort
+CacheRefreshUseCase ..> CacheRefreshPlanner
+CacheRefreshPlanner --> CacheDependencyGraph
+
+CacheClearUseCase ..> CacheAdminPort
+CacheClearUseCase ..> CacheClearPlanner
+CacheClearPlanner --> CacheDependencyGraph
+
+CacheStatusUseCase ..> CacheAdminPort
+CacheStatusUseCase ..> CacheStatusEvaluator
+CacheStatusUseCase ..> CacheDriftService
+
+note right of CacheDependencyGraph
+Dependency topology and deterministic order
+are pure domain rules (no SQLite dependency).
+end note
+
+note right of CacheRefreshUseCase
+UseCase orchestration only:
+IO via ports, policy via cache_core planners.
+end note
+
+@enduml
