@@ -278,5 +278,5 @@ def resolve(
 ## Дополнительные ресурсы
 
 - [TEMPLATE.md](../TEMPLATE.md) - Полный шаблон документации слоя
-- [cache-core.md](../layers/cache-core.md) - Пример документации сложных методов
-- [resolve-dsl.md](../layers/resolve-dsl.md) - Пример с визуальными диаграммами
+- [cache-core.md](../layers/cache/cache-core.md) - Пример документации сложных методов
+- [resolve-dsl.md](../layers/resolver/resolve-dsl.md) - Пример с визуальными диаграммами

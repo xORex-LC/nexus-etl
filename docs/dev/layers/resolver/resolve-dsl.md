@@ -179,7 +179,7 @@ resolve:
 
 | Класс | Роль | Ключевые методы |
 |-------|------|-----------------|
-| `ResolveDsl` | Компилятор DSL в правила | `compile()`, `validate()` |
+| `ResolveDsl` | Компилятор DSL в правила | `compile()` |
 | `CompiledResolveRules` | Скомпилированные правила | `get_rule_for_field()`, `apply()` |
 
 ### Классы Core
@@ -514,8 +514,8 @@ class ResolveDsl:
         # ...
     }
 
-    def _validate_rule(self, rule: dict[str, Any]) -> None:
-        """Валидация правила."""
+    def _compile_link_rule(spec: ResolveLinkSpec) -> LinkFieldRule:
+        """Компиляция и валидация правила линковки."""
         strategy = rule.get("strategy")
 
         # Добавить валидацию параметров для новой стратегии
@@ -560,8 +560,8 @@ resolve:
 ```python
 # connector/domain/transform/resolver/resolve_dsl.py
 
-def _validate_rule(self, rule: dict[str, Any]) -> None:
-    """Валидация правила."""
+def _compile_link_rule(spec: ResolveLinkSpec) -> LinkFieldRule:
+    """Компиляция и валидация одного правила линковки."""
     strategy = rule.get("strategy")
 
     if strategy == "prefer_source":
@@ -921,7 +921,7 @@ resolved, errors, _ = core.resolve(matched)
   # Ошибка будет только в runtime!
   ```
 
-- ✅ **Делай так**: Валидировать в `_validate_rule()`
+- ✅ **Делай так**: Валидировать на этапе `compile()` + Pydantic-схемы
   ```python
   if strategy == "prefer_source" and "source_priority" not in rule:
       raise ValueError(...)

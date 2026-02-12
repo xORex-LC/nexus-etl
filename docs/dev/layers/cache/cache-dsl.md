@@ -28,10 +28,10 @@
 - Глобальная политика cache-операций (refresh, clear, pending)
 
 **Расположение в кодовой базе**:
-- `connector/domain/dsl/cache_compiler.py` (336 строк)
-- `connector/domain/dsl/build_options.py` (112 строк)
-- `connector/domain/dsl/specs.py` (600+ строк, Pydantic models)
-- `connector/domain/dsl/loader.py` (200+ строк)
+- `connector/domain/cache_core/cache_dsl.py`
+- `connector/domain/dsl/build_options.py`
+- `connector/domain/dsl/specs.py` (Pydantic models)
+- `connector/domain/dsl/loader.py`
 
 ---
 
@@ -41,25 +41,10 @@
 
 ```
 cache_dsl/
-├── specs.py                   # Pydantic models для YAML десериализации
-│   ├── CacheRegistrySpec      # Регистр всех датасетов
-│   ├── CacheDatasetSpec       # Спецификация одного датасета
-│   ├── CacheSyncSpec          # Синхронизация с source
-│   ├── SoftDeleteSpec         # Soft-delete политика
-│   └── ProjectionRule         # Правила маппинга полей
-│
-├── loader.py                  # Загрузка YAML в Pydantic models
-│   ├── load_cache_registry_spec()
-│   ├── load_cache_dataset_specs()
-│   └── load_yaml()            # Низкоуровневый loader
-│
-├── cache_compiler.py          # Компилятор DSL → Runtime
-│   ├── compile_cache_runtime() # Главная функция компиляции
-│   ├── CacheDslRuntime        # Скомпилированный runtime bundle
-│   └── CacheDslRuntimePolicy  # Глобальная политика
-│
-└── build_options.py           # Compile-policy флаги
-    └── CacheDslBuildOptions   # Опции валидации
+├── connector/domain/dsl/specs.py            # Pydantic models для YAML десериализации
+├── connector/domain/dsl/loader.py           # Загрузка YAML в Pydantic models
+├── connector/domain/dsl/build_options.py    # Compile-policy флаги
+└── connector/domain/cache_core/cache_dsl.py # Компилятор DSL → Runtime
 ```
 
 ### 📐 UML диаграммы
@@ -79,7 +64,7 @@ cache_dsl/
 
 **Реализация в коде**:
 - **Loader**: `loader.py` → Парсинг YAML в Pydantic models
-- **Compiler**: `cache_compiler.py` → Трансформация specs в runtime models
+- **Compiler**: `cache_dsl.py` → Трансформация specs в runtime models
 - **Runtime**: `CacheDslRuntime` → Immutable скомпилированная конфигурация
 
 **Пример использования**:
@@ -483,7 +468,7 @@ sync:
 
 ### Метод: `compile_cache_runtime()`
 
-**Расположение**: `connector/domain/dsl/cache_compiler.py:LINE_NUMBER`
+**Расположение**: `connector/domain/cache_core/cache_dsl.py`
 
 **Сигнатура**:
 ```python
@@ -732,15 +717,15 @@ planner = CacheRefreshPlanner(runtime.dependency_graph)
 ### Границы слоёв
 
 **Разрешенные зависимости**:
-- ✅ `cache_compiler.py` → `CacheDependencyGraph` (cache_core) — построение графа
-- ✅ `cache_compiler.py` → `CacheSpec` (ports) — создание port models
+- ✅ `cache_dsl.py` → `CacheDependencyGraph` (cache_core) — построение графа
+- ✅ `cache_dsl.py` → `CacheSpec` (ports) — создание port models
 - ✅ `loader.py` → Pydantic — парсинг YAML
 - ✅ `specs.py` → Python stdlib (`hashlib`, `dataclasses`)
 
 **Запрещенные зависимости**:
-- ❌ `cache_compiler.py` → `connector/infra/*` — DSL не знает об инфраструктуре
-- ❌ `cache_compiler.py` → `UseCase` — DSL не знает о use cases
-- ❌ `cache_compiler.py` → `SQLAlchemy`, `Redis` — DSL infrastructure-agnostic
+- ❌ `cache_dsl.py` → `connector/infra/*` — DSL не знает об инфраструктуре
+- ❌ `cache_dsl.py` → `UseCase` — DSL не знает о use cases
+- ❌ `cache_dsl.py` → `SQLAlchemy`, `Redis` — DSL infrastructure-agnostic
 
 **Визуальная граница**:
 
@@ -784,7 +769,7 @@ planner = CacheRefreshPlanner(runtime.dependency_graph)
 **Решение**:
 ```python
 from connector.domain.dsl.loader import load_cache_registry_spec, load_cache_dataset_specs
-from connector.domain.dsl.cache_compiler import compile_cache_runtime
+from connector.domain.cache_core.cache_dsl import compile_cache_runtime
 from connector.domain.dsl.build_options import CacheDslBuildOptions
 
 # 1. Загрузить registry
@@ -1027,7 +1012,7 @@ datasets:
    - **Проблема**: O(N) где N = размер YAML файла
    - **Текущая оптимизация**: Парсинг только на старте приложения, результат кэшируется
 
-2. **SHA256 вычисление** (`cache_compiler.py`)
+2. **SHA256 вычисление** (`cache_dsl.py`)
    - **Проблема**: O(M) где M = размер schema (количество полей)
    - **Текущая оптимизация**: Вычисление один раз при компиляции, результат в meta
 

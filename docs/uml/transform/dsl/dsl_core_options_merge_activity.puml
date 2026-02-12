@@ -1,0 +1,22 @@
+@startuml
+title DSL Core - Build Options Merge
+
+skinparam defaultFontName Arial
+skinparam linetype ortho
+
+start
+:Load defaults from dataclass;
+:Read global DSL policy (config);
+
+if (Has dataset/stage override?) then (yes)
+  :Apply override mapping;
+else (no)
+  :Keep global/default values;
+endif
+
+:Filter unknown keys;
+:Build typed *DslBuildOptions;
+:Return effective options;
+stop
+
+@enduml

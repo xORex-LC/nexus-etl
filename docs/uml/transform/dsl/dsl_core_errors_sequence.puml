@@ -1,0 +1,27 @@
+@startuml
+title DSL Core - Error Propagation Sequence
+
+skinparam defaultFontName Arial
+skinparam linetype ortho
+
+participant "Loader/StageDsl" as Dsl
+participant "DslIssue/DslLoadError" as Issues
+participant "DSL diagnostics bridge" as Bridge
+participant "DiagnosticItem" as Diagnostic
+participant "Runtime boundary" as Boundary
+participant "CommandResult" as Result
+
+Dsl -> Issues: create issue/error
+Issues -> Bridge: append/translate
+Bridge -> Diagnostic: build diagnostic item
+Diagnostic -> Boundary: propagate
+Boundary -> Result: add error entry
+
+note right of Result
+Strict mode:
+unknown/error -> fail path
+Soft mode:
+warning -> continue path
+end note
+
+@enduml

@@ -158,12 +158,12 @@ UseCase: for dataset in plan.datasets: refresh(dataset)
 | `cache_dependency_graph.py` | **Создан** новый класс (115 строк) |
 | `cache_refresh_planner.py` | **Изменён**: использует `dependency_graph.refresh_order()` вместо `list(scope)` |
 | `cache_clear_planner.py` | **Изменён**: переиспользует `dependency_graph` для clear операций |
-| `tests/cache_core/test_dependency_graph.py` | **Создан**: тесты на cycles, ordering, edge cases |
+| `tests/unit/cache/test_cache_dependency_graph.py` | **Создан**: тесты на cycles, ordering, edge cases |
 
 ### Ключевые методы
 
-- [`CacheDependencyGraph._topological_order()`](../../dev/layers/cache-core.md#метод-_topological_order) — алгоритм Кана (24 строки, O(V+E))
-- [`CacheDependencyGraph.refresh_order()`](../../dev/layers/cache-core.md) — публичный API для получения порядка
+- [`CacheDependencyGraph._topological_order()`](../../dev/layers/cache/cache-core.md#метод-_topological_order) — алгоритм Кана (24 строки, O(V+E))
+- [`CacheDependencyGraph.refresh_order()`](../../dev/layers/cache/cache-core.md) — публичный API для получения порядка
 
 ### Инварианты
 
@@ -183,7 +183,7 @@ UseCase: for dataset in plan.datasets: refresh(dataset)
 
 ### Тесты
 
-**Unit tests** (`tests/cache_core/test_dependency_graph.py`):
+**Unit tests** (`tests/unit/cache/test_cache_dependency_graph.py`):
 
 ```python
 def test_topological_order_linear_chain():
@@ -357,8 +357,8 @@ for dataset in order:
 ## 📚 Документация
 
 **Обновлена документация**:
-- ✅ [cache-core.md](../../dev/layers/cache-core.md) — добавлена секция про `CacheDependencyGraph`
-- ✅ [cache-core.md: метод _topological_order()](../../dev/layers/cache-core.md#метод-_topological_order) — детальное описание алгоритма Кана
+- ✅ [cache-core.md](../../dev/layers/cache/cache-core.md) — добавлена секция про `CacheDependencyGraph`
+- ✅ [cache-core.md: метод _topological_order()](../../dev/layers/cache/cache-core.md#метод-_topological_order) — детальное описание алгоритма Кана
 - ✅ UML диаграммы обновлены: добавлен `CacheDependencyGraph` в class diagram
 
 **Документация кода**:
@@ -370,8 +370,8 @@ for dataset in order:
 ## 🔗 Связанные документы
 
 - [CACHE-PROBLEM-001](./CACHE-PROBLEM-001-circular-refresh-deadlock.md) — решаемая проблема
-- [cache-core.md](../../dev/layers/cache-core.md) — документация Cache Core слоя
-- [cache-core.md: Инварианты](../../dev/layers/cache-core.md#инварианты-системы) — инвариант "Граф без циклов"
+- [cache-core.md](../../dev/layers/cache/cache-core.md) — документация Cache Core слоя
+- [cache-core.md: Инварианты](../../dev/layers/cache/cache-core.md#инварианты-системы) — инвариант "Граф без циклов"
 
 ---
 
