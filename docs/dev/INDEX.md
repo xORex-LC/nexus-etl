@@ -4,15 +4,20 @@
 
 ## 🗺️ Карта слоёв
 
+### DSL Core
+- [DSL Specs](layers/dsl/dsl-specs.md) — Pydantic-модели, YAML-загрузка, build options
+- [DSL Engine](layers/dsl/dsl-engine.md) — Реестр операций, движок трансформаций, 25 core operations
+- [DSL Diagnostics](layers/dsl/dsl-diagnostics.md) — Модель ошибок, диагностика, карта интеграции со слоями
+
 ### Cache
-- [Cache Core](layers/cache-core.md) — Логика планирования и анализа кэша
-- [Cache DSL](layers/cache-dsl.md) — Декларативные cache-политики через YAML
-- [Cache Ports](layers/cache-ports.md) — Интерфейсы для работы с кэшем (Protocols)
-- [Cache Infrastructure](layers/cache-infra.md) — Реализация хранилища кэша (SQLite)
+- [Cache Core](layers/cache/cache-core.md) — Логика планирования и анализа кэша
+- [Cache DSL](layers/cache/cache-dsl.md) — Декларативные cache-политики через YAML
+- [Cache Ports](layers/cache/cache-ports.md) — Интерфейсы для работы с кэшем (Protocols)
+- [Cache Infrastructure](layers/cache/cache-infra.md) — Реализация хранилища кэша (SQLite)
 
 ### Transform
-- [Resolve DSL](layers/resolve-dsl.md) — Правила разрешения конфликтов
-- [Resolve Core](layers/resolve-core.md) — Алгоритмы resolve и FK resolution
+- [Resolve DSL](layers/resolver/resolve-dsl.md) — Правила разрешения конфликтов
+- [Resolve Core](layers/resolver/resolve-core.md) — Алгоритмы resolve и FK resolution
 - Transform Core _(TODO)_ — Основная логика трансформации
 - Mapping DSL _(TODO)_ — Маппинг полей
 - Normalize DSL _(TODO)_ — Нормализация данных

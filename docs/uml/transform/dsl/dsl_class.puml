@@ -1,94 +1,161 @@
 @startuml
-title DSL - Stage Model for Map/Normalize/Enrich (Current)
+title DSL Core - Class View (Canonical)
 
 skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+hide empty members
 
-abstract class StageSpec
-abstract class StageDsl
-abstract class StageEngine
-abstract class StageCore
-
-class TransformationEngine {
-  +apply(value, ops): EngineResult
-  +with_core_ops(): TransformationEngine
+package "connector/domain/dsl/specs.py" {
+  abstract class BaseModel
+  class OperationCall {
+    +op: str
+    +args: dict
+  }
+  class MappingSpec
+  class NormalizeSpec
+  class EnrichSpec
+  class MatchSpec
+  class ResolveSpec
+  class ValidationSpec
+  class SourceSpec
+  class SinkSpec
+  class CacheRegistrySpec
+  class CacheDatasetSpec
+  class CacheSyncSpec
 }
 
-class OperationRegistry {
-  +register(name, op)
-  +get(name)
+package "connector/domain/dsl/loader.py" {
+  class DslLoader <<module>> {
+    +load_mapping_spec_for_dataset(dataset)
+    +load_normalize_spec_for_dataset(dataset)
+    +load_enrich_spec_for_dataset(dataset)
+    +load_match_spec_for_dataset(dataset)
+    +load_resolve_spec_for_dataset(dataset)
+    +load_cache_registry_spec_for_runtime()
+    +load_cache_dataset_spec_for_dataset(dataset)
+  }
 }
 
-class DslIssue {
-  +code: str
-  +message: str
-  +severity: str
+package "connector/domain/dsl/engine.py" {
+  class TransformationEngine {
+    +with_core_ops()
+    +apply(value, ops): EngineResult
+  }
+  class EngineResult {
+    +value
+    +issues: tuple[DslIssue]
+  }
 }
 
-class EngineResult {
-  +value
-  +issues: DslIssue[*]
+package "connector/domain/dsl/registry.py" {
+  class OperationRegistry {
+    +register(name, func)
+    +get(name)
+    +require(name)
+    +apply(name, value, kwargs)
+  }
+  class Operation {
+    +name: str
+    +func: OperationFunc
+  }
 }
 
-class MappingSpec
-class NormalizeSpec
-class EnrichSpec
+package "connector/domain/dsl/build_options.py" {
+  class BaseDslBuildOptions
+  class MapDslBuildOptions
+  class NormalizeDslBuildOptions
+  class EnrichDslBuildOptions
+  class MatchDslBuildOptions
+  class ResolveDslBuildOptions
+  class CacheDslBuildOptions
+}
 
-class MapperDsl
-class NormalizerDsl
-class EnricherDsl
+package "connector/domain/dsl/issues.py" {
+  class DslLoadError {
+    +code: str
+    +details: dict
+  }
+  class DslIssue {
+    +code: str
+    +message: str
+    +field: str
+    +details: dict
+    +severity: DslSeverity
+  }
+  enum DslSeverity {
+    ERROR
+    WARNING
+  }
+}
 
-class MapperEngine
-class NormalizerEngine
-class EnricherEngine
+package "connector/domain/dsl/diagnostics.py" {
+  class DslDiagnostics <<module>> {
+    +append_dsl_issue(...)
+    +append_dsl_issues(...)
+    +translate_dsl_load_error(...)
+  }
+}
 
-class MapperCore
-class NormalizerCore
-class EnricherCore
+package "Integration Points (stage-specific DSL)" #EAF7FF {
+  class MapperDsl <<consumer>>
+  class NormalizerDsl <<consumer>>
+  class EnricherDsl <<consumer>>
+  class MatchDsl <<consumer>>
+  class ResolveDsl <<consumer>>
+  class CacheDsl <<consumer>>
+}
 
-class ProviderGateway
-class TransformProviderDeps
-class TransformResult<T>
+BaseModel <|-- OperationCall
+BaseModel <|-- MappingSpec
+BaseModel <|-- NormalizeSpec
+BaseModel <|-- EnrichSpec
+BaseModel <|-- MatchSpec
+BaseModel <|-- ResolveSpec
+BaseModel <|-- ValidationSpec
+BaseModel <|-- SourceSpec
+BaseModel <|-- SinkSpec
+BaseModel <|-- CacheRegistrySpec
+BaseModel <|-- CacheDatasetSpec
+BaseModel <|-- CacheSyncSpec
 
-StageSpec <|-- MappingSpec
-StageSpec <|-- NormalizeSpec
-StageSpec <|-- EnrichSpec
-
-StageDsl <|-- MapperDsl
-StageDsl <|-- NormalizerDsl
-StageDsl <|-- EnricherDsl
-
-StageEngine <|-- MapperEngine
-StageEngine <|-- NormalizerEngine
-StageEngine <|-- EnricherEngine
-
-StageCore <|-- MapperCore
-StageCore <|-- NormalizerCore
-StageCore <|-- EnricherCore
-
-MapperEngine --> MapperCore
-NormalizerEngine --> NormalizerCore
-EnricherEngine --> EnricherCore
-
-MapperEngine ..> MapperDsl : compile
-NormalizerEngine ..> NormalizerDsl : compile
-EnricherEngine ..> EnricherDsl : compile
-
-MapperCore ..> TransformationEngine
-NormalizerCore ..> TransformationEngine
-EnricherDsl ..> TransformationEngine
 TransformationEngine --> OperationRegistry
+TransformationEngine --> EngineResult
+EngineResult --> DslIssue
+DslIssue --> DslSeverity
+DslDiagnostics ..> DslIssue
+DslDiagnostics ..> DslLoadError
 
-EnricherDsl --> ProviderGateway
-EnricherCore --> TransformProviderDeps
+MapDslBuildOptions --|> BaseDslBuildOptions
+NormalizeDslBuildOptions --|> BaseDslBuildOptions
+EnrichDslBuildOptions --|> BaseDslBuildOptions
+MatchDslBuildOptions --|> BaseDslBuildOptions
+ResolveDslBuildOptions --|> BaseDslBuildOptions
+CacheDslBuildOptions --|> BaseDslBuildOptions
 
-MapperEngine ..> TransformResult
-NormalizerEngine ..> TransformResult
-EnricherEngine ..> TransformResult
+DslLoader ..> MappingSpec
+DslLoader ..> NormalizeSpec
+DslLoader ..> EnrichSpec
+DslLoader ..> MatchSpec
+DslLoader ..> ResolveSpec
+DslLoader ..> SourceSpec
+DslLoader ..> SinkSpec
+DslLoader ..> CacheRegistrySpec
+DslLoader ..> CacheDatasetSpec
+DslLoader ..> DslLoadError
 
-note right of StageCore
-Principle:
-- StageCore contains stage business logic
-- TransformationEngine contains only op execution
+MapperDsl ..> TransformationEngine : uses
+NormalizerDsl ..> TransformationEngine : uses
+EnricherDsl ..> TransformationEngine : uses
+MatchDsl ..> MatchDslBuildOptions : uses
+ResolveDsl ..> ResolveDslBuildOptions : uses
+CacheDsl ..> CacheDslBuildOptions : uses
+CacheDsl ..> CacheRegistrySpec : compiles
+CacheDsl ..> CacheDatasetSpec : compiles
+
+note right of MapperDsl
+Integration only:
+details are out of dsl-core scope.
 end note
 
 @enduml

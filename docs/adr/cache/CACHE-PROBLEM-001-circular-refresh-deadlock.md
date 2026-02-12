@@ -138,7 +138,7 @@
 ## 🔗 Связанные документы
 
 - [CACHE-DEC-001](./CACHE-DEC-001-topological-sort-for-dependencies.md) — принятое решение
-- [cache-core.md](../../dev/layers/cache-core.md) — документация Cache Core слоя
+- [cache-core.md](../../dev/layers/cache/cache-core.md) — документация Cache Core слоя
 - `connector/domain/cache_core/cache_refresh_planner.py` — текущая реализация
 
 ---

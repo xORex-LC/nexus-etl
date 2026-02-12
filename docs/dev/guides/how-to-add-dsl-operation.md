@@ -305,6 +305,6 @@ LOCAL_OPS = {
 
 ## 🔗 Связанные документы
 
-- [Resolve DSL](../layers/resolve-dsl.md) - Resolve операции
+- [Resolve DSL](../layers/resolver/resolve-dsl.md) - Resolve операции
 - [Transform DSL](../layers/transform-dsl.md) - Transform операции
 - [DSL Patterns](./dsl-patterns.md) - Общие паттерны DSL

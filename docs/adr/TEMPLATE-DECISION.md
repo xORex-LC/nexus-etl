@@ -99,11 +99,11 @@ dep_map → [__init__] → [_topological_order (Kahn)] → cached _topo
 |------|-----------|
 | `cache_dependency_graph.py` | Создан новый класс |
 | `cache_refresh_planner.py` | Использует `dependency_graph.refresh_order()` |
-| `tests/cache_core/test_dependency_graph.py` | Тесты на cycles, ordering |
+| `tests/unit/cache/test_cache_dependency_graph.py` | Тесты на cycles, ordering |
 
 ### Ключевые методы
 
-- [`CacheDependencyGraph._topological_order()`](../dev/layers/cache-core.md#метод-_topological_order) - алгоритм Кана (24 строки, O(V+E))
+- [`CacheDependencyGraph._topological_order()`](../dev/layers/cache/cache-core.md#метод-_topological_order) - алгоритм Кана (24 строки, O(V+E))
 
 ### Инварианты
 
@@ -197,8 +197,8 @@ order = graph.refresh_order(scope=["employees", "employee_mappings"])
 ## 📚 Документация
 
 **Обновлена документация**:
-- ✅ [cache-core.md](../dev/layers/cache-core.md) - добавлена секция про `CacheDependencyGraph`
-- ✅ [cache-core.md: метод _topological_order()](../dev/layers/cache-core.md#метод-_topological_order) - детальное описание алгоритма
+- ✅ [cache-core.md](../dev/layers/cache/cache-core.md) - добавлена секция про `CacheDependencyGraph`
+- ✅ [cache-core.md: метод _topological_order()](../dev/layers/cache/cache-core.md#метод-_topological_order) - детальное описание алгоритма
 - ✅ UML диаграммы обновлены
 
 ---
@@ -206,7 +206,7 @@ order = graph.refresh_order(scope=["employees", "employee_mappings"])
 ## 🔗 Связанные документы
 
 - [CACHE-PROBLEM-001](./cache/CACHE-PROBLEM-001-circular-refresh-deadlock.md) - решаемая проблема
-- [cache-core.md](../dev/layers/cache-core.md) - документация слоя
+- [cache-core.md](../dev/layers/cache/cache-core.md) - документация слоя
 - [Другое связанное решение](./[LAYER]-DEC-YYY.md)
 
 ---

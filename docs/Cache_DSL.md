@@ -516,14 +516,14 @@ I/O-heavy refresh pipeline (target read -> mapping/sync -> cache writes).
 ## Tests & Architectural Guards
 
 ### Unit / behavior
-1. `tests/cache_core/test_cache_dependency_graph.py`
-2. `tests/cache_core/test_cache_planners.py`
-3. `tests/cache_core/test_cache_status_evaluator.py`
-4. `tests/cache_core/test_cache_drift_service.py`
-5. `tests/cache_core/test_cache_lifecycle_engine.py`
-6. `tests/cache/test_sqlite_engine_transactions.py`
-7. `tests/cache/test_pending_links_repository.py`
-8. `tests/cache/test_generic_cache_handler.py`
+1. `tests/unit/cache/test_cache_dependency_graph.py`
+2. `tests/unit/cache/test_cache_planners.py`
+3. `tests/unit/cache/test_cache_status_evaluator.py`
+4. `tests/unit/cache/test_cache_drift_service.py`
+5. `tests/unit/cache/test_cache_lifecycle_engine.py`
+6. `tests/integration/cache/test_sqlite_engine_transactions.py`
+7. `tests/integration/cache/test_pending_links_repository.py`
+8. `tests/integration/cache/test_generic_cache_handler.py`
 9. `tests/transform/test_dsl_build_options.py`
 
 ### Architectural tests

@@ -1,0 +1,35 @@
+@startuml
+title DSL Core - Operation Registry Map
+
+left to right direction
+skinparam componentStyle rectangle
+skinparam defaultFontName Arial
+skinparam linetype ortho
+
+package "DSL Core" #FFF5E8 {
+  [OperationRegistry] as Registry
+  [register_core_ops()] as RegisterCore
+  [TransformationEngine] as Engine
+  [ops.py functions] as Ops
+}
+
+package "Consumers (integration points)" #EAF7FF {
+  [MapperDsl] as Mapper
+  [NormalizerDsl] as Normalizer
+  [EnricherDsl] as Enricher
+}
+
+RegisterCore --> Ops
+RegisterCore --> Registry : register(name, func)
+Engine --> Registry : get/require/apply
+
+Mapper ..> Engine : apply ops
+Normalizer ..> Engine : apply ops
+Enricher ..> Engine : apply ops
+
+note bottom of Registry
+Registry is a shared execution map.
+Domain stage logic stays outside dsl-core.
+end note
+
+@enduml

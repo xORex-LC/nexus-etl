@@ -98,7 +98,7 @@ connector/domain/transform/resolver/
 | Класс | Роль | Ключевые методы | Строк |
 |-------|------|-----------------|-------|
 | `ResolveCore` | Ядро resolve алгоритмов | `resolve()`, `_resolve_links()`, `build_batch_index()` | 741 |
-| `ResolveEngine` | High-level orchestrator | `resolve_batch()` | 80 |
+| `ResolveEngine` | High-level orchestrator | `resolve()` | 80 |
 
 **ResolveCore** — центральный класс слоя:
 - **Входные данные**: `MatchedRow` (результат match stage)
