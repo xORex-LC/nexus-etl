@@ -28,7 +28,7 @@
 
 Проблема закрыта решением [CONFIG-DEC-001](./CONFIG-DEC-001-modular-settings-and-slice-wiring.md):
 1. Введена модульная модель `AppSettings` + slices.
-2. Production path переведён на `loadAppSettings(...)`.
+2. Production path переведён на `load_app_settings(...)`.
 3. Настройки в команды/use-cases передаются только по профильным срезам.
 4. Добавлены архитектурные guardrails.
 

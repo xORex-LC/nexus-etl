@@ -17,8 +17,8 @@ package "CLI Composition Root" #EAF7FF {
 }
 
 package "Settings Core (connector/config)" #FFF5E8 {
-  [loadAppSettings] as LoadApp
-  [_load_settings_model] as LoadModel
+  [load_app_settings] as LoadApp
+  [load_settings_model] as LoadModel
   [parsing + validation] as ParseValidate
   [settings diagnostics adapter] as SettingsDiag
 }

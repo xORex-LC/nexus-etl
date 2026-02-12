@@ -71,13 +71,13 @@ package "connector/config/app_settings.py" {
   }
 
   class AppSettingsLoader <<module>> {
-    +loadAppSettings(config_path, cli_overrides): LoadedAppSettings
+    +load_app_settings(config_path, cli_overrides): LoadedAppSettings
   }
 }
 
 package "connector/config/config.py (internal)" {
   class SettingsModelLoader <<module>> {
-    +_load_settings_model(config_path, cli_overrides)
+    +load_settings_model(config_path, cli_overrides)
   }
   class SettingsIssue {
     +code: str

@@ -59,12 +59,10 @@ dsl/
 
 | Тип | Диаграмма | Описание |
 |-----|-----------|----------|
-| Class | [DSL Engine Class Diagram](../../../uml/dsl/dsl_engine_class.png) | Структура Engine, Registry, Operation |
-| Activity | [Apply Flow](../../../uml/dsl/dsl_engine_activity.png) | Алгоритм применения операций |
+| Component | [Registry Map](../../../uml/transform/dsl/dsl_core_registry_map.png) | Карта реестра операций |
+| Sequence | [Stage Handshake](../../../uml/transform/dsl/dsl_core_sequence_stage_handshake.png) | Stage handshake flow |
 
-**PlantUML исходники**: `docs/uml/dsl/*.puml`
-
-> **Примечание**: UML диаграммы находятся в процессе обновления.
+**PlantUML исходники**: `docs/uml/transform/dsl/*.puml`
 
 ### 🎭 Применённые паттерны
 
