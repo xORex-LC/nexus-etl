@@ -11,6 +11,9 @@ from typing import Any, Callable
 import typer
 
 from connector.common.time import getDurationMs
+from connector.config.app_settings import AppSettings
+from connector.config.config import SettingsLoadError
+from connector.config.diagnostics import translate_settings_load_error
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.dsl.diagnostics import translate_dsl_load_error
@@ -61,15 +64,17 @@ def run_with_report(
         - завершает процесс через typer.Exit
     """
 
-    settings = ctx.settings
+    app_settings = _require_app_settings(ctx)
+    paths = app_settings.paths
+    observability = app_settings.observability
     run_id = ctx.run_id
 
     start_monotonic = time.monotonic()
     logger, log_file_path = createCommandLogger(
         commandName=command_name,
-        logDir=settings.log_dir,
+        logDir=paths.log_dir,
         runId=run_id,
-        logLevel=settings.log_level,
+        logLevel=observability.log_level,
     )
     ctx = replace(ctx, logger=logger)
 
@@ -81,10 +86,10 @@ def run_with_report(
 
     report_items_limit = _get_opt(opts, ("report_items_limit", "items_limit"))
     if report_items_limit is None:
-        report_items_limit = settings.report_items_limit
+        report_items_limit = observability.report_items_limit
     report.set_meta(items_limit=report_items_limit)
 
-    dataset = _resolve_dataset_opt(opts, settings)
+    dataset = _resolve_dataset_opt(opts, app_settings)
     if dataset is not None:
         report.set_meta(dataset=dataset)
 
@@ -108,6 +113,28 @@ def run_with_report(
 
         _apply_cli_result_to_report(report, exit_result)
 
+    except SettingsLoadError as exc:
+        stage = _stage_for_command(command_name)
+        diags = translate_settings_load_error(
+            catalog=ctx.catalog,
+            stage=stage,
+            error=exc,
+            record_ref=None,
+        )
+        logEvent(logger, logging.ERROR, run_id, "config", f"Settings error: {exc}")
+        _echo_command_diagnostics("ERROR: invalid settings configuration", diags)
+        report_errors, report_warnings = split_report_diagnostics(diags, [])
+        report.add_item(
+            status="FAILED",
+            row_ref=None,
+            payload=None,
+            errors=report_errors,
+            warnings=report_warnings,
+            meta={"exception": "SettingsLoadError"},
+        )
+        result = DomainCommandResult()
+        result.add_diagnostics(diags, ctx.catalog)
+        exit_result = result
     except DslLoadError as exc:
         stage = _stage_for_command(command_name)
         diag = translate_dsl_load_error(
@@ -144,10 +171,10 @@ def run_with_report(
             report=report,
             durationMs=duration_ms,
             logFile=log_file_path,
-            cacheDir=settings.cache_dir,
-            reportDir=settings.report_dir,
+            cacheDir=paths.cache_dir,
+            reportDir=paths.report_dir,
         )
-        report_path = writeReportJson(report, settings.report_dir, f"report_{command_name}_{run_id}")
+        report_path = writeReportJson(report, paths.report_dir, f"report_{command_name}_{run_id}")
         logEvent(logger, logging.INFO, run_id, "report", f"Report written: {report_path}")
 
         sys.stdout = original_stdout
@@ -170,15 +197,17 @@ def run_without_report(
         Унифицированная обвязка выполнения команд без формирования отчёта.
     """
 
-    settings = ctx.settings
+    app_settings = _require_app_settings(ctx)
+    paths = app_settings.paths
+    observability = app_settings.observability
     run_id = ctx.run_id
 
     start_monotonic = time.monotonic()
     logger, log_file_path = createCommandLogger(
         commandName=command_name,
-        logDir=settings.log_dir,
+        logDir=paths.log_dir,
         runId=run_id,
-        logLevel=settings.log_level,
+        logLevel=observability.log_level,
     )
     ctx = replace(ctx, logger=logger)
 
@@ -200,6 +229,19 @@ def run_without_report(
 
         exit_result = _call_handler(handler, ctx, opts, None)
 
+    except SettingsLoadError as exc:
+        stage = _stage_for_command(command_name)
+        diags = translate_settings_load_error(
+            catalog=ctx.catalog,
+            stage=stage,
+            error=exc,
+            record_ref=None,
+        )
+        logEvent(logger, logging.ERROR, run_id, "config", f"Settings error: {exc}")
+        _echo_command_diagnostics("ERROR: invalid settings configuration", diags)
+        result = DomainCommandResult()
+        result.add_diagnostics(diags, ctx.catalog)
+        exit_result = result
     except DslLoadError as exc:
         stage = _stage_for_command(command_name)
         diag = translate_dsl_load_error(
@@ -238,17 +280,17 @@ def _validate_requirements(ctx: CommandContext, opts: Any, requirements: Require
         Быстрые и предсказуемые проверки требований команды.
     """
 
-    settings = ctx.settings
+    app_settings = _require_app_settings(ctx)
 
     if requirements.requires_api:
-        _require_api(settings)
+        _require_api(app_settings)
 
     dataset: str | None = None
     if requirements.requires_dataset or requirements.requires_source:
-        dataset = _resolve_dataset_opt(opts, settings)
+        dataset = _resolve_dataset_opt(opts, app_settings)
 
     if requirements.requires_cache:
-        _require_cache(settings)
+        _require_cache(app_settings)
 
     if requirements.requires_secrets:
         vault_file = _get_opt(opts, ("vault_file", "vault", "secrets_file"))
@@ -287,22 +329,23 @@ def _require_source(dataset: str | None) -> None:
             raise RuntimeErrorWithCode(f"Source file not found: {location}", exit_code=2)
 
 
-def _require_api(settings) -> None:
+def _require_api(app_settings: AppSettings) -> None:
+    api = app_settings.api
     missing = []
-    if not settings.host:
+    if not api.host:
         missing.append("host")
-    if not settings.port:
+    if not api.port:
         missing.append("port")
-    if not settings.api_username:
+    if not api.username:
         missing.append("api_username")
-    if not settings.api_password:
+    if not api.password:
         missing.append("api_password")
     if missing:
         raise RuntimeErrorWithCode(f"Missing API settings: {', '.join(missing)}", exit_code=2)
 
 
-def _require_cache(settings) -> None:
-    cache_dir = Path(settings.cache_dir)
+def _require_cache(app_settings: AppSettings) -> None:
+    cache_dir = Path(app_settings.paths.cache_dir)
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -401,11 +444,11 @@ def _exit_code_from_result(result: Any) -> int:
     return 2
 
 
-def _resolve_dataset_opt(opts: Any, settings) -> str | None:
+def _resolve_dataset_opt(opts: Any, app_settings: AppSettings) -> str | None:
     dataset = _get_opt(opts, ("dataset", "dataset_name"))
     if dataset is None:
-        return settings.dataset_name
-    return resolve_dataset_name(dataset, settings.dataset_name)
+        return app_settings.dataset.dataset_name
+    return resolve_dataset_name(dataset, app_settings.dataset.dataset_name)
 
 
 def _get_opt(opts: Any, names: tuple[str, ...]) -> Any:
@@ -419,6 +462,17 @@ def _config_sources(ctx: CommandContext) -> list[str]:
     extra = ctx.extra or {}
     sources = extra.get("sources") or extra.get("config_sources")
     return list(sources) if sources else []
+
+
+def _require_app_settings(ctx: CommandContext) -> AppSettings:
+    return ctx.app_settings
+
+
+def _echo_command_diagnostics(prefix: str, diagnostics: list[Any]) -> None:
+    typer.echo(prefix, err=True)
+    for diag in diagnostics:
+        field = f" ({diag.field})" if getattr(diag, "field", None) else ""
+        typer.echo(f"- [{diag.code}]{field} {diag.message}", err=True)
 
 
 def _stage_for_command(command_name: str) -> DiagnosticStage:

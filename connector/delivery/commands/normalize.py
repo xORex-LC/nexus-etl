@@ -25,25 +25,36 @@ class Options:
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
-    settings = ctx.settings
-    csv_has_header_value = opts.csv_has_header if opts.csv_has_header is not None else settings.csv_has_header
+    app_settings = ctx.app_settings
+    if app_settings is None:
+        raise ValueError("App settings are not initialized")
+
+    csv_has_header_value = (
+        opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
+    )
     report_items_limit_value = (
-        opts.report_items_limit if opts.report_items_limit is not None else settings.report_items_limit
+        opts.report_items_limit
+        if opts.report_items_limit is not None
+        else app_settings.observability.report_items_limit
     )
     include_normalized_items_value = opts.include_normalized_items if opts.include_normalized_items is not None else True
 
-    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, settings)
-    catalog = ctx.catalog or build_diagnostics_catalog(dataset_name, strict=settings.diagnostics_strict)
+    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+    catalog = ctx.catalog or build_diagnostics_catalog(
+        dataset_name,
+        strict=app_settings.observability.diagnostics_strict,
+    )
     report.set_meta(dataset=dataset_name, items_limit=report_items_limit_value)
 
     gateway = None
     try:
-        gateway, cache_roles, _cache_specs = build_cache(settings)
+        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
         pipeline_ctx = build_pipeline_context(
             dataset_spec=dataset_spec,
             dataset_name=dataset_name,
             cache_roles=cache_roles,
-            settings=settings,
+            pending_settings=app_settings.pending,
+            observability_settings=app_settings.observability,
             catalog=catalog,
             csv_has_header=csv_has_header_value,
         )

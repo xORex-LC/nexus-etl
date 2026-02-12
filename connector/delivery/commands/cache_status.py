@@ -21,11 +21,13 @@ class Options:
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
-    settings = ctx.settings
+    app_settings = ctx.app_settings
+    if app_settings is None:
+        raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 
     try:
-        with open_cache(settings) as (_gateway, cache_roles, _cache_specs):
+        with open_cache(app_settings.paths) as (_gateway, cache_roles, _cache_specs):
             unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
             if unsupported_result is not None:
                 return unsupported_result

@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import typer
 
-from connector.config.config import loadSettings
+from connector.config.app_settings import loadAppSettings
+from connector.config.config import SettingsLoadError
+from connector.config.diagnostics import translate_settings_load_error
 from connector.common.run_id import generate_run_id
 from connector.delivery.cli.context import CommandContext, CommandPaths
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.runtime import run_with_report
 from connector.delivery.cli import options as cli_options
 from connector.delivery.cli.bootstrap import build_diagnostics_catalog
+from connector.delivery.cli.settings_slice_map import (
+    COMMAND_SETTINGS_SLICE_MAP,
+    COMMAND_TO_USECASE,
+    USECASE_SETTINGS_SLICE_MAP,
+)
 from connector.delivery.commands import (
     cache_clear as cache_clear_command,
     cache_refresh as cache_refresh_command,
@@ -24,6 +32,7 @@ from connector.delivery.commands import (
     normalize as normalize_command,
     resolve as resolve_command,
 )
+from connector.domain.models import DiagnosticStage
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
@@ -35,17 +44,33 @@ def _ensure_dir(path: str) -> None:
     Path(path).mkdir(parents=True, exist_ok=True)
 
 
-def _build_ctx(ctx: typer.Context, dataset: str | None = None) -> CommandContext:
-    settings = ctx.obj["settings"]
-    catalog = build_diagnostics_catalog(dataset, strict=settings.diagnostics_strict)
+def _build_ctx(
+    ctx: typer.Context,
+    dataset: str | None = None,
+    *,
+    command_key: str | None = None,
+) -> CommandContext:
+    app_settings = ctx.obj.get("app_settings")
+    if app_settings is None:
+        raise RuntimeError("App settings are not initialized")
+    catalog = build_diagnostics_catalog(dataset, strict=app_settings.observability.diagnostics_strict)
+    extra: dict[str, Any] = {"sources": ctx.obj.get("sources")}
+    if command_key:
+        usecase_name = COMMAND_TO_USECASE.get(command_key)
+        extra["settings_contract"] = {
+            "command_key": command_key,
+            "command_slices": list(COMMAND_SETTINGS_SLICE_MAP.get(command_key, ())),
+            "usecase": usecase_name,
+            "usecase_slices": list(USECASE_SETTINGS_SLICE_MAP.get(usecase_name, ())) if usecase_name else [],
+        }
     return CommandContext(
-        settings=settings,
         logger=ctx.obj["logger"],
         run_id=ctx.obj["runId"],
         catalog=catalog,
-        strict=settings.diagnostics_strict,
-        paths=CommandPaths(report_dir=settings.report_dir, work_dir=None),
-        extra={"sources": ctx.obj.get("sources")},
+        strict=app_settings.observability.diagnostics_strict,
+        app_settings=app_settings,
+        paths=CommandPaths(report_dir=app_settings.paths.report_dir, work_dir=None),
+        extra=extra,
     )
 
 
@@ -125,16 +150,30 @@ def main(
         "report_include_skipped": None,
         "diagnostics_strict": strictDiagnostics,
     }
-    loaded = loadSettings(config_path=config, cli_overrides=cliOverrides)
-
-    _ensure_dir(loaded.settings.log_dir)
-    _ensure_dir(loaded.settings.report_dir)
-    _ensure_dir(loaded.settings.cache_dir)
+    try:
+        loaded_app = loadAppSettings(config_path=config, cli_overrides=cliOverrides)
+    except SettingsLoadError as exc:
+        catalog = build_diagnostics_catalog(None, strict=False)
+        diagnostics = translate_settings_load_error(
+            catalog=catalog,
+            stage=DiagnosticStage.SINK,
+            error=exc,
+            record_ref=None,
+        )
+        typer.echo("ERROR: invalid settings configuration", err=True)
+        for diag in diagnostics:
+            field = f" ({diag.field})" if diag.field else ""
+            typer.echo(f"- [{diag.code}]{field} {diag.message}", err=True)
+        raise typer.Exit(code=2) from exc
+    _ensure_dir(loaded_app.app_settings.paths.log_dir)
+    _ensure_dir(loaded_app.app_settings.paths.report_dir)
+    _ensure_dir(loaded_app.app_settings.paths.cache_dir)
 
     ctx.obj = {
         "runId": runId,
-        "settings": loaded.settings,
-        "sources": loaded.sources_used,
+        "app_settings": loaded_app.app_settings,
+        "sources": list(loaded_app.sources_used),
+        "settings_source_trace": loaded_app.source_trace,
         "configPath": config,
         "logger": None,
     }
@@ -159,7 +198,7 @@ def mapping(
         report_items_limit=reportItemsLimit,
         include_mapped_items=includeMappedItems,
     )
-    command_ctx = _build_ctx(ctx, dataset)
+    command_ctx = _build_ctx(ctx, dataset, command_key="mapping")
     run_with_report(
         ctx=command_ctx,
         command_name="mapping",
@@ -190,7 +229,7 @@ def match(
         include_matched_items=includeMatchedItems,
         include_deleted=includeDeleted,
     )
-    command_ctx = _build_ctx(ctx, dataset)
+    command_ctx = _build_ctx(ctx, dataset, command_key="match")
     run_with_report(
         ctx=command_ctx,
         command_name="match",
@@ -219,7 +258,7 @@ def normalize(
         report_items_limit=reportItemsLimit,
         include_normalized_items=includeNormalizedItems,
     )
-    command_ctx = _build_ctx(ctx, dataset)
+    command_ctx = _build_ctx(ctx, dataset, command_key="normalize")
     run_with_report(
         ctx=command_ctx,
         command_name="normalize",
@@ -250,7 +289,7 @@ def resolve(
         include_resolved_items=includeResolvedItems,
         include_deleted=includeDeleted,
     )
-    command_ctx = _build_ctx(ctx, dataset)
+    command_ctx = _build_ctx(ctx, dataset, command_key="resolve")
     run_with_report(
         ctx=command_ctx,
         command_name="resolve",
@@ -281,7 +320,7 @@ def enrich(
         include_enriched_items=includeEnrichedItems,
         vault_file=vaultFile,
     )
-    command_ctx = _build_ctx(ctx, dataset)
+    command_ctx = _build_ctx(ctx, dataset, command_key="enrich")
     run_with_report(
         ctx=command_ctx,
         command_name="enrich",
@@ -313,7 +352,7 @@ def importPlan(
         dataset=dataset,
         vault_file=vaultFile,
     )
-    command_ctx = _build_ctx(ctx, dataset)
+    command_ctx = _build_ctx(ctx, dataset, command_key="import-plan")
     run_with_report(
         ctx=command_ctx,
         command_name="import-plan",
@@ -345,7 +384,7 @@ def importApply(
         secrets_from=secretsFrom,
         vault_file=vaultFile,
     )
-    command_ctx = _build_ctx(ctx)
+    command_ctx = _build_ctx(ctx, command_key="import-apply")
     run_with_report(
         ctx=command_ctx,
         command_name="import-apply",
@@ -358,7 +397,7 @@ def importApply(
 @app.command("check-api")
 def checkApi(ctx: typer.Context):
     opts = check_api_command.Options(api_transport=None)
-    command_ctx = _build_ctx(ctx)
+    command_ctx = _build_ctx(ctx, command_key="check-api")
     run_with_report(
         ctx=command_ctx,
         command_name="check-api",
@@ -385,10 +424,12 @@ def cacheRefresh(
     ),
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
 ):
-    settings = ctx.obj["settings"]
+    app_settings = ctx.obj.get("app_settings")
+    if app_settings is None:
+        raise RuntimeError("App settings are not initialized")
     opts = cache_refresh_command.Options(
-        page_size=pageSize if pageSize is not None else settings.page_size,
-        max_pages=maxPages if maxPages is not None else settings.max_pages,
+        page_size=pageSize if pageSize is not None else app_settings.refresh.page_size,
+        max_pages=maxPages if maxPages is not None else app_settings.refresh.max_pages,
         timeout_seconds=timeoutSeconds,
         retries=retries,
         retry_backoff_seconds=retryBackoffSeconds,
@@ -398,7 +439,7 @@ def cacheRefresh(
         dataset=dataset,
         api_transport=None,
     )
-    command_ctx = _build_ctx(ctx, dataset)
+    command_ctx = _build_ctx(ctx, dataset, command_key="cache-refresh")
     run_with_report(
         ctx=command_ctx,
         command_name="cache-refresh",
@@ -414,7 +455,7 @@ def cacheStatus(
     dataset: str | None = cli_options.DATASET,
 ):
     opts = cache_status_command.Options(dataset=dataset)
-    command_ctx = _build_ctx(ctx, dataset)
+    command_ctx = _build_ctx(ctx, dataset, command_key="cache-status")
     run_with_report(
         ctx=command_ctx,
         command_name="cache-status",
@@ -435,7 +476,7 @@ def cacheClear(
     ),
 ):
     opts = cache_clear_command.Options(dataset=dataset, cascade=cascade)
-    command_ctx = _build_ctx(ctx, dataset)
+    command_ctx = _build_ctx(ctx, dataset, command_key="cache-clear")
     run_with_report(
         ctx=command_ctx,
         command_name="cache-clear",

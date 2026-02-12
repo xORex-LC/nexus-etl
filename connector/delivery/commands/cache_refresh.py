@@ -8,13 +8,13 @@ import typer
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import ensure_supported_cache_dataset, result_with
 from connector.delivery.cli.bootstrap import (
-    open_cache,
+    build_api_client,
     build_api_reader,
+    open_cache,
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.datasets.registry import build_identity_index_plan
-from connector.infra.http.ankey_client import AnkeyApiClient
 from connector.infra.cache.dsl_runtime import build_sync_adapters
 from connector.infra.logging.setup import logEvent
 from connector.usecases.cache_command_service import CacheCommandService
@@ -36,17 +36,19 @@ class Options:
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
-    settings = ctx.settings
+    app_settings = ctx.app_settings
+    if app_settings is None:
+        raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 
     try:
-        with open_cache(settings) as (_gateway, cache_roles, cache_dsl_bundle):
+        with open_cache(app_settings.paths) as (_gateway, cache_roles, cache_dsl_bundle):
             unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
             if unsupported_result is not None:
                 return unsupported_result
 
-            base_url = f"https://{settings.host}:{settings.port}"
-            client = _build_api_client(settings, opts.api_transport)
+            base_url = f"https://{app_settings.api.host}:{app_settings.api.port}"
+            client = build_api_client(app_settings.api, transport=opts.api_transport)
             client.resetRetryAttempts()
             reader = build_api_reader(client)
 
@@ -68,8 +70,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             service = CacheCommandService(cache_roles.cache_admin, cache_refresh)
 
             return service.refresh(
-                page_size=opts.page_size or settings.page_size,
-                max_pages=opts.max_pages or settings.max_pages,
+                page_size=opts.page_size or app_settings.refresh.page_size,
+                max_pages=opts.max_pages or app_settings.refresh.max_pages,
                 logger=ctx.logger,
                 report=report,
                 run_id=run_id,
@@ -79,10 +81,12 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                     if opts.include_dependencies is not None
                     else runtime_policy.refresh_with_deps_default
                 ),
-                report_items_limit=opts.report_items_limit or settings.report_items_limit,
+                report_items_limit=(
+                    opts.report_items_limit or app_settings.observability.report_items_limit
+                ),
                 api_base_url=base_url,
-                retries=opts.retries or settings.retries,
-                retry_backoff_seconds=opts.retry_backoff_seconds or settings.retry_backoff_seconds,
+                retries=opts.retries or app_settings.api.retries,
+                retry_backoff_seconds=opts.retry_backoff_seconds or app_settings.api.retry_backoff_seconds,
                 dataset=opts.dataset,
                 catalog=ctx.catalog,
             )
@@ -93,19 +97,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
         typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
-
-def _build_api_client(settings, transport=None) -> AnkeyApiClient:
-    return AnkeyApiClient(
-        baseUrl=f"https://{settings.host}:{settings.port}",
-        username=settings.api_username or "",
-        password=settings.api_password or "",
-        timeoutSeconds=settings.timeout_seconds,
-        tlsSkipVerify=settings.tls_skip_verify,
-        caFile=settings.ca_file,
-        retries=settings.retries,
-        retryBackoffSeconds=settings.retry_backoff_seconds,
-        transport=transport,
-    )
 
 
 __all__ = ["handler", "Options"]
