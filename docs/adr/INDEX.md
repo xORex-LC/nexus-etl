@@ -25,6 +25,10 @@ docs/adr/
 │   ├── CACHE-PROBLEM-001-...md
 │   ├── CACHE-DEC-001-...md
 │   └── ...
+├── dsl/                # ADR для DSL Core
+│   ├── DSL-PROBLEM-001-...md
+│   ├── DSL-DEC-001-...md
+│   └── ...
 ├── transform/          # ADR для Transform слоя (resolve, mapping, etc)
 │   ├── RESOLVE-PROBLEM-001-...md
 │   ├── RESOLVE-DEC-001-...md
@@ -51,6 +55,13 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [CONFIG-PROBLEM-001](./config/CONFIG-PROBLEM-001-settings-layer-complexity.md) | Problem | Перегруженный Settings-слой и неявные ошибки мерджа | Закрыта (решена) | 2026-02-12 |
 | [CONFIG-DEC-001](./config/CONFIG-DEC-001-modular-settings-and-slice-wiring.md) | Decision | Модульный Settings и slice-based wiring | Принято / реализовано | 2026-02-12 |
+
+### DSL
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [DSL-PROBLEM-001](./dsl/DSL-PROBLEM-001-dsl-core-fail-late-and-weak-compile-contract.md) | Problem | DSL Core fail-late поведение и слабый compile-контракт | Закрыта (решена) | 2026-02-12 |
+| [DSL-DEC-001](./dsl/DSL-DEC-001-strict-compile-validation-and-diagnostics-hardening.md) | Decision | Усиление compile/load контракта и диагностик DSL Core | Принято / реализовано | 2026-02-12 |
 
 ### Transform (Resolve)
 

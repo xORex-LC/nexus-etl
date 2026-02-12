@@ -22,8 +22,6 @@ class BaseDslBuildOptions:
 
     strict: bool = False
     fail_on_unknown_ops: bool = True
-    fail_on_schema_warnings: bool = False
-    emit_compile_report: bool = False
 
 
 @dataclass(frozen=True)
@@ -108,4 +106,11 @@ def build_options_from_mapping(cls: type[TBuildOptions], data: dict[str, Any] | 
         return cls()
     allowed = {item.name for item in fields(cls)}
     kwargs = {key: value for key, value in data.items() if key in allowed}
-    return cls(**kwargs)
+    options = cls(**kwargs)
+    if getattr(options, "strict", False) and hasattr(options, "fail_on_unknown_ops"):
+        if not getattr(options, "fail_on_unknown_ops"):
+            # strict-mode cannot silently allow unknown operations.
+            normalized_kwargs = {item.name: getattr(options, item.name) for item in fields(cls)}
+            normalized_kwargs["fail_on_unknown_ops"] = True
+            options = cls(**normalized_kwargs)
+    return options

@@ -10,7 +10,17 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-class OperationCall(BaseModel):
+class DslBaseModel(BaseModel):
+    """
+    Назначение:
+        Базовая модель для всех DSL-спецификаций.
+        Запрещает неизвестные поля (typo-safe).
+    """
+
+    model_config = {"extra": "forbid"}
+
+
+class OperationCall(DslBaseModel):
     """
     Назначение:
         Описание вызова операции DSL.
@@ -20,7 +30,7 @@ class OperationCall(BaseModel):
     args: dict[str, Any] = Field(default_factory=dict)
 
 
-class MappingRule(BaseModel):
+class MappingRule(DslBaseModel):
     """
     Назначение:
         Правило mapping (source -> target/targets).
@@ -54,7 +64,7 @@ class MappingRule(BaseModel):
         return self
 
 
-class MetaRule(BaseModel):
+class MetaRule(DslBaseModel):
     """
     Назначение:
         Правило формирования meta-секции результата.
@@ -75,7 +85,7 @@ class MetaRule(BaseModel):
         return self
 
 
-class MappingSchema(BaseModel):
+class MappingSchema(DslBaseModel):
     """
     Назначение:
         Проверка результата mapping против ожидаемой структуры.
@@ -85,7 +95,7 @@ class MappingSchema(BaseModel):
     allow_extra: bool = True
 
 
-class MappingBlock(BaseModel):
+class MappingBlock(DslBaseModel):
     """
     Назначение:
         Корневая секция mapping-правил.
@@ -96,11 +106,12 @@ class MappingBlock(BaseModel):
     meta: list[MetaRule] = Field(default_factory=list)
 
     model_config = {
+        "extra": "forbid",
         "populate_by_name": True,
     }
 
 
-class MappingSpec(BaseModel):
+class MappingSpec(DslBaseModel):
     """
     Назначение:
         Спецификация DSL для mapping-стадии.
@@ -111,7 +122,7 @@ class MappingSpec(BaseModel):
     mapping: MappingBlock
 
 
-class SourceFieldSpec(BaseModel):
+class SourceFieldSpec(DslBaseModel):
     """
     Назначение:
         Декларативное описание поля входного источника.
@@ -124,7 +135,7 @@ class SourceFieldSpec(BaseModel):
     aliases: list[str] = Field(default_factory=list)
 
 
-class SourceConfig(BaseModel):
+class SourceConfig(DslBaseModel):
     """
     Назначение:
         Декларативная конфигурация источника датасета.
@@ -138,7 +149,7 @@ class SourceConfig(BaseModel):
     fields: list[SourceFieldSpec] = Field(default_factory=list)
 
 
-class SourceSpec(BaseModel):
+class SourceSpec(DslBaseModel):
     """
     Назначение:
         Декларативная спецификация extract-источника датасета.
@@ -148,7 +159,7 @@ class SourceSpec(BaseModel):
     source: SourceConfig
 
 
-class SinkFieldSpec(BaseModel):
+class SinkFieldSpec(DslBaseModel):
     """
     Назначение:
         Декларативное описание поля sink-модели.
@@ -162,7 +173,7 @@ class SinkFieldSpec(BaseModel):
     generated: bool = False
 
 
-class SinkBlock(BaseModel):
+class SinkBlock(DslBaseModel):
     """
     Назначение:
         Корневая секция sink-модели.
@@ -173,7 +184,7 @@ class SinkBlock(BaseModel):
     allow_extra: bool = True
 
 
-class SinkSpec(BaseModel):
+class SinkSpec(DslBaseModel):
     """
     Назначение:
         Декларативная sink-модель для датасета.
@@ -183,7 +194,7 @@ class SinkSpec(BaseModel):
     sink: SinkBlock
 
 
-class NormalizeRule(BaseModel):
+class NormalizeRule(DslBaseModel):
     """
     Назначение:
         Правило нормализации одного поля.
@@ -202,26 +213,26 @@ class NormalizeRule(BaseModel):
         return self
 
 
-class NormalizeBlock(BaseModel):
+class NormalizeBlock(DslBaseModel):
     on_error: Literal["error", "warn"] = "error"
     rules: list[NormalizeRule] = Field(default_factory=list)
 
 
-class NormalizeSpec(BaseModel):
+class NormalizeSpec(DslBaseModel):
     dataset: str
     normalize: NormalizeBlock
 
 
-class MatchKeySpec(BaseModel):
+class MatchKeySpec(DslBaseModel):
     fields: list[str]
     strict: bool = True
 
 
-class SecretsSpec(BaseModel):
+class SecretsSpec(DslBaseModel):
     fields: list[str] = Field(default_factory=list)
 
 
-class ProviderRef(BaseModel):
+class ProviderRef(DslBaseModel):
     """
     Назначение:
         Ссылка на runtime provider в registry.
@@ -231,7 +242,7 @@ class ProviderRef(BaseModel):
     args: dict[str, Any] = Field(default_factory=dict)
 
 
-class ExistsRef(BaseModel):
+class ExistsRef(DslBaseModel):
     """
     Назначение:
         Описание exists-проверки через provider.
@@ -240,7 +251,7 @@ class ExistsRef(BaseModel):
     provider: ProviderRef
 
 
-class EnrichRule(BaseModel):
+class EnrichRule(DslBaseModel):
     """
     Правило enrich (generate/lookup) для одного поля.
     """
@@ -275,45 +286,46 @@ class EnrichRule(BaseModel):
         return self
 
 
-class EnrichBlock(BaseModel):
+class EnrichBlock(DslBaseModel):
     match_key: MatchKeySpec | None = None
     secrets: SecretsSpec | None = None
     generate: list[EnrichRule] = Field(default_factory=list)
     lookup: list[EnrichRule] = Field(default_factory=list)
 
 
-class EnrichSpec(BaseModel):
+class EnrichSpec(DslBaseModel):
     dataset: str
     enrich: EnrichBlock
 
 
-class FieldCheck(BaseModel):
+class FieldCheck(DslBaseModel):
     field: str
     ops: list[OperationCall] = Field(default_factory=list)
     on_error: Literal["error", "warn"] = "error"
 
 
-class ConditionalCheck(BaseModel):
+class ConditionalCheck(DslBaseModel):
     when: dict[str, Any]
     ops: list[OperationCall] = Field(default_factory=list)
     on_error: Literal["error", "warn"] = "error"
 
 
-class ValidationBlock(BaseModel):
+class ValidationBlock(DslBaseModel):
     field_checks: list[FieldCheck] = Field(default_factory=list)
     conditional_checks: list[ConditionalCheck] = Field(default_factory=list)
 
 
-class ValidationSpec(BaseModel):
+class ValidationSpec(DslBaseModel):
     dataset: str
     validate_: ValidationBlock = Field(alias="validate")
 
     model_config = {
+        "extra": "forbid",
         "populate_by_name": True,
     }
 
 
-class MatchRule(BaseModel):
+class MatchRule(DslBaseModel):
     """
     Назначение:
         Декларативное правило построения identity для matcher.
@@ -332,7 +344,7 @@ class MatchRule(BaseModel):
         return self
 
 
-class SourceDedupSpec(BaseModel):
+class SourceDedupSpec(DslBaseModel):
     """
     Назначение:
         DSL-конфигурация source-dedup политики matcher.
@@ -343,7 +355,7 @@ class SourceDedupSpec(BaseModel):
     on_conflict: Literal["warn", "error"] = "error"
 
 
-class FuzzySpec(BaseModel):
+class FuzzySpec(DslBaseModel):
     """
     Назначение:
         DSL-конфигурация fuzzy/scoring matcher.
@@ -393,7 +405,7 @@ class FuzzySpec(BaseModel):
         return self
 
 
-class MatchBlock(BaseModel):
+class MatchBlock(DslBaseModel):
     identity_rules: list[MatchRule] = Field(default_factory=list)
     ignored_fields: list[str] = Field(default_factory=list)
     source_dedup: SourceDedupSpec = Field(default_factory=SourceDedupSpec)
@@ -406,12 +418,12 @@ class MatchBlock(BaseModel):
         return self
 
 
-class MatchSpec(BaseModel):
+class MatchSpec(DslBaseModel):
     dataset: str
     match: MatchBlock
 
 
-class ResolveDesiredStateSpec(BaseModel):
+class ResolveDesiredStateSpec(DslBaseModel):
     """
     Назначение:
         Декларативная сборка desired_state из входной строки.
@@ -428,7 +440,7 @@ class ResolveDesiredStateSpec(BaseModel):
         return self
 
 
-class ResolveSourceRefSpec(BaseModel):
+class ResolveSourceRefSpec(DslBaseModel):
     """
     Назначение:
         Декларативная сборка source_ref из identity.
@@ -439,7 +451,7 @@ class ResolveSourceRefSpec(BaseModel):
     include_primary: bool = True
 
 
-class ResolveDiffFieldSpec(BaseModel):
+class ResolveDiffFieldSpec(DslBaseModel):
     """
     Назначение:
         Декларативное сравнение одного поля в diff-policy.
@@ -451,13 +463,13 @@ class ResolveDiffFieldSpec(BaseModel):
     normalize: Literal["none", "text", "bool"] = "none"
 
 
-class ResolveDiffSpec(BaseModel):
+class ResolveDiffSpec(DslBaseModel):
     """
     Назначение:
         Декларативный diff-policy resolver.
     """
 
-    class FromSinkSpec(BaseModel):
+    class FromSinkSpec(DslBaseModel):
         """
         Назначение:
             Конфигурация генерации базовых diff-полей из sink-спеки.
@@ -481,7 +493,7 @@ class ResolveDiffSpec(BaseModel):
         return self
 
 
-class ResolveMergeFieldSpec(BaseModel):
+class ResolveMergeFieldSpec(DslBaseModel):
     """
     Назначение:
         Правило merge для fill_empty_from_existing.
@@ -492,7 +504,7 @@ class ResolveMergeFieldSpec(BaseModel):
     normalize: Literal["none", "text", "bool"] = "none"
 
 
-class ResolveMergeSpec(BaseModel):
+class ResolveMergeSpec(DslBaseModel):
     """
     Назначение:
         Декларативная merge-policy resolver.
@@ -508,7 +520,7 @@ class ResolveMergeSpec(BaseModel):
         return self
 
 
-class ResolveSecretsSpec(BaseModel):
+class ResolveSecretsSpec(DslBaseModel):
     """
     Назначение:
         Декларативная политика секретов для resolver output.
@@ -519,7 +531,7 @@ class ResolveSecretsSpec(BaseModel):
     update: list[str] = Field(default_factory=list)
 
 
-class ResolveLinkKeySpec(BaseModel):
+class ResolveLinkKeySpec(DslBaseModel):
     """
     Назначение:
         Декларативный ключ поиска для link-resolve.
@@ -529,7 +541,7 @@ class ResolveLinkKeySpec(BaseModel):
     field: str
 
 
-class ResolveLinkSpec(BaseModel):
+class ResolveLinkSpec(DslBaseModel):
     """
     Назначение:
         Декларативное resolve-правило для одного link-поля.
@@ -558,7 +570,7 @@ class ResolveLinkSpec(BaseModel):
         return self
 
 
-class ResolveBlock(BaseModel):
+class ResolveBlock(DslBaseModel):
     desired_state: ResolveDesiredStateSpec | None = None
     source_ref: ResolveSourceRefSpec | None = None
     diff: ResolveDiffSpec | None = None
@@ -579,12 +591,12 @@ class ResolveBlock(BaseModel):
         return self
 
 
-class ResolveSpec(BaseModel):
+class ResolveSpec(DslBaseModel):
     dataset: str
     resolve: ResolveBlock
 
 
-class CacheRefreshPolicySpec(BaseModel):
+class CacheRefreshPolicySpec(DslBaseModel):
     """
     Назначение:
         Политика default-поведения cache-refresh.
@@ -593,7 +605,7 @@ class CacheRefreshPolicySpec(BaseModel):
     with_deps_default: bool = True
 
 
-class DriftPolicySpec(BaseModel):
+class DriftPolicySpec(DslBaseModel):
     """
     Назначение:
         Политика обработки schema drift.
@@ -604,7 +616,7 @@ class DriftPolicySpec(BaseModel):
     rebuild_scope: Literal["dataset", "all"] = "dataset"
 
 
-class ClearPolicySpec(BaseModel):
+class ClearPolicySpec(DslBaseModel):
     """
     Назначение:
         Политика cache-clear.
@@ -615,7 +627,7 @@ class ClearPolicySpec(BaseModel):
     reset_meta_on_clear: bool = True
 
 
-class StatusPolicySpec(BaseModel):
+class StatusPolicySpec(DslBaseModel):
     """
     Назначение:
         Политика cache-status.
@@ -625,7 +637,7 @@ class StatusPolicySpec(BaseModel):
     degraded_on_hash_mismatch: bool = True
 
 
-class RetentionPolicySpec(BaseModel):
+class RetentionPolicySpec(DslBaseModel):
     """
     Назначение:
         Политика очистки runtime-данных cache.
@@ -636,7 +648,7 @@ class RetentionPolicySpec(BaseModel):
     sweep_interval_seconds: int | None = None
 
 
-class CachePolicySpec(BaseModel):
+class CachePolicySpec(DslBaseModel):
     """
     Назначение:
         Глобальные политики cache runtime.
@@ -649,7 +661,7 @@ class CachePolicySpec(BaseModel):
     retention: RetentionPolicySpec | None = None
 
 
-class CacheRegistryDatasetSpec(BaseModel):
+class CacheRegistryDatasetSpec(DslBaseModel):
     """
     Назначение:
         Вход dataset в cache registry.
@@ -662,7 +674,7 @@ class CacheRegistryDatasetSpec(BaseModel):
     enabled: bool = True
 
 
-class CacheRegistrySpec(BaseModel):
+class CacheRegistrySpec(DslBaseModel):
     """
     Назначение:
         Реестр cache датасетов и политик.
@@ -679,7 +691,7 @@ class CacheRegistrySpec(BaseModel):
         return self
 
 
-class CacheColumnSpec(BaseModel):
+class CacheColumnSpec(DslBaseModel):
     """
     Назначение:
         Описание колонки snapshot-таблицы cache.
@@ -692,7 +704,7 @@ class CacheColumnSpec(BaseModel):
     source: str | None = None
 
 
-class CacheIndexSpec(BaseModel):
+class CacheIndexSpec(DslBaseModel):
     """
     Назначение:
         Описание индекса snapshot-таблицы cache.
@@ -709,7 +721,7 @@ class CacheIndexSpec(BaseModel):
         return self
 
 
-class CacheTableSchemaSpec(BaseModel):
+class CacheTableSchemaSpec(DslBaseModel):
     """
     Назначение:
         Схема snapshot-таблицы cache.
@@ -726,7 +738,7 @@ class CacheTableSchemaSpec(BaseModel):
         return self
 
 
-class ValueExprSpec(BaseModel):
+class ValueExprSpec(DslBaseModel):
     """
     Назначение:
         Унифицированное выражение вычисления значения в cache sync.
@@ -748,7 +760,7 @@ class ValueExprSpec(BaseModel):
         return self
 
 
-class SoftDeleteRuleSpec(BaseModel):
+class SoftDeleteRuleSpec(DslBaseModel):
     """
     Назначение:
         Одно правило soft-delete.
@@ -766,7 +778,7 @@ class SoftDeleteRuleSpec(BaseModel):
         return self
 
 
-class SoftDeleteSpec(BaseModel):
+class SoftDeleteSpec(DslBaseModel):
     """
     Назначение:
         Декларативная soft-delete политика.
@@ -782,7 +794,7 @@ class SoftDeleteSpec(BaseModel):
         return self
 
 
-class CacheProjectionRuleSpec(BaseModel):
+class CacheProjectionRuleSpec(DslBaseModel):
     """
     Назначение:
         Правило projection target payload -> cache write model.
@@ -805,7 +817,7 @@ class CacheProjectionRuleSpec(BaseModel):
         return self
 
 
-class CacheSyncSpec(BaseModel):
+class CacheSyncSpec(DslBaseModel):
     """
     Назначение:
         Декларативный контракт sync target->cache.
@@ -829,7 +841,7 @@ class CacheSyncSpec(BaseModel):
         return self
 
 
-class CacheDatasetFlagsSpec(BaseModel):
+class CacheDatasetFlagsSpec(DslBaseModel):
     """
     Назначение:
         Служебные dataset-флаги cache.
@@ -838,7 +850,7 @@ class CacheDatasetFlagsSpec(BaseModel):
     include_deleted: bool = False
 
 
-class CacheDatasetPolicyOverridesSpec(BaseModel):
+class CacheDatasetPolicyOverridesSpec(DslBaseModel):
     """
     Назначение:
         Dataset-level overrides поверх registry.policy.
@@ -851,7 +863,7 @@ class CacheDatasetPolicyOverridesSpec(BaseModel):
     retention: RetentionPolicySpec | None = None
 
 
-class CacheDatasetSpec(BaseModel):
+class CacheDatasetSpec(DslBaseModel):
     """
     Назначение:
         Декларативная спецификация cache dataset.
@@ -865,5 +877,6 @@ class CacheDatasetSpec(BaseModel):
     policy_overrides: CacheDatasetPolicyOverridesSpec | None = None
 
     model_config = {
+        "extra": "forbid",
         "populate_by_name": True,
     }

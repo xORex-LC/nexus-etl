@@ -47,6 +47,8 @@ class NormalizerDsl:
         Назначение:
             Скомпилировать NormalizeSpec в NormalizerCore.
         """
+        if self.options.fail_on_unknown_ops:
+            self._validate_ops_known(spec)
         try:
             return NormalizerCore(
                 spec,
@@ -63,3 +65,13 @@ class NormalizerDsl:
                 code="NORMALIZE_DSL_COMPILE_INVALID",
                 message=f"Failed to compile normalize DSL: {exc}",
             ) from exc
+
+    def _validate_ops_known(self, spec: NormalizeSpec) -> None:
+        for rule in spec.normalize.rules:
+            for op_call in rule.ops:
+                if self.engine.registry.get(op_call.op) is None:
+                    raise DslLoadError(
+                        code="DSL_OP_UNKNOWN",
+                        message=f"Unknown operation '{op_call.op}' in normalize rule for field '{rule.field}'",
+                        details={"op": op_call.op, "dataset": spec.dataset},
+                    )

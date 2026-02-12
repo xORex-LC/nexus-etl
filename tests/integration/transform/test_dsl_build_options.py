@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.loader import (
     load_cache_build_options_for_runtime,
     load_enrich_build_options_for_dataset,
@@ -108,3 +111,32 @@ def test_cache_build_options_merge_order(monkeypatch):
     assert options.fail_on_unknown_dependencies is False
     assert options.fail_on_unknown_projection_targets is False
     assert options.fail_on_unknown_ops is True
+
+
+def test_strict_mode_enforces_fail_on_unknown_ops(monkeypatch):
+    registry = {
+        "build_options": {
+            "base": {
+                "strict": True,
+                "fail_on_unknown_ops": False,
+            },
+        },
+        "datasets": {"employees": {}},
+    }
+    monkeypatch.setattr("connector.domain.dsl.loader._load_registry", lambda: registry)
+    monkeypatch.setattr("connector.domain.dsl.loader._load_registry_or_raise", lambda: registry)
+
+    options = load_map_build_options_for_dataset("employees")
+
+    assert options.strict is True
+    assert options.fail_on_unknown_ops is True
+
+
+def test_stage_build_options_fail_for_unknown_dataset(monkeypatch):
+    registry = {"datasets": {"employees": {}}}
+    monkeypatch.setattr("connector.domain.dsl.loader._load_registry", lambda: registry)
+    monkeypatch.setattr("connector.domain.dsl.loader._load_registry_or_raise", lambda: registry)
+
+    with pytest.raises(DslLoadError) as exc_info:
+        load_map_build_options_for_dataset("missing_dataset")
+    assert exc_info.value.code == "DSL_REGISTRY_INVALID"

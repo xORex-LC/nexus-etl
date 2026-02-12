@@ -426,6 +426,12 @@ def _load_stage_build_options(
     registry = _load_registry_or_raise()
     root_build_options = registry.get("build_options") or {}
     datasets = registry.get("datasets") or {}
+    if dataset not in datasets:
+        raise DslLoadError(
+            code="DSL_REGISTRY_INVALID",
+            message=f"Dataset '{dataset}' not found in registry.yml (loading build_options for '{stage}')",
+            details={"dataset": dataset, "stage": stage},
+        )
     dataset_entry = datasets.get(dataset) or {}
     dataset_build_options = dataset_entry.get("build_options") or {}
 

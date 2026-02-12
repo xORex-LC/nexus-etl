@@ -211,7 +211,7 @@ MapDslBuildOptions(
 
 | Класс | Стадия | Специфичные флаги | Расположение |
 |-------|--------|-------------------|-------------|
-| `BaseDslBuildOptions` | Все | `strict`, `fail_on_unknown_ops`, `fail_on_schema_warnings`, `emit_compile_report` | `build_options.py` line 16 |
+| `BaseDslBuildOptions` | Все | `strict`, `fail_on_unknown_ops` | `build_options.py` line 16 |
 | `MapDslBuildOptions` | mapping | `require_targets_exist_in_sink_spec` | `build_options.py` line 29 |
 | `NormalizeDslBuildOptions` | normalize | `validate_only_touched_fields` | `build_options.py` line 39 |
 | `EnrichDslBuildOptions` | enrich | `require_match_key` | `build_options.py` line 49 |
@@ -352,8 +352,6 @@ class EnrichRule(BaseModel):
 class BaseDslBuildOptions:
     strict: bool = False                    # Строгий режим компиляции
     fail_on_unknown_ops: bool = True        # Ошибка на неизвестную операцию
-    fail_on_schema_warnings: bool = False   # Предупреждения схемы → ошибки
-    emit_compile_report: bool = False       # Генерировать compile report
 ```
 
 **Lifecycle**:

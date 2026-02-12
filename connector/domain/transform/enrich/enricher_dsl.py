@@ -21,7 +21,7 @@ from connector.domain.dsl.build_options import EnrichDslBuildOptions
 from connector.domain.dsl.engine import TransformationEngine
 from connector.domain.dsl.issues import DslLoadError, DslSeverity
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
-from connector.domain.dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
+from connector.domain.dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, OperationCall, SecretsSpec
 from connector.domain.dsl.helpers import apply_ops
 from connector.domain.transform.common.values import read_value_path
 from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
@@ -54,6 +54,9 @@ class EnricherDsl:
         Назначение:
             Скомпилировать EnrichSpec в EnricherSpec.
         """
+        options = self.options or EnrichDslBuildOptions()
+        if options.fail_on_unknown_ops:
+            self._validate_ops_known(spec)
         try:
             return build_enricher_spec_from_dsl(
                 spec,
@@ -68,6 +71,23 @@ class EnricherDsl:
                 code="ENRICH_DSL_COMPILE_INVALID",
                 message=f"Failed to compile enrich DSL: {exc}",
             ) from exc
+
+    def _validate_ops_known(self, spec: EnrichSpec) -> None:
+        for rule in (*spec.enrich.generate, *spec.enrich.lookup):
+            for op_call in rule.ops:
+                if self.registry.get(op_call.op) is None:
+                    raise DslLoadError(
+                        code="DSL_OP_UNKNOWN",
+                        message=f"Unknown operation '{op_call.op}' in enrich rule '{rule.name}'",
+                        details={"op": op_call.op, "rule": rule.name},
+                    )
+            if isinstance(rule.allow_if, OperationCall):
+                if self.registry.get(rule.allow_if.op) is None:
+                    raise DslLoadError(
+                        code="DSL_OP_UNKNOWN",
+                        message=f"Unknown operation '{rule.allow_if.op}' in enrich rule '{rule.name}' allow_if",
+                        details={"op": rule.allow_if.op, "rule": rule.name},
+                    )
 
 
 def build_enricher_spec_from_dsl(
