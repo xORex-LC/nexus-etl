@@ -15,14 +15,14 @@
 ## Принятое решение
 
 1. Введена модульная модель `AppSettings` + профильные slices (`ApiSettings`, `PathsSettings`, `DatasetSettings`, `ObservabilitySettings`, `ExecutionSettings`, `RefreshSettings`, `MatchingRuntimeSettings`, `PendingSettings`).
-2. Канонический вход в конфигурацию: `loadAppSettings(...)`.
+2. Канонический вход в конфигурацию: `load_app_settings(...)`.
 3. Полный `AppSettings` разрешён только в composition root (`delivery/cli/app.py`); в команды/use-cases передаются только нужные slices.
 4. Для ошибок настроек используется типизированный контракт (`SettingsLoadError/*`) + трансляция в `DiagnosticItem`.
 5. Добавлены архитектурные guardrails тестами (запрет legacy API и неверных границ).
 
 ## Как реализовано (кратко)
 
-1. Production path переведён на `loadAppSettings(...)`.
+1. Production path переведён на `load_app_settings(...)`.
 2. Legacy-path `loadSettings` и `from_legacy` убран из production use-path.
 3. Runtime/commands/bootstrap/use-cases переключены на slice-wiring.
 4. Тестовая матрица: unit + integration + architecture + CLI smoke.

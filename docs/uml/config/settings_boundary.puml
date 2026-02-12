@@ -28,7 +28,7 @@ rectangle "Forbidden Legacy API" #FFECEC {
   [from_legacy] as LegacyFrom
 }
 
-AppMain --> AppSettingsModule : loadAppSettings(...)
+AppMain --> AppSettingsModule : load_app_settings(...)
 AppSettingsModule --> Runtime : AppSettings
 Runtime --> Commands : CommandContext.app_settings
 Commands --> Bootstrap : pass only slices

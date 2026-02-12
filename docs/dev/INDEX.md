@@ -15,6 +15,9 @@
 - [Cache Ports](layers/cache/cache-ports.md) — Интерфейсы для работы с кэшем (Protocols)
 - [Cache Infrastructure](layers/cache/cache-infra.md) — Реализация хранилища кэша (SQLite)
 
+### Config
+- [CLI/Settings Layer](layers/config/cli-settings-layer.md) — Загрузка/валидация настроек и CLI runtime boundary
+
 ### Transform
 - [Resolve DSL](layers/resolver/resolve-dsl.md) — Правила разрешения конфликтов
 - [Resolve Core](layers/resolver/resolve-core.md) — Алгоритмы resolve и FK resolution

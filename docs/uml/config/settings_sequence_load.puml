@@ -11,15 +11,15 @@ skinparam sequence {
 
 actor CLI
 participant "app.py main()" as AppMain
-participant "loadAppSettings()" as LoadApp
-participant "_load_settings_model()" as LoadModel
-participant "readYamlConfig()" as YamlRead
+participant "load_app_settings()" as LoadApp
+participant "load_settings_model()" as LoadModel
+participant "read_yaml_config()" as YamlRead
 participant "parse/validate" as Validate
 participant "translate_settings_load_error()" as SettingsDiag
 participant "runtime/run_with_report" as Runtime
 
 CLI -> AppMain : invoke command + global options
-AppMain -> LoadApp : loadAppSettings(config, cli_overrides)
+AppMain -> LoadApp : load_app_settings(config, cli_overrides)
 LoadApp -> LoadModel : build Settings model
 LoadModel -> YamlRead : read config.yml (optional)
 LoadModel -> Validate : merge + parse + invariants
