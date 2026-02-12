@@ -1,8 +1,13 @@
 @startuml
 title DSL Core - Compilation Activity
 
+skinparam backgroundColor white
 skinparam defaultFontName Arial
 skinparam linetype ortho
+skinparam activity {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 
 start
 :Load YAML text;

@@ -2,9 +2,14 @@
 title DSL Core - Architecture & Integration Points
 
 left to right direction
+skinparam backgroundColor white
 skinparam componentStyle rectangle
 skinparam defaultFontName Arial
 skinparam linetype ortho
+skinparam component {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 
 package "YAML inputs" {
   [datasets/*.source.yaml] as SourceYaml

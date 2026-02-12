@@ -1,0 +1,42 @@
+@startuml
+title Settings - Load Sequence (Success/Error)
+
+skinparam backgroundColor white
+skinparam defaultFontName Arial
+skinparam linetype ortho
+skinparam sequence {
+  ArrowColor #4b5563
+  LifeLineBorderColor #9ca3af
+}
+
+actor CLI
+participant "app.py main()" as AppMain
+participant "loadAppSettings()" as LoadApp
+participant "_load_settings_model()" as LoadModel
+participant "readYamlConfig()" as YamlRead
+participant "parse/validate" as Validate
+participant "translate_settings_load_error()" as SettingsDiag
+participant "runtime/run_with_report" as Runtime
+
+CLI -> AppMain : invoke command + global options
+AppMain -> LoadApp : loadAppSettings(config, cli_overrides)
+LoadApp -> LoadModel : build Settings model
+LoadModel -> YamlRead : read config.yml (optional)
+LoadModel -> Validate : merge + parse + invariants
+
+alt settings are valid
+  Validate --> LoadModel : LoadedSettings
+  LoadModel --> LoadApp : LoadedSettings
+  LoadApp --> AppMain : LoadedAppSettings
+  AppMain -> Runtime : execute command
+  Runtime --> CLI : exit code by command result
+else SettingsLoadError
+  Validate --> LoadModel : raise SettingsLoadError
+  LoadModel --> LoadApp : raise SettingsLoadError
+  LoadApp --> AppMain : raise SettingsLoadError
+  AppMain -> SettingsDiag : translate_settings_load_error(...)
+  SettingsDiag --> AppMain : DiagnosticItem[]
+  AppMain --> CLI : print deterministic errors, exit 2
+end
+
+@enduml
