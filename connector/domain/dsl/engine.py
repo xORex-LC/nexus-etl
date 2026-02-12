@@ -57,7 +57,7 @@ class TransformationEngine:
 
         current = value
         issues: list[DslIssue] = []
-        for op_call in ops:
+        for step, op_call in enumerate(ops):
             op = self.registry.get(op_call.op)
             if op is None:
                 issues.append(
@@ -65,6 +65,7 @@ class TransformationEngine:
                         code="DSL_OP_UNKNOWN",
                         message=f"Unknown operation '{op_call.op}'",
                         severity=DslSeverity.ERROR,
+                        details={"op": op_call.op, "step": step},
                     )
                 )
                 break
@@ -74,8 +75,14 @@ class TransformationEngine:
                 issues.append(
                     DslIssue(
                         code="DSL_OP_FAILED",
-                        message=str(exc),
+                        message=f"Operation '{op_call.op}' failed: {exc}",
                         severity=DslSeverity.ERROR,
+                        details={
+                            "op": op_call.op,
+                            "args": op_call.args,
+                            "step": step,
+                            "error": str(exc),
+                        },
                     )
                 )
                 break

@@ -17,6 +17,7 @@ from connector.domain.dsl.specs import (
     CacheRegistrySpec,
     CacheSyncSpec,
 )
+from connector.domain.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.ports.cache.models import CacheSpec, FieldSpec
 
 
@@ -113,10 +114,14 @@ def compile_cache_runtime(
     sync_specs: dict[str, CacheSyncSpec] = {}
     schema_hashes: dict[str, str] = {}
     sync_hashes: dict[str, str] = {}
+    ops_registry: OperationRegistry | None = None
+    if compile_options.fail_on_unknown_ops:
+        ops_registry = OperationRegistry()
+        register_core_ops(ops_registry)
 
     for dataset in graph.refresh_order():
         spec = dataset_specs[dataset]
-        _validate_semantics(dataset, spec, compile_options)
+        _validate_semantics(dataset, spec, compile_options, ops_registry=ops_registry)
         compiled = _compile_cache_spec(dataset, spec)
         compiled_specs.append(compiled)
         schema_hashes[dataset] = build_schema_hash(compiled)
@@ -285,6 +290,8 @@ def _validate_semantics(
     dataset: str,
     spec: CacheDatasetSpec,
     options: CacheDslBuildOptions,
+    *,
+    ops_registry: OperationRegistry | None = None,
 ) -> None:
     column_names = [col.name for col in spec.schema_.columns]
     duplicates = sorted({name for name in column_names if column_names.count(name) > 1})
@@ -319,6 +326,8 @@ def _validate_semantics(
 
     if spec.sync is None:
         return
+    if options.fail_on_unknown_ops and ops_registry is not None:
+        _validate_sync_ops_known(dataset, spec.sync, ops_registry)
 
     if options.forbid_is_deleted_and_soft_delete_together:
         if spec.sync.is_deleted is not None and spec.sync.soft_delete is not None:
@@ -354,3 +363,42 @@ def _validate_semantics(
                 message=f"cache.sync.projection references unknown target columns: {unknown_targets}",
                 details={"dataset": dataset, "targets": unknown_targets},
             )
+
+
+def _validate_sync_ops_known(
+    dataset: str,
+    sync_spec: CacheSyncSpec,
+    registry: OperationRegistry,
+) -> None:
+    unknown_ops: list[dict[str, object]] = []
+    for context, calls in _iter_sync_operation_calls(sync_spec):
+        for step, op_call in enumerate(calls):
+            if registry.get(op_call.op) is None:
+                unknown_ops.append(
+                    {
+                        "op": op_call.op,
+                        "context": context,
+                        "step": step,
+                    }
+                )
+    if unknown_ops:
+        unknown_names = sorted({str(item["op"]) for item in unknown_ops})
+        raise DslLoadError(
+            code="DSL_OP_UNKNOWN",
+            message=f"Unknown DSL operations in cache sync spec '{dataset}': {unknown_names}",
+            details={
+                "dataset": dataset,
+                "unknown_ops": unknown_ops,
+            },
+        )
+
+
+def _iter_sync_operation_calls(sync_spec: CacheSyncSpec):
+    yield "cache.sync.item_key.ops", sync_spec.item_key.ops
+    if sync_spec.is_deleted is not None:
+        yield "cache.sync.is_deleted.ops", sync_spec.is_deleted.ops
+    if sync_spec.soft_delete is not None:
+        for idx, rule in enumerate(sync_spec.soft_delete.rules):
+            yield f"cache.sync.soft_delete.rules[{idx}].normalize", rule.normalize
+    for idx, rule in enumerate(sync_spec.projection):
+        yield f"cache.sync.projection[{idx}].ops", rule.ops
