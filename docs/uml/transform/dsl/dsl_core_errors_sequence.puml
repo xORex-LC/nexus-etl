@@ -1,8 +1,13 @@
 @startuml
 title DSL Core - Error Propagation Sequence
 
+skinparam backgroundColor white
 skinparam defaultFontName Arial
 skinparam linetype ortho
+skinparam sequence {
+  ArrowColor #4b5563
+  LifeLineBorderColor #9ca3af
+}
 
 participant "Loader/StageDsl" as Dsl
 participant "DslIssue/DslLoadError" as Issues

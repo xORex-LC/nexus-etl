@@ -1,9 +1,14 @@
 @startuml
 title DSL Core - Class View (Canonical)
 
-skinparam defaultFontName Arial
-skinparam classAttributeIconSize 0
+set namespaceSeparator none
+skinparam backgroundColor white
 skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 hide empty members
 
 package "connector/domain/dsl/specs.py" {

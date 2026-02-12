@@ -1,0 +1,120 @@
+@startuml
+title Settings - Class View (Final API)
+
+set namespaceSeparator none
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+hide empty members
+
+package "connector/config/app_settings.py" {
+  class AppSettings {
+    +api: ApiSettings
+    +paths: PathsSettings
+    +observability: ObservabilitySettings
+    +dataset: DatasetSettings
+    +execution: ExecutionSettings
+    +refresh: RefreshSettings
+    +matching_runtime: MatchingRuntimeSettings
+    +pending: PendingSettings
+  }
+
+  class LoadedAppSettings {
+    +app_settings: AppSettings
+    +sources_used: tuple[str]
+    +source_trace: dict[str,str]
+    +warnings: tuple[SettingsIssue]
+  }
+
+  class ApiSettings {
+    +host: str | None
+    +port: int | None
+    +username: str | None
+    +password: str | None
+  }
+  class PathsSettings {
+    +cache_dir: str
+    +log_dir: str
+    +report_dir: str
+  }
+  class ObservabilitySettings {
+    +log_level: str
+    +report_items_limit: int
+    +diagnostics_strict: bool
+  }
+  class DatasetSettings {
+    +dataset_name: str
+    +csv_has_header: bool
+    +include_deleted: bool
+  }
+  class ExecutionSettings {
+    +stop_on_first_error: bool
+    +max_actions: int | None
+    +dry_run: bool
+  }
+  class RefreshSettings {
+    +page_size: int
+    +max_pages: int | None
+  }
+  class MatchingRuntimeSettings {
+    +match_batch_size: int
+    +resolve_batch_size: int
+  }
+  class PendingSettings {
+    +pending_ttl_seconds: int
+    +pending_on_expire: str
+    +pending_retention_days: int
+  }
+
+  class AppSettingsLoader <<module>> {
+    +loadAppSettings(config_path, cli_overrides): LoadedAppSettings
+  }
+}
+
+package "connector/config/config.py (internal)" {
+  class SettingsModelLoader <<module>> {
+    +_load_settings_model(config_path, cli_overrides)
+  }
+  class SettingsIssue {
+    +code: str
+    +field_path: str
+    +source: str
+    +raw_value: Any
+    +message: str
+    +hint: str
+  }
+  class SettingsLoadError
+}
+
+AppSettings *-- ApiSettings
+AppSettings *-- PathsSettings
+AppSettings *-- ObservabilitySettings
+AppSettings *-- DatasetSettings
+AppSettings *-- ExecutionSettings
+AppSettings *-- RefreshSettings
+AppSettings *-- MatchingRuntimeSettings
+AppSettings *-- PendingSettings
+
+LoadedAppSettings *-- AppSettings
+LoadedAppSettings *-- SettingsIssue
+
+AppSettingsLoader ..> SettingsModelLoader : uses
+AppSettingsLoader ..> LoadedAppSettings
+SettingsModelLoader ..> SettingsLoadError
+SettingsModelLoader ..> SettingsIssue
+
+note right of AppSettingsLoader
+Public canonical API
+for composition root.
+end note
+
+note bottom of SettingsModelLoader
+Internal model loader:
+not used directly outside config layer.
+end note
+
+@enduml

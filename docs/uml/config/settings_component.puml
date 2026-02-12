@@ -1,0 +1,70 @@
+@startuml
+title Settings - Component Overview (Final)
+
+left to right direction
+skinparam backgroundColor white
+skinparam componentStyle rectangle
+skinparam defaultFontName Arial
+skinparam linetype ortho
+skinparam component {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+package "CLI Composition Root" #EAF7FF {
+  [app.py callback] as AppMain
+  [CommandContext] as CommandCtx
+}
+
+package "Settings Core (connector/config)" #FFF5E8 {
+  [loadAppSettings] as LoadApp
+  [_load_settings_model] as LoadModel
+  [parsing + validation] as ParseValidate
+  [settings diagnostics adapter] as SettingsDiag
+}
+
+package "Sources" {
+  [defaults] as Defaults
+  [config.yml] as ConfigYml
+  [ENV] as Env
+  [CLI overrides] as CliOverrides
+}
+
+package "Runtime/Wiring" #EAF7FF {
+  [runtime.py] as Runtime
+  [bootstrap.py] as Bootstrap
+}
+
+package "Execution Layer" {
+  [commands/*] as Commands
+  [usecases/*] as UseCases
+}
+
+AppMain --> LoadApp : load by path + overrides
+LoadApp --> LoadModel : canonical API
+LoadModel --> Defaults
+LoadModel --> ConfigYml
+LoadModel --> Env
+LoadModel --> CliOverrides
+LoadModel --> ParseValidate : merge + type parse
+
+LoadApp --> CommandCtx : AppSettings + source_trace
+CommandCtx --> Runtime
+Runtime --> Commands
+Commands --> Bootstrap : build deps by slice
+Commands --> UseCases : pass only required slices
+
+LoadModel ..> SettingsDiag : SettingsLoadError
+Runtime ..> SettingsDiag : translate to DiagnosticItem
+
+note right of LoadModel
+Priority chain:
+defaults -> config -> env -> cli
+end note
+
+note bottom of Commands
+Commands/use-cases never accept
+full Settings object.
+end note
+
+@enduml
