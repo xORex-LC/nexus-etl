@@ -128,7 +128,7 @@ class _FieldSpec:
     env_name: str
 
 
-def readYamlConfig(path: Path) -> dict:
+def read_yaml_config(path: Path) -> dict:
     """
     Назначение:
         Читает YAML конфиг, возвращает словарь настроек.
@@ -144,7 +144,7 @@ def readYamlConfig(path: Path) -> dict:
     return data
 
 
-def envGet(name: str) -> str | None:
+def env_get(name: str) -> str | None:
     """
     Назначение:
         Получает переменную окружения и нормализует значение.
@@ -158,43 +158,7 @@ def envGet(name: str) -> str | None:
     return vv
 
 
-def parseInt(value: str | None) -> int | None:
-    if value is None:
-        return None
-    return _parse_int(value, source="env", field_name="int", optional=False)
-
-
-def parseFloat(value: str | None) -> float | None:
-    if value is None:
-        return None
-    return _parse_float(value, source="env", field_name="float", optional=False)
-
-
-def parseBool(value: str | None) -> bool | None:
-    if value is None:
-        return None
-    return _parse_bool(value, source="env", field_name="bool", optional=False)
-
-
-def parseIntAny(value: int | str | None) -> int | None:
-    if value is None:
-        return None
-    return _parse_int(value, source="any", field_name="int", optional=False)
-
-
-def parseBoolAny(value: bool | str | None) -> bool | None:
-    if value is None:
-        return None
-    return _parse_bool(value, source="any", field_name="bool", optional=False)
-
-
-def parseFloatAny(value: float | str | None) -> float | None:
-    if value is None:
-        return None
-    return _parse_float(value, source="any", field_name="float", optional=False)
-
-
-def _load_settings_model(config_path: str | None, cli_overrides: dict[str, Any]) -> LoadedSettings:
+def load_settings_model(config_path: str | None, cli_overrides: dict[str, Any]) -> LoadedSettings:
     """
     Назначение:
         Внутренний загрузчик плоской settings-модели, применяющий приоритет:
@@ -218,7 +182,7 @@ def _load_settings_model(config_path: str | None, cli_overrides: dict[str, Any])
     if config_path:
         cfg = _load_config_source(config_path)
 
-    env_raw = {spec.name: envGet(spec.env_name) for spec in specs}
+    env_raw = {spec.name: env_get(spec.env_name) for spec in specs}
     cli_raw = dict(cli_overrides or {})
 
     strict_unknown = _resolve_strict_unknown(defaults=defaults, cfg=cfg, env_raw=env_raw, cli_raw=cli_raw)
@@ -286,7 +250,7 @@ def _load_settings_model(config_path: str | None, cli_overrides: dict[str, Any])
 def _load_config_source(config_path: str) -> dict[str, Any]:
     path = Path(config_path)
     try:
-        return readYamlConfig(path)
+        return read_yaml_config(path)
     except Exception as exc:  # noqa: BLE001
         issue = SettingsIssue(
             code="settings.source.config_read_failed",
@@ -507,76 +471,67 @@ def _parse_bool(value: Any, source: str, field_name: str, *, optional: bool) -> 
     raise ValueError(f"[{source}] Invalid bool for '{field_name}': {value!r}")
 
 
+_RANGE_RULES: list[tuple[str, str, str, str]] = [
+    ("page_size", ">0", "page_size must be greater than 0", "Укажите положительное значение page_size."),
+    ("retries", ">=0", "retries must be >= 0", "Укажите retries >= 0."),
+    ("match_batch_size", ">0", "match_batch_size must be greater than 0", "Укажите положительное значение match_batch_size."),
+    ("resolve_batch_size", ">0", "resolve_batch_size must be greater than 0", "Укажите положительное значение resolve_batch_size."),
+    ("pending_ttl_seconds", ">0", "pending_ttl_seconds must be greater than 0", "Укажите положительное значение pending_ttl_seconds."),
+]
+
+_ENUM_RULES: list[tuple[str, frozenset[str], str, str]] = [
+    (
+        "pending_on_expire",
+        frozenset({"error", "report_only", "skip"}),
+        "pending_on_expire must be one of: error, report_only, skip",
+        "Используйте значение error, report_only или skip.",
+    ),
+]
+
+
+def _check_range(value: int | float, op: str) -> bool:
+    if op == ">0":
+        return value > 0
+    if op == ">=0":
+        return value >= 0
+    raise ValueError(f"Unknown range operator: {op}")
+
+
 def _validate_settings(settings: Settings) -> list[SettingsIssue]:
     issues: list[SettingsIssue] = []
 
-    def add(code: str, field_path: str, raw_value: Any, message: str, hint: str) -> None:
-        issues.append(
-            SettingsIssue(
-                code=code,
-                field_path=field_path,
+    for field_name, op, message, hint in _RANGE_RULES:
+        value = getattr(settings, field_name)
+        if not _check_range(value, op):
+            issues.append(SettingsIssue(
+                code="settings.validation.range",
+                field_path=field_name,
                 source="validation",
-                raw_value=raw_value,
+                raw_value=value,
                 message=message,
                 hint=hint,
-            )
-        )
+            ))
 
-    if settings.page_size <= 0:
-        add(
-            "settings.validation.range",
-            "page_size",
-            settings.page_size,
-            "page_size must be greater than 0",
-            "Укажите положительное значение page_size.",
-        )
-    if settings.retries < 0:
-        add(
-            "settings.validation.range",
-            "retries",
-            settings.retries,
-            "retries must be >= 0",
-            "Укажите retries >= 0.",
-        )
-    if settings.match_batch_size <= 0:
-        add(
-            "settings.validation.range",
-            "match_batch_size",
-            settings.match_batch_size,
-            "match_batch_size must be greater than 0",
-            "Укажите положительное значение match_batch_size.",
-        )
-    if settings.resolve_batch_size <= 0:
-        add(
-            "settings.validation.range",
-            "resolve_batch_size",
-            settings.resolve_batch_size,
-            "resolve_batch_size must be greater than 0",
-            "Укажите положительное значение resolve_batch_size.",
-        )
-    if settings.pending_ttl_seconds <= 0:
-        add(
-            "settings.validation.range",
-            "pending_ttl_seconds",
-            settings.pending_ttl_seconds,
-            "pending_ttl_seconds must be greater than 0",
-            "Укажите положительное значение pending_ttl_seconds.",
-        )
-    if settings.pending_on_expire not in {"error", "report_only", "skip"}:
-        add(
-            "settings.validation.enum",
-            "pending_on_expire",
-            settings.pending_on_expire,
-            "pending_on_expire must be one of: error, report_only, skip",
-            "Используйте значение error, report_only или skip.",
-        )
+    for field_name, allowed, message, hint in _ENUM_RULES:
+        value = getattr(settings, field_name)
+        if value not in allowed:
+            issues.append(SettingsIssue(
+                code="settings.validation.enum",
+                field_path=field_name,
+                source="validation",
+                raw_value=value,
+                message=message,
+                hint=hint,
+            ))
+
     if (settings.host is None) != (settings.port is None):
-        add(
-            "settings.conflict.api_credentials",
-            "host/port",
-            {"host": settings.host, "port": settings.port},
-            "host and port must be provided together",
-            "Либо укажите оба поля host и port, либо не указывайте оба.",
-        )
+        issues.append(SettingsIssue(
+            code="settings.conflict.api_credentials",
+            field_path="host/port",
+            source="validation",
+            raw_value={"host": settings.host, "port": settings.port},
+            message="host and port must be provided together",
+            hint="Либо укажите оба поля host и port, либо не указывайте оба.",
+        ))
 
     return issues

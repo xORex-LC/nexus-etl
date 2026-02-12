@@ -5,7 +5,7 @@ from typing import Any
 
 import typer
 
-from connector.config.app_settings import loadAppSettings
+from connector.config.app_settings import load_app_settings
 from connector.config.config import SettingsLoadError
 from connector.config.diagnostics import translate_settings_load_error
 from connector.common.run_id import generate_run_id
@@ -59,9 +59,9 @@ def _build_ctx(
         usecase_name = COMMAND_TO_USECASE.get(command_key)
         extra["settings_contract"] = {
             "command_key": command_key,
-            "command_slices": list(COMMAND_SETTINGS_SLICE_MAP.get(command_key, ())),
+            "command_slices": [t.__name__ for t in COMMAND_SETTINGS_SLICE_MAP.get(command_key, ())],
             "usecase": usecase_name,
-            "usecase_slices": list(USECASE_SETTINGS_SLICE_MAP.get(usecase_name, ())) if usecase_name else [],
+            "usecase_slices": [t.__name__ for t in USECASE_SETTINGS_SLICE_MAP.get(usecase_name, ())] if usecase_name else [],
         }
     return CommandContext(
         logger=ctx.obj["logger"],
@@ -151,7 +151,7 @@ def main(
         "diagnostics_strict": strictDiagnostics,
     }
     try:
-        loaded_app = loadAppSettings(config_path=config, cli_overrides=cliOverrides)
+        loaded_app = load_app_settings(config_path=config, cli_overrides=cliOverrides)
     except SettingsLoadError as exc:
         catalog = build_diagnostics_catalog(None, strict=False)
         diagnostics = translate_settings_load_error(

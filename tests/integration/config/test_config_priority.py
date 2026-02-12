@@ -2,7 +2,7 @@ import httpx
 from typer.testing import CliRunner
 from connector.main import app
 import connector.delivery.commands.check_api as check_api_command
-from connector.config.app_settings import loadAppSettings
+from connector.config.app_settings import load_app_settings
 from connector.infra.http.ankey_client import AnkeyApiClient
 
 runner = CliRunner()
@@ -74,7 +74,7 @@ def test_batch_settings_priority_cli_over_env_over_config(tmp_path, monkeypatch)
     monkeypatch.setenv("ANKEY_RESOLVE_BATCH_SIZE", "301")
     monkeypatch.setenv("ANKEY_RESOLVE_FLUSH_INTERVAL_MS", "401")
 
-    loaded = loadAppSettings(
+    loaded = load_app_settings(
         config_path=str(cfg),
         cli_overrides={
             "match_batch_size": 102,
@@ -105,7 +105,7 @@ def test_zero_and_false_values_are_not_lost(tmp_path, monkeypatch):
     monkeypatch.setenv("ANKEY_REPORT_ITEMS_LIMIT", "0")
     monkeypatch.setenv("ANKEY_INCLUDE_DELETED", "0")
 
-    loaded = loadAppSettings(
+    loaded = load_app_settings(
         config_path=str(cfg),
         cli_overrides={},
     )
@@ -129,7 +129,7 @@ def test_field_level_source_trace(tmp_path, monkeypatch):
 
     monkeypatch.setenv("ANKEY_PORT", "2222")
 
-    loaded = loadAppSettings(
+    loaded = load_app_settings(
         config_path=str(cfg),
         cli_overrides={
             "retries": 7,

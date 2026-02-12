@@ -56,11 +56,12 @@ def test_legacy_settings_api_not_used_in_connector_code():
 
 def test_load_app_settings_used_only_in_composition_root_and_config_layer():
     allowed = {
+        "connector/config/__init__.py",
         "connector/config/app_settings.py",
         "connector/delivery/cli/app.py",
     }
     violations: list[str] = []
-    pattern = re.compile(r"\bloadAppSettings\b")
+    pattern = re.compile(r"\bload_app_settings\b")
 
     for path in _python_files("connector"):
         rel = path.relative_to(ROOT).as_posix()
@@ -70,4 +71,4 @@ def test_load_app_settings_used_only_in_composition_root_and_config_layer():
         if pattern.search(text):
             violations.append(rel)
 
-    assert violations == [], f"loadAppSettings leakage outside composition root: {violations}"
+    assert violations == [], f"load_app_settings leakage outside composition root: {violations}"
