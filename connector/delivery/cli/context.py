@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 import logging
 
-from connector.config.config import Settings
+from connector.config.app_settings import AppSettings
 from connector.domain.diagnostics.catalog import ErrorCatalog
 
 
@@ -26,10 +26,10 @@ class CommandContext:
         Унифицированный контекст выполнения CLI-команды.
     """
 
-    settings: Settings
     logger: logging.Logger
     run_id: str
     catalog: ErrorCatalog
     strict: bool
+    app_settings: AppSettings
     paths: CommandPaths | None = None
     extra: dict[str, Any] | None = None

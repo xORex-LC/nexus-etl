@@ -4,7 +4,13 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 from typing import Any, Iterable, Iterator
 
-from connector.config.config import Settings
+from connector.config.app_settings import (
+    ApiSettings,
+    DatasetSettings,
+    ObservabilitySettings,
+    PathsSettings,
+    PendingSettings,
+)
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
@@ -35,7 +41,7 @@ def build_diagnostics_catalog(dataset: str | None, *, strict: bool):
 
 def build_dataset_spec(
     dataset: str | None,
-    settings: Settings,
+    dataset_settings: DatasetSettings,
     *,
     secrets: SecretProviderProtocol | None = None,
 ):
@@ -43,12 +49,12 @@ def build_dataset_spec(
     Назначение:
         Разрешить имя датасета и вернуть соответствующий DatasetSpec.
     """
-    dataset_name = resolve_dataset_name(dataset, settings.dataset_name)
+    dataset_name = resolve_dataset_name(dataset, dataset_settings.dataset_name)
     return dataset_name, get_spec(dataset_name, secrets=secrets)
 
 
 def build_cache(
-    settings: Settings,
+    paths_settings: PathsSettings,
 ) -> tuple[SqliteCacheGateway, SqliteCacheRolePorts, CacheDslRuntimeBundle]:
     """
     Назначение:
@@ -56,7 +62,7 @@ def build_cache(
     """
     cache_dsl_bundle = load_cache_dsl_runtime()
     gateway = SqliteCacheGateway.open(
-        settings=settings,
+        cache_dir=paths_settings.cache_dir,
         cache_specs=cache_dsl_bundle.cache_specs,
     )
     roles = build_sqlite_cache_role_ports(gateway)
@@ -65,33 +71,33 @@ def build_cache(
 
 @contextmanager
 def open_cache(
-    settings: Settings,
+    paths_settings: PathsSettings,
 ) -> Iterator[tuple[SqliteCacheGateway, SqliteCacheRolePorts, CacheDslRuntimeBundle]]:
     """
     Назначение:
         Единая lifecycle-обертка для cache gateway в CLI runtime.
     """
-    gateway, roles, cache_dsl_bundle = build_cache(settings)
+    gateway, roles, cache_dsl_bundle = build_cache(paths_settings)
     try:
         yield gateway, roles, cache_dsl_bundle
     finally:
         gateway.close()
 
 
-def build_api_client(settings: Settings, *, transport: Any | None = None) -> AnkeyApiClient:
+def build_api_client(api_settings: ApiSettings, *, transport: Any | None = None) -> AnkeyApiClient:
     """
     Назначение:
         Создать HTTP клиента к Ankey API без пинга.
     """
     return AnkeyApiClient(
-        baseUrl=f"https://{settings.host}:{settings.port}",
-        username=settings.api_username or "",
-        password=settings.api_password or "",
-        timeoutSeconds=settings.timeout_seconds,
-        tlsSkipVerify=settings.tls_skip_verify,
-        caFile=settings.ca_file,
-        retries=settings.retries,
-        retryBackoffSeconds=settings.retry_backoff_seconds,
+        baseUrl=f"https://{api_settings.host}:{api_settings.port}",
+        username=api_settings.username or "",
+        password=api_settings.password or "",
+        timeoutSeconds=api_settings.timeout_seconds,
+        tlsSkipVerify=api_settings.tls_skip_verify,
+        caFile=api_settings.ca_file,
+        retries=api_settings.retries,
+        retryBackoffSeconds=api_settings.retry_backoff_seconds,
         transport=transport,
     )
 
@@ -163,7 +169,8 @@ def build_pipeline_context(
     dataset_spec: DatasetSpec,
     dataset_name: str,
     cache_roles: SqliteCacheRolePorts,
-    settings: Settings,
+    pending_settings: PendingSettings,
+    observability_settings: ObservabilitySettings,
     catalog: ErrorCatalog,
     csv_has_header: bool,
     secret_store: Any | None = None,
@@ -173,12 +180,12 @@ def build_pipeline_context(
         Единая сборка map/normalize/enrich цепочки.
     """
     enrich_deps = dataset_spec.build_enrich_deps(
-        settings,
+        None,
         enrich_lookup=cache_roles.enrich_lookup,
         secret_store=secret_store,
     )
     planning_deps = dataset_spec.build_planning_deps(
-        settings,
+        pending_settings,
         planning_runtime=cache_roles.planning_runtime,
     )
 
@@ -206,7 +213,7 @@ def build_pipeline_context(
         enrich_stage=enrich_stage,
         stage_pipeline=stage_pipeline,
         planning_deps=planning_deps,
-        report_items_limit=settings.report_items_limit,
+        report_items_limit=observability_settings.report_items_limit,
     )
 
 

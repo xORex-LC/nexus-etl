@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from connector.config.config import Settings
 from connector.infra.cache.cache_spec import CacheSpec
 from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
 from connector.infra.cache.repository.identity_repository import SqliteIdentityRepository
@@ -59,10 +58,10 @@ class SqliteCacheGateway:
     def open(
         cls,
         *,
-        settings: Settings,
+        cache_dir: str,
         cache_specs: Iterable[CacheSpec],
     ) -> "SqliteCacheGateway":
-        db_path = getCacheDbPath(settings.cache_dir)
+        db_path = getCacheDbPath(cache_dir)
         conn = openCacheDb(db_path)
         engine = SqliteEngine(conn)
         return cls.from_engine(

@@ -4,6 +4,11 @@ import logging
 import json
 from itertools import chain
 
+from connector.config.app_settings import (
+    MatchingRuntimeSettings,
+    ObservabilitySettings,
+    PendingSettings,
+)
 from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.common.time import getNowIso
@@ -42,18 +47,20 @@ class ImportPlanService:
         planning_runtime: PlanningRuntimePort,
         csv_has_header: bool,
         include_deleted: bool,
+        observability_settings: ObservabilitySettings,
+        pending_settings: PendingSettings,
+        matching_runtime_settings: MatchingRuntimeSettings,
         dataset: str,
         logger,
         run_id: str,
         report_items_limit: int,
         report_dir: str,
         vault_file: str | None = None,
-        settings=None,
     ) -> CommandResult:
         generated_at = getNowIso()
 
         dataset_spec = get_spec(dataset)
-        strict = getattr(settings, "diagnostics_strict", False)
+        strict = observability_settings.diagnostics_strict
         catalog = build_catalog(dataset, strict=strict)
         secret_store = None
         if vault_file:
@@ -61,12 +68,12 @@ class ImportPlanService:
 
             secret_store = FileVaultSecretStore(vault_file)
         enrich_deps = dataset_spec.build_enrich_deps(
-            settings,
+            None,
             enrich_lookup=enrich_lookup,
             secret_store=secret_store,
         )
         planning_deps = dataset_spec.build_planning_deps(
-            settings,
+            pending_settings,
             planning_runtime=planning_runtime,
         )
         row_source = dataset_spec.build_record_source(
@@ -92,7 +99,7 @@ class ImportPlanService:
             planning_deps=planning_deps,
             catalog=catalog,
             include_deleted=include_deleted,
-            settings=settings,
+            settings=pending_settings,
         )
         planning_runtime_dep = planning_deps.cache_gateway
         if planning_runtime_dep is None:
@@ -103,8 +110,8 @@ class ImportPlanService:
             match_runtime=planning_runtime_dep,
             report_items_limit=report_items_limit,
             include_matched_items=False,
-            batch_size=getattr(settings, "match_batch_size", 500),
-            flush_interval_ms=getattr(settings, "match_flush_interval_ms", 500),
+            batch_size=matching_runtime_settings.match_batch_size,
+            flush_interval_ms=matching_runtime_settings.match_flush_interval_ms,
         ) as match_runtime:
             matched_rows = iter_matched_ok(
                 runtime=match_runtime,
@@ -120,8 +127,8 @@ class ImportPlanService:
             resolve_usecase = ResolveUseCase(
                 report_items_limit=report_items_limit,
                 include_resolved_items=False,
-                batch_size=getattr(settings, "resolve_batch_size", 500),
-                flush_interval_ms=getattr(settings, "resolve_flush_interval_ms", 500),
+                batch_size=matching_runtime_settings.resolve_batch_size,
+                flush_interval_ms=matching_runtime_settings.resolve_flush_interval_ms,
             )
             resolved_rows = iter_ok(
                 resolve_usecase.iter_resolved(
