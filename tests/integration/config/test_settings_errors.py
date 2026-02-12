@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from connector.config.app_settings import loadAppSettings
+from connector.config.app_settings import load_app_settings
 from connector.config.config import (
     SettingsConflictError,
     SettingsParseError,
@@ -22,7 +22,7 @@ def test_source_error_for_missing_config_path(tmp_path, monkeypatch):
     missing_path = tmp_path / "missing.yml"
 
     with pytest.raises(SettingsSourceError) as exc_info:
-        loadAppSettings(config_path=str(missing_path), cli_overrides={})
+        load_app_settings(config_path=str(missing_path), cli_overrides={})
 
     err = exc_info.value
     assert len(err.issues) == 1
@@ -45,7 +45,7 @@ def test_parse_errors_are_aggregated_across_sources(tmp_path, monkeypatch):
     )
 
     with pytest.raises(SettingsParseError) as exc_info:
-        loadAppSettings(
+        load_app_settings(
             config_path=str(cfg),
             cli_overrides={"match_batch_size": "cli-bad-int"},
         )
@@ -69,7 +69,7 @@ def test_unknown_keys_warn_by_default(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    loaded = loadAppSettings(
+    loaded = load_app_settings(
         config_path=str(cfg),
         cli_overrides={"unknown_cli_key": 2},
     )
@@ -93,7 +93,7 @@ def test_unknown_keys_error_in_strict_mode(tmp_path, monkeypatch):
     )
 
     with pytest.raises(SettingsValidationError) as exc_info:
-        loadAppSettings(
+        load_app_settings(
             config_path=str(cfg),
             cli_overrides={
                 "diagnostics_strict": True,
@@ -113,7 +113,7 @@ def test_conflict_error_for_half_configured_host_port(tmp_path, monkeypatch):
     cfg.write_text("host: 127.0.0.1\n", encoding="utf-8")
 
     with pytest.raises(SettingsConflictError) as exc_info:
-        loadAppSettings(config_path=str(cfg), cli_overrides={})
+        load_app_settings(config_path=str(cfg), cli_overrides={})
 
     issues = exc_info.value.issues
     assert len(issues) == 1

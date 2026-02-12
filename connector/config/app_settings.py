@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from connector.config.config import SettingsIssue, _load_settings_model
+from connector.config.config import SettingsIssue, load_settings_model
 
 
 @dataclass(frozen=True)
@@ -93,67 +93,86 @@ class LoadedAppSettings:
     source_trace: dict[str, str]
     warnings: tuple[SettingsIssue, ...]
 
-def loadAppSettings(config_path: str | None, cli_overrides: dict[str, Any]) -> LoadedAppSettings:
+
+# Settings field → slice field mapping. Keys are Settings field names,
+# values are slice constructor kwarg names.
+_SLICE_FIELD_MAP: dict[type, dict[str, str]] = {
+    ApiSettings: {
+        "host": "host",
+        "port": "port",
+        "api_username": "username",
+        "api_password": "password",
+        "tls_skip_verify": "tls_skip_verify",
+        "ca_file": "ca_file",
+        "timeout_seconds": "timeout_seconds",
+        "retries": "retries",
+        "retry_backoff_seconds": "retry_backoff_seconds",
+        "resource_exists_retries": "resource_exists_retries",
+    },
+    PathsSettings: {
+        "cache_dir": "cache_dir",
+        "log_dir": "log_dir",
+        "report_dir": "report_dir",
+    },
+    ObservabilitySettings: {
+        "log_level": "log_level",
+        "log_json": "log_json",
+        "report_format": "report_format",
+        "report_items_limit": "report_items_limit",
+        "report_include_skipped": "report_include_skipped",
+        "diagnostics_strict": "diagnostics_strict",
+    },
+    DatasetSettings: {
+        "dataset_name": "dataset_name",
+        "csv_has_header": "csv_has_header",
+        "include_deleted": "include_deleted",
+    },
+    ExecutionSettings: {
+        "stop_on_first_error": "stop_on_first_error",
+        "max_actions": "max_actions",
+        "dry_run": "dry_run",
+    },
+    RefreshSettings: {
+        "page_size": "page_size",
+        "max_pages": "max_pages",
+    },
+    MatchingRuntimeSettings: {
+        "match_batch_size": "match_batch_size",
+        "match_flush_interval_ms": "match_flush_interval_ms",
+        "resolve_batch_size": "resolve_batch_size",
+        "resolve_flush_interval_ms": "resolve_flush_interval_ms",
+    },
+    PendingSettings: {
+        "pending_ttl_seconds": "pending_ttl_seconds",
+        "pending_max_attempts": "pending_max_attempts",
+        "pending_sweep_interval_seconds": "pending_sweep_interval_seconds",
+        "pending_on_expire": "pending_on_expire",
+        "pending_allow_partial": "pending_allow_partial",
+        "pending_retention_days": "pending_retention_days",
+    },
+}
+
+
+def _build_slice(cls: type, settings: Any, field_map: dict[str, str]) -> Any:
+    return cls(**{slice_f: getattr(settings, settings_f) for settings_f, slice_f in field_map.items()})
+
+
+def load_app_settings(config_path: str | None, cli_overrides: dict[str, Any]) -> LoadedAppSettings:
     """
     Назначение:
         Каноническая загрузка настроек приложения в срезанную модель AppSettings.
     """
-    loaded = _load_settings_model(config_path=config_path, cli_overrides=cli_overrides)
+    loaded = load_settings_model(config_path=config_path, cli_overrides=cli_overrides)
     settings = loaded.settings
     app_settings = AppSettings(
-        api=ApiSettings(
-            host=settings.host,
-            port=settings.port,
-            username=settings.api_username,
-            password=settings.api_password,
-            tls_skip_verify=settings.tls_skip_verify,
-            ca_file=settings.ca_file,
-            timeout_seconds=settings.timeout_seconds,
-            retries=settings.retries,
-            retry_backoff_seconds=settings.retry_backoff_seconds,
-            resource_exists_retries=settings.resource_exists_retries,
-        ),
-        paths=PathsSettings(
-            cache_dir=settings.cache_dir,
-            log_dir=settings.log_dir,
-            report_dir=settings.report_dir,
-        ),
-        observability=ObservabilitySettings(
-            log_level=settings.log_level,
-            log_json=settings.log_json,
-            report_format=settings.report_format,
-            report_items_limit=settings.report_items_limit,
-            report_include_skipped=settings.report_include_skipped,
-            diagnostics_strict=settings.diagnostics_strict,
-        ),
-        dataset=DatasetSettings(
-            dataset_name=settings.dataset_name,
-            csv_has_header=settings.csv_has_header,
-            include_deleted=settings.include_deleted,
-        ),
-        execution=ExecutionSettings(
-            stop_on_first_error=settings.stop_on_first_error,
-            max_actions=settings.max_actions,
-            dry_run=settings.dry_run,
-        ),
-        refresh=RefreshSettings(
-            page_size=settings.page_size,
-            max_pages=settings.max_pages,
-        ),
-        matching_runtime=MatchingRuntimeSettings(
-            match_batch_size=settings.match_batch_size,
-            match_flush_interval_ms=settings.match_flush_interval_ms,
-            resolve_batch_size=settings.resolve_batch_size,
-            resolve_flush_interval_ms=settings.resolve_flush_interval_ms,
-        ),
-        pending=PendingSettings(
-            pending_ttl_seconds=settings.pending_ttl_seconds,
-            pending_max_attempts=settings.pending_max_attempts,
-            pending_sweep_interval_seconds=settings.pending_sweep_interval_seconds,
-            pending_on_expire=settings.pending_on_expire,
-            pending_allow_partial=settings.pending_allow_partial,
-            pending_retention_days=settings.pending_retention_days,
-        ),
+        api=_build_slice(ApiSettings, settings, _SLICE_FIELD_MAP[ApiSettings]),
+        paths=_build_slice(PathsSettings, settings, _SLICE_FIELD_MAP[PathsSettings]),
+        observability=_build_slice(ObservabilitySettings, settings, _SLICE_FIELD_MAP[ObservabilitySettings]),
+        dataset=_build_slice(DatasetSettings, settings, _SLICE_FIELD_MAP[DatasetSettings]),
+        execution=_build_slice(ExecutionSettings, settings, _SLICE_FIELD_MAP[ExecutionSettings]),
+        refresh=_build_slice(RefreshSettings, settings, _SLICE_FIELD_MAP[RefreshSettings]),
+        matching_runtime=_build_slice(MatchingRuntimeSettings, settings, _SLICE_FIELD_MAP[MatchingRuntimeSettings]),
+        pending=_build_slice(PendingSettings, settings, _SLICE_FIELD_MAP[PendingSettings]),
     )
     return LoadedAppSettings(
         app_settings=app_settings,
@@ -161,3 +180,4 @@ def loadAppSettings(config_path: str | None, cli_overrides: dict[str, Any]) -> L
         source_trace=dict(loaded.source_trace),
         warnings=tuple(loaded.warnings),
     )
+
