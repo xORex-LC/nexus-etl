@@ -10,13 +10,18 @@ skinparam activity {
 }
 
 start
-:Load YAML text;
-:Parse YAML -> raw mapping;
-:Resolve dataset/stage payload;
+:Load registry.yml;
+:Resolve dataset/stage -> YAML path;
+:Read stage YAML -> raw mapping;
+:Apply post_load hooks (optional)\n(e.g. enrich template expansion);
 :Pydantic model validation;
 
 if (Model valid?) then (yes)
-  :Merge compile options\n(defaults -> global -> dataset/stage);
+  :Merge compile options\n(defaults -> global.base -> global.stages[stage] -> dataset.stage);
+  if (strict=true and unknown keys?) then (yes)
+    :Raise BUILD_OPTIONS_UNKNOWN_KEYS;
+    stop
+  endif
   :Compile stage/cache contract;
   :Build immutable runtime object;
   :Return compiled contract;

@@ -10,14 +10,24 @@ skinparam sequence {
 }
 
 participant "Loader/StageDsl" as Dsl
+participant "TransformationEngine" as Engine
 participant "DslIssue/DslLoadError" as Issues
 participant "DSL diagnostics bridge" as Bridge
 participant "DiagnosticItem" as Diagnostic
 participant "Runtime boundary" as Boundary
 participant "CommandResult" as Result
 
-Dsl -> Issues: create issue/error
-Issues -> Bridge: append/translate
+group Runtime error flow
+  Dsl -> Engine: apply(value, ops)
+  Engine -> Issues: create DslIssue
+  Issues -> Bridge: append_dsl_issue(...)
+end
+
+group Load/compile error flow
+  Dsl -> Issues: raise DslLoadError
+  Issues -> Bridge: translate_dsl_load_error(...)
+end
+
 Bridge -> Diagnostic: build diagnostic item
 Diagnostic -> Boundary: propagate
 Boundary -> Result: add error entry

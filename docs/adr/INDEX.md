@@ -62,13 +62,8 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [DSL-PROBLEM-001](./dsl/DSL-PROBLEM-001-dsl-core-fail-late-and-weak-compile-contract.md) | Problem | DSL Core fail-late поведение и слабый compile-контракт | Закрыта (решена) | 2026-02-12 |
 | [DSL-DEC-001](./dsl/DSL-DEC-001-strict-compile-validation-and-diagnostics-hardening.md) | Decision | Усиление compile/load контракта и диагностик DSL Core | Принято / реализовано | 2026-02-12 |
-
-### Transform (Resolve)
-
-| ID | Тип | Название | Статус | Дата |
-|----|-----|----------|--------|------|
-| [RESOLVE-PROBLEM-001](./transform/RESOLVE-PROBLEM-001-unresolved-fk-blocking-pipeline.md) | Problem | Unresolved FK blocking pipeline | Решена в RESOLVE-DEC-001 | 2026-02-11 |
-| [RESOLVE-DEC-001](./transform/RESOLVE-DEC-001-pending-links-with-retry.md) | Decision | Pending links с механизмом retry | Принято | 2026-02-11 |
+| [DSL-PROBLEM-002](./dsl/DSL-PROBLEM-002-dsl-core-coupling-and-contract-drift-under-scale.md) | Problem | Архитектурная связность DSL Core и дрейф контрактов при росте | Решена в DSL-DEC-002 | 2026-02-13 |
+| [DSL-DEC-002](./dsl/DSL-DEC-002-modular-dsl-core-and-contract-stabilization.md) | Decision | Модульная декомпозиция DSL Core и стабилизация compile/runtime контрактов | Принято / реализовано | 2026-02-13 |
 
 _(Список поддерживается как актуальный реестр ADR по слоям.)_
 

@@ -36,8 +36,8 @@
 - Раннее выявление ошибок конфигурации (parse-time через `@model_validator`)
 
 **Расположение в кодовой базе**:
-- `connector/domain/dsl/specs.py` — Pydantic-модели (40+ классов)
-- `connector/domain/dsl/loader.py` — YAML-загрузка и routing
+- `connector/domain/dsl/specs/_base.py`, `specs/transform.py`, `specs/cache.py` — Pydantic-модели по доменным зонам
+- `connector/domain/dsl/loader/_common.py`, `loader/transform.py`, `loader/cache.py` — YAML-загрузка и routing
 - `connector/domain/dsl/build_options.py` — Compile-policy dataclasses
 
 ---
@@ -48,8 +48,14 @@
 
 ```
 dsl/
-├── specs.py           # 870 строк: 40+ Pydantic-моделей для всех стадий
-├── loader.py          # 528 строк: YAML загрузка, routing, шаблонизация
+├── specs/
+│   ├── _base.py       # DslBaseModel, OperationCall
+│   ├── transform.py   # Spec/Block/Rule для transform-стадий
+│   └── cache.py       # Cache registry/dataset/policy/sync specs
+├── loader/
+│   ├── _common.py     # Общие helpers: registry/path/yaml/validate
+│   ├── transform.py   # Loaders для transform-стадий + build options
+│   └── cache.py       # Loaders для cache + runtime build options
 └── build_options.py   # 112 строк: compile-policy dataclasses (7 классов)
 ```
 
@@ -57,10 +63,10 @@ dsl/
 
 | Тип | Диаграмма | Описание |
 |-----|-----------|----------|
-| Class | [DSL Specs Class Diagram](../../../uml/dsl/dsl_specs_class.png) | Иерархия Spec/Block/Rule моделей |
-| Activity | [Loading Flow](../../../uml/dsl/dsl_specs_activity_loading.png) | Процесс загрузки YAML → Spec |
+| Class | [DSL Class Diagram](../../../uml/transform/dsl/dsl_class.png) | Иерархия Spec/Block/Rule моделей |
+| Activity | [DSL Compile Flow](../../../uml/transform/dsl/dsl_core_activity_compile.png) | Процесс загрузки YAML → Typed Spec |
 
-**PlantUML исходники**: `docs/uml/dsl/*.puml`
+**PlantUML исходники**: `docs/uml/transform/dsl/*.puml`
 
 > **Примечание**: UML диаграммы находятся в процессе обновления.
 
@@ -94,7 +100,7 @@ class MappingRule(BaseModel):
 
 #### Паттерн 2: Merge-Priority Pattern
 
-**Где применяется**: Загрузка build options через `_load_stage_build_options()` (`loader.py` line 416)
+**Где применяется**: Загрузка build options через `_load_stage_build_options()` (`loader/transform.py`)
 
 **Реализация в коде**:
 - **Defaults**: Hardcoded в `@dataclass(frozen=True)` полях `BaseDslBuildOptions`
@@ -160,7 +166,7 @@ MapDslBuildOptions(
 ```
 [YAML files]                    [registry.yml]
      ↓                               ↓
-[_read_yaml()]              [_load_registry()]
+[_read_yaml()]              [_load_registry_or_raise()]
      ↓                               ↓
      └──────────┐   ┌────────────────┘
                 ↓   ↓
@@ -189,23 +195,23 @@ MapDslBuildOptions(
 
 | Spec | Block | Rules | Стадия | Расположение |
 |------|-------|-------|--------|-------------|
-| `MappingSpec` | `MappingBlock` | `MappingRule`, `MetaRule` | mapping | `specs.py` line 103 |
-| `NormalizeSpec` | `NormalizeBlock` | `NormalizeRule` | normalize | `specs.py` line 210 |
-| `EnrichSpec` | `EnrichBlock` | `EnrichRule` | enrich | `specs.py` line 285 |
-| `ValidationSpec` | `ValidationBlock` | `FieldCheck`, `ConditionalCheck` | validate | `specs.py` line 307 |
-| `MatchSpec` | `MatchBlock` | `MatchRule` | match | `specs.py` line 409 |
-| `ResolveSpec` | `ResolveBlock` | `ResolveLinkSpec`, `ResolveDiffSpec` и др. | resolve | `specs.py` line 582 |
-| `SourceSpec` | `SourceConfig` | `SourceFieldSpec` | extract | `specs.py` line 141 |
-| `SinkSpec` | `SinkBlock` | `SinkFieldSpec` | sink (target) | `specs.py` line 176 |
+| `MappingSpec` | `MappingBlock` | `MappingRule`, `MetaRule` | mapping | `specs/transform.py` |
+| `NormalizeSpec` | `NormalizeBlock` | `NormalizeRule` | normalize | `specs/transform.py` |
+| `EnrichSpec` | `EnrichBlock` | `EnrichRule` | enrich | `specs/transform.py` |
+| `ValidationSpec` | `ValidationBlock` | `FieldCheck`, `ConditionalCheck` | validate | `specs/transform.py` |
+| `MatchSpec` | `MatchBlock` | `MatchRule` | match | `specs/transform.py` |
+| `ResolveSpec` | `ResolveBlock` | `ResolveLinkSpec`, `ResolveDiffSpec` и др. | resolve | `specs/transform.py` |
+| `SourceSpec` | `SourceConfig` | `SourceFieldSpec` | extract | `specs/transform.py` |
+| `SinkSpec` | `SinkBlock` | `SinkFieldSpec` | sink (target) | `specs/transform.py` |
 
 ### Cache спецификации
 
 | Spec | Назначение | Расположение |
 |------|-----------|-------------|
-| `CacheRegistrySpec` | Реестр cache-датасетов и политик | `specs.py` line 665 |
-| `CacheDatasetSpec` | Спецификация одного cache-датасета | `specs.py` line 854 |
-| `CacheSyncSpec` | Контракт sync target→cache | `specs.py` line 808 |
-| `CachePolicySpec` | Глобальные cache политики | `specs.py` line 639 |
+| `CacheRegistrySpec` | Реестр cache-датасетов и политик | `specs/cache.py` |
+| `CacheDatasetSpec` | Спецификация одного cache-датасета | `specs/cache.py` |
+| `CacheSyncSpec` | Контракт sync target→cache | `specs/cache.py` |
+| `CachePolicySpec` | Глобальные cache политики | `specs/cache.py` |
 
 ### Build Options
 
@@ -223,16 +229,16 @@ MapDslBuildOptions(
 
 | Функция | Возвращает | Расположение |
 |---------|-----------|-------------|
-| `load_mapping_spec_for_dataset()` | `MappingSpec` | `loader.py` line 49 |
-| `load_source_spec_for_dataset()` | `SourceSpec` | `loader.py` line 62 |
-| `load_normalize_spec_for_dataset()` | `NormalizeSpec` | `loader.py` line 100 |
-| `load_enrich_spec_for_dataset()` | `EnrichSpec` | `loader.py` line 113 |
-| `load_validate_spec_for_dataset()` | `ValidationSpec` | `loader.py` line 127 |
-| `load_match_spec_for_dataset()` | `MatchSpec` | `loader.py` line 140 |
-| `load_resolve_spec_for_dataset()` | `ResolveSpec` | `loader.py` line 153 |
-| `load_sink_spec_for_dataset()` | `SinkSpec` | `loader.py` line 166 |
-| `load_cache_registry_spec()` | `CacheRegistrySpec` | `loader.py` line 179 |
-| `load_cache_dataset_spec_for_dataset()` | `CacheDatasetSpec` | `loader.py` line 235 |
+| `load_mapping_spec_for_dataset()` | `MappingSpec` | `loader/transform.py` |
+| `load_source_spec_for_dataset()` | `SourceSpec` | `loader/transform.py` |
+| `load_normalize_spec_for_dataset()` | `NormalizeSpec` | `loader/transform.py` |
+| `load_enrich_spec_for_dataset()` | `EnrichSpec` | `loader/transform.py` |
+| `load_validate_spec_for_dataset()` | `ValidationSpec` | `loader/transform.py` |
+| `load_match_spec_for_dataset()` | `MatchSpec` | `loader/transform.py` |
+| `load_resolve_spec_for_dataset()` | `ResolveSpec` | `loader/transform.py` |
+| `load_sink_spec_for_dataset()` | `SinkSpec` | `loader/transform.py` |
+| `load_cache_registry_spec()` | `CacheRegistrySpec` | `loader/cache.py` |
+| `load_cache_dataset_spec_for_dataset()` | `CacheDatasetSpec` | `loader/cache.py` |
 
 ---
 
@@ -355,13 +361,13 @@ class BaseDslBuildOptions:
 ```
 
 **Lifecycle**:
-1. **Создание**: `build_options_from_mapping(cls, merged_dict)` — безопасное создание из словаря
+1. **Создание**: `build_options_from_mapping(cls, merged_dict, strict=...)` — создание с поддержкой strict/non-strict режима
 2. **Хранение**: Передаётся в `LayerDsl.__init__(options=...)` каждого layer compiler
 3. **Потребление**: Layer compiler проверяет флаги во время компиляции
 
 **Инварианты**:
 - `frozen=True` — опции не изменяются после создания
-- `build_options_from_mapping()` игнорирует неизвестные ключи (`allowed = {f.name for f in fields(cls)}`)
+- `build_options_from_mapping()` в non-strict игнорирует неизвестные ключи, в strict поднимает `BUILD_OPTIONS_UNKNOWN_KEYS`
 - Все поля имеют defaults — можно создать `cls()` без аргументов
 
 ---
@@ -434,9 +440,9 @@ load_mapping_spec_for_dataset("employees")
     ↓
 _load_dataset_stage_spec(dataset="employees", stage="mapping")
     ↓
-_load_registry()  →  registry.yml
+_load_registry_or_raise()  →  registry.yml
     ↓
-_resolve_registry_path()  →  "datasets/employees/employees.mapping.yaml"
+_resolve_dataset_path()  →  "datasets/employees/employees.mapping.yaml"
     ↓
 _read_yaml()  →  raw dict
     ↓
@@ -465,7 +471,7 @@ MappingSpec(dataset="employees", mapping=MappingBlock(...))
 
 ### Метод: `_load_dataset_stage_spec()`
 
-**Расположение**: `connector/domain/dsl/loader.py` line 455
+**Расположение**: `connector/domain/dsl/loader/_common.py`
 
 **Сигнатура**:
 ```python
@@ -488,7 +494,7 @@ def _load_dataset_stage_spec(
    → Если файл не найден или невалиден → DslLoadError("DSL_REGISTRY_INVALID")
 
 2. Resolve path (line 464)
-   stage_path = _resolve_registry_path(registry, dataset, stage)
+   stage_path = _resolve_dataset_path(registry, dataset, stage)
    → datasets[dataset][stage] → "employees/employees.mapping.yaml"
    → Если dataset не найден → DslLoadError("DSL_REGISTRY_INVALID")
    → Если stage не найден → DslLoadError("DSL_REGISTRY_INVALID")
@@ -531,7 +537,7 @@ dataset + stage
 
 ### Метод: `_load_stage_build_options()`
 
-**Расположение**: `connector/domain/dsl/loader.py` line 416
+**Расположение**: `connector/domain/dsl/loader/transform.py`
 
 **Сигнатура**:
 ```python
@@ -560,8 +566,10 @@ def _load_stage_build_options(
    merged.update(dataset_stage)      # Уровень 4 перезаписывает уровень 3
 
 3. Build dataclass (line 440)
-   RETURN build_options_from_mapping(options_cls, merged)
-   → Фильтрует неизвестные ключи
+   strict_mode = bool(merged.get("strict", False))
+   RETURN build_options_from_mapping(options_cls, merged, strict=strict_mode)
+   → В strict=False фильтрует неизвестные ключи
+   → В strict=True поднимает DslLoadError("BUILD_OPTIONS_UNKNOWN_KEYS")
    → Создаёт dataclass с defaults для пропущенных полей
 ```
 
@@ -585,7 +593,7 @@ Priority (low → high):
 
 ### Метод: `load_cache_build_options_for_runtime()`
 
-**Расположение**: `connector/domain/dsl/loader.py` line 282
+**Расположение**: `connector/domain/dsl/loader/cache.py`
 
 **Сигнатура**:
 ```python
@@ -611,6 +619,7 @@ def load_cache_build_options_for_runtime(
 2. Collect dataset overrides (lines 304-316)
    IF dataset_overrides is None:
        → Автоматически собирает из cache.datasets[*].build_options.cache
+       → Если найдено >1 override: DslLoadError("CACHE_DSL_BUILD_OPTIONS_AMBIGUOUS")
    FOR EACH dataset (sorted):
        merged.update(dataset_overrides[dataset])
 
@@ -619,7 +628,8 @@ def load_cache_build_options_for_runtime(
        merged.update(cli_overrides)
 
 4. Build (line 319)
-   RETURN build_options_from_mapping(CacheDslBuildOptions, merged)
+   strict_mode = bool(merged.get("strict", False))
+   RETURN build_options_from_mapping(CacheDslBuildOptions, merged, strict=strict_mode)
 ```
 
 **Визуализация 5 уровней**:
@@ -635,7 +645,7 @@ Priority (low → high):
 
 ### Метод: `_expand_enrich_templates()`
 
-**Расположение**: `connector/domain/dsl/loader.py` line 331
+**Расположение**: `connector/domain/dsl/loader/transform.py`
 
 **Сигнатура**:
 ```python
@@ -675,7 +685,7 @@ def _expand_enrich_templates(raw: dict[str, Any]) -> dict[str, Any]:
 
 ### Добавить новую стадию pipeline
 
-1. **Создать Rule/Block/Spec модели** в `connector/domain/dsl/specs.py`:
+1. **Создать Rule/Block/Spec модели** в `connector/domain/dsl/specs/transform.py` (или `specs/cache.py` для cache):
    ```python
    class MyStageRule(BaseModel):
        field: str
@@ -696,7 +706,7 @@ def _expand_enrich_templates(raw: dict[str, Any]) -> dict[str, Any]:
        my_custom_flag: bool = False
    ```
 
-3. **Добавить loader-функции** в `connector/domain/dsl/loader.py`:
+3. **Добавить loader-функции** в `connector/domain/dsl/loader/transform.py` (или `loader/cache.py`):
    ```python
    def load_my_stage_spec_for_dataset(dataset: str) -> MyStageSpec:
        return _load_dataset_stage_spec(
@@ -716,7 +726,7 @@ def _expand_enrich_templates(raw: dict[str, Any]) -> dict[str, Any]:
 
 ### Добавить поле в существующий Spec
 
-1. Добавить поле в соответствующий `*Rule` / `*Block` / `*Spec` класс в `specs.py`
+1. Добавить поле в соответствующий `*Rule` / `*Block` / `*Spec` класс в `specs/transform.py` или `specs/cache.py`
 2. Если нужна cross-field валидация → добавить `@model_validator`
 3. Если поле влияет на compile → обновить layer-specific DSL compiler
 
@@ -758,44 +768,47 @@ def _expand_enrich_templates(raw: dict[str, Any]) -> dict[str, Any]:
 ### Контракт build_options_from_mapping
 
 ```python
-# build_options_from_mapping(cls, data) гарантирует:
-# 1. Возвращает экземпляр cls (никогда не бросает ошибку)
-# 2. Неизвестные ключи игнорируются (forward-compatibility)
-# 3. Пропущенные ключи заполняются defaults из dataclass
-# 4. data=None → cls() с defaults
+# build_options_from_mapping(cls, data, strict=False) гарантирует:
+# 1. Возвращает экземпляр cls для валидного набора ключей
+# 2. В strict=False неизвестные ключи игнорируются (forward-compatibility)
+# 3. В strict=True неизвестные ключи → DslLoadError("BUILD_OPTIONS_UNKNOWN_KEYS")
+# 4. Пропущенные ключи заполняются defaults из dataclass
+# 5. data=None → cls() с defaults
 ```
 
 ### Коды ошибок загрузки
 
 | Код | Условие | Расположение |
 |-----|---------|-------------|
-| `DSL_REGISTRY_INVALID` | registry.yml не найден, невалиден или dataset/stage отсутствует | `loader.py` lines 378, 448 |
-| `MAP_DSL_SPEC_INVALID` | MappingSpec невалиден | `loader.py` line 58 |
-| `SOURCE_DSL_SPEC_INVALID` | SourceSpec невалиден | `loader.py` line 71 |
-| `SOURCE_DSL_LOCATION_INVALID` | location и location_ref пусты | `loader.py` line 93 |
-| `NORMALIZE_DSL_SPEC_INVALID` | NormalizeSpec невалиден | `loader.py` line 109 |
-| `ENRICH_DSL_SPEC_INVALID` | EnrichSpec невалиден | `loader.py` line 122 |
-| `ENRICH_DSL_TEMPLATE_INVALID` | Неизвестный lookup template | `loader.py` line 352 |
-| `VALIDATE_DSL_SPEC_INVALID` | ValidationSpec невалиден | `loader.py` line 136 |
-| `MATCH_DSL_SPEC_INVALID` | MatchSpec невалиден | `loader.py` line 149 |
-| `RESOLVE_DSL_SPEC_INVALID` | ResolveSpec невалиден | `loader.py` line 162 |
-| `SINK_DSL_SPEC_INVALID` | SinkSpec невалиден | `loader.py` line 175 |
-| `CACHE_DSL_REGISTRY_INVALID` | Cache registry невалиден | `loader.py` line 188, 410 |
-| `CACHE_DSL_SPEC_INVALID` | CacheDatasetSpec невалиден | `loader.py` line 228, 252 |
-| `CACHE_DSL_DEP_MISSING` | Dataset отсутствует в cache registry | `loader.py` line 243 |
+| `DSL_REGISTRY_INVALID` | registry.yml не найден, невалиден или dataset/stage отсутствует | `loader/_common.py`, `loader/transform.py` |
+| `MAP_DSL_SPEC_INVALID` | MappingSpec невалиден | `loader/transform.py` |
+| `SOURCE_DSL_SPEC_INVALID` | SourceSpec невалиден | `loader/transform.py` |
+| `SOURCE_DSL_LOCATION_INVALID` | location и location_ref пусты | `loader/transform.py` |
+| `NORMALIZE_DSL_SPEC_INVALID` | NormalizeSpec невалиден | `loader/transform.py` |
+| `ENRICH_DSL_SPEC_INVALID` | EnrichSpec невалиден | `loader/transform.py` |
+| `ENRICH_DSL_TEMPLATE_INVALID` | Неизвестный lookup template | `loader/transform.py` |
+| `VALIDATE_DSL_SPEC_INVALID` | ValidationSpec невалиден | `loader/transform.py` |
+| `MATCH_DSL_SPEC_INVALID` | MatchSpec невалиден | `loader/transform.py` |
+| `RESOLVE_DSL_SPEC_INVALID` | ResolveSpec невалиден | `loader/transform.py` |
+| `SINK_DSL_SPEC_INVALID` | SinkSpec невалиден | `loader/transform.py` |
+| `CACHE_DSL_REGISTRY_INVALID` | Cache registry невалиден | `loader/cache.py` |
+| `CACHE_DSL_SPEC_INVALID` | CacheDatasetSpec невалиден или mismatch dataset | `loader/cache.py` |
+| `CACHE_DSL_DEP_MISSING` | Dataset отсутствует в cache registry | `loader/cache.py` |
+| `CACHE_DSL_BUILD_OPTIONS_AMBIGUOUS` | Авто-выбор dataset overrides невозможен (>1 dataset) | `loader/cache.py` |
+| `BUILD_OPTIONS_UNKNOWN_KEYS` | strict-mode build options содержит неизвестные ключи | `build_options.py` |
 
 ### Границы слоёв
 
 **Разрешенные зависимости**:
-- ✅ `loader.py` → `specs.py` (import Spec classes)
-- ✅ `loader.py` → `build_options.py` (import BuildOptions classes)
-- ✅ `loader.py` → `issues.py` (import DslLoadError)
-- ✅ `loader.py` → `yaml` (stdlib YAML parsing)
+- ✅ `loader/transform.py` и `loader/cache.py` → `specs/*` (import Spec classes)
+- ✅ `loader/*` → `build_options.py` (import BuildOptions classes)
+- ✅ `loader/*` → `issues.py` (import DslLoadError)
+- ✅ `loader/_common.py` → `yaml` (YAML parsing)
 
 **Запрещенные зависимости**:
-- ❌ `specs.py` → что-либо кроме `pydantic` — specs чистые data models
-- ❌ `loader.py` → `engine.py` — загрузчик не выполняет операции
-- ❌ `loader.py` → `connector/infra/*` — загрузчик не обращается к инфраструктуре
+- ❌ `specs/*` → `loader/*`/`engine.py` — specs остаются чистыми data models
+- ❌ `loader/*` → `engine.py` — загрузчик не выполняет операции
+- ❌ `loader/*` → `connector/infra/*` — загрузчик не обращается к инфраструктуре
 - ❌ `build_options.py` → что-либо кроме `dataclasses` — чистые value objects
 
 ---
@@ -875,7 +888,7 @@ EnrichRule(
 ### Особенности реализации
 
 - **`model_config = {"populate_by_name": True}`**: Используется в `MappingBlock`, `ValidationSpec`, `CacheDatasetSpec` для поддержки alias-полей (`schema_` вместо `schema`, `validate_` вместо `validate`) — обход зарезервированных слов Python
-- **`_repo_root()`**: Вычисляет корень проекта через `Path(__file__).resolve().parents[3]` (`<repo>/connector/domain/dsl/loader.py`). Привязан к расположению `loader.py`
+- **`_repo_root()`**: Ищет корень проекта подъёмом по `parents` до `datasets/registry.yml` (fallback на `parents[4]` в `loader/_common.py`). Привязан к расположению `loader/_common.py`
 - **Dual-format cache registry**: `_extract_cache_registry_payload()` поддерживает как `{cache: {version, datasets}}` (встроен в registry.yml), так и `{version, datasets}` (отдельный файл)
 
 ### 🚨 Failure Modes
@@ -895,15 +908,15 @@ EnrichRule(
    - **Почему важно**: Позволяет однозначно привязать spec к датасету; используется в diagnostics
    - **Где проверяется**: Pydantic валидация при `model_validate()`
 
-2. **Инвариант: specs.py не имеет внешних зависимостей**
-   - **Что**: `specs.py` импортирует только `pydantic` — ни один домен/инфра модуль
+2. **Инвариант: specs/* не имеет внешних зависимостей**
+   - **Что**: `specs/_base.py`, `specs/transform.py`, `specs/cache.py` импортируют только базовые DSL-модели и `pydantic` — без зависимостей на engine/infra
    - **Почему важно**: Specs — чистые data models, переиспользуемые везде без circular imports
    - **Где проверяется**: Архитектурные тесты (`tests/architecture/`)
 
-3. **Инвариант: Build options forward-compatible**
-   - **Что**: `build_options_from_mapping()` игнорирует неизвестные ключи
-   - **Почему важно**: Добавление нового флага не ломает существующие конфигурации
-   - **Где проверяется**: `build_options.py` line 110: `key in allowed`
+3. **Инвариант: Build options поддерживает strict/non-strict режим**
+   - **Что**: `build_options_from_mapping()` игнорирует unknown keys в non-strict и бросает `BUILD_OPTIONS_UNKNOWN_KEYS` в strict
+   - **Почему важно**: Можно выбрать между forward-compatibility и fail-fast контролем конфигурации
+   - **Где проверяется**: `build_options.py` (`strict` ветка и фильтрация `key in allowed`)
 
 4. **Инвариант: @model_validator нормализует shorthand**
    - **Что**: `op` + `args` автоматически раскрываются в `ops` при parse-time

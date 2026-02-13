@@ -15,6 +15,13 @@
 - `matcher/`
 - `resolver/`
 - `dsl/` — общий dsl-core и точки интеграции со stage DSL.
+  - `dsl_class.*` — классы и контракты DSL core (с учётом split `specs/*`, `loader/*`).
+  - `dsl_architecture.*` — архитектура YAML→loader/specs/options→stage DSL.
+  - `dsl_core_activity_compile.*` — activity загрузки/валидации/компиляции.
+  - `dsl_core_options_merge_activity.*` — merge build options (+ strict/ambiguous ветки).
+  - `dsl_core_sequence_stage_handshake.*` — последовательность инициализации стадии.
+  - `dsl_core_errors_sequence.*` — распространение DslIssue/DslLoadError в diagnostics.
+  - `dsl_core_registry_map.*` — карта OperationRegistry и потребителей.
 
 3. `pipeline/`
 - `cli_layer/`

@@ -11,7 +11,7 @@ skinparam activity {
 
 start
 :Load defaults from dataclass;
-:Read global DSL policy (config);
+:Read global build_options\n(base + stages[stage]/cache);
 
 if (Has dataset/stage override?) then (yes)
   :Apply override mapping;
@@ -19,8 +19,23 @@ else (no)
   :Keep global/default values;
 endif
 
-:Filter unknown keys;
-:Build typed *DslBuildOptions;
+:Optional CLI overrides\n(cache runtime);
+if (dataset_overrides is auto and >1 datasets?) then (yes)
+  :Raise CACHE_DSL_BUILD_OPTIONS_AMBIGUOUS;
+  stop
+endif
+:strict = merged.strict;
+if (strict?) then (yes)
+  if (unknown keys?) then (yes)
+    :Raise BUILD_OPTIONS_UNKNOWN_KEYS;
+    stop
+  else (no)
+    :Build typed *DslBuildOptions;
+  endif
+else (no)
+  :Drop unknown keys;
+  :Build typed *DslBuildOptions;
+endif
 :Return effective options;
 stop
 

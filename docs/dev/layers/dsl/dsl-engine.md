@@ -130,7 +130,7 @@ result = engine.apply(value, ops)
 ### Диаграмма зависимостей
 
 ```
-[OperationCall]  (из specs.py)
+[OperationCall]  (из specs/_base.py, re-export через specs/__init__.py)
        ↓
 [OperationRegistry] ← register_core_ops() ← [ops.py: 25 функций]
        ↓
@@ -604,7 +604,7 @@ def my_helper(engine: TransformationEngine, ...) -> ...:
 | **Resolve** | **Не использует** engine | — | Resolve компилирует policies без ops |
 | **Cache** | Использует косвенно | Projection ops в `CacheSyncSpec` | Трансформация при sync (через projection) |
 
-**Важно**: Match и Resolve слои работают только с DSL-спецификациями (`specs.py`) и build options (`build_options.py`), но не используют `TransformationEngine`. Их DSL-компиляторы строят правила (rules/policies), а не цепочки операций.
+**Важно**: Match и Resolve слои работают только с DSL-спецификациями (`specs/transform.py`) и build options (`build_options.py`), но не используют `TransformationEngine`. Их DSL-компиляторы строят правила (rules/policies), а не цепочки операций.
 
 ---
 
@@ -640,13 +640,13 @@ def op_xxx(value: Any, *, named_arg: Type = default, **_: Any) -> ReturnType:
 
 **Разрешенные зависимости**:
 - ✅ `engine.py` → `registry.py` (import OperationRegistry)
-- ✅ `engine.py` → `specs.py` (import OperationCall)
+- ✅ `engine.py` → `specs/__init__.py` (import OperationCall, re-export из `specs/_base.py`)
 - ✅ `engine.py` → `issues.py` (import DslIssue, DslSeverity)
 - ✅ `ops.py` → `connector.domain.transform.common` (import normalize_text)
-- ✅ `helpers.py` → `engine.py`, `specs.py`, `issues.py`
+- ✅ `helpers.py` → `engine.py`, `specs/__init__.py`, `issues.py`
 
 **Запрещенные зависимости**:
-- ❌ `engine.py` → `loader.py` — engine не знает о YAML загрузке
+- ❌ `engine.py` → `loader/*` — engine не знает о YAML загрузке
 - ❌ `ops.py` → `connector/infra/*` — операции не обращаются к инфраструктуре
 - ❌ `registry.py` → `engine.py` — registry не зависит от engine (обратная зависимость)
 
@@ -807,8 +807,8 @@ result = engine.apply("hello", [
 | `map_dict` с `casefold` | O(m) | m = размер mapping dict (пересоздание) |
 
 **Оптимизации**:
-- `extract_patterns` предкомпилирует regex (`re.compile`) при каждом вызове. При массовом использовании — bottleneck
-- Движок не кэширует скомпилированные regex между вызовами — каждый `apply()` компилирует заново
+- `extract_patterns` использует LRU-кэш компиляции regex через `_compile_patterns()` (maxsize=128)
+- `map_dict(casefold=True)` использует LRU-кэш через `_normalize_mapping()` с fallback для unhashable значений
 
 ### Частые ошибки
 
@@ -818,7 +818,7 @@ result = engine.apply("hello", [
 - ❌ **Забыть `strict: false` в `build_delimited_key`**: По умолчанию strict=true, None элементы вызовут ошибку
 - ✅ **Делай так**: Явно указывай `strict: false` если допускаются пустые элементы
 
-- ❌ **Использовать `op` + `ops` одновременно**: В specs.py `MappingRule` имеет shorthand expansion — `op` автоматически оборачивается в `ops: [OperationCall(...)]`
+- ❌ **Использовать `op` + `ops` одновременно**: В `specs/transform.py` `MappingRule` имеет shorthand expansion — `op` автоматически оборачивается в `ops: [OperationCall(...)]`
 - ✅ **Делай так**: Используй либо `op` + `args` (для одной операции), либо `ops` (для цепочки)
 
 ---

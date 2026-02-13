@@ -11,12 +11,15 @@ skinparam class {
 }
 hide empty members
 
-package "connector/domain/dsl/specs.py" {
-  abstract class BaseModel
+package "connector/domain/dsl/specs/_base.py" {
+  abstract class DslBaseModel
   class OperationCall {
     +op: str
     +args: dict
   }
+}
+
+package "connector/domain/dsl/specs/transform.py" {
   class MappingSpec
   class NormalizeSpec
   class EnrichSpec
@@ -25,20 +28,40 @@ package "connector/domain/dsl/specs.py" {
   class ValidationSpec
   class SourceSpec
   class SinkSpec
+}
+
+package "connector/domain/dsl/specs/cache.py" {
   class CacheRegistrySpec
   class CacheDatasetSpec
   class CacheSyncSpec
 }
 
-package "connector/domain/dsl/loader.py" {
-  class DslLoader <<module>> {
+package "connector/domain/dsl/loader/_common.py" {
+  class LoaderCommon <<module>> {
+    +_load_registry_or_raise()
+    +_load_dataset_stage_spec(...)
+  }
+}
+
+package "connector/domain/dsl/loader/transform.py" {
+  class TransformLoader <<module>> {
     +load_mapping_spec_for_dataset(dataset)
+    +load_source_spec_for_dataset(dataset)
     +load_normalize_spec_for_dataset(dataset)
     +load_enrich_spec_for_dataset(dataset)
+    +load_validate_spec_for_dataset(dataset)
     +load_match_spec_for_dataset(dataset)
     +load_resolve_spec_for_dataset(dataset)
+    +load_sink_spec_for_dataset(dataset)
+    +load_*_build_options_for_dataset(dataset)
+  }
+}
+
+package "connector/domain/dsl/loader/cache.py" {
+  class CacheLoader <<module>> {
     +load_cache_registry_spec_for_runtime()
     +load_cache_dataset_spec_for_dataset(dataset)
+    +load_cache_build_options_for_runtime(...)
   }
 }
 
@@ -111,18 +134,18 @@ package "Integration Points (stage-specific DSL)" #EAF7FF {
   class CacheDsl <<consumer>>
 }
 
-BaseModel <|-- OperationCall
-BaseModel <|-- MappingSpec
-BaseModel <|-- NormalizeSpec
-BaseModel <|-- EnrichSpec
-BaseModel <|-- MatchSpec
-BaseModel <|-- ResolveSpec
-BaseModel <|-- ValidationSpec
-BaseModel <|-- SourceSpec
-BaseModel <|-- SinkSpec
-BaseModel <|-- CacheRegistrySpec
-BaseModel <|-- CacheDatasetSpec
-BaseModel <|-- CacheSyncSpec
+DslBaseModel <|-- OperationCall
+DslBaseModel <|-- MappingSpec
+DslBaseModel <|-- NormalizeSpec
+DslBaseModel <|-- EnrichSpec
+DslBaseModel <|-- MatchSpec
+DslBaseModel <|-- ResolveSpec
+DslBaseModel <|-- ValidationSpec
+DslBaseModel <|-- SourceSpec
+DslBaseModel <|-- SinkSpec
+DslBaseModel <|-- CacheRegistrySpec
+DslBaseModel <|-- CacheDatasetSpec
+DslBaseModel <|-- CacheSyncSpec
 
 TransformationEngine --> OperationRegistry
 TransformationEngine --> EngineResult
@@ -138,25 +161,43 @@ MatchDslBuildOptions --|> BaseDslBuildOptions
 ResolveDslBuildOptions --|> BaseDslBuildOptions
 CacheDslBuildOptions --|> BaseDslBuildOptions
 
-DslLoader ..> MappingSpec
-DslLoader ..> NormalizeSpec
-DslLoader ..> EnrichSpec
-DslLoader ..> MatchSpec
-DslLoader ..> ResolveSpec
-DslLoader ..> SourceSpec
-DslLoader ..> SinkSpec
-DslLoader ..> CacheRegistrySpec
-DslLoader ..> CacheDatasetSpec
-DslLoader ..> DslLoadError
+TransformLoader ..> LoaderCommon
+CacheLoader ..> LoaderCommon
 
-MapperDsl ..> TransformationEngine : uses
-NormalizerDsl ..> TransformationEngine : uses
-EnricherDsl ..> TransformationEngine : uses
-MatchDsl ..> MatchDslBuildOptions : uses
-ResolveDsl ..> ResolveDslBuildOptions : uses
-CacheDsl ..> CacheDslBuildOptions : uses
-CacheDsl ..> CacheRegistrySpec : compiles
-CacheDsl ..> CacheDatasetSpec : compiles
+TransformLoader ..> MappingSpec
+TransformLoader ..> NormalizeSpec
+TransformLoader ..> EnrichSpec
+TransformLoader ..> ValidationSpec
+TransformLoader ..> MatchSpec
+TransformLoader ..> ResolveSpec
+TransformLoader ..> SourceSpec
+TransformLoader ..> SinkSpec
+TransformLoader ..> MapDslBuildOptions
+TransformLoader ..> NormalizeDslBuildOptions
+TransformLoader ..> EnrichDslBuildOptions
+TransformLoader ..> MatchDslBuildOptions
+TransformLoader ..> ResolveDslBuildOptions
+TransformLoader ..> DslLoadError
+
+CacheLoader ..> CacheRegistrySpec
+CacheLoader ..> CacheDatasetSpec
+CacheLoader ..> CacheDslBuildOptions
+CacheLoader ..> DslLoadError
+
+MapperDsl ..> TransformationEngine
+NormalizerDsl ..> TransformationEngine
+EnricherDsl ..> TransformationEngine
+MatchDsl ..> MatchDslBuildOptions
+ResolveDsl ..> ResolveDslBuildOptions
+CacheDsl ..> CacheDslBuildOptions
+CacheDsl ..> CacheRegistrySpec
+CacheDsl ..> CacheDatasetSpec
+CacheDsl ..> CacheLoader
+MapperDsl ..> TransformLoader
+NormalizerDsl ..> TransformLoader
+EnricherDsl ..> TransformLoader
+MatchDsl ..> TransformLoader
+ResolveDsl ..> TransformLoader
 
 note right of MapperDsl
 Integration only:

@@ -24,8 +24,8 @@ package "YAML inputs" {
 }
 
 package "DSL Core (connector/domain/dsl)" #FFF5E8 {
-  [Loader] as Loader
-  [Pydantic Specs] as Specs
+  [Loader (loader/_common + loader/transform + loader/cache)] as Loader
+  [Pydantic Specs (specs/_base + transform + cache)] as Specs
   [Build Options] as BuildOptions
   [OperationRegistry] as OpRegistry
   [TransformationEngine] as TransformEngine
@@ -64,12 +64,12 @@ Loader --> Specs : parse/validate
 Loader --> BuildOptions : policy merge
 TransformEngine --> OpRegistry : lookup/apply ops
 
-MapperDsl ..> Specs : consumes
-NormalizerDsl ..> Specs : consumes
-EnricherDsl ..> Specs : consumes
-MatchDsl ..> Specs : consumes
-ResolveDsl ..> Specs : consumes
-CacheDsl ..> Specs : consumes
+MapperDsl ..> Specs
+NormalizerDsl ..> Specs
+EnricherDsl ..> Specs
+MatchDsl ..> Specs
+ResolveDsl ..> Specs
+CacheDsl ..> Specs
 
 MapperDsl ..> TransformEngine
 NormalizerDsl ..> TransformEngine
@@ -77,20 +77,29 @@ EnricherDsl ..> TransformEngine
 MatchDsl ..> BuildOptions
 ResolveDsl ..> BuildOptions
 CacheDsl ..> BuildOptions
+CacheDsl ..> Loader
 
-MapperDsl --> MapRuntime : compiled contract
-NormalizerDsl --> NormRuntime : compiled contract
-EnricherDsl --> EnrichRuntime : compiled contract
-MatchDsl --> MatchRuntime : compiled contract
-ResolveDsl --> ResolveRuntime : compiled contract
-CacheDsl --> CacheRuntime : compiled runtime
+MapperDsl --> MapRuntime
+NormalizerDsl --> NormRuntime
+EnricherDsl --> EnrichRuntime
+MatchDsl --> MatchRuntime
+ResolveDsl --> ResolveRuntime
+CacheDsl --> CacheRuntime
 
-MapperDsl ..> DslDiag : DslLoadError/DslIssue
-NormalizerDsl ..> DslDiag : DslLoadError/DslIssue
-EnricherDsl ..> DslDiag : DslLoadError/DslIssue
-MatchDsl ..> DslDiag : DslLoadError/DslIssue
-ResolveDsl ..> DslDiag : DslLoadError/DslIssue
-CacheDsl ..> DslDiag : DslLoadError/DslIssue
+MapperDsl ..> DslDiag
+NormalizerDsl ..> DslDiag
+EnricherDsl ..> DslDiag
+MatchDsl ..> DslDiag
+ResolveDsl ..> DslDiag
+CacheDsl ..> DslDiag
+
+note right of CacheDsl
+Dashed links from StageDsl to DSL Core:
+consumes specs/options + reports diagnostics.
+
+Solid links to Stage Engines/Cores:
+compiled contracts/runtime.
+end note
 
 note bottom of "DSL Core (connector/domain/dsl)"
 Shows only shared DSL core responsibilities.

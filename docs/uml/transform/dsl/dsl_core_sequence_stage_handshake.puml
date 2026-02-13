@@ -15,6 +15,7 @@ participant "StageEngine" as StageEngine
 participant "StageDsl" as StageDsl
 participant "DSL Loader" as Loader
 participant "DSL Specs" as Specs
+participant "DSL Build Options" as Options
 participant "TransformationEngine" as TransformEngine
 participant "StageCore" as StageCore
 
@@ -24,6 +25,10 @@ StageEngine -> Loader: load_*_spec_for_dataset(dataset)
 Loader -> Specs: parse + validate YAML
 Specs --> Loader: stage spec
 Loader --> StageEngine: stage spec
+StageEngine -> Loader: load_*_build_options_for_dataset(dataset)
+Loader -> Options: merge defaults/global/dataset
+Options --> Loader: typed options
+Loader --> StageEngine: typed options
 
 StageEngine -> StageDsl: compile(spec, options)
 StageDsl -> TransformEngine: apply ops contract
