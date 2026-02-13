@@ -56,10 +56,10 @@ dsl/
 
 | Тип | Диаграмма | Описание |
 |-----|-----------|----------|
-| Class | [DSL Error Model](../../../uml/dsl/dsl_diagnostics_class.png) | Иерархия DslIssue → DiagnosticItem |
-| Sequence | [Error Flow](../../../uml/dsl/dsl_diagnostics_sequence.png) | Поток ошибок от engine к отчёту |
+| Class | [DSL Core Class Diagram](../../../uml/transform/dsl/dsl_class.png) | Иерархия ключевых DSL сущностей |
+| Sequence | [DSL Error Flow](../../../uml/transform/dsl/dsl_core_errors_sequence.png) | Поток ошибок от engine/load к отчёту |
 
-**PlantUML исходники**: `docs/uml/dsl/*.puml`
+**PlantUML исходники**: `docs/uml/transform/dsl/*.puml`
 
 > **Примечание**: UML диаграммы находятся в процессе обновления.
 
@@ -124,7 +124,7 @@ append_dsl_issue(
 
 **Где применяется**: `__init__.py` курирует публичный API
 
-**Реализация в коде**: 46 экспортов из 6 внутренних модулей (`engine`, `issues`, `loader`, `build_options`, `registry`, `specs`)
+**Реализация в коде**: 45 экспортов из 6 внутренних модулей (`engine`, `issues`, `loader`, `build_options`, `registry`, `specs`)
 
 **Зачем**: Потребители импортируют `from connector.domain.dsl import ...` — один entry point вместо 6 модулей
 
@@ -139,8 +139,8 @@ append_dsl_issue(
                           │ re-exports
         ┌─────────────────┼─────────────────────┐
         ↓                 ↓                     ↓
-  [engine.py]       [loader.py]          [build_options.py]
-  [registry.py]     [specs.py]           [issues.py]
+  [engine.py]       [loader/*]           [build_options.py]
+  [registry.py]     [specs/*]            [issues.py]
         │                                       │
         └─────────────┐  ┌─────────────────────┘
                       ↓  ↓
@@ -217,7 +217,7 @@ class DslLoadError(ValueError):
 ```
 
 **Lifecycle**:
-1. **Создание**: `loader.py` при ошибке YAML/Pydantic, или layer-specific `*_dsl.py` при ошибке компиляции
+1. **Создание**: `loader/_common.py`, `loader/transform.py`, `loader/cache.py` при ошибке YAML/Pydantic, или layer-specific `*_dsl.py` при ошибке компиляции
 2. **Проброс**: Через call stack до orchestration layer (usecase/command)
 3. **Перевод**: `translate_dsl_load_error()` (`diagnostics.py` line 87) → `DiagnosticItem`
 4. **Отчёт**: `DiagnosticItem` включается в `CommandResult` для пользователя
@@ -385,8 +385,8 @@ if result.issues:
 ┌──────────────────────────────────────────────────────────────┐
 │                        DSL Core                               │
 │                                                               │
-│  specs.py     → Pydantic-модели для всех стадий              │
-│  loader.py    → YAML загрузка + merge-priority build options  │
+│  specs/*      → Pydantic-модели для всех стадий              │
+│  loader/*     → YAML загрузка + merge-priority build options  │
 │  engine.py    → TransformationEngine (apply ops to values)    │
 │  registry.py  → OperationRegistry (25 core ops)               │
 │  build_options.py → BaseDslBuildOptions + 6 subclasses        │
@@ -500,7 +500,7 @@ class EmployeesSpec:
 YAML файлы (datasets/registry.yml + datasets/*.yaml)
          ↓
    ┌─────────────────────────────────────────────┐
-   │ DSL Core: loader.py                          │
+   │ DSL Core: loader/transform.py + loader/cache.py │
    │ load_*_spec_for_dataset() → Typed Spec       │
    │ load_*_build_options_for_dataset() → Options  │
    └──────────────────┬──────────────────────────┘
@@ -585,16 +585,16 @@ CacheRegistrySpec, CacheDatasetSpec
 | Префикс | Источник | Фаза |
 |---------|---------|------|
 | `DSL_OP_*` | `engine.py` | Runtime (apply) |
-| `DSL_REGISTRY_*` | `loader.py` | Load (registry.yml) |
-| `MAP_DSL_*` | `loader.py` + `mapper_dsl.py` | Load/Compile (mapping) |
-| `NORMALIZE_DSL_*` | `loader.py` + `normalizer_dsl.py` | Load/Compile (normalize) |
-| `ENRICH_DSL_*` | `loader.py` + `enricher_dsl.py` | Load/Compile (enrich) |
-| `VALIDATE_DSL_*` | `loader.py` | Load (validate) |
-| `MATCH_DSL_*` | `loader.py` + `match_dsl.py` | Load/Compile (match) |
-| `RESOLVE_DSL_*` | `loader.py` + `resolve_dsl.py` | Load/Compile (resolve) |
-| `SINK_DSL_*` | `loader.py` | Load (sink) |
-| `SOURCE_DSL_*` | `loader.py` | Load (source) |
-| `CACHE_DSL_*` | `loader.py` + `cache_dsl.py` | Load/Compile (cache) |
+| `DSL_REGISTRY_*` | `loader/_common.py` + `loader/transform.py` | Load (registry.yml) |
+| `MAP_DSL_*` | `loader/transform.py` + `mapper_dsl.py` | Load/Compile (mapping) |
+| `NORMALIZE_DSL_*` | `loader/transform.py` + `normalizer_dsl.py` | Load/Compile (normalize) |
+| `ENRICH_DSL_*` | `loader/transform.py` + `enricher_dsl.py` | Load/Compile (enrich) |
+| `VALIDATE_DSL_*` | `loader/transform.py` | Load (validate) |
+| `MATCH_DSL_*` | `loader/transform.py` + `match_dsl.py` | Load/Compile (match) |
+| `RESOLVE_DSL_*` | `loader/transform.py` + `resolve_dsl.py` | Load/Compile (resolve) |
+| `SINK_DSL_*` | `loader/transform.py` | Load (sink) |
+| `SOURCE_DSL_*` | `loader/transform.py` | Load (source) |
+| `CACHE_DSL_*` | `loader/cache.py` + `cache_dsl.py` | Load/Compile (cache) |
 
 ### Границы слоёв
 
@@ -749,7 +749,7 @@ class MapperEngine:
 - ❌ **Ловить `DslLoadError` и терять `code`**: `except Exception as exc: raise RuntimeError(str(exc))` — теряет error code
 - ✅ **Делай так**: `except DslLoadError: raise` или `translate_dsl_load_error(error=exc)`
 
-- ❌ **Импортировать `diagnostics.py` из `specs.py` или `engine.py`**: Нарушает направление зависимостей
+- ❌ **Импортировать `diagnostics.py` из `specs/*` или `engine.py`**: Нарушает направление зависимостей
 - ✅ **Делай так**: Импортировать `diagnostics.py` только из layer-specific кода
 
 ---

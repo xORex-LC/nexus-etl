@@ -14,5 +14,6 @@
 
 ## Границы
 
+- В class/activity диаграммах отражена текущая split-архитектура DSL core: `specs/_base.py`, `specs/transform.py`, `specs/cache.py`, `loader/_common.py`, `loader/transform.py`, `loader/cache.py`.
 - Stage-specific DSL (`mapper_dsl`, `normalizer_dsl`, `enricher_dsl`, `match_dsl`, `resolve_dsl`, `cache_dsl`) отмечены как **integration points**.
 - Бизнес-логика stage core намеренно не детализируется в этом наборе диаграмм.

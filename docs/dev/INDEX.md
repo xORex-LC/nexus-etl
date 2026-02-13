@@ -8,6 +8,7 @@
 - [DSL Specs](layers/dsl/dsl-specs.md) — Pydantic-модели, YAML-загрузка, build options
 - [DSL Engine](layers/dsl/dsl-engine.md) — Реестр операций, движок трансформаций, 25 core operations
 - [DSL Diagnostics](layers/dsl/dsl-diagnostics.md) — Модель ошибок, диагностика, карта интеграции со слоями
+- [DSL UML](../uml/transform/dsl/README.md) — Актуальные диаграммы dsl-core и integration points
 
 ### Cache
 - [Cache Core](layers/cache/cache-core.md) — Логика планирования и анализа кэша
