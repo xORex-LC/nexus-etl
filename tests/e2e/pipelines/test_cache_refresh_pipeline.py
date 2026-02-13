@@ -11,7 +11,6 @@ from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.domain.ports.cache.models import UpsertResult
 from connector.main import app
-from connector.infra.http.ankey_client import AnkeyApiClient
 
 runner = CliRunner()
 
@@ -56,12 +55,15 @@ def make_transport(responder):
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.delivery.commands.cache_refresh as cache_refresh_command
+    from connector.delivery.cli.bootstrap import build_api_client as _build_real_api_client
 
-    def factory(*args, **kwargs):
-        kwargs["transport"] = transport
-        return AnkeyApiClient(*args, **kwargs)
+    patched_transport = transport
 
-    monkeypatch.setattr(cache_refresh_command, "AnkeyApiClient", factory)
+    def factory(api_settings, *, transport=None):
+        _ = transport
+        return _build_real_api_client(api_settings, transport=patched_transport)
+
+    monkeypatch.setattr(cache_refresh_command, "build_api_client", factory)
 
 def test_cache_schema_created(tmp_path: Path):
     cache_dir = tmp_path / "cache"

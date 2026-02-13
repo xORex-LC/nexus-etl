@@ -21,14 +21,16 @@ def make_transport(responder: Callable[[httpx.Request], httpx.Response]) -> http
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.delivery.commands.check_api as check_api_command
     import connector.delivery.commands.cache_refresh as cache_refresh_command
-    from connector.infra.http.ankey_client import AnkeyApiClient
+    from connector.delivery.cli.bootstrap import build_api_client as _build_real_api_client
 
-    def factory(*args, **kwargs):
-        kwargs["transport"] = transport
-        return AnkeyApiClient(*args, **kwargs)
+    patched_transport = transport
 
-    monkeypatch.setattr(check_api_command, "AnkeyApiClient", factory)
-    monkeypatch.setattr(cache_refresh_command, "AnkeyApiClient", factory)
+    def factory(api_settings, *, transport=None):
+        _ = transport
+        return _build_real_api_client(api_settings, transport=patched_transport)
+
+    monkeypatch.setattr(check_api_command, "build_api_client", factory)
+    monkeypatch.setattr(cache_refresh_command, "build_api_client", factory)
 
 
 def test_check_api_ok(monkeypatch, tmp_path: Path):

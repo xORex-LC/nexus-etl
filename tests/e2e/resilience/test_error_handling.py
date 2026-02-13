@@ -21,12 +21,15 @@ def make_transport(responder):
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.delivery.commands.cache_refresh as cache_refresh_command
+    from connector.delivery.cli.bootstrap import build_api_client as _build_real_api_client
 
-    def factory(*args, **kwargs):
-        kwargs["transport"] = transport
-        return AnkeyApiClient(*args, **kwargs)
+    patched_transport = transport
 
-    monkeypatch.setattr(cache_refresh_command, "AnkeyApiClient", factory)
+    def factory(api_settings, *, transport=None):
+        _ = transport
+        return _build_real_api_client(api_settings, transport=patched_transport)
+
+    monkeypatch.setattr(cache_refresh_command, "build_api_client", factory)
 
 
 class DummyExecutor:
