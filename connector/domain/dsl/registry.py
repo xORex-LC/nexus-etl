@@ -31,7 +31,9 @@ class OperationRegistry:
     def __init__(self) -> None:
         self._ops: dict[str, Operation] = {}
 
-    def register(self, name: str, func: OperationFunc) -> None:
+    def register(self, name: str, func: OperationFunc, *, allow_override: bool = False) -> None:
+        if not allow_override and name in self._ops:
+            raise ValueError(f"Operation '{name}' already registered")
         self._ops[name] = Operation(name=name, func=func)
 
     def get(self, name: str) -> Operation | None:

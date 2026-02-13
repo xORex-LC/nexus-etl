@@ -7,9 +7,39 @@ from __future__ import annotations
 
 import re
 import uuid
+from functools import lru_cache
 from typing import Any, Iterable
 
 from connector.domain.transform.common import normalize_text
+
+
+@lru_cache(maxsize=128)
+def _compile_patterns(patterns: tuple[tuple[str, str], ...]) -> dict[str, re.Pattern[str]]:
+    """
+    Назначение:
+        Кешированная компиляция regex patterns для hot-path операций.
+    """
+    return {name: re.compile(pattern) for name, pattern in patterns}
+
+
+@lru_cache(maxsize=128)
+def _normalize_mapping(mapping: tuple[tuple[str, Any], ...]) -> dict[str, Any]:
+    """
+    Назначение:
+        Кешированная нормализация mapping (casefold keys) для hot-path операций.
+    """
+    return {k.casefold(): v for k, v in mapping}
+
+
+def _normalize_mapping_safe(mapping: dict[str, Any]) -> dict[str, Any]:
+    """
+    Назначение:
+        Нормализовать mapping в casefold-режиме с безопасным fallback для unhashable values.
+    """
+    try:
+        return _normalize_mapping(tuple(sorted(mapping.items())))
+    except TypeError:
+        return {str(key).casefold(): value for key, value in mapping.items()}
 
 
 def op_trim(value: Any, **_: Any) -> str | None:
@@ -327,7 +357,8 @@ def op_extract_patterns(
         candidates = list(values)
     result: dict[str, str | None] = {name: None for name in patterns}
     keyed_prefixes = keyed_prefixes or {}
-    compiled = {name: re.compile(pattern) for name, pattern in patterns.items()}
+    # Use cached compilation for hot-path performance
+    compiled = _compile_patterns(tuple(sorted(patterns.items())))
     for candidate in candidates:
         if not candidate:
             continue
@@ -425,7 +456,7 @@ def op_map_dict(value: Any, *, mapping: dict[str, Any], casefold: bool = False) 
     key = str(value)
     if casefold:
         key = key.casefold()
-        mapping = {k.casefold(): v for k, v in mapping.items()}
+        mapping = _normalize_mapping_safe(mapping)
     return mapping.get(key)
 
 
