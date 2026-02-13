@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
@@ -12,6 +13,9 @@ from connector.domain.dsl.specs import (
     SoftDeleteRuleSpec,
     ValueExprSpec,
 )
+
+logger = logging.getLogger(__name__)
+_SKIP_FIELD = object()
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,10 @@ class DslCacheSyncAdapter(CacheSyncAdapterProtocol):
         mapped: dict[str, Any] = {}
         for rule in self.sync_spec.projection:
             value = _eval_projection_rule(raw_item=raw_item, rule=rule, engine=self.engine)
+            if value is _SKIP_FIELD:
+                if rule.required:
+                    raise ValueError(f"required cache field cannot be skipped: {rule.target}")
+                continue
             if value is None:
                 if rule.required:
                     raise ValueError(f"required cache field is empty: {rule.target}")
@@ -115,6 +123,17 @@ def _eval_value_expr(
             if expr.on_error == "error":
                 message = "; ".join(issue.message for issue in result.issues)
                 raise ValueError(message)
+            if expr.on_error == "skip":
+                return _SKIP_FIELD
+            if expr.on_error == "warn":
+                logger.warning(
+                    "cache sync value expr issue: codes=%s messages=%s",
+                    [issue.code for issue in result.issues],
+                    [issue.message for issue in result.issues],
+                )
+                return None
+            if expr.on_error == "set_null":
+                return None
             return None
         current = result.value
 

@@ -4,9 +4,9 @@ import pytest
 
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.dsl import loader as dsl_loader
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
+from connector.domain.dsl.loader.transform import _expand_enrich_templates
 from connector.domain.dsl.specs import EnrichSpec
 from connector.domain.transform.enrich.enricher_dsl import build_enricher_spec_from_dsl
 from connector.domain.transform.enrich.models import EnrichContext, EnrichOperationType
@@ -63,7 +63,7 @@ def test_expand_lookup_templates() -> None:
             ],
         },
     }
-    expanded = dsl_loader._expand_enrich_templates(raw)
+    expanded = _expand_enrich_templates(raw)
     lookup = expanded["enrich"]["lookup"][0]
     assert lookup["provider"]["name"] == "cache.by_field"
     assert lookup["value_path"] == "_id"

@@ -93,18 +93,30 @@ class CacheDslBuildOptions(BaseDslBuildOptions):
 TBuildOptions = TypeVar("TBuildOptions", bound=BaseDslBuildOptions)
 
 
-def build_options_from_mapping(cls: type[TBuildOptions], data: dict[str, Any] | None) -> TBuildOptions:
+def build_options_from_mapping(
+    cls: type[TBuildOptions], data: dict[str, Any] | None, *, strict: bool = False
+) -> TBuildOptions:
     """
     Назначение:
         Безопасно собрать dataclass-опции из словаря.
     Алгоритм:
-        - Игнорирует неизвестные ключи.
+        - По умолчанию игнорирует неизвестные ключи.
+        - Если strict=True, бросает DslLoadError при наличии unknown keys.
         - Использует значения по умолчанию для пропущенных полей.
     """
+    from connector.domain.dsl.issues import DslLoadError
 
     if not data:
         return cls()
     allowed = {item.name for item in fields(cls)}
+    if strict:
+        unknown = set(data.keys()) - allowed
+        if unknown:
+            raise DslLoadError(
+                code="BUILD_OPTIONS_UNKNOWN_KEYS",
+                message=f"Unknown build_options keys: {sorted(unknown)}",
+                details={"unknown": sorted(unknown), "allowed": sorted(allowed)},
+            )
     kwargs = {key: value for key, value in data.items() if key in allowed}
     options = cls(**kwargs)
     if getattr(options, "strict", False) and hasattr(options, "fail_on_unknown_ops"):

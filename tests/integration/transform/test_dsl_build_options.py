@@ -13,10 +13,14 @@ from connector.domain.dsl.loader import (
 )
 
 
+def _patch_registry(monkeypatch, registry: dict) -> None:
+    monkeypatch.setattr("connector.domain.dsl.loader.transform._load_registry_or_raise", lambda: registry)
+    monkeypatch.setattr("connector.domain.dsl.loader.cache._load_registry_or_raise", lambda: registry)
+
+
 def test_build_options_defaults_without_policy(monkeypatch):
     registry = {"datasets": {"employees": {}}}
-    monkeypatch.setattr("connector.domain.dsl.loader._load_registry", lambda: registry)
-    monkeypatch.setattr("connector.domain.dsl.loader._load_registry_or_raise", lambda: registry)
+    _patch_registry(monkeypatch, registry)
 
     mapping = load_map_build_options_for_dataset("employees")
     normalize = load_normalize_build_options_for_dataset("employees")
@@ -58,8 +62,7 @@ def test_build_options_merge_order(monkeypatch):
             }
         },
     }
-    monkeypatch.setattr("connector.domain.dsl.loader._load_registry", lambda: registry)
-    monkeypatch.setattr("connector.domain.dsl.loader._load_registry_or_raise", lambda: registry)
+    _patch_registry(monkeypatch, registry)
 
     options = load_normalize_build_options_for_dataset("employees")
 
@@ -71,9 +74,9 @@ def test_build_options_merge_order(monkeypatch):
 
 
 def test_cache_build_options_merge_order(monkeypatch):
-    monkeypatch.setattr(
-        "connector.domain.dsl.loader._load_registry",
-        lambda: {
+    _patch_registry(
+        monkeypatch,
+        {
             "build_options": {
                 "base": {
                     "strict": False,
@@ -123,8 +126,7 @@ def test_strict_mode_enforces_fail_on_unknown_ops(monkeypatch):
         },
         "datasets": {"employees": {}},
     }
-    monkeypatch.setattr("connector.domain.dsl.loader._load_registry", lambda: registry)
-    monkeypatch.setattr("connector.domain.dsl.loader._load_registry_or_raise", lambda: registry)
+    _patch_registry(monkeypatch, registry)
 
     options = load_map_build_options_for_dataset("employees")
 
@@ -134,9 +136,46 @@ def test_strict_mode_enforces_fail_on_unknown_ops(monkeypatch):
 
 def test_stage_build_options_fail_for_unknown_dataset(monkeypatch):
     registry = {"datasets": {"employees": {}}}
-    monkeypatch.setattr("connector.domain.dsl.loader._load_registry", lambda: registry)
-    monkeypatch.setattr("connector.domain.dsl.loader._load_registry_or_raise", lambda: registry)
+    _patch_registry(monkeypatch, registry)
 
     with pytest.raises(DslLoadError) as exc_info:
         load_map_build_options_for_dataset("missing_dataset")
     assert exc_info.value.code == "DSL_REGISTRY_INVALID"
+
+
+def test_stage_build_options_strict_mode_fails_on_unknown_keys(monkeypatch):
+    registry = {
+        "build_options": {
+            "base": {
+                "strict": True,
+                "unknown_option": True,
+            }
+        },
+        "datasets": {"employees": {}},
+    }
+    _patch_registry(monkeypatch, registry)
+
+    with pytest.raises(DslLoadError) as exc_info:
+        load_map_build_options_for_dataset("employees")
+    assert exc_info.value.code == "BUILD_OPTIONS_UNKNOWN_KEYS"
+
+
+def test_cache_build_options_fails_when_registry_overrides_are_ambiguous(monkeypatch):
+    registry = {
+        "build_options": {
+            "base": {"strict": False},
+            "stages": {"cache": {"fail_on_unknown_ops": True}},
+        },
+        "datasets": {"employees": {}, "organizations": {}},
+        "cache": {
+            "datasets": {
+                "employees": {"build_options": {"cache": {"strict": True}}},
+                "organizations": {"build_options": {"cache": {"strict": False}}},
+            }
+        },
+    }
+    _patch_registry(monkeypatch, registry)
+
+    with pytest.raises(DslLoadError) as exc_info:
+        load_cache_build_options_for_runtime()
+    assert exc_info.value.code == "CACHE_DSL_BUILD_OPTIONS_AMBIGUOUS"
