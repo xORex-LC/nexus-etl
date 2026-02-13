@@ -65,6 +65,15 @@ docs/adr/
 | [DSL-PROBLEM-002](./dsl/DSL-PROBLEM-002-dsl-core-coupling-and-contract-drift-under-scale.md) | Problem | Архитектурная связность DSL Core и дрейф контрактов при росте | Решена в DSL-DEC-002 | 2026-02-13 |
 | [DSL-DEC-002](./dsl/DSL-DEC-002-modular-dsl-core-and-contract-stabilization.md) | Decision | Модульная декомпозиция DSL Core и стабилизация compile/runtime контрактов | Принято / реализовано | 2026-02-13 |
 
+### Load
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [TARGET-PROBLEM-001](./target/TARGET-DEC-001-target-runtime-target-spec-slice.md) | Problem | Нечистая граница load-слоя (apply/refresh/check) и зависимость CLI wiring от конкретного target | Открыта (отложена) | 2026-02-13 |
+| [TARGET-DEC-001](./target/TARGET-DEC-001-target-runtime-target-spec-slice.md) | Decision | <...> | Рассматривается / Планируется | 2026-02-13 |
+| [TARGET-PROBLEM-002](./target/TARGET-PROBLEM-002-usecase-output-infra-leaks.md) | Problem | Use-case Apply загрязнён output/infra деталями и размывает границы ответственности | Открыта (решается) | 2026-02-13 |
+| [TARGET-DEC-002](./target/TARGET-DEC-002-usecase-apply-result-presenter.md) | Decision | <...> | Рассматривается / Планируется | 2026-02-13 |
+
 _(Список поддерживается как актуальный реестр ADR по слоям.)_
 
 ---
