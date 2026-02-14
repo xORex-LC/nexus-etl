@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import logging
 from typing import Any, Callable
 
-from connector.infra.logging.setup import logEvent
 from connector.domain.planning.plan_models import Plan
+from connector.domain.planning.record_ref import RecordRef
 from connector.datasets.registry import get_spec
 from connector.datasets.spec import DatasetSpec
 from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol
@@ -12,16 +11,16 @@ from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.domain.ports.cache.roles import ApplyRuntimePort
-from connector.common.sanitize import maskSecretsInObject
-from connector.domain.models import DiagnosticStage, RowRef
+from connector.domain.models import DiagnosticStage
 from connector.domain.diagnostics.context import error as diag_error
-from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.diagnostics.policies import SystemErrorCode, resolve_primary_code
 from connector.domain.diagnostics.translator import translate_execution_result, system_code_of
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.policies import default_stop_policy
+from connector.usecases.apply.models import ApplyItemOutcome, ApplyResult, ApplySummary
+from connector.usecases.apply.telemetry import ApplyTelemetrySink, NullApplyTelemetrySink
+
 
 class ImportApplyService:
     """
@@ -44,24 +43,28 @@ class ImportApplyService:
         self.identity_keys = identity_keys or {}
         self.identity_id_fields = identity_id_fields or {}
 
-    def applyPlan(
+    def apply_plan(
         self,
         plan: Plan,
-        logger,
-        report,
-        run_id: str,
+        catalog: ErrorCatalog,
+        *,
         stop_on_first_error: bool,
         max_actions: int | None,
         dry_run: bool,
-        report_items_limit: int,
+        max_item_outcomes: int,
         resource_exists_retries: int,
-        catalog: ErrorCatalog,
-    ) -> CommandResult:
+        telemetry: ApplyTelemetrySink | None = None,
+    ) -> ApplyResult:
+        sink: ApplyTelemetrySink = telemetry or NullApplyTelemetrySink()
         created = updated = failed = 0
+        rows_with_warnings = 0  # TODO: increment when adapters support field-level warnings; call sink.on_item_warn()
         skipped = getattr(plan.summary, "skipped", 0) if plan and plan.summary else 0
         actions_count = 0
         error_stats: dict[str, int] = {}
         fatal_error = False
+        system_codes: set[SystemErrorCode] = set()
+        item_outcomes: list[ApplyItemOutcome] = []
+        outcomes_dropped = False
 
         dataset_name = getattr(plan.meta, "dataset", None)
         if not dataset_name:
@@ -70,44 +73,41 @@ class ImportApplyService:
         apply_adapter = dataset_spec.get_apply_adapter()
         stop_policy = default_stop_policy()
 
-        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
+        def _add_outcome(outcome: ApplyItemOutcome) -> None:
+            nonlocal outcomes_dropped
+            if len(item_outcomes) < max_item_outcomes:
+                item_outcomes.append(outcome)
+            else:
+                outcomes_dropped = True
 
-        def should_store(status: str) -> bool:
-            return status in ("FAILED", "SKIPPED")
-
-        for raw in plan.items:
-            # План однородный: dataset берём строго из meta.
-            item = raw
-            item_dataset = dataset_name
+        for item in plan.items:
             action = item.op
+            ref = item.record_ref
             if max_actions is not None and actions_count >= max_actions:
                 break
 
             actions_count += 1
             if not item.target_id:
                 failed += 1
-                if should_store("FAILED"):
-                    report_errors, report_warnings = self._split_diagnostics(
-                        [
-                            diag_error(
-                                catalog=catalog,
-                                stage=DiagnosticStage.APPLY,
-                                code="TARGET_ID_MISSING",
-                                field="target_id",
-                                message="target_id is required",
-                                record_ref=self._build_row_ref(item),
-                            )
-                        ],
-                        [],
-                    )
-                    report.add_item(
-                        status="FAILED",
-                        row_ref=self._build_row_ref(item),
-                        payload=None,
-                        errors=report_errors,
-                        warnings=report_warnings,
-                        meta=maskSecretsInObject(self._build_meta(item, None, None, None)),
-                    )
+                diag = diag_error(
+                    catalog=catalog,
+                    stage=DiagnosticStage.APPLY,
+                    code="TARGET_ID_MISSING",
+                    field="target_id",
+                    message="target_id is required",
+                    record_ref=None,
+                )
+                error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
+                sys_code = system_code_of(catalog, diag)
+                system_codes.add(sys_code)
+                sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                _add_outcome(ApplyItemOutcome(
+                    record_ref=ref,
+                    op=action,
+                    status="FAILED",
+                    target_id=None,
+                    diagnostics=(diag,),
+                ))
                 if stop_on_first_error:
                     break
                 continue
@@ -118,7 +118,8 @@ class ImportApplyService:
                 try:
                     if dry_run:
                         exec_result = ExecutionResult(
-                            ok=True, status_code=200, response_json={"dry_run": True}, error_code=None, error_message=None
+                            ok=True, status_code=200, response_json={"dry_run": True},
+                            error_code=None, error_message=None,
                         )
                     else:
                         if apply_adapter is None:
@@ -130,76 +131,57 @@ class ImportApplyService:
                             stage=DiagnosticStage.APPLY,
                             catalog=catalog,
                             sink=boundary_errors,
-                            record_ref=self._build_row_ref(current_item),
+                            record_ref=None,
                         ):
                             exec_result = self.executor.execute(request_spec)
                         if boundary_errors:
                             failed += 1
                             for diag in boundary_errors:
                                 error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
-                            if should_store("FAILED"):
-                                report_errors, report_warnings = self._split_diagnostics(boundary_errors, [])
-                                report.add_item(
-                                    status="FAILED",
-                                    row_ref=self._build_row_ref(current_item),
-                                    payload=maskSecretsInObject(self._build_payload(current_item)),
-                                    errors=report_errors,
-                                    warnings=report_warnings,
-                                    meta=maskSecretsInObject(
-                                        self._build_meta(current_item, None, None, None)
-                                    ),
-                                )
-                            sys_code = system_code_of(catalog, boundary_errors[0])
-                            if stop_policy.is_fatal(sys_code):
+                                sys_code = system_code_of(catalog, diag)
+                                system_codes.add(sys_code)
+                                sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                            if stop_policy.is_fatal(system_code_of(catalog, boundary_errors[0])):
                                 fatal_error = True
-                            logEvent(logger, logging.ERROR, run_id, "import-apply", "Apply failed: boundary error")
+                            _add_outcome(ApplyItemOutcome(
+                                record_ref=ref,
+                                op=action,
+                                status="FAILED",
+                                target_id=current_item.target_id,
+                                diagnostics=tuple(boundary_errors),
+                            ))
                             break
                         if exec_result is None:
                             failed += 1
-                            if should_store("FAILED"):
-                                report_errors, report_warnings = self._split_diagnostics(
-                                    [
-                                        diag_error(
-                                            catalog=catalog,
-                                            stage=DiagnosticStage.APPLY,
-                                            code="INTERNAL_ERROR",
-                                            field=None,
-                                            message="empty execution result",
-                                            record_ref=self._build_row_ref(current_item),
-                                        )
-                                    ],
-                                    [],
-                                )
-                                report.add_item(
-                                    status="FAILED",
-                                    row_ref=self._build_row_ref(current_item),
-                                    payload=maskSecretsInObject(self._build_payload(current_item)),
-                                    errors=report_errors,
-                                    warnings=report_warnings,
-                                    meta=maskSecretsInObject(self._build_meta(current_item, None, None, None)),
-                                )
-                            logEvent(logger, logging.ERROR, run_id, "import-apply", "Apply failed: empty execution result")
+                            diag = diag_error(
+                                catalog=catalog,
+                                stage=DiagnosticStage.APPLY,
+                                code="INTERNAL_ERROR",
+                                field=None,
+                                message="empty execution result",
+                                record_ref=None,
+                            )
+                            error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
+                            sys_code = system_code_of(catalog, diag)
+                            system_codes.add(sys_code)
+                            sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                            _add_outcome(ApplyItemOutcome(
+                                record_ref=ref,
+                                op=action,
+                                status="FAILED",
+                                target_id=current_item.target_id,
+                                diagnostics=(diag,),
+                            ))
                             break
 
                     if exec_result.ok:
-                        status = "OK"
-                        if should_store(status):
-                            report.add_item(
-                                status=status,
-                                row_ref=self._build_row_ref(current_item),
-                                payload=maskSecretsInObject(self._build_payload(current_item)),
-                                errors=[],
-                                warnings=[],
-                                meta=maskSecretsInObject(
-                                    self._build_meta(current_item, exec_result.status_code, exec_result.response_json, exec_result.error_details)
-                                ),
-                            )
                         if action == "create":
                             created += 1
                         elif action == "update":
                             updated += 1
+                        sink.on_item_ok(record_ref=ref, op=action, target_id=current_item.target_id)
                         self._update_identity_index(
-                            dataset=item_dataset,
+                            dataset=dataset_name,
                             desired_state=current_item.desired_state,
                             response_json=exec_result.response_json,
                             source_ref=current_item.source_ref,
@@ -219,138 +201,105 @@ class ImportApplyService:
                         catalog=catalog,
                         stage=DiagnosticStage.SINK,
                         result=exec_result,
-                        record_ref=self._build_row_ref(current_item),
+                        record_ref=None,
                     )
                     error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
-                    if should_store("FAILED"):
-                        report_errors, report_warnings = self._split_diagnostics([diag], [])
-                        report.add_item(
-                            status="FAILED",
-                            row_ref=self._build_row_ref(current_item),
-                            payload=maskSecretsInObject(self._build_payload(current_item)),
-                            errors=report_errors,
-                            warnings=report_warnings,
-                            meta=maskSecretsInObject(
-                                self._build_meta(current_item, exec_result.status_code, exec_result.response_json, exec_result.error_details)
-                            ),
-                        )
                     sys_code = system_code_of(catalog, diag)
+                    system_codes.add(sys_code)
                     if stop_policy.is_fatal(sys_code):
                         fatal_error = True
-                    logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exec_result.error_message}")
+                    sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                    _add_outcome(ApplyItemOutcome(
+                        record_ref=ref,
+                        op=action,
+                        status="FAILED",
+                        target_id=current_item.target_id,
+                        diagnostics=(diag,),
+                    ))
                     break
                 except MissingRequiredSecretError as exc:
                     failed += 1
                     err_code = exc.code
                     error_stats[err_code] = error_stats.get(err_code, 0) + 1
-                    if should_store("FAILED"):
-                        report_errors, report_warnings = self._split_diagnostics(
-                            [
-                                diag_error(
-                                    catalog=catalog,
-                                    stage=DiagnosticStage.APPLY,
-                                    code=err_code,
-                                    field=exc.field,
-                                    message=str(exc),
-                                    record_ref=self._build_row_ref(current_item),
-                                )
-                            ],
-                            [],
-                        )
-                        report.add_item(
-                            status="FAILED",
-                            row_ref=self._build_row_ref(current_item),
-                            payload=maskSecretsInObject(self._build_payload(current_item)),
-                            errors=report_errors,
-                            warnings=report_warnings,
-                            meta=maskSecretsInObject(self._build_meta(current_item, None, None, None)),
-                        )
-                    logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
+                    diag = diag_error(
+                        catalog=catalog,
+                        stage=DiagnosticStage.APPLY,
+                        code=err_code,
+                        field=exc.field,
+                        message=str(exc),
+                        record_ref=None,
+                    )
+                    sys_code = system_code_of(catalog, diag)
+                    system_codes.add(sys_code)
+                    sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                    _add_outcome(ApplyItemOutcome(
+                        record_ref=ref,
+                        op=action,
+                        status="FAILED",
+                        target_id=current_item.target_id,
+                        diagnostics=(diag,),
+                    ))
                     break
                 except Exception as exc:
                     failed += 1
                     err_code = "UNEXPECTED_ERROR"
                     error_stats[err_code] = error_stats.get(err_code, 0) + 1
-                    if should_store("FAILED"):
-                        report_errors, report_warnings = self._split_diagnostics(
-                            [
-                                diag_error(
-                                    catalog=catalog,
-                                    stage=DiagnosticStage.APPLY,
-                                    code=err_code,
-                                    field=None,
-                                    message=str(exc),
-                                    record_ref=self._build_row_ref(current_item),
-                                )
-                            ],
-                            [],
-                        )
-                        report.add_item(
-                            status="FAILED",
-                            row_ref=self._build_row_ref(current_item),
-                            payload=maskSecretsInObject(self._build_payload(current_item)),
-                            errors=report_errors,
-                            warnings=report_warnings,
-                            meta=maskSecretsInObject(self._build_meta(current_item, None, None, None)),
-                        )
-                    logEvent(logger, logging.ERROR, run_id, "import-apply", f"Apply failed: {exc}")
+                    diag = diag_error(
+                        catalog=catalog,
+                        stage=DiagnosticStage.APPLY,
+                        code=err_code,
+                        field=None,
+                        message=str(exc),
+                        record_ref=None,
+                    )
+                    sys_code = system_code_of(catalog, diag)
+                    system_codes.add(sys_code)
+                    sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                    _add_outcome(ApplyItemOutcome(
+                        record_ref=ref,
+                        op=action,
+                        status="FAILED",
+                        target_id=current_item.target_id,
+                        diagnostics=(diag,),
+                    ))
                     break
 
             if stop_on_first_error and failed:
                 break
 
-        retries_total = 0
-        if hasattr(self.executor, "client") and hasattr(self.executor.client, "getRetryAttempts"):
-            retries_total = self.executor.client.getRetryAttempts() or 0
-        report.add_op("create", ok=created)
-        report.add_op("update", ok=updated)
-        report.add_op("skip", count=skipped)
-        report.add_op("apply_failed", failed=failed)
-        report.set_context(
-            "apply",
-            {
-                "retries_total": retries_total,
-                "error_stats": error_stats,
-            },
+        if not system_codes:
+            system_codes.add(SystemErrorCode.OK)
+
+        primary_code = resolve_primary_code(system_codes, stop_policy)
+        all_codes = tuple(sorted(system_codes, key=lambda c: c.value))
+
+        summary = ApplySummary(
+            created=created,
+            updated=updated,
+            failed=failed,
+            skipped=skipped,
+            items_total=actions_count,
+            rows_with_warnings=rows_with_warnings,
+            error_stats=dict(error_stats),
         )
-        result = CommandResult()
-        if failed > 0:
-            result.add_code(SystemErrorCode.DATA_INVALID)
-        if fatal_error:
-            result.add_code(SystemErrorCode.INTERNAL_ERROR)
-        if not result.system_codes:
-            result.add_code(SystemErrorCode.OK)
+
+        result = ApplyResult(
+            summary=summary,
+            primary_code=primary_code,
+            all_codes=all_codes,
+            fatal_error=fatal_error,
+            item_outcomes=tuple(item_outcomes),
+            outcomes_truncated=outcomes_dropped,
+        )
+
+        sink.on_summary(
+            primary_code=result.primary_code,
+            all_codes=result.all_codes,
+            fatal_error=result.fatal_error,
+            counters=result.summary,
+        )
+
         return result
-
-    @staticmethod
-    def _build_row_ref(item) -> RowRef:
-        row_id = getattr(item, "row_id", None) or getattr(item, "id", None) or "row:unknown"
-        return RowRef(
-            line_no=0,
-            row_id=str(row_id),
-            identity_primary=None,
-            identity_value=None,
-        )
-
-    @staticmethod
-    def _split_diagnostics(errors, warnings):
-        return split_report_diagnostics(errors, warnings)
-
-    @staticmethod
-    def _build_payload(item) -> dict[str, Any]:
-        return item.__dict__.copy()
-
-    @staticmethod
-    def _build_meta(item, status_code, api_response, error_details) -> dict[str, Any]:
-        return {
-            "op": getattr(item, "op", None),
-            "target_id": getattr(item, "target_id", None),
-            "changes": getattr(item, "changes", {}),
-            "desired_state": getattr(item, "desired_state", {}),
-            "status_code": status_code,
-            "api_response": api_response,
-            "error_details": error_details,
-        }
 
     def _update_identity_index(
         self,

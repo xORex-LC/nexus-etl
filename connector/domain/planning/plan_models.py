@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
-from dataclasses import field
+
+from connector.domain.planning.record_ref import RecordRef
 
 class Operation:
     """
@@ -74,6 +75,10 @@ class PlanItem:
     changes: dict[str, Any]
     source_ref: dict[str, Any] | None = None
     secret_fields: list[str] = field(default_factory=list)
+
+    @property
+    def record_ref(self) -> RecordRef:
+        return RecordRef(row_id=self.row_id, line_no=self.line_no)
 
 @dataclass
 class Plan:
