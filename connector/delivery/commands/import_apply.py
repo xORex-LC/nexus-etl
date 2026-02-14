@@ -15,6 +15,8 @@ from connector.delivery.cli.bootstrap import (
     build_diagnostics_catalog,
     build_secret_provider,
 )
+from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
+from connector.delivery.telemetry.apply_logging_sink import LoggingApplyTelemetrySink
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.datasets.registry import build_identity_index_plan, get_spec
@@ -106,15 +108,17 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
         report.set_context("apply_target", {"base_url": base_url, "user": app_settings.api.username})
 
-        report.summary.planned_create = plan.summary.planned_create if plan.summary else 0
-        report.summary.planned_update = plan.summary.planned_update if plan.summary else 0
-        report.summary.skipped = plan.summary.skipped if plan.summary else 0
-        report.summary.failed = plan.summary.failed_rows if plan.summary else 0
-
         client = build_api_client(app_settings.api)
         client.resetRetryAttempts()
         secrets_provider = build_secret_provider(opts.secrets_from, opts.vault_file)
         executor = build_api_executor(client)
+
+        telemetry_sink = LoggingApplyTelemetrySink(
+            logger=ctx.logger,
+            run_id=run_id,
+            dataset=dataset_name,
+        )
+
         service = ImportApplyService(
             executor,
             secrets=secrets_provider,
@@ -123,20 +127,31 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             identity_keys=identity_keys,
             identity_id_fields=identity_id_fields,
         )
-        result = service.applyPlan(
+        apply_result = service.apply_plan(
             plan=plan,
-            logger=ctx.logger,
-            report=report,
-            run_id=run_id,
+            catalog=catalog,
             stop_on_first_error=stop_on_first_error,
             max_actions=max_actions,
             dry_run=dry_run,
-            report_items_limit=report_items_limit,
+            max_item_outcomes=report_items_limit,
             resource_exists_retries=resource_exists_retries,
-            catalog=catalog,
+            telemetry=telemetry_sink,
         )
+
+        runtime_context: dict = {}
         if hasattr(client, "getRetryAttempts"):
-            report.set_context("apply_runtime", {"retries_used": client.getRetryAttempts()})
+            runtime_context["retries_used"] = client.getRetryAttempts()
+
+        ApplyReportPresenter.present(
+            result=apply_result,
+            collector=report,
+            plan=plan,
+            runtime_context=runtime_context,
+        )
+
+        result = CommandResult()
+        for code in apply_result.all_codes:
+            result.add_code(code)
         return result
     finally:
         if gateway is not None:
