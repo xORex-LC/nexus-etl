@@ -2,7 +2,7 @@
 
 > **Статус**: Предложено
 > **Дата принятия**: 2026-02-13
-> **Решает проблему**: [TARGET-PROBLEM-001](./target/TARGET-PROBLEM-001-load-layer-target-wiring.md)
+> **Решает проблему**: [TARGET-PROBLEM-001](./TARGET-PROBLEM-001-load-layer-target-wiring.md)
 > **Участники решения**: @xorex-LC
 
 ---
@@ -17,7 +17,7 @@
 - усложнению тестирования (хрупкий monkeypatch);
 - затруднению расширения на другие target-типовые реализации (API/DB/File).
 
-См. [TARGET-PROBLEM-001](./target/TARGET-PROBLEM-001-load-layer-target-wiring.md).
+См. [TARGET-PROBLEM-001](./TARGET-PROBLEM-001-load-layer-target-wiring.md).
 
 ---
 
@@ -210,8 +210,8 @@ Plan(JSON) → ImportApplyService → dataset ApplyAdapter → RequestSpec(+payl
 ## 🔗 Связанные документы
 
 - [TARGET-PROBLEM-001](./TARGET-PROBLEM-001-load-layer-target-wiring.md) — решаемая проблема
-- [docs/dev](../dev/README.md) — дев-документация проекта (в процессе)
-- [ADR-INDEX](../INDEX.md) — индекс ADR
+- [docs/dev](../../dev/README.md) — дев-документация проекта (в процессе)
+- [ADR INDEX](../INDEX.md) — индекс ADR
 
 ---
 
