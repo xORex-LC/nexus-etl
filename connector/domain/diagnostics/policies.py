@@ -96,6 +96,12 @@ FATAL_CODES: frozenset[SystemErrorCode] = frozenset(
     }
 )
 
+FATAL_PRIORITY: tuple[SystemErrorCode, ...] = (
+    SystemErrorCode.INTERNAL_ERROR,
+    SystemErrorCode.AUTH_UNAUTHORIZED,
+    SystemErrorCode.AUTH_FORBIDDEN,
+)
+
 EXIT_CODE_MAP: dict[SystemErrorCode, int] = {
     SystemErrorCode.OK: 0,
     SystemErrorCode.DATA_INVALID: 1,
@@ -166,7 +172,11 @@ def resolve_primary_code(
         return SystemErrorCode.OK
     if SystemErrorCode.OK in codes and len(codes) == 1:
         return SystemErrorCode.OK
-    for code in codes:
+    for code in FATAL_PRIORITY:
+        if code in codes and stop_policy.is_fatal(code):
+            return code
+    # Respect custom stop_policy entries outside fixed priority list.
+    for code in sorted(codes, key=lambda c: c.value):
         if stop_policy.is_fatal(code):
             return code
     if SystemErrorCode.DATA_INVALID in codes:
