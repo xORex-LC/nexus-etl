@@ -17,9 +17,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0.0",
+  "pyperf>=2.7.0",
   "ruff>=0.6.0",
   "pytest-cov>=7.0.0",
   "import-linter>=2.0.0",
+]
+
+perf = [
+  "pyperf>=2.7.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -29,7 +34,7 @@ exclude = ["logs*", "cache*", "reports*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not performance'"
 python_files = ["test_*.py"]
 
 [project.scripts]
