@@ -8,7 +8,6 @@ from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
-from connector.domain.reporting.collector import ReportCollector
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
 from connector.domain.diagnostics.catalog import build_catalog
 
@@ -51,7 +50,7 @@ class DummySpec:
 
 def test_cache_refresh_max_pages_exceeded(monkeypatch, tmp_path):
     def responder(request: httpx.Request) -> httpx.Response:
-        # always return non-empty page to trigger max_pages guard
+        # Всегда возвращаем непустую страницу, чтобы сработал guard max_pages.
         return httpx.Response(200, json={"result": [{"_ouid": 1}]})
 
     transport = make_transport(responder)
@@ -82,7 +81,7 @@ def test_cache_refresh_max_pages_exceeded(monkeypatch, tmp_path):
             "refresh",
         ],
     )
-    # max_pages exceeded should lead to exit code 2
+    # Превышение max_pages должно приводить к exit code 2.
     assert result.exit_code == 2
 
 def test_api_client_invalid_json(monkeypatch):
@@ -154,27 +153,19 @@ def test_import_apply_error_stats():
             )
         ],
     )
-    report = ReportCollector(run_id="r", command="import-apply")
-    import logging
-
-    logger = logging.getLogger("dummy")
-    logger.addHandler(logging.NullHandler())
     executor = DummyExecutor(
         ExecutionResult(ok=False, status_code=400, error_code=SystemErrorCode.DATA_INVALID, error_message="HTTP 400")
     )
     adapter = EmployeesApplyAdapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
-    result = service.applyPlan(
+    result = service.apply_plan(
         plan=plan,
-        logger=logger,
-        report=report,
-        run_id="r",
+        catalog=CATALOG,
         stop_on_first_error=False,
         max_actions=None,
         dry_run=False,
-        report_items_limit=10,
+        max_item_outcomes=10,
         resource_exists_retries=0,
-        catalog=CATALOG,
     )
-    assert result.exit_code() == 1
-    assert report.build().context["apply"]["error_stats"].get("SINK_HTTP_ERROR") == 1
+    assert result.primary_code != SystemErrorCode.OK
+    assert result.summary.error_stats.get("SINK_HTTP_ERROR") == 1
