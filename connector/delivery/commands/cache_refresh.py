@@ -9,7 +9,7 @@ from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import ensure_supported_cache_dataset, result_with
 from connector.delivery.cli.bootstrap import (
     build_api_client,
-    build_api_reader,
+    build_target_runtime,
     open_cache,
 )
 from connector.domain.diagnostics.command_result import CommandResult
@@ -35,6 +35,18 @@ class Options:
     dataset: str | None = None
 
 
+def _extract_transport(client: object) -> object | None:
+    http_client = getattr(client, "client", None)
+    return getattr(http_client, "_transport", None)
+
+
+def _close_http_client(client: object) -> None:
+    http_client = getattr(client, "client", None)
+    close = getattr(http_client, "close", None)
+    if callable(close):
+        close()
+
+
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     app_settings = ctx.app_settings
     if app_settings is None:
@@ -47,10 +59,16 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             if unsupported_result is not None:
                 return unsupported_result
 
-            base_url = f"https://{app_settings.api.host}:{app_settings.api.port}"
-            client = build_api_client(app_settings.api, transport=opts.api_transport)
-            client.resetRetryAttempts()
-            reader = build_api_reader(client)
+            runtime_transport = opts.api_transport
+            if runtime_transport is None:
+                legacy_client = build_api_client(app_settings.api, transport=opts.api_transport)
+                runtime_transport = _extract_transport(legacy_client)
+                _close_http_client(legacy_client)
+
+            runtime = build_target_runtime(app_settings.api, transport=runtime_transport)
+            target_meta = runtime.meta()
+            base_url = target_meta.base_url
+            reader = runtime.reader
 
             adapters = build_sync_adapters(cache_dsl_bundle)
             identity_keys, identity_id_fields = build_identity_index_plan()

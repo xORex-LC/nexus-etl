@@ -10,8 +10,7 @@ from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import log_sqlite_cache_error, result_with
 from connector.delivery.cli.bootstrap import (
     build_cache,
-    build_api_client,
-    build_api_executor,
+    build_target_runtime,
     build_diagnostics_catalog,
     build_secret_provider,
 )
@@ -91,7 +90,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to init identity index: {exc}")
 
     try:
-        base_url = f"https://{app_settings.api.host}:{app_settings.api.port}"
+        runtime = build_target_runtime(app_settings.api, include_reader=False)
+        target_meta = runtime.meta()
+        base_url = target_meta.base_url
+
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
         report.set_context(
             "apply",
@@ -108,10 +110,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
         report.set_context("apply_target", {"base_url": base_url, "user": app_settings.api.username})
 
-        client = build_api_client(app_settings.api)
-        client.resetRetryAttempts()
         secrets_provider = build_secret_provider(opts.secrets_from, opts.vault_file)
-        executor = build_api_executor(client)
+        executor = runtime.executor
 
         telemetry_sink = LoggingApplyTelemetrySink(
             logger=ctx.logger,
@@ -138,9 +138,9 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             telemetry=telemetry_sink,
         )
 
-        runtime_context: dict = {}
-        if hasattr(client, "getRetryAttempts"):
-            runtime_context["retries_used"] = client.getRetryAttempts()
+        runtime_context: dict = {
+            "retries_used": runtime.stats().retries_total,
+        }
 
         ApplyReportPresenter.present(
             result=apply_result,
