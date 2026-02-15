@@ -26,6 +26,7 @@ from connector.infra.http.ankey_client import AnkeyApiClient
 from connector.infra.http.request_executor import AnkeyRequestExecutor
 from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
 from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
+from connector.infra.target.factory import build_target_runtime  # noqa: F401 — re-export
 
 
 def build_diagnostics_catalog(dataset: str | None, *, strict: bool):
@@ -225,6 +226,7 @@ __all__ = [
     "build_api_client",
     "build_api_executor",
     "build_api_reader",
+    "build_target_runtime",
     "build_secret_provider",
     "PipelineContext",
     "build_pipeline_context",
