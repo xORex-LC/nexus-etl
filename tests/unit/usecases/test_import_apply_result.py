@@ -1,5 +1,5 @@
 """
-Unit tests for ImportApplyService.apply_plan() → ApplyResult contract.
+Unit-тесты контракта ImportApplyService.apply_plan() → ApplyResult.
 """
 
 from __future__ import annotations
@@ -112,7 +112,7 @@ def _apply(service: ImportApplyService, plan: Plan, **kwargs) -> ApplyResult:
     return service.apply_plan(plan=plan, **defaults)
 
 
-# --- Tests ---
+# --- Тесты ---
 
 
 class TestApplyResultContract:

@@ -175,7 +175,7 @@ def resolve_primary_code(
     for code in FATAL_PRIORITY:
         if code in codes and stop_policy.is_fatal(code):
             return code
-    # Respect custom stop_policy entries outside fixed priority list.
+    # Учитываем кастомные fatal-коды из stop_policy вне фиксированного приоритета.
     for code in sorted(codes, key=lambda c: c.value):
         if stop_policy.is_fatal(code):
             return code

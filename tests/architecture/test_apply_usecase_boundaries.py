@@ -1,10 +1,10 @@
 """
-Architecture guard tests for apply use-case boundaries.
+Архитектурные guard-тесты для границ apply use-case.
 
-Why these tests exist:
-1. Enforce that connector/usecases/*apply* never imports from infra or delivery layers.
-2. Ensure use-case does not depend on ReportCollector, logEvent, or maskSecrets.
-3. Prevent accidental reintroduction of presentation/infrastructure coupling.
+Зачем нужны эти тесты:
+1. Гарантировать, что connector/usecases/*apply* не импортирует infra/delivery.
+2. Убедиться, что use-case не зависит от ReportCollector, logEvent и maskSecrets.
+3. Предотвратить повторное смешение presentation/infra с бизнес-логикой.
 """
 
 from __future__ import annotations
@@ -58,17 +58,17 @@ def _violations(root: Path, forbidden_prefixes: tuple[str, ...]) -> list[str]:
     return bad
 
 
-# --- Tests ---
+# --- Тесты ---
 
 
 def test_apply_usecase_does_not_import_infra() -> None:
     violations = _violations(USECASES_APPLY_ROOT, ("connector.infra",))
-    assert violations == [], "Apply use-case imports infra:\n" + "\n".join(violations)
+    assert violations == [], "Apply use-case импортирует infra:\n" + "\n".join(violations)
 
 
 def test_apply_usecase_does_not_import_delivery() -> None:
     violations = _violations(USECASES_APPLY_ROOT, ("connector.delivery",))
-    assert violations == [], "Apply use-case imports delivery:\n" + "\n".join(violations)
+    assert violations == [], "Apply use-case импортирует delivery:\n" + "\n".join(violations)
 
 
 def test_import_apply_service_does_not_import_infra() -> None:
@@ -79,7 +79,7 @@ def test_import_apply_service_does_not_import_infra() -> None:
     for module in _imports(service_path):
         if module.startswith("connector.infra"):
             violations.append(f"{_rel(service_path)}: {module}")
-    assert violations == [], "ImportApplyService imports infra:\n" + "\n".join(violations)
+    assert violations == [], "ImportApplyService импортирует infra:\n" + "\n".join(violations)
 
 
 def test_import_apply_service_does_not_import_delivery() -> None:
@@ -90,7 +90,7 @@ def test_import_apply_service_does_not_import_delivery() -> None:
     for module in _imports(service_path):
         if module.startswith("connector.delivery"):
             violations.append(f"{_rel(service_path)}: {module}")
-    assert violations == [], "ImportApplyService imports delivery:\n" + "\n".join(violations)
+    assert violations == [], "ImportApplyService импортирует delivery:\n" + "\n".join(violations)
 
 
 def test_usecase_does_not_use_report_collector() -> None:
@@ -101,7 +101,7 @@ def test_usecase_does_not_use_report_collector() -> None:
         for name in _import_names(path):
             if name == "ReportCollector":
                 violations.append(f"{_rel(path)} imports ReportCollector")
-    assert violations == [], "Use-case must not depend on ReportCollector:\n" + "\n".join(violations)
+    assert violations == [], "Use-case не должен зависеть от ReportCollector:\n" + "\n".join(violations)
 
 
 def test_usecase_does_not_use_logEvent() -> None:
@@ -112,7 +112,7 @@ def test_usecase_does_not_use_logEvent() -> None:
         for name in _import_names(path):
             if name == "logEvent":
                 violations.append(f"{_rel(path)} imports logEvent")
-    assert violations == [], "Use-case must not depend on logEvent:\n" + "\n".join(violations)
+    assert violations == [], "Use-case не должен зависеть от logEvent:\n" + "\n".join(violations)
 
 
 def test_usecase_does_not_use_maskSecrets() -> None:
@@ -123,11 +123,11 @@ def test_usecase_does_not_use_maskSecrets() -> None:
         for name in _import_names(path):
             if name in ("maskSecretsInObject", "mask_secrets"):
                 violations.append(f"{_rel(path)} imports {name}")
-    assert violations == [], "Use-case must not depend on secret masking:\n" + "\n".join(violations)
+    assert violations == [], "Use-case не должен зависеть от маскирования секретов:\n" + "\n".join(violations)
 
 
 def test_resolve_primary_code_deterministic_with_multiple_fatal() -> None:
-    """Fix 5: resolve_primary_code must return the same code regardless of set iteration order."""
+    """Fix 5: resolve_primary_code должен быть детерминированным при нескольких fatal-кодах."""
     from connector.domain.diagnostics.policies import (
         SystemErrorCode,
         StopPolicy,
@@ -139,7 +139,7 @@ def test_resolve_primary_code_deterministic_with_multiple_fatal() -> None:
     results = set()
     for _ in range(100):
         results.add(resolve_primary_code(codes, stop))
-    assert len(results) == 1, f"resolve_primary_code is non-deterministic: {results}"
+    assert len(results) == 1, f"resolve_primary_code недетерминирован: {results}"
     assert results.pop() == SystemErrorCode.INTERNAL_ERROR
 
 

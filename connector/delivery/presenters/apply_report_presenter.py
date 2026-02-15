@@ -11,7 +11,7 @@ from connector.usecases.apply.models import ApplyResult
 
 
 class ApplyReportPresenter:
-    """Преобразует ApplyResult → ReportCollector (delivery-side adapter)."""
+    """Преобразует `ApplyResult` в `ReportCollector` на уровне delivery-слоя."""
 
     @staticmethod
     def present(
@@ -32,7 +32,7 @@ class ApplyReportPresenter:
         collector.add_op("skip", count=summary.skipped)
         collector.add_op("apply_failed", failed=summary.failed)
 
-        # Merge into existing context["apply"] (handler may have set plan_path/opts)
+        # Дополняем существующий context["apply"], чтобы не потерять поля из handler.
         apply_ctx = dict(collector.context.get("apply", {}))
         apply_ctx["error_stats"] = dict(summary.error_stats)
         apply_ctx.update(runtime_context or {})
@@ -43,7 +43,7 @@ class ApplyReportPresenter:
         collector.summary.ops.setdefault("plan", {})["planned_create"] = planned_create
         collector.summary.ops.setdefault("plan", {})["planned_update"] = planned_update
 
-        # Build items directly (bypass add_item to avoid double-counting summary)
+        # Формируем элементы напрямую, чтобы избежать побочных инкрементов add_item().
         for outcome in result.item_outcomes:
             row_ref = RowRef(
                 line_no=outcome.record_ref.line_no or 0,
@@ -66,7 +66,7 @@ class ApplyReportPresenter:
                     meta={"op": outcome.op, "target_id": outcome.target_id},
                 )
             )
-            # Count diagnostics into summary
+            # Пересчитываем diagnostics в агрегаты summary.
             for d in report_errors:
                 collector.summary.errors_total += 1
                 stage_key = d.stage.value if isinstance(d.stage, DiagnosticStage) else str(d.stage)
@@ -81,8 +81,8 @@ class ApplyReportPresenter:
         if result.outcomes_truncated:
             collector.meta.items_truncated = True
 
-        # When outcomes are truncated to zero, diagnostics counters from items are not enough
-        # to derive status reliably. Use summary counters as source of truth.
+        # Если outcomes усечены до нуля, по items нельзя надёжно вывести статус.
+        # В этом случае используем summary как источник истины.
         if summary.failed > 0 and collector.summary.errors_total == 0:
             collector.summary.errors_total = summary.failed
 

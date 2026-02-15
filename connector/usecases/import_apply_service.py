@@ -57,7 +57,7 @@ class ImportApplyService:
     ) -> ApplyResult:
         sink: ApplyTelemetrySink = telemetry or NullApplyTelemetrySink()
         created = updated = failed = 0
-        rows_with_warnings = 0  # TODO: increment when adapters support field-level warnings; call sink.on_item_warn()
+        rows_with_warnings = 0  # TODO: увеличивать счётчик, когда адаптеры начнут возвращать field-level warnings; вызывать sink.on_item_warn()
         skipped = getattr(plan.summary, "skipped", 0) if plan and plan.summary else 0
         actions_count = 0
         error_stats: dict[str, int] = {}

@@ -1,5 +1,5 @@
 """
-Unit tests for ApplyReportPresenter.
+Unit-тесты для ApplyReportPresenter.
 """
 
 from __future__ import annotations
@@ -112,7 +112,7 @@ class TestPresenterSummary:
         ApplyReportPresenter.present(result=result, collector=collector, plan=_make_plan())
 
         assert collector.summary.rows_total == 6
-        assert collector.summary.rows_passed == 5  # created + updated
+        assert collector.summary.rows_passed == 5  # создано + обновлено
         assert collector.summary.rows_blocked == 1
         assert collector.summary.rows_with_warnings == 1
 
@@ -140,7 +140,7 @@ class TestPresenterSummary:
         assert collector.summary.ops["plan"]["planned_update"] == 5
 
     def test_no_double_counting_with_outcomes(self):
-        """Fix 1: rows_total must not be doubled by add_item side effects."""
+        """Fix 1: rows_total не должен удваиваться из-за побочных эффектов add_item."""
         outcome = ApplyItemOutcome(
             record_ref=RecordRef(row_id="line:1", line_no=1),
             op="create", status="FAILED", target_id="id-1",
@@ -152,8 +152,8 @@ class TestPresenterSummary:
 
         ApplyReportPresenter.present(result=result, collector=collector, plan=_make_plan())
 
-        assert collector.summary.rows_total == 1  # NOT 2
-        assert collector.summary.rows_blocked == 1  # NOT 2
+        assert collector.summary.rows_total == 1  # не 2
+        assert collector.summary.rows_blocked == 1  # не 2
 
 
 class TestPresenterContext:
@@ -180,7 +180,7 @@ class TestPresenterContext:
         assert collector.context["apply"]["retries_used"] == 3
 
     def test_merges_with_existing_context(self):
-        """Fix 2: presenter must not overwrite existing context['apply'] fields."""
+        """Fix 2: presenter не должен перезаписывать существующие поля context['apply']."""
         result = _make_result(summary=_make_summary(error_stats={"E": 1}))
         collector = _make_collector()
         collector.set_context("apply", {"plan_path": "/tmp/plan.json", "dry_run": False})
@@ -250,7 +250,7 @@ class TestPresenterItems:
         assert len(collector.items) == 0
 
     def test_sets_items_truncated_from_outcomes_truncated(self):
-        """Fix 3: items_truncated uses outcomes_truncated flag from ApplyResult."""
+        """Fix 3: items_truncated берётся из флага outcomes_truncated в ApplyResult."""
         outcomes = tuple(
             ApplyItemOutcome(
                 record_ref=RecordRef(row_id=f"line:{i}", line_no=i),
@@ -288,7 +288,7 @@ class TestPresenterItems:
         assert collector.meta.items_truncated is False
 
     def test_counts_diagnostics_in_summary(self):
-        """Fix 1: errors_total/warnings_total must be set correctly via direct counting."""
+        """Fix 1: errors_total/warnings_total должны считаться напрямую и корректно."""
         outcome = ApplyItemOutcome(
             record_ref=RecordRef(row_id="line:1", line_no=1),
             op="create", status="FAILED", target_id="id-1",

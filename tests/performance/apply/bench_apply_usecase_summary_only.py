@@ -1,8 +1,8 @@
 """
-Benchmark: apply_plan with N=50k items, all OK.
-Validates O(1) memory for outcomes (no outcomes stored for OK items).
+Бенчмарк: apply_plan на N=50k элементов, все операции успешны.
+Проверяет O(1) память для outcomes (для OK-элементов outcomes не хранятся).
 
-Usage:
+Запуск:
     .venv/bin/python tests/performance/apply/bench_apply_usecase_summary_only.py --fast
 """
 
