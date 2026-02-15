@@ -1,8 +1,8 @@
 """
-Benchmark: ApplyReportPresenter overhead with M outcomes (100/1000).
-Measures the cost of converting ApplyResult → ReportCollector.
+Бенчмарк: накладные расходы ApplyReportPresenter при M outcomes (100/1000).
+Измеряет стоимость преобразования ApplyResult → ReportCollector.
 
-Usage:
+Запуск:
     .venv/bin/python tests/performance/apply/bench_presenter_build_report.py --fast
 """
 

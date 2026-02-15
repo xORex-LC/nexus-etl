@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RecordRef:
-    """Opaque correlation reference (no payload, no source schema)."""
+    """Непрозрачная ссылка для корреляции записей (без payload и схемы источника)."""
 
     row_id: str
     line_no: int | None = None

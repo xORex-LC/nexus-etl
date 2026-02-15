@@ -1,3 +1,7 @@
+"""
+Smoke-тесты entrypoint-скриптов performance-бенчмарков apply.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

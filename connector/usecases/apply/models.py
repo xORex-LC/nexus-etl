@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Модели результата apply use-case.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,8 +29,8 @@ class ApplySummary:
 @dataclass(frozen=True)
 class ApplyItemOutcome:
     record_ref: RecordRef
-    op: str  # 'create' | 'update'
-    status: str  # 'OK' | 'FAILED'
+    op: str  # операция из PlanItem: 'create' | 'update'
+    status: str  # итог item: 'OK' | 'FAILED'
     target_id: str | None
     diagnostics: Tuple[DiagnosticItem, ...]
 

@@ -1,8 +1,8 @@
 """
-Benchmark: apply_plan with N=50k items, all FAILED (WARN/ERROR).
-Validates bounded buffer: max_item_outcomes=100 limits stored outcomes.
+Бенчмарк: apply_plan на N=50k элементов, все операции завершаются ошибкой.
+Проверяет ограниченный буфер: max_item_outcomes=100 ограничивает число сохраняемых outcomes.
 
-Usage:
+Запуск:
     .venv/bin/python tests/performance/apply/bench_apply_usecase_warn_error_buffered.py --fast
 """
 

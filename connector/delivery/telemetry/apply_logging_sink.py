@@ -9,7 +9,7 @@ from connector.usecases.apply.models import ApplySummary
 
 
 class LoggingApplyTelemetrySink:
-    """Per-item structured logging for apply (delivery/infra layer)."""
+    """Структурированное per-item логирование apply на уровне delivery/infra."""
 
     def __init__(self, logger: logging.Logger, run_id: str, dataset: str) -> None:
         self._logger = logger
