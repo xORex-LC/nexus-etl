@@ -1,3 +1,27 @@
 """
 Пакет адаптеров к целевой системе (target).
+
+Предоставляет TargetRuntime — единую точку доступа для delivery-слоя,
+скрывая конкретную target-инфраструктуру (HTTP клиент, retry, etc).
 """
+
+from connector.infra.target.factory import build_target_runtime
+from connector.infra.target.models import (
+    TargetCheckResult,
+    TargetConnectionConfig,
+    TargetFaultKind,
+    TargetMeta,
+    TargetStats,
+)
+from connector.infra.target.runtime import DefaultTargetRuntime, TargetRuntime
+
+__all__ = [
+    "build_target_runtime",
+    "DefaultTargetRuntime",
+    "TargetCheckResult",
+    "TargetConnectionConfig",
+    "TargetFaultKind",
+    "TargetMeta",
+    "TargetRuntime",
+    "TargetStats",
+]
