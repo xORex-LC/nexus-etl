@@ -1,6 +1,6 @@
 # TARGET-DEC-002: Apply use-case возвращает ApplyResult, а отчёт формируется презентером (без report/infra в use-case)
 
-> **Статус**: Предложено
+> **Статус**: Принято (реализовано)
 > **Дата принятия**: 2026-02-13
 > **Решает проблему**: [TARGET-PROBLEM-002](./TARGET-PROBLEM-002-usecase-output-infra-leaks.md)
 > **Участники решения**: @xorex-LC
@@ -132,6 +132,7 @@ class ApplyResult:
 
     # Bounded outcomes for reporting (WARN/ERROR only)
     item_outcomes: Tuple[ApplyItemOutcome, ...]
+    outcomes_truncated: bool
 ```
 
 ### Поток данных
@@ -247,11 +248,11 @@ class ApplyTelemetrySink(Protocol):
 3. `TargetRuntime.stats()/meta()` добавляются в отчёт только в delivery/presenter слое.
 4. `ApplyResult` не содержит raw payload и secret values.
 5. `report_items_limit` переиспользуется как `max_item_outcomes` в use-case; outcomes ограничиваются **на весь план** и сохраняются **в порядке обработки**.
-6. Item-level outcomes возвращаются **только для WARN/ERROR**; `SKIP` не включается в outcomes и не отображается (только в summary).
+6. Item-level outcomes возвращаются из ограниченного буфера `max_item_outcomes`; `SKIP` не включается в outcomes и не отображается (только в summary).
 7. Apply использует `RecordRef`, получая его из `PlanItem.row_id/line_no` через property/helper (например, `PlanItem.record_ref` как `@property`, без нового поля хранения).
 8. Per-item логирование выполняется через output-port (`ApplyTelemetrySink`) и не зависит от лимитов отчёта; события не содержат payload/секретов.
 9. `ApplySummary` и `primary_code/all_codes` считаются по всем обработанным plan-items, а не только по `item_outcomes`.
-10. `ApplySummary.items_total` отражает число item с warning/error до лимита, а фактически вложенные элементы определяются как `len(item_outcomes)` после лимита.
+10. `ApplySummary.items_total` отражает число всех обработанных plan-items; фактически вложенные элементы определяются как `len(item_outcomes)`, а факт усечения — `outcomes_truncated`.
 11. `item_outcomes` содержит только операции `op in {'create', 'update'}` со статусами `status in {'OK', 'FAILED'}`; `SKIP` не включается (остаётся только в summary).
 
 
@@ -266,7 +267,7 @@ class ApplyTelemetrySink(Protocol):
 
 Рекомендация:
 - Presenter выставляет итоговые счётчики **напрямую из `ApplyResult.summary`** (unbounded totals),
-  а `add_item()` использует только для сохранения отображаемых элементов (WARN/ERROR) и выставления `items_truncated`.
+  формирует `ReportItem` напрямую в `collector.items` (без `add_item()`), а `items_truncated` выставляет из `outcomes_truncated`.
 - Если хочется избежать прямой мутации `collector.summary`, добавить thin-метод:
   `ReportCollector.apply_summary_from_apply_result(summary: ApplySummary)`.
 
@@ -277,7 +278,7 @@ class ApplyTelemetrySink(Protocol):
 
 **Unit**:
 - ✅ `ImportApplyService` возвращает корректный `ApplyResult` (counters/totals/error_stats по `diag.code`, `fatal_error/primary_code/all_codes`) при ok/fail сценариях (executor mock).
-- ✅ Лимит item outcomes: только WARN/ERROR, `max_item_outcomes` на весь план, порядок обработки, без SKIP.
+- ✅ Лимит item outcomes: `max_item_outcomes` на весь план, порядок обработки, без SKIP, с корректным `outcomes_truncated`.
 - ✅ `ApplyTelemetrySink`: события эмитятся на каждый item; OK — только DEBUG; ERROR/WARN — всегда; без payload/секретов.
 - ✅ `ApplyReportPresenter`: корректно переносит `ApplyResult` в `ReportCollector` (meta/context/summary/items), не добавляя `SystemErrorCode` в отчёт.
 
@@ -307,7 +308,7 @@ class ApplyTelemetrySink(Protocol):
 ## ⚠️ Риски и ограничения
 
 **Известные ограничения**:
-- На первом шаге `ApplyResult` может включать item outcomes только для WARNING/ERROR, ограниченные `max_item_outcomes` (из CLI `report_items_limit`).
+- На первом шаге warning-ветка в apply ещё не активирована: фактически outcomes сейчас формируются из error-элементов, буфер всё равно ограничен `max_item_outcomes` (из CLI `report_items_limit`).
 - При очень больших планах может понадобиться потоковый вывод (тогда рассматриваем вариант 3 — OutputPort).
 
 **Риски**:
@@ -350,5 +351,5 @@ class ApplyTelemetrySink(Protocol):
 | 2026-02-13 | Решение предложено: use-case возвращает ApplyResult, отчёт формирует presenter |
 | 2026-02-13 | Выбран вариант 2 как базовый; вариант 3 отложен до необходимости потокового вывода |
 | 2026-02-14 | Рассмотрены дополнительные риски по SystemErrorCode/RowRef |
-| 2026-02-14 | Добавлены инварианты на полноту `summary`/`system_codex` и семантику `items_total`/`items_include` |
+| 2026-02-14 | Уточнены инварианты на полноту `summary`/`system_codes`, семантику `items_total` и флаг `outcomes_truncated` |
 | 2026-02-14 | Рассмотрены способы реализации |

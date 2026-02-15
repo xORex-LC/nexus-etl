@@ -12,6 +12,7 @@ from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
 from connector.datasets.employees.load.user_payload import buildUserUpsertPayload
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.reporting.collector import ReportCollector
+from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
 from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
 from connector.main import app
 from connector.domain.diagnostics.catalog import build_catalog
@@ -218,22 +219,20 @@ def test_import_apply_stop_on_first_error():
     )
     adapter = EmployeesApplyAdapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
-    logger = logging.getLogger("test")
-    logger.addHandler(logging.NullHandler())
-    report = ReportCollector(run_id="r", command="import-apply")
-    result = service.applyPlan(
+    apply_result = service.apply_plan(
         plan=plan,
-        logger=logger,
-        report=report,
-        run_id="r",
+        catalog=CATALOG,
         stop_on_first_error=True,
         max_actions=None,
         dry_run=False,
-        report_items_limit=10,
+        max_item_outcomes=10,
         resource_exists_retries=0,
-        catalog=CATALOG,
     )
-    assert result.exit_code() == 1
+    assert apply_result.primary_code != SystemErrorCode.OK
+    assert apply_result.summary.failed == 1
+
+    report = ReportCollector(run_id="r", command="import-apply")
+    ApplyReportPresenter.present(apply_result, report, plan)
     assert report.build().summary.ops.get("apply_failed", {}).get("failed") == 1
 
 def test_import_apply_max_actions_limits_requests():
@@ -294,20 +293,14 @@ def test_import_apply_max_actions_limits_requests():
     )
     adapter = EmployeesApplyAdapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
-    logger = logging.getLogger("test2")
-    logger.addHandler(logging.NullHandler())
-    report = ReportCollector(run_id="r", command="import-apply")
-    service.applyPlan(
+    service.apply_plan(
         plan=plan,
-        logger=logger,
-        report=report,
-        run_id="r",
+        catalog=CATALOG,
         stop_on_first_error=False,
         max_actions=1,
         dry_run=False,
-        report_items_limit=10,
+        max_item_outcomes=10,
         resource_exists_retries=0,
-        catalog=CATALOG,
     )
     assert len(executor.calls) == 1
 
@@ -348,23 +341,17 @@ def test_import_apply_resource_exists_retries():
     )
     adapter = EmployeesApplyAdapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
-    logger = logging.getLogger("test3")
-    logger.addHandler(logging.NullHandler())
-    report = ReportCollector(run_id="r", command="import-apply")
-    result = service.applyPlan(
+    apply_result = service.apply_plan(
         plan=plan,
-        logger=logger,
-        report=report,
-        run_id="r",
+        catalog=CATALOG,
         stop_on_first_error=False,
         max_actions=None,
         dry_run=False,
-        report_items_limit=10,
+        max_item_outcomes=10,
         resource_exists_retries=1,
-        catalog=CATALOG,
     )
-    assert result.exit_code() == 0
-    assert report.build().summary.ops.get("create", {}).get("ok") == 1
+    assert apply_result.primary_code == SystemErrorCode.OK
+    assert apply_result.summary.created == 1
     assert len(executor.calls) == 2
 
 def test_import_apply_requires_plan(tmp_path: Path):
@@ -546,22 +533,20 @@ def test_apply_report_items_include_dataset():
     )
     adapter = EmployeesApplyAdapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
-    logger = logging.getLogger("test-report-dataset")
-    logger.addHandler(logging.NullHandler())
-    report = ReportCollector(run_id="r", command="import-apply")
-    result = service.applyPlan(
+    apply_result = service.apply_plan(
         plan=plan,
-        logger=logger,
-        report=report,
-        run_id="r",
+        catalog=CATALOG,
         stop_on_first_error=False,
         max_actions=None,
         dry_run=False,
-        report_items_limit=10,
+        max_item_outcomes=10,
         resource_exists_retries=0,
-        catalog=CATALOG,
     )
-    assert result.exit_code() == 1
+    assert apply_result.primary_code != SystemErrorCode.OK
+
+    report = ReportCollector(run_id="r", command="import-apply")
+    report.set_meta(dataset=dataset)
+    ApplyReportPresenter.present(apply_result, report, plan)
     built = report.build()
     assert built.meta.dataset == dataset
     assert built.items

@@ -1,10 +1,10 @@
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
-from connector.domain.reporting.collector import ReportCollector
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.infra.secrets.dict_provider import DictSecretProvider
 from connector.infra.secrets.null_provider import NullSecretProvider
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec, RequestExecutorProtocol
 from connector.domain.diagnostics.catalog import build_catalog
+from connector.domain.diagnostics.policies import SystemErrorCode
 
 CATALOG = build_catalog("employees", strict=True)
 
@@ -36,15 +36,6 @@ def make_plan(op: str, desired_state: dict, secret_fields: list[str] | None = No
     return Plan(meta=meta, summary=summary, items=[item])
 
 
-def make_report():
-    return ReportCollector(run_id="r", command="import-apply")
-
-
-class DummyLogger:
-    def log(self, *args, **kwargs):
-        return None
-
-
 def base_desired_state(with_password: bool = False) -> dict:
     state = {
         "email": "a@b.c",
@@ -68,26 +59,21 @@ def test_apply_create_uses_secret_provider_when_missing_password():
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor, secrets=provider)
     plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
-    report = make_report()
 
-    result = service.applyPlan(
+    result = service.apply_plan(
         plan=plan,
-        logger=DummyLogger(),
-        report=report,
-        run_id="run1",
+        catalog=CATALOG,
         stop_on_first_error=False,
         max_actions=None,
         dry_run=False,
-        report_items_limit=10,
+        max_item_outcomes=10,
         resource_exists_retries=0,
-        catalog=CATALOG,
     )
 
-    assert result.exit_code() == 0
+    assert result.primary_code == SystemErrorCode.OK
     assert executor.calls == 1
     assert executor.last_spec is not None
     assert executor.last_spec.payload.get("password") == "secret123"
-    # План не модифицируется секретом
     assert plan.items[0].desired_state.get("password") == ""
 
 
@@ -96,25 +82,21 @@ def test_apply_create_fails_when_secret_missing():
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor, secrets=provider)
     plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
-    report = make_report()
 
-    result = service.applyPlan(
+    result = service.apply_plan(
         plan=plan,
-        logger=DummyLogger(),
-        report=report,
-        run_id="run1",
+        catalog=CATALOG,
         stop_on_first_error=False,
         max_actions=None,
         dry_run=False,
-        report_items_limit=10,
+        max_item_outcomes=10,
         resource_exists_retries=0,
-        catalog=CATALOG,
     )
 
-    assert result.exit_code() == 1
+    assert result.primary_code != SystemErrorCode.OK
     assert executor.calls == 0
-    assert report.items, "должна быть записана ошибка"
-    diag = report.items[0].diagnostics[0]
+    assert result.item_outcomes, "должен быть outcome с ошибкой"
+    diag = result.item_outcomes[0].diagnostics[0]
     assert diag.code == "SECRET_REQUIRED"
 
 
@@ -133,21 +115,17 @@ def test_apply_update_does_not_request_secret():
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor, secrets=provider)
     plan = make_plan("update", base_desired_state(with_password=True), secret_fields=[])
-    report = make_report()
 
-    result = service.applyPlan(
+    result = service.apply_plan(
         plan=plan,
-        logger=DummyLogger(),
-        report=report,
-        run_id="run1",
+        catalog=CATALOG,
         stop_on_first_error=False,
         max_actions=None,
         dry_run=False,
-        report_items_limit=10,
+        max_item_outcomes=10,
         resource_exists_retries=0,
-        catalog=CATALOG,
     )
 
-    assert result.exit_code() == 0
+    assert result.primary_code == SystemErrorCode.OK
     assert provider.calls == 0
     assert executor.calls == 1
