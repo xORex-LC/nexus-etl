@@ -64,7 +64,11 @@ def _build_gateway() -> TargetGateway:
     return TargetGateway(AlwaysOkDriver(), TargetKernel(spec))  # type: ignore[arg-type]
 
 
-SPEC = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
+SPEC = RequestSpec.operation(
+    alias="users.upsert",
+    params={"target_id": "bench-user"},
+    payload={"name": "Bench"},
+)
 
 
 def bench_direct_execute(loops: int) -> float:

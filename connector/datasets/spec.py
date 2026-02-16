@@ -21,7 +21,7 @@ from connector.domain.transform.stages.stages import (
     NormalizeStage,
     ResolveStage,
 )
-from connector.domain.ports.target.execution import RequestSpec, ExecutionResult
+from connector.domain.ports.target.execution import RequestSpec
 from connector.domain.transform.core.source_record import SourceRecord
 
 
@@ -34,15 +34,6 @@ class ApplyAdapter(Protocol):
     """
 
     def to_request(self, item) -> RequestSpec: ...
-
-    def on_failed_request(self, item, result: ExecutionResult, retries_left: int):
-        """
-        Назначение:
-            Опционально предложить повторную попытку с модификацией PlanItem.
-        Контракт:
-            - Вернуть новый PlanItem для ретрая или None, чтобы прекратить попытки.
-        """
-        ...
 
 
 @dataclass(frozen=True)

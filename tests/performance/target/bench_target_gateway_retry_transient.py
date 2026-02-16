@@ -18,7 +18,11 @@ from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 N = 1_000
-SPEC = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
+SPEC = RequestSpec.operation(
+    alias="users.upsert",
+    params={"target_id": "bench-user"},
+    payload={"name": "Bench"},
+)
 
 
 def _spec_no_sleep():

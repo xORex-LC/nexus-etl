@@ -67,7 +67,6 @@ def test_apply_create_uses_secret_provider_when_missing_password():
         max_actions=None,
         dry_run=False,
         max_item_outcomes=10,
-        resource_exists_retries=0,
     )
 
     assert result.primary_code == SystemErrorCode.OK
@@ -90,7 +89,6 @@ def test_apply_create_fails_when_secret_missing():
         max_actions=None,
         dry_run=False,
         max_item_outcomes=10,
-        resource_exists_retries=0,
     )
 
     assert result.primary_code != SystemErrorCode.OK
@@ -123,7 +121,6 @@ def test_apply_update_does_not_request_secret():
         max_actions=None,
         dry_run=False,
         max_item_outcomes=10,
-        resource_exists_retries=0,
     )
 
     assert result.primary_code == SystemErrorCode.OK

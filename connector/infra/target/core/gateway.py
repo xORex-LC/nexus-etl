@@ -382,7 +382,7 @@ class TargetGateway:
     def _detect_error_reason(payload: Any, body_snippet: str | None) -> str | None:
         """
         Выделить семантическую причину ошибки (например 'resourceexists').
-        Перенесено из AnkeyRequestExecutor._detect_error_reason.
+        Локальная нормализация семантических причин ошибки.
         """
         haystacks: list[str] = []
         if isinstance(payload, str):
@@ -400,32 +400,19 @@ class TargetGateway:
         self,
         spec: RequestSpec,
     ) -> tuple[str, str, dict[str, Any] | None, dict[str, str] | None, tuple[int, ...]] | ExecutionResult:
-        if spec.operation_alias:
-            try:
-                operation = self._kernel.build_http_operation(
-                    spec.operation_alias,
-                    operation_params=spec.operation_params,
-                    query_overrides=spec.query,
-                    header_overrides=spec.headers,
-                )
-            except ValueError as exc:
-                return self._spec_error(str(exc))
-            return (
-                operation.method,
-                operation.path,
-                operation.query or None,
-                operation.headers or None,
-                operation.expected_statuses,
+        try:
+            operation = self._kernel.build_http_operation(
+                spec.operation_alias,
+                operation_params=spec.operation_params,
             )
-
-        if spec.method is None or spec.path is None:
-            return self._spec_error("request spec must include method/path or operation_alias")
+        except ValueError as exc:
+            return self._spec_error(str(exc))
         return (
-            spec.method,
-            spec.path,
-            spec.query,
-            spec.headers,
-            tuple(spec.expected_statuses),
+            operation.method,
+            operation.path,
+            operation.query or None,
+            operation.headers or None,
+            operation.expected_statuses,
         )
 
     def _spec_error(self, message: str) -> ExecutionResult:

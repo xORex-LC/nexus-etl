@@ -15,16 +15,11 @@ def regenerate_target_id(request_spec: RequestSpec) -> RequestSpec:
 
     Используется в сценарии `resourceexists` при create/upsert.
     """
-    if request_spec.operation_alias is None:
-        raise ValueError("mutation 'regenerate_target_id' supports only operation_alias requests")
-
     params = dict(request_spec.operation_params or {})
     params["target_id"] = str(uuid.uuid4())
     return RequestSpec.operation(
         alias=request_spec.operation_alias,
         payload=request_spec.payload,
-        headers=request_spec.headers,
-        query=request_spec.query,
         params=params,
     )
 

@@ -99,7 +99,6 @@ def bench_apply_all_ok(loops: int) -> float:
             max_actions=None,
             dry_run=False,
             max_item_outcomes=100,
-            resource_exists_retries=0,
         )
         total += timer() - t0
 

@@ -172,7 +172,6 @@ def test_import_apply_error_stats():
         max_actions=None,
         dry_run=False,
         max_item_outcomes=10,
-        resource_exists_retries=0,
     )
     assert result.primary_code != SystemErrorCode.OK
     assert result.summary.error_stats.get("SINK_HTTP_ERROR") == 1

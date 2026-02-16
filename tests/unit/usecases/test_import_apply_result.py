@@ -106,7 +106,6 @@ def _apply(service: ImportApplyService, plan: Plan, **kwargs) -> ApplyResult:
         max_actions=None,
         dry_run=False,
         max_item_outcomes=100,
-        resource_exists_retries=0,
     )
     defaults.update(kwargs)
     return service.apply_plan(plan=plan, **defaults)

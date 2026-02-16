@@ -98,6 +98,14 @@ def _make_gateway(
     )  # type: ignore[arg-type]
 
 
+def _upsert_spec(*, target_id: str = "target-001") -> RequestSpec:
+    return RequestSpec.operation(
+        alias="users.upsert",
+        params={"target_id": target_id},
+        payload={"name": "Alice"},
+    )
+
+
 def test_execute_happy_path_returns_ok_and_masks_response() -> None:
     driver = StubDriver(
         request_effects=[
@@ -109,7 +117,7 @@ def test_execute_happy_path_returns_ok_and_masks_response() -> None:
         ]
     )
     gateway = _make_gateway(driver=driver)
-    spec = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
+    spec = _upsert_spec()
 
     result = gateway.execute(spec)
 
@@ -127,7 +135,7 @@ def test_execute_retries_on_transient_and_then_succeeds() -> None:
         ]
     )
     gateway = _make_gateway(driver=driver, max_attempts=2)
-    spec = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
+    spec = _upsert_spec()
 
     result = gateway.execute(spec)
 
@@ -143,7 +151,7 @@ def test_execute_no_retry_on_auth_error() -> None:
         ]
     )
     gateway = _make_gateway(driver=driver)
-    spec = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
+    spec = _upsert_spec()
 
     result = gateway.execute(spec)
 
@@ -162,7 +170,7 @@ def test_execute_retries_on_driver_error_and_exhausts() -> None:
         ]
     )
     gateway = _make_gateway(driver=driver, max_attempts=2)
-    spec = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
+    spec = _upsert_spec()
 
     result = gateway.execute(spec)
 
@@ -183,7 +191,7 @@ def test_execute_detects_resourceexists_reason() -> None:
         ]
     )
     gateway = _make_gateway(driver=driver, max_attempts=0)
-    spec = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
+    spec = _upsert_spec()
 
     result = gateway.execute(spec)
 
@@ -277,14 +285,9 @@ def test_execute_operation_alias_missing_param_returns_spec_error() -> None:
     assert gateway.get_stats() == (0, 0, 1)
 
 
-def test_request_spec_rejects_mixed_operation_and_method_path() -> None:
-    with pytest.raises(ValueError, match="method/path must be omitted"):
-        RequestSpec(
-            method="PUT",
-            path="/ankey/managed/user/1",
-            expected_statuses=(200,),
-            operation_alias="users.upsert",
-        )
+def test_request_spec_rejects_empty_alias() -> None:
+    with pytest.raises(ValueError, match="operation_alias must not be empty"):
+        RequestSpec.operation(alias="   ")
 
 
 def test_iter_pages_happy_path_masks_items() -> None:
@@ -412,7 +415,7 @@ def test_reset_stats_resets_all_counters() -> None:
         ]
     )
     gateway = _make_gateway(driver=driver)
-    spec = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
+    spec = _upsert_spec()
     _ = gateway.execute(spec)
     assert gateway.get_stats() == (1, 0, 0)
 
