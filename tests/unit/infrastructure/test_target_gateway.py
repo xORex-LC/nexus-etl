@@ -11,6 +11,7 @@ from connector.infra.target.driver import DriverError, DriverResponse
 from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.providers.ankey_rest.mutations import build_ankey_mutations
+from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 
@@ -89,7 +90,10 @@ def _make_gateway(
             )
         },
     )
-    kernel = TargetKernel(spec)
+    kernel = TargetKernel(
+        spec,
+        compiler_registry=build_transport_compiler_registry(),
+    )
     return TargetGateway(
         driver,
         kernel,
@@ -398,7 +402,13 @@ def test_health_check_uses_operation_alias_not_legacy_health_path() -> None:
             DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
         ],
     )
-    gateway = TargetGateway(driver, TargetKernel(spec))  # type: ignore[arg-type]
+    gateway = TargetGateway(
+        driver,
+        TargetKernel(
+            spec,
+            compiler_registry=build_transport_compiler_registry(),
+        ),
+    )  # type: ignore[arg-type]
 
     result = gateway.health_check()
 

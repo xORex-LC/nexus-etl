@@ -10,10 +10,12 @@ from connector.infra.target.core.provider import TargetProvider
 from connector.infra.target.core.models import TargetConnectionConfig
 from connector.infra.target.core.runtime import DefaultTargetRuntime, TargetRuntime
 from connector.infra.target.core.spec_models import TargetSpec
+from connector.infra.target.core.transport_compiler import TransportCompilerRegistry
 from connector.infra.target.providers.ankey_rest.auth import AnkeyAuth
 from connector.infra.target.providers.ankey_rest.driver import AnkeyHttpDriver
 from connector.infra.target.providers.ankey_rest.mutations import build_ankey_mutations
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.infra.target.transports.http.compiler import compile_http_operation
 from connector.infra.target.transports.http.client_factory import (
     HttpClientSettings,
     build_http_client,
@@ -34,6 +36,13 @@ def apply_retry_overrides(
     return spec.model_copy(update={"retry_config": new_retry_config})
 
 
+def build_transport_compiler_registry() -> TransportCompilerRegistry:
+    """Собрать реестр компиляторов transport-операций для Ankey runtime."""
+    registry = TransportCompilerRegistry()
+    registry.register("http", compile_http_operation)
+    return registry
+
+
 class AnkeyTargetProvider(TargetProvider):
     target_type = "ankey"
 
@@ -48,7 +57,10 @@ class AnkeyTargetProvider(TargetProvider):
 
         spec = build_ankey_spec()
         spec = apply_retry_overrides(spec, api_settings)
-        kernel = TargetKernel(spec)
+        kernel = TargetKernel(
+            spec,
+            compiler_registry=build_transport_compiler_registry(),
+        )
 
         client = build_http_client(
             HttpClientSettings(
@@ -81,5 +93,8 @@ class AnkeyTargetProvider(TargetProvider):
             has_reader=include_reader,
         )
 
-
-__all__ = ["AnkeyTargetProvider", "apply_retry_overrides"]
+__all__ = [
+    "AnkeyTargetProvider",
+    "apply_retry_overrides",
+    "build_transport_compiler_registry",
+]

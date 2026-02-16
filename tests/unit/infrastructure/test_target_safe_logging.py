@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from connector.infra.target.core.engines.safe_logging import TargetSafeLogger
 from connector.infra.target.core.kernel import TargetKernel
+from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 
 def test_redact_headers_masks_sensitive_values() -> None:
-    logger = TargetSafeLogger(TargetKernel(build_ankey_spec()))
+    logger = TargetSafeLogger(
+        TargetKernel(
+            build_ankey_spec(),
+            compiler_registry=build_transport_compiler_registry(),
+        )
+    )
 
     redacted = logger.redact_headers({"Authorization": "Bearer secret", "Accept": "application/json"})
 
@@ -14,7 +20,12 @@ def test_redact_headers_masks_sensitive_values() -> None:
 
 
 def test_build_error_details_truncates_snippet_and_masks_body() -> None:
-    logger = TargetSafeLogger(TargetKernel(build_ankey_spec()))
+    logger = TargetSafeLogger(
+        TargetKernel(
+            build_ankey_spec(),
+            compiler_registry=build_transport_compiler_registry(),
+        )
+    )
 
     details = logger.build_error_details(
         body={"user": "alice", "password": "secret"},
@@ -30,7 +41,12 @@ def test_build_error_details_truncates_snippet_and_masks_body() -> None:
 
 
 def test_safe_body_truncates_raw_string() -> None:
-    logger = TargetSafeLogger(TargetKernel(build_ankey_spec()))
+    logger = TargetSafeLogger(
+        TargetKernel(
+            build_ankey_spec(),
+            compiler_registry=build_transport_compiler_registry(),
+        )
+    )
 
     value = logger.safe_body("x" * 600)
 
@@ -40,7 +56,12 @@ def test_safe_body_truncates_raw_string() -> None:
 
 
 def test_debug_retry_is_noop_safe() -> None:
-    logger = TargetSafeLogger(TargetKernel(build_ankey_spec()))
+    logger = TargetSafeLogger(
+        TargetKernel(
+            build_ankey_spec(),
+            compiler_registry=build_transport_compiler_registry(),
+        )
+    )
     logger.debug_retry(
         operation="execute",
         fault_kind="TRANSIENT",

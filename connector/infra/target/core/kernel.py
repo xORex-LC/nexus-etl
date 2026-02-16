@@ -21,10 +21,9 @@ from connector.infra.target.core.spec_models import (
     RetryRule,
     TargetSpec,
 )
-from connector.infra.target.transports.http import (
-    HttpOperationDataModel,
-    build_http_request,
-    compile_http_operation,
+from connector.infra.target.core.transport_compiler import (
+    CompiledOperation,
+    TransportCompilerRegistry,
 )
 
 # ---------------------------------------------------------------------------
@@ -71,11 +70,16 @@ class TargetKernel:
 
     Контракт:
         - Lookup-таблицы собираются при инициализации для O(1) доступа.
+        - Компиляция операций делегируется в TransportCompilerRegistry.
         - `classify_fault`: `error_code` имеет приоритет над `status_code`.
         - `retry_directive`: если правило не найдено — `NO_RETRY`.
     """
 
-    def __init__(self, spec: TargetSpec) -> None:
+    def __init__(
+        self,
+        spec: TargetSpec,
+        compiler_registry: TransportCompilerRegistry,
+    ) -> None:
         self._spec = spec
 
         self._fault_by_status: dict[int, TargetFaultKind] = {
@@ -95,14 +99,13 @@ class TargetKernel:
         }
         self._retry_rules: tuple[RetryRule, ...] = spec.retry_rules
         self._operations: dict[str, OperationSpec] = {}
-        self._compiled_http_operations: dict[str, HttpOperationDataModel] = {}
+        self._compiled_operations: dict[str, CompiledOperation] = {}
         for key, operation in spec.operations.items():
             if key != operation.alias:
                 raise ValueError(
                     f"operation alias key mismatch: key={key!r}, alias={operation.alias!r}",
                 )
-            if operation.kind == "http":
-                self._compiled_http_operations[key] = compile_http_operation(operation)
+            self._compiled_operations[key] = compiler_registry.compile(operation)
             self._operations[key] = operation
 
     @property
@@ -181,22 +184,33 @@ class TargetKernel:
         `method/path/expected_statuses` берутся только из alias-каталога.
         """
         operation = self.resolve_operation(alias)
-        op_data = self._compiled_http_operations.get(alias)
-        if op_data is None:
+        if operation.kind != "http":
             raise ValueError(f"operation {alias!r} is not http")
+        compiled = self._compiled_operations.get(alias)
+        if compiled is None:
+            raise ValueError(f"operation {alias!r} is not compiled")
 
-        request = build_http_request(
+        request = compiled.build(
             alias=alias,
-            op_data=op_data,
             operation_params=operation_params,
             query_overrides=query_overrides,
             header_overrides=header_overrides,
         )
+        method = getattr(request, "method", None)
+        path = getattr(request, "path", None)
+        query = getattr(request, "query", None)
+        headers = getattr(request, "headers", None)
+        if not isinstance(method, str) or not isinstance(path, str):
+            raise ValueError(f"operation {alias!r} produced invalid request payload")
+        if query is None:
+            query = {}
+        if headers is None:
+            headers = {}
         return ResolvedHttpOperation(
-            method=request.method,
-            path=request.path,
-            query=request.query,
-            headers=request.headers,
+            method=method,
+            path=path,
+            query=dict(query),
+            headers=dict(headers),
             expected_statuses=operation.expected_statuses,
         )
 

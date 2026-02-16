@@ -12,12 +12,16 @@ import pytest
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.core.spec_models import RedactionSpec
+from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 
 @pytest.fixture()
 def kernel() -> TargetKernel:
-    return TargetKernel(build_ankey_spec())
+    return TargetKernel(
+        build_ankey_spec(),
+        compiler_registry=build_transport_compiler_registry(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +219,10 @@ class TestSafeBody:
 
 def test_spec_property_returns_original(kernel: TargetKernel) -> None:
     spec = build_ankey_spec()
-    k = TargetKernel(spec)
+    k = TargetKernel(
+        spec,
+        compiler_registry=build_transport_compiler_registry(),
+    )
     assert k.spec is spec
 
 
