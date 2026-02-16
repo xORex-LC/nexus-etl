@@ -21,16 +21,23 @@ def make_transport(responder: Callable[[httpx.Request], httpx.Response]) -> http
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.delivery.commands.check_api as check_api_command
     import connector.delivery.commands.cache_refresh as cache_refresh_command
-    from connector.delivery.cli.bootstrap import build_api_client as _build_real_api_client
+    from connector.delivery.cli.bootstrap import (
+        build_target_runtime_with_info as _build_real_runtime_with_info,
+    )
 
     patched_transport = transport
 
-    def factory(api_settings, *, transport=None):
+    def factory(api_settings, *, transport=None, include_reader=True, runtime_mode=None):
         _ = transport
-        return _build_real_api_client(api_settings, transport=patched_transport)
+        return _build_real_runtime_with_info(
+            api_settings,
+            transport=patched_transport,
+            include_reader=include_reader,
+            runtime_mode=runtime_mode,
+        )
 
-    monkeypatch.setattr(check_api_command, "build_api_client", factory)
-    monkeypatch.setattr(cache_refresh_command, "build_api_client", factory)
+    monkeypatch.setattr(check_api_command, "build_target_runtime_with_info", factory)
+    monkeypatch.setattr(cache_refresh_command, "build_target_runtime_with_info", factory)
 
 
 def test_check_api_ok(monkeypatch, tmp_path: Path):

@@ -1,24 +1,33 @@
 """
-Фабрика TargetRuntime — единая точка сборки target-инфраструктуры.
+TargetRuntime factory with provider registry and compatibility modes.
 
-Назначение:
-    Собирает TargetRuntime из ApiSettings, скрывая конкретные infra-реализации
-    (AnkeyApiClient, AnkeyRequestExecutor, AnkeyTargetPagedReader) от delivery.
+Modes:
+    - core: build only core runtime.
+    - legacy: build only legacy runtime.
+    - auto (default): try core, fallback to legacy on bootstrap failure.
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass
+from typing import Literal
 
 from connector.config.app_settings import ApiSettings
-from connector.infra.http.ankey_client import AnkeyApiClient
-from connector.infra.target.driver import AnkeyHttpDriver
-from connector.infra.target.gateway import TargetGateway
-from connector.infra.target.kernel import TargetKernel
-from connector.infra.target.models import TargetConnectionConfig
-from connector.infra.target.runtime import DefaultTargetRuntime, TargetRuntime
-from connector.infra.target.spec import TargetSpec
-from connector.infra.target.spec_ankey import build_ankey_spec
+from connector.infra.target.core.registry import TargetProviderRegistry
+from connector.infra.target.providers import AnkeyTargetProvider
+from connector.infra.target.runtime import TargetRuntime
+
+TargetRuntimeMode = Literal["core", "auto", "legacy"]
+EffectiveTargetRuntimeMode = Literal["core", "legacy"]
+
+
+@dataclass(frozen=True)
+class TargetRuntimeBuildResult:
+    runtime: TargetRuntime
+    target_type: str
+    requested_mode: TargetRuntimeMode
+    effective_mode: EffectiveTargetRuntimeMode
+    fallback_reason: str | None = None
 
 
 def build_target_runtime(
@@ -26,59 +35,105 @@ def build_target_runtime(
     *,
     transport: object | None = None,
     include_reader: bool = True,
+    runtime_mode: str | None = None,
 ) -> TargetRuntime:
-    """
-    Назначение:
-        Единая фабрика TargetRuntime для production.
-
-    Контракт:
-        - AnkeyApiClient создаётся с retries=0 (single attempt).
-        - Retry-политика управляется TargetGateway через TargetSpec.
-        - RetryConfig переопределяется из api_settings (retries, backoff).
-        - transport: опциональный httpx.BaseTransport для тестовой инъекции.
-    """
-    base_url = f"https://{api_settings.host}:{api_settings.port}"
-
-    spec = build_ankey_spec()
-    spec = _apply_settings_overrides(spec, api_settings)
-
-    kernel = TargetKernel(spec)
-
-    client = AnkeyApiClient(
-        baseUrl=base_url,
-        username=api_settings.username or "",
-        password=api_settings.password or "",
-        timeoutSeconds=api_settings.timeout_seconds,
-        tlsSkipVerify=api_settings.tls_skip_verify,
-        caFile=api_settings.ca_file,
-        retries=0,
-        retryBackoffSeconds=0,
+    return build_target_runtime_with_info(
+        api_settings,
         transport=transport,
-    )
-
-    driver = AnkeyHttpDriver(client)
-    gateway = TargetGateway(driver, kernel)
-
-    config = TargetConnectionConfig(
-        target_type="ankey",
-        base_url=base_url,
-        username=api_settings.username or "",
-    )
-
-    return DefaultTargetRuntime(
-        gateway=gateway,
-        config=config,
-        has_reader=include_reader,
-    )
+        include_reader=include_reader,
+        runtime_mode=runtime_mode,
+    ).runtime
 
 
-def _apply_settings_overrides(
-    spec: TargetSpec, api_settings: ApiSettings
-) -> TargetSpec:
-    """Переопределить RetryConfig из app settings."""
-    new_retry_config = replace(
-        spec.retry_config,
-        max_attempts=api_settings.retries,
-        backoff_base=api_settings.retry_backoff_seconds,
-    )
-    return replace(spec, retry_config=new_retry_config)
+def build_target_runtime_with_info(
+    api_settings: ApiSettings,
+    *,
+    transport: object | None = None,
+    include_reader: bool = True,
+    runtime_mode: str | None = None,
+) -> TargetRuntimeBuildResult:
+    requested_mode = _resolve_runtime_mode(api_settings, runtime_mode=runtime_mode)
+    provider = _get_default_provider()
+
+    if requested_mode == "core":
+        runtime = provider.build_core_runtime(
+            api_settings,
+            transport=transport,
+            include_reader=include_reader,
+        )
+        return TargetRuntimeBuildResult(
+            runtime=runtime,
+            target_type=provider.target_type,
+            requested_mode=requested_mode,
+            effective_mode="core",
+        )
+
+    if requested_mode == "legacy":
+        runtime = provider.build_legacy_runtime(
+            api_settings,
+            transport=transport,
+            include_reader=include_reader,
+        )
+        return TargetRuntimeBuildResult(
+            runtime=runtime,
+            target_type=provider.target_type,
+            requested_mode=requested_mode,
+            effective_mode="legacy",
+        )
+
+    # requested_mode == "auto"
+    try:
+        runtime = provider.build_core_runtime(
+            api_settings,
+            transport=transport,
+            include_reader=include_reader,
+        )
+        return TargetRuntimeBuildResult(
+            runtime=runtime,
+            target_type=provider.target_type,
+            requested_mode=requested_mode,
+            effective_mode="core",
+        )
+    except Exception as exc:  # noqa: BLE001
+        fallback_reason = f"{type(exc).__name__}: {exc}"
+        runtime = provider.build_legacy_runtime(
+            api_settings,
+            transport=transport,
+            include_reader=include_reader,
+        )
+        return TargetRuntimeBuildResult(
+            runtime=runtime,
+            target_type=provider.target_type,
+            requested_mode=requested_mode,
+            effective_mode="legacy",
+            fallback_reason=fallback_reason,
+        )
+
+
+def _resolve_runtime_mode(
+    api_settings: ApiSettings,
+    *,
+    runtime_mode: str | None = None,
+) -> TargetRuntimeMode:
+    candidate = runtime_mode if runtime_mode is not None else api_settings.target_runtime_mode
+    normalized = str(candidate).strip().lower()
+    allowed: set[str] = {"core", "auto", "legacy"}
+    if normalized not in allowed:
+        raise ValueError(
+            "Invalid target runtime mode: "
+            f"{candidate!r}. Expected one of: auto, core, legacy",
+        )
+    return normalized  # type: ignore[return-value]
+
+
+def _build_default_registry() -> TargetProviderRegistry:
+    registry = TargetProviderRegistry()
+    registry.register(AnkeyTargetProvider(), default=True)
+    return registry
+
+
+_DEFAULT_PROVIDER_REGISTRY = _build_default_registry()
+
+
+def _get_default_provider():
+    return _DEFAULT_PROVIDER_REGISTRY.get_default()

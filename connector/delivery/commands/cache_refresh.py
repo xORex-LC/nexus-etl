@@ -8,8 +8,7 @@ import typer
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import ensure_supported_cache_dataset, result_with
 from connector.delivery.cli.bootstrap import (
-    build_api_client,
-    build_target_runtime,
+    build_target_runtime_with_info,
     open_cache,
 )
 from connector.domain.diagnostics.command_result import CommandResult
@@ -35,16 +34,14 @@ class Options:
     dataset: str | None = None
 
 
-def _extract_transport(client: object) -> object | None:
-    http_client = getattr(client, "client", None)
-    return getattr(http_client, "_transport", None)
-
-
-def _close_http_client(client: object) -> None:
-    http_client = getattr(client, "client", None)
-    close = getattr(http_client, "close", None)
-    if callable(close):
-        close()
+def _runtime_context(build_result) -> dict[str, str]:
+    ctx = {
+        "target_runtime_mode": build_result.effective_mode,
+        "target_runtime_requested_mode": build_result.requested_mode,
+    }
+    if build_result.fallback_reason:
+        ctx["target_runtime_fallback_reason"] = build_result.fallback_reason
+    return ctx
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
@@ -59,16 +56,23 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             if unsupported_result is not None:
                 return unsupported_result
 
-            runtime_transport = opts.api_transport
-            if runtime_transport is None:
-                legacy_client = build_api_client(app_settings.api, transport=opts.api_transport)
-                runtime_transport = _extract_transport(legacy_client)
-                _close_http_client(legacy_client)
-
-            runtime = build_target_runtime(app_settings.api, transport=runtime_transport)
+            build_result = build_target_runtime_with_info(
+                app_settings.api,
+                transport=opts.api_transport,
+            )
+            runtime = build_result.runtime
             target_meta = runtime.meta()
             base_url = target_meta.base_url
             reader = runtime.reader
+            report.set_context("target_runtime", _runtime_context(build_result))
+            if build_result.fallback_reason:
+                logEvent(
+                    ctx.logger,
+                    logging.WARNING,
+                    run_id,
+                    "target",
+                    f"target runtime fallback to legacy: {build_result.fallback_reason}",
+                )
 
             adapters = build_sync_adapters(cache_dsl_bundle)
             identity_keys, identity_id_fields = build_identity_index_plan()

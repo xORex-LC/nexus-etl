@@ -11,6 +11,7 @@ def test_validate_settings_collects_range_enum_and_conflict_issues():
         resolve_batch_size=0,
         pending_ttl_seconds=0,
         pending_on_expire="bad-value",
+        target_runtime_mode="broken",
         host="127.0.0.1",
         port=None,
     )
@@ -24,4 +25,5 @@ def test_validate_settings_collects_range_enum_and_conflict_issues():
     assert "settings.conflict.api_credentials" in codes
     assert {"page_size", "retries", "match_batch_size", "resolve_batch_size", "pending_ttl_seconds"} <= fields
     assert "pending_on_expire" in fields
+    assert "target_runtime_mode" in fields
     assert "host/port" in fields

@@ -3,7 +3,6 @@ from typer.testing import CliRunner
 from connector.main import app
 import connector.delivery.commands.check_api as check_api_command
 from connector.config.app_settings import load_app_settings
-from connector.infra.http.ankey_client import AnkeyApiClient
 
 runner = CliRunner()
 
@@ -30,20 +29,24 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
     captured: dict[str, object] = {}
 
     def factory(*args, **kwargs):
+        from connector.delivery.cli.bootstrap import (
+            build_target_runtime_with_info as _build_real_runtime_with_info,
+        )
+
         api_settings = kwargs.get("api_settings")
         if api_settings is None and args:
             api_settings = args[0]
         kwargs["transport"] = transport
         captured["kwargs"] = kwargs
         captured["api_settings"] = api_settings
-        return AnkeyApiClient(
-            baseUrl=f"https://{api_settings.host}:{api_settings.port}",
-            username=api_settings.username,
-            password=api_settings.password,
+        return _build_real_runtime_with_info(
+            api_settings,
             transport=kwargs["transport"],
+            include_reader=kwargs.get("include_reader", True),
+            runtime_mode=kwargs.get("runtime_mode"),
         )
 
-    monkeypatch.setattr(check_api_command, "build_api_client", factory)
+    monkeypatch.setattr(check_api_command, "build_target_runtime_with_info", factory)
     result = runner.invoke(
         app,
         ["--config", str(cfg), "--host", "3.3.3.3", "--port", "3333", "--api-username", "cli_user", "--api-password", "cli_pass", "check-api"],
@@ -54,6 +57,19 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
     assert api_settings.port == 3333
     assert api_settings.username == "cli_user"
     assert api_settings.password == "cli_pass"
+    assert api_settings.target_runtime_mode == "auto"
+
+
+def test_target_runtime_mode_cli_override(tmp_path):
+    cfg = tmp_path / "config.yml"
+    cfg.write_text("target_runtime_mode: core\n", encoding="utf-8")
+
+    loaded = load_app_settings(
+        config_path=str(cfg),
+        cli_overrides={"target_runtime_mode": "legacy"},
+    )
+
+    assert loaded.app_settings.api.target_runtime_mode == "legacy"
 
 
 def test_batch_settings_priority_cli_over_env_over_config(tmp_path, monkeypatch):

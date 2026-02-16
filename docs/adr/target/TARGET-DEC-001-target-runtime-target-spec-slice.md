@@ -3,6 +3,7 @@
 > **Статус**: Принято
 > **Дата предложения**: 2026-02-13
 > **Решает проблему**: [TARGET-PROBLEM-001](./TARGET-PROBLEM-001-load-layer-target-wiring.md)
+> **Частично superseded**: [TARGET-DEC-003](./TARGET-DEC-003-target-core.md) — plugin-core/provider model и compatibility policy миграции
 > **Участники решения**: @xorex-LC
 
 ---

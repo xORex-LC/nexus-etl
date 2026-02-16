@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
 
 import typer
@@ -10,7 +9,7 @@ from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import result_with
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.delivery.cli.bootstrap import build_api_client, build_target_runtime
+from connector.delivery.cli.bootstrap import build_target_runtime_with_info
 from connector.infra.logging.setup import logEvent
 
 
@@ -19,16 +18,14 @@ class Options:
     api_transport: object | None = None
 
 
-def _extract_transport(client: object) -> object | None:
-    http_client = getattr(client, "client", None)
-    return getattr(http_client, "_transport", None)
-
-
-def _close_http_client(client: object) -> None:
-    http_client = getattr(client, "client", None)
-    close = getattr(http_client, "close", None)
-    if callable(close):
-        close()
+def _runtime_context(build_result) -> dict[str, str]:
+    ctx = {
+        "target_runtime_mode": build_result.effective_mode,
+        "target_runtime_requested_mode": build_result.requested_mode,
+    }
+    if build_result.fallback_reason:
+        ctx["target_runtime_fallback_reason"] = build_result.fallback_reason
+    return ctx
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
@@ -37,31 +34,21 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 
-    legacy_client = build_api_client(app_settings.api, transport=opts.api_transport)
-    runtime_transport = opts.api_transport or _extract_transport(legacy_client)
-
-    if runtime_transport is None and hasattr(legacy_client, "getJson"):
-        try:
-            start = time.monotonic()
-            legacy_client.getJson("/ankey/managed/user", {"page": 1, "rows": 1, "_queryFilter": "true"})  # noqa: N802
-            latency_ms = int((time.monotonic() - start) * 1000)
-            logEvent(
-                ctx.logger, logging.INFO, run_id, "api",
-                f"api ok base_url=https://{app_settings.api.host}:{app_settings.api.port} latency_ms={latency_ms}",
-            )
-            report.set_context("apply_target", {"target_type": "http"})
-            return result_with(SystemErrorCode.OK)
-        except Exception as exc:  # pragma: no cover - compatibility fallback
-            logEvent(ctx.logger, logging.ERROR, run_id, "api", f"API check failed: {exc}")
-            typer.echo("ERROR: API check failed (see logs/report)", err=True)
-            return result_with(SystemErrorCode.INFRA_UNAVAILABLE)
-    _close_http_client(legacy_client)
-
-    runtime = build_target_runtime(
+    build_result = build_target_runtime_with_info(
         app_settings.api,
-        transport=runtime_transport,
+        transport=opts.api_transport,
         include_reader=False,
     )
+    runtime = build_result.runtime
+    report.set_context("target_runtime", _runtime_context(build_result))
+    if build_result.fallback_reason:
+        logEvent(
+            ctx.logger,
+            logging.WARNING,
+            run_id,
+            "target",
+            f"target runtime fallback to legacy: {build_result.fallback_reason}",
+        )
     result = runtime.check()
     target_meta = runtime.meta()
 
@@ -70,7 +57,13 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             ctx.logger, logging.INFO, run_id, "api",
             f"api ok base_url={target_meta.base_url} latency_ms={result.latency_ms}",
         )
-        report.set_context("apply_target", {"target_type": target_meta.transport})
+        report.set_context(
+            "apply_target",
+            {
+                "target_type": target_meta.transport,
+                "target_runtime_mode": build_result.effective_mode,
+            },
+        )
         return result_with(SystemErrorCode.OK)
 
     logEvent(
