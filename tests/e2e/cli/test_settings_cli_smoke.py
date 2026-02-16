@@ -5,6 +5,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import connector.delivery.commands.check_api as check_api_command
+from connector.infra.target.factory import TargetRuntimeBuildResult
 from connector.main import app
 
 
@@ -30,16 +31,57 @@ def test_check_api_smoke_works_with_slice_wiring(tmp_path: Path, monkeypatch) ->
 
     captured: dict[str, object] = {}
 
-    class _Client:
-        def getJson(self, *_args, **_kwargs):  # noqa: N802
-            return {"items": []}
+    class _Runtime:
+        @property
+        def executor(self):  # pragma: no cover - not used in this test
+            return object()
 
-    def _build_api_client(api_settings, *, transport=None):
+        @property
+        def reader(self):  # pragma: no cover - not used in this test
+            return None
+
+        def check(self):
+            class _Result:
+                ok = True
+                latency_ms = 1
+                error_code = None
+                error_message = None
+
+            return _Result()
+
+        def meta(self):
+            class _Meta:
+                target_type = "ankey"
+                base_url = "https://3.3.3.3:3333"
+                transport = "http"
+
+            return _Meta()
+
+        def stats(self):
+            class _Stats:
+                requests_total = 0
+                retries_total = 0
+                failures_total = 0
+
+            return _Stats()
+
+        def reset(self) -> None:
+            return None
+
+    def _build_target_runtime_with_info(api_settings, *, transport=None, include_reader=True, runtime_mode=None):
         captured["api_settings"] = api_settings
         captured["transport"] = transport
-        return _Client()
+        _ = include_reader
+        _ = runtime_mode
+        return TargetRuntimeBuildResult(
+            runtime=_Runtime(),
+            target_type="ankey",
+            requested_mode="auto",
+            effective_mode="core",
+            fallback_reason=None,
+        )
 
-    monkeypatch.setattr(check_api_command, "build_api_client", _build_api_client)
+    monkeypatch.setattr(check_api_command, "build_target_runtime_with_info", _build_target_runtime_with_info)
 
     result = runner.invoke(
         app,

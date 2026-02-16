@@ -10,7 +10,7 @@ from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import log_sqlite_cache_error, result_with
 from connector.delivery.cli.bootstrap import (
     build_cache,
-    build_target_runtime,
+    build_target_runtime_with_info,
     build_diagnostics_catalog,
     build_secret_provider,
 )
@@ -34,6 +34,16 @@ class Options:
     resource_exists_retries: int | None = None
     secrets_from: str | None = None
     vault_file: str | None = None
+
+
+def _runtime_context(build_result) -> dict[str, str]:
+    ctx = {
+        "target_runtime_mode": build_result.effective_mode,
+        "target_runtime_requested_mode": build_result.requested_mode,
+    }
+    if build_result.fallback_reason:
+        ctx["target_runtime_fallback_reason"] = build_result.fallback_reason
+    return ctx
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
@@ -90,7 +100,11 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to init identity index: {exc}")
 
     try:
-        runtime = build_target_runtime(app_settings.api, include_reader=False)
+        build_result = build_target_runtime_with_info(
+            app_settings.api,
+            include_reader=False,
+        )
+        runtime = build_result.runtime
         target_meta = runtime.meta()
         base_url = target_meta.base_url
 
@@ -108,7 +122,23 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 "retry_backoff_seconds": app_settings.api.retry_backoff_seconds,
             },
         )
-        report.set_context("apply_target", {"base_url": base_url, "user": app_settings.api.username})
+        report.set_context(
+            "apply_target",
+            {
+                "base_url": base_url,
+                "user": app_settings.api.username,
+                "target_runtime_mode": build_result.effective_mode,
+            },
+        )
+        report.set_context("target_runtime", _runtime_context(build_result))
+        if build_result.fallback_reason:
+            logEvent(
+                ctx.logger,
+                logging.WARNING,
+                run_id,
+                "target",
+                f"target runtime fallback to legacy: {build_result.fallback_reason}",
+            )
 
         secrets_provider = build_secret_provider(opts.secrets_from, opts.vault_file)
         executor = runtime.executor
@@ -140,7 +170,11 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
         runtime_context: dict = {
             "retries_used": runtime.stats().retries_total,
+            "target_runtime_mode": build_result.effective_mode,
+            "target_runtime_requested_mode": build_result.requested_mode,
         }
+        if build_result.fallback_reason:
+            runtime_context["target_runtime_fallback_reason"] = build_result.fallback_reason
 
         ApplyReportPresenter.present(
             result=apply_result,

@@ -5,7 +5,11 @@
 скрывая конкретную target-инфраструктуру (HTTP клиент, retry, etc).
 """
 
-from connector.infra.target.factory import build_target_runtime
+from connector.infra.target.factory import (
+    TargetRuntimeBuildResult,
+    build_target_runtime,
+    build_target_runtime_with_info,
+)
 from connector.infra.target.models import (
     TargetCheckResult,
     TargetConnectionConfig,
@@ -17,6 +21,8 @@ from connector.infra.target.runtime import DefaultTargetRuntime, TargetRuntime
 
 __all__ = [
     "build_target_runtime",
+    "build_target_runtime_with_info",
+    "TargetRuntimeBuildResult",
     "DefaultTargetRuntime",
     "TargetCheckResult",
     "TargetConnectionConfig",

@@ -5,6 +5,7 @@ Why these tests exist:
 1. Delivery commands must not import low-level HTTP infra modules.
 2. Delivery commands must not import Ankey-specific classes/exceptions directly.
 3. Usecases/domain must not depend on connector.infra.target.
+4. Delivery commands must not use legacy bootstrap API builders directly.
 """
 
 from __future__ import annotations
@@ -23,6 +24,11 @@ FORBIDDEN_ANKEY_NAMES = {
     "ApiError",
     "AnkeyRequestExecutor",
     "AnkeyTargetPagedReader",
+}
+FORBIDDEN_BOOTSTRAP_BUILDERS = {
+    "build_api_client",
+    "build_api_executor",
+    "build_api_reader",
 }
 
 
@@ -79,6 +85,19 @@ def test_delivery_commands_do_not_import_ankey_classes() -> None:
                 if name in FORBIDDEN_ANKEY_NAMES:
                     violations.append(f"{rel}: from {module} import {name}")
     assert violations == [], "Forbidden Ankey imports found:\n" + "\n".join(violations)
+
+
+def test_delivery_commands_do_not_use_legacy_bootstrap_builders() -> None:
+    violations: list[str] = []
+    for path in _py_files(COMMANDS_ROOT):
+        rel = _rel(path)
+        for module, names in _import_froms(path):
+            if module != "connector.delivery.cli.bootstrap":
+                continue
+            for name in names:
+                if name in FORBIDDEN_BOOTSTRAP_BUILDERS:
+                    violations.append(f"{rel}: from {module} import {name}")
+    assert violations == [], "Forbidden bootstrap builders found:\n" + "\n".join(violations)
 
 
 def test_usecases_do_not_import_target_infra() -> None:
