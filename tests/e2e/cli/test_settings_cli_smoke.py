@@ -68,6 +68,9 @@ def test_check_api_smoke_works_with_slice_wiring(tmp_path: Path, monkeypatch) ->
         def reset(self) -> None:
             return None
 
+        def close(self) -> None:
+            return None
+
     def _build_target_runtime_with_info(api_settings, *, transport=None, include_reader=True, runtime_mode=None):
         captured["api_settings"] = api_settings
         captured["transport"] = transport

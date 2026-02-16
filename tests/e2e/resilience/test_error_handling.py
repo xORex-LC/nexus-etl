@@ -2,7 +2,12 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
+from connector.infra.target.driver import DriverError
+from connector.infra.target.providers.ankey_rest.driver import AnkeyHttpDriver
+from connector.infra.target.transports.http.client_factory import (
+    HttpClientSettings,
+    build_http_client,
+)
 from connector.main import app
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
@@ -15,8 +20,10 @@ CATALOG = build_catalog("employees", strict=True)
 
 runner = CliRunner()
 
+
 def make_transport(responder):
     return httpx.MockTransport(responder)
+
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.delivery.commands.cache_refresh as cache_refresh_command
@@ -55,6 +62,7 @@ class DummySpec:
     def get_apply_adapter(self):
         return self.adapter
 
+
 def test_cache_refresh_max_pages_exceeded(monkeypatch, tmp_path):
     def responder(request: httpx.Request) -> httpx.Response:
         # Всегда возвращаем непустую страницу, чтобы сработал guard max_pages.
@@ -91,32 +99,28 @@ def test_cache_refresh_max_pages_exceeded(monkeypatch, tmp_path):
     # Превышение max_pages должно приводить к exit code 2.
     assert result.exit_code == 2
 
-def test_api_client_invalid_json(monkeypatch):
+
+def test_driver_invalid_json():
     def responder(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="not-json")
 
-    client = AnkeyApiClient(
-        baseUrl="https://api.local",
-        username="u",
-        password="p",
-        timeoutSeconds=1,
-        retries=0,
-        retryBackoffSeconds=0,
-        transport=make_transport(responder),
+    client = build_http_client(
+        HttpClientSettings(
+            base_url="https://api.local",
+            timeout_seconds=1,
+            transport=make_transport(responder),
+        )
     )
-    with pytest.raises(ApiError) as excinfo:
-        client.getJson("/path")
-    assert excinfo.value.code == "INVALID_JSON"
-    assert not excinfo.value.retryable
+    driver = AnkeyHttpDriver(client)
+    try:
+        with pytest.raises(DriverError) as excinfo:
+            driver.get_json("/path")
+        assert excinfo.value.code == "INVALID_JSON"
+    finally:
+        driver.close()
+
 
 def test_import_apply_error_stats():
-    class DummyUserApi:
-        def __init__(self):
-            self.client = type("C", (), {"getRetryAttempts": lambda self: 0})()
-
-        def upsertUser(self, resourceId, payload):
-            raise ApiError("HTTP 400", status_code=400)
-
     plan = Plan(
         meta=PlanMeta(
             run_id="r",
