@@ -211,16 +211,26 @@ class AnkeyApiClient:
                     return data[key]
         raise ApiError("Unexpected response format: no items array", code="INVALID_ITEMS_FORMAT", retryable=False)
 
-    def getPagedItems(self, path: str, pageSize: int, maxPages: int | None) -> Iterator[tuple[int, list[Any]]]:
+    def getPagedItems(
+        self,
+        path: str,
+        pageSize: int,
+        maxPages: int | None,
+        params: dict[str, Any] | None = None,
+    ) -> Iterator[tuple[int, list[Any]]]:
         """
         Возвращает пары (page_number, items) постранично.
         """
+        base_params = dict(params or {})
+        base_params.setdefault("_queryFilter", "true")
         page = 1
         while True:
             if maxPages is not None and page > maxPages:
                 raise ApiError("max pages exceeded", code="MAX_PAGES_EXCEEDED", status_code=None, retryable=False)
-            params = {"page": page, "rows": pageSize, "_queryFilter": "true"}
-            data = self.getJson(path, params=params)
+            request_params = dict(base_params)
+            request_params["page"] = page
+            request_params["rows"] = pageSize
+            data = self.getJson(path, params=request_params)
             items = self._extract_items(data)
             if not items:
                 break

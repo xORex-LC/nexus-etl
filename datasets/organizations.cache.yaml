@@ -24,7 +24,7 @@ schema:
       unique: false
 sync:
   dataset: organizations
-  list_path: /ankey/managed/organization
+  list_operation_alias: organizations.list
   report_entity: org
   include_deleted_default: false
   item_key:

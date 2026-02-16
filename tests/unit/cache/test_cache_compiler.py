@@ -44,7 +44,7 @@ def _employees_spec(
                 ],
             },
             "sync": {
-                "list_path": "items",
+                "list_operation_alias": "users.list",
                 "report_entity": "users",
                 "item_key": {"source": "id"},
                 "projection": [projection_rule],

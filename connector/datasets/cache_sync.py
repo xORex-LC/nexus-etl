@@ -12,7 +12,7 @@ class CacheSyncAdapterProtocol(Protocol):
     """
 
     dataset: str
-    list_path: str
+    list_operation_alias: str
     report_entity: str
 
     def get_item_key(self, raw_item: dict[str, Any]) -> str: ...

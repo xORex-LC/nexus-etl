@@ -11,6 +11,8 @@ from __future__ import annotations
 from connector.infra.target.spec import (
     FaultRule,
     HealthCheckSpec,
+    HttpOperationData,
+    OperationSpec,
     PagingSpec,
     RedactionSpec,
     RetryConfig,
@@ -55,4 +57,42 @@ def build_ankey_spec() -> TargetSpec:
         ),
         retry_config=RetryConfig(),
         redaction=RedactionSpec(),
+        operations={
+            "health.check": OperationSpec(
+                alias="health.check",
+                expected_statuses=(200,),
+                http=HttpOperationData(
+                    method="GET",
+                    path_template="/ankey/managed/user",
+                    query_defaults={"page": "1", "rows": "1", "_queryFilter": "true"},
+                ),
+            ),
+            "users.list": OperationSpec(
+                alias="users.list",
+                expected_statuses=(200,),
+                http=HttpOperationData(
+                    method="GET",
+                    path_template="/ankey/managed/user",
+                    query_defaults={"_queryFilter": "true"},
+                ),
+            ),
+            "organizations.list": OperationSpec(
+                alias="organizations.list",
+                expected_statuses=(200,),
+                http=HttpOperationData(
+                    method="GET",
+                    path_template="/ankey/managed/organization",
+                    query_defaults={"_queryFilter": "true"},
+                ),
+            ),
+            "users.upsert": OperationSpec(
+                alias="users.upsert",
+                expected_statuses=(200, 201),
+                http=HttpOperationData(
+                    method="PUT",
+                    path_template="/ankey/managed/user/{target_id}",
+                    query_defaults={"_prettyPrint": "true", "decrypt": "false"},
+                ),
+            ),
+        },
     )

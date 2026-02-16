@@ -25,7 +25,7 @@ class DslCacheSyncAdapter(CacheSyncAdapterProtocol):
     """
 
     dataset: str
-    list_path: str
+    list_operation_alias: str
     report_entity: str
     include_deleted_default: bool
     sync_spec: CacheSyncSpec
@@ -84,7 +84,7 @@ def build_dsl_cache_sync_adapter(
     effective_engine = engine or TransformationEngine.with_core_ops()
     return DslCacheSyncAdapter(
         dataset=dataset_spec.dataset,
-        list_path=sync_spec.list_path,
+        list_operation_alias=sync_spec.list_operation_alias,
         report_entity=sync_spec.report_entity,
         include_deleted_default=sync_spec.include_deleted_default,
         sync_spec=sync_spec,

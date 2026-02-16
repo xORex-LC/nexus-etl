@@ -662,7 +662,7 @@ schema:
       unique: true
 sync:
   dataset: employees
-  list_path: /ankey/managed/user
+  list_operation_alias: users.list
   report_entity: user
   projection:
     - target: _id
@@ -687,7 +687,7 @@ sync:
 10. `schema.indexes[].fields` — поля индекса в порядке применения.
 11. `schema.indexes[].unique` — признак уникальности индекса.
 12. `sync.dataset` — датасет для sync-контура (обычно равен `dataset`).
-13. `sync.list_path` — endpoint/path источника для refresh.
+13. `sync.list_operation_alias` — alias list-операции target для refresh (разрешается через target-spec/kernel).
 14. `sync.report_entity` — идентификатор сущности для отчётов refresh.
 15. `sync.item_key` — выражение построения ключа внешней записи (дедуп/трассировка).
 16. `sync.projection[].target` — целевая колонка cache-таблицы.
@@ -696,6 +696,8 @@ sync:
 19. `sync.projection[].required` — обязательность правила проекции.
 20. `sync.projection[].on_error` — поведение при ошибке (`error|warning|skip|set_null`).
 21. `flags.*` — runtime-флаги поведения sync-адаптера (например, `include_deleted`).
+
+> Примечание по совместимости: loader принимает legacy-ключ `list_path`, но актуальный runtime-контракт использует `list_operation_alias`.
 
 ---
 

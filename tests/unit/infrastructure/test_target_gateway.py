@@ -25,6 +25,7 @@ class StubDriver:
         self._request_effects = list(request_effects or [])
         self._get_json_effect = get_json_effect
         self._pages_effect = pages_effect
+        self.request_calls: list[dict[str, Any]] = []
 
     def request(
         self,
@@ -35,6 +36,15 @@ class StubDriver:
         json: Any | None = None,
         headers: dict[str, str] | None = None,
     ) -> DriverResponse:
+        self.request_calls.append(
+            {
+                "method": method,
+                "path": path,
+                "params": params,
+                "json": json,
+                "headers": headers,
+            }
+        )
         if not self._request_effects:
             return DriverResponse(status_code=200, body={"ok": True}, body_snippet=None)
         effect = self._request_effects.pop(0)
@@ -48,7 +58,11 @@ class StubDriver:
         return self._get_json_effect
 
     def get_paged_items(
-        self, path: str, page_size: int, max_pages: int | None
+        self,
+        path: str,
+        page_size: int,
+        max_pages: int | None,
+        params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]:
         if isinstance(self._pages_effect, Exception):
             raise self._pages_effect
@@ -171,6 +185,70 @@ def test_execute_detects_resourceexists_reason() -> None:
     assert result.error_reason == "resourceexists"
 
 
+def test_execute_operation_alias_uses_spec_mapping() -> None:
+    driver = StubDriver(
+        request_effects=[
+            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+        ]
+    )
+    gateway = _make_gateway(driver=driver)
+    spec = RequestSpec.operation(
+        alias="users.upsert",
+        params={"target_id": "user-42"},
+        payload={"name": "Alice"},
+    )
+
+    result = gateway.execute(spec)
+
+    assert result.ok is True
+    assert len(driver.request_calls) == 1
+    assert driver.request_calls[0]["method"] == "PUT"
+    assert driver.request_calls[0]["path"] == "/ankey/managed/user/user-42"
+    assert driver.request_calls[0]["params"] == {
+        "_prettyPrint": "true",
+        "decrypt": "false",
+    }
+
+
+def test_execute_operation_alias_unknown_returns_spec_error() -> None:
+    driver = StubDriver()
+    gateway = _make_gateway(driver=driver)
+    spec = RequestSpec.operation(alias="users.missing")
+
+    result = gateway.execute(spec)
+
+    assert result.ok is False
+    assert result.error_code == SystemErrorCode.INTERNAL_ERROR
+    assert result.status_code is None
+    assert "unknown operation alias" in (result.error_message or "")
+    assert len(driver.request_calls) == 0
+    assert gateway.get_stats() == (0, 0, 1)
+
+
+def test_execute_operation_alias_missing_param_returns_spec_error() -> None:
+    driver = StubDriver()
+    gateway = _make_gateway(driver=driver)
+    spec = RequestSpec.operation(alias="users.upsert")
+
+    result = gateway.execute(spec)
+
+    assert result.ok is False
+    assert result.error_code == SystemErrorCode.INTERNAL_ERROR
+    assert "missing path params" in (result.error_message or "")
+    assert len(driver.request_calls) == 0
+    assert gateway.get_stats() == (0, 0, 1)
+
+
+def test_request_spec_rejects_mixed_operation_and_method_path() -> None:
+    with pytest.raises(ValueError, match="method/path must be omitted"):
+        RequestSpec(
+            method="PUT",
+            path="/ankey/managed/user/1",
+            expected_statuses=(200,),
+            operation_alias="users.upsert",
+        )
+
+
 def test_iter_pages_happy_path_masks_items() -> None:
     driver = StubDriver(
         pages_effect=[
@@ -180,7 +258,7 @@ def test_iter_pages_happy_path_masks_items() -> None:
     )
     gateway = _make_gateway(driver=driver)
 
-    results = list(gateway.iter_pages("/users", page_size=100, max_pages=2))
+    results = list(gateway.iter_pages("users.list", page_size=100, max_pages=2))
 
     assert len(results) == 2
     assert results[0].ok is True
@@ -193,7 +271,7 @@ def test_iter_pages_normalizes_driver_error() -> None:
     driver = StubDriver(pages_effect=DriverError("network down"))
     gateway = _make_gateway(driver=driver)
 
-    results = list(gateway.iter_pages("/users", page_size=100, max_pages=2))
+    results = list(gateway.iter_pages("users.list", page_size=100, max_pages=2))
 
     assert len(results) == 1
     assert results[0].ok is False
@@ -213,7 +291,7 @@ def test_iter_pages_normalizes_api_error_and_sanitizes_details() -> None:
     driver = StubDriver(pages_effect=api_error)
     gateway = _make_gateway(driver=driver)
 
-    results = list(gateway.iter_pages("/users", page_size=100, max_pages=2))
+    results = list(gateway.iter_pages("users.list", page_size=100, max_pages=2))
 
     assert len(results) == 1
     fail = results[0]
@@ -228,7 +306,11 @@ def test_iter_pages_normalizes_api_error_and_sanitizes_details() -> None:
 
 
 def test_health_check_ok() -> None:
-    driver = StubDriver(get_json_effect={"ok": True})
+    driver = StubDriver(
+        request_effects=[
+            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+        ]
+    )
     gateway = _make_gateway(driver=driver)
 
     result = gateway.health_check()
@@ -241,7 +323,7 @@ def test_health_check_ok() -> None:
 
 
 def test_health_check_driver_error_maps_to_fault_and_code() -> None:
-    driver = StubDriver(get_json_effect=DriverError("network down"))
+    driver = StubDriver(request_effects=[DriverError("network down")])
     gateway = _make_gateway(driver=driver)
 
     result = gateway.health_check()
@@ -252,7 +334,7 @@ def test_health_check_driver_error_maps_to_fault_and_code() -> None:
 
 
 def test_health_check_unexpected_error_maps_to_transient() -> None:
-    driver = StubDriver(get_json_effect=RuntimeError("boom"))
+    driver = StubDriver(request_effects=[RuntimeError("boom")])
     gateway = _make_gateway(driver=driver)
 
     result = gateway.health_check()
@@ -260,6 +342,29 @@ def test_health_check_unexpected_error_maps_to_transient() -> None:
     assert result.ok is False
     assert result.fault_kind == "TRANSIENT"
     assert result.error_code == SystemErrorCode.INFRA_UNAVAILABLE
+
+
+def test_health_check_uses_operation_alias_not_legacy_health_path() -> None:
+    spec = build_ankey_spec()
+    spec = replace(
+        spec,
+        health_check=replace(
+            spec.health_check,
+            path="/legacy/health",
+        ),
+    )
+    driver = StubDriver(
+        request_effects=[
+            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+        ],
+    )
+    gateway = TargetGateway(driver, TargetKernel(spec))  # type: ignore[arg-type]
+
+    result = gateway.health_check()
+
+    assert result.ok is True
+    assert len(driver.request_calls) == 1
+    assert driver.request_calls[0]["path"] == "/ankey/managed/user"
 
 
 def test_reset_stats_resets_all_counters() -> None:
@@ -276,3 +381,17 @@ def test_reset_stats_resets_all_counters() -> None:
     gateway.reset_stats()
 
     assert gateway.get_stats() == (0, 0, 0)
+
+
+def test_iter_pages_unknown_alias_returns_spec_error() -> None:
+    driver = StubDriver()
+    gateway = _make_gateway(driver=driver)
+
+    results = list(gateway.iter_pages("users.unknown", page_size=100, max_pages=1))
+
+    assert len(results) == 1
+    fail = results[0]
+    assert fail.ok is False
+    assert fail.page == 0
+    assert fail.error_code == SystemErrorCode.INTERNAL_ERROR
+    assert "unknown operation alias" in (fail.error_message or "")

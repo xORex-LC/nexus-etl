@@ -7,6 +7,25 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.policies import map_http_status
 from connector.domain.ports.target.read import TargetPageResult, TargetPagedReaderProtocol
 from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
+from connector.infra.target.spec_ankey import build_ankey_spec
+
+
+def _default_read_operation_paths() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for alias, operation in build_ankey_spec().operations.items():
+        if operation.http is None:
+            continue
+        if operation.http.method != "GET":
+            continue
+        if not alias.endswith(".list"):
+            continue
+        if "{" in operation.http.path_template:
+            continue
+        mapping[alias] = operation.http.path_template
+    return mapping
+
+
+_DEFAULT_READ_OPERATION_PATHS = _default_read_operation_paths()
 
 
 class AnkeyTargetPagedReader(TargetPagedReaderProtocol):
@@ -17,12 +36,18 @@ class AnkeyTargetPagedReader(TargetPagedReaderProtocol):
         Использует AnkeyApiClient, нормализует ошибки в TargetPageResult.
     """
 
-    def __init__(self, client: AnkeyApiClient):
+    def __init__(
+        self,
+        client: AnkeyApiClient,
+        *,
+        operation_paths: dict[str, str] | None = None,
+    ):
         self.client = client
+        self._operation_paths = dict(operation_paths or _DEFAULT_READ_OPERATION_PATHS)
 
     def iter_pages(
         self,
-        path: str,
+        operation_alias: str,
         page_size: int,
         max_pages: int | None,
         params: dict[str, Any] | None = None,
@@ -36,8 +61,22 @@ class AnkeyTargetPagedReader(TargetPagedReaderProtocol):
         """
         params = params or {}
         last_page = 0
+        path: str
+        if operation_alias.startswith("/"):
+            path = operation_alias
+        else:
+            path = self._operation_paths.get(operation_alias, "")
+        if not path:
+            yield TargetPageResult(
+                ok=False,
+                page=last_page,
+                items=None,
+                error_code=SystemErrorCode.INTERNAL_ERROR,
+                error_message=f"Unknown read operation alias: {operation_alias}",
+            )
+            return
         try:
-            for page, items in self.client.getPagedItems(path, page_size, max_pages):
+            for page, items in self.client.getPagedItems(path, page_size, max_pages, params=params):
                 last_page = page
                 safe_items = maskSecretsInObject(items)
                 yield TargetPageResult(ok=True, page=page, items=safe_items)

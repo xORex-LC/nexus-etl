@@ -49,9 +49,9 @@ class EmployeesApplyAdapter(ApplyAdapter):
             payload_source[secret_field] = secret
 
         payload = buildUserUpsertPayload(payload_source)
-        return RequestSpec.put(
-            path=f"/ankey/managed/user/{item.target_id}",
-            query={"_prettyPrint": "true", "decrypt": "false"},
+        return RequestSpec.operation(
+            alias="users.upsert",
+            params={"target_id": item.target_id},
             payload=payload,
         )
 

@@ -19,7 +19,7 @@ def _build_dataset_spec(*, on_error: str, required: bool = False) -> CacheDatase
                 ],
             },
             "sync": {
-                "list_path": "items",
+                "list_operation_alias": "users.list",
                 "report_entity": "users",
                 "item_key": {"source": "id"},
                 "projection": [

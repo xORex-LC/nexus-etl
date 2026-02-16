@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 
 from connector.domain.dsl.specs._base import DslBaseModel, OperationCall
 
@@ -252,7 +252,9 @@ class CacheSyncSpec(DslBaseModel):
     """
 
     dataset: str | None = None
-    list_path: str
+    list_operation_alias: str = Field(
+        validation_alias=AliasChoices("list_operation_alias", "list_path"),
+    )
     report_entity: str
     item_key: ValueExprSpec
     is_deleted: ValueExprSpec | None = None

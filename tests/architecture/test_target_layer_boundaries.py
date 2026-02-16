@@ -18,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMANDS_ROOT = REPO_ROOT / "connector" / "delivery" / "commands"
 USECASES_ROOT = REPO_ROOT / "connector" / "usecases"
 DOMAIN_ROOT = REPO_ROOT / "connector" / "domain"
+CACHE_REFRESH_USECASE = REPO_ROOT / "connector" / "usecases" / "cache_refresh_service.py"
 
 FORBIDDEN_ANKEY_NAMES = {
     "AnkeyApiClient",
@@ -108,3 +109,10 @@ def test_usecases_do_not_import_target_infra() -> None:
 def test_domain_does_not_import_target_infra() -> None:
     violations = _violations(DOMAIN_ROOT, ("connector.infra.target",))
     assert violations == [], "Forbidden imports found:\n" + "\n".join(violations)
+
+
+def test_cache_refresh_uses_operation_alias_instead_of_raw_target_path() -> None:
+    tree = ast.parse(CACHE_REFRESH_USECASE.read_text(encoding="utf-8"), filename=str(CACHE_REFRESH_USECASE))
+    attrs = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+    assert "list_path" not in attrs, "cache refresh must not depend on raw target paths"
+    assert "list_operation_alias" in attrs, "cache refresh must use operation alias from DSL adapter"
