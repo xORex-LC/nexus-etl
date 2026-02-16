@@ -23,6 +23,7 @@ from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
 from connector.domain.ports.target.read import TargetPageResult
 from connector.infra.http.ankey_client import ApiError
 from connector.infra.target.core.kernel import TargetKernel
+from connector.infra.target.core.mutations import TargetMutationRegistry
 from connector.infra.target.core.engines import (
     TargetErrorNormalizer,
     TargetRetryEngine,
@@ -42,9 +43,16 @@ class TargetGateway:
         - TargetKernel: `classify_fault` → `retry_directive` → `system_error_code`.
     """
 
-    def __init__(self, driver: TargetDriver, kernel: TargetKernel) -> None:
+    def __init__(
+        self,
+        driver: TargetDriver,
+        kernel: TargetKernel,
+        *,
+        mutation_registry: TargetMutationRegistry | None = None,
+    ) -> None:
         self._driver = driver
         self._kernel = kernel
+        self._mutations = mutation_registry or TargetMutationRegistry()
         self._retry_engine = TargetRetryEngine(kernel.spec.retry_config)
         self._error_normalizer = TargetErrorNormalizer(kernel)
         self._safe_logger = TargetSafeLogger(kernel, logger_name=__name__)
@@ -60,15 +68,16 @@ class TargetGateway:
         """
         Выполнить RequestSpec с retry по spec.retry_rules. Никогда не бросает.
         """
-        resolved = self._resolve_execute_request(spec)
-        if isinstance(resolved, ExecutionResult):
-            self._failures_total += 1
-            return resolved
-
-        method, path, params, headers, expected_statuses = resolved
         retries_used = 0
+        current_spec = spec
 
         while True:
+            resolved = self._resolve_execute_request(current_spec)
+            if isinstance(resolved, ExecutionResult):
+                self._failures_total += 1
+                return resolved
+
+            method, path, params, headers, expected_statuses = resolved
             self._requests_total += 1
 
             try:
@@ -76,14 +85,20 @@ class TargetGateway:
                     method,
                     path,
                     params=params,
-                    json=spec.payload,
+                    json=current_spec.payload,
                     headers=headers,
                 )
             except DriverError as exc:
                 normalized = self._error_normalizer.from_error_code(exc.code)
                 fault = normalized.fault_kind
-                directive = self._kernel.retry_directive(fault)
-                if directive == "RETRY_BACKOFF" and self._retry_engine.can_retry(retries_used):
+                retry_action = self._kernel.resolve_retry_action(fault_kind=fault)
+                if retry_action.directive == "RETRY_BACKOFF" and self._retry_engine.can_retry(retries_used):
+                    if retry_action.mutation is not None:
+                        try:
+                            current_spec = self._mutations.apply(retry_action.mutation, current_spec)
+                        except ValueError as mutation_error:
+                            self._failures_total += 1
+                            return self._spec_error(str(mutation_error))
                     retries_used += 1
                     self._retries_total += 1
                     delay = self._retry_engine.sleep_before_retry(retries_used)
@@ -93,6 +108,7 @@ class TargetGateway:
                         retries_used=retries_used,
                         max_retries=self._retry_engine.max_retries,
                         delay_s=delay,
+                        mutation=retry_action.mutation,
                     )
                     continue
                 self._failures_total += 1
@@ -115,8 +131,19 @@ class TargetGateway:
 
             normalized = self._error_normalizer.from_status(resp.status_code)
             fault = normalized.fault_kind
-            directive = self._kernel.retry_directive(fault)
-            if directive == "RETRY_BACKOFF" and self._retry_engine.can_retry(retries_used):
+            reason = self._detect_error_reason(resp.body, resp.body_snippet)
+            retry_action = self._kernel.resolve_retry_action(
+                fault_kind=fault,
+                status_code=resp.status_code,
+                error_reason=reason,
+            )
+            if retry_action.directive == "RETRY_BACKOFF" and self._retry_engine.can_retry(retries_used):
+                if retry_action.mutation is not None:
+                    try:
+                        current_spec = self._mutations.apply(retry_action.mutation, current_spec)
+                    except ValueError as mutation_error:
+                        self._failures_total += 1
+                        return self._spec_error(str(mutation_error))
                 retries_used += 1
                 self._retries_total += 1
                 delay = self._retry_engine.sleep_before_retry(retries_used)
@@ -126,11 +153,11 @@ class TargetGateway:
                     retries_used=retries_used,
                     max_retries=self._retry_engine.max_retries,
                     delay_s=delay,
+                    mutation=retry_action.mutation,
                 )
                 continue
 
             self._failures_total += 1
-            reason = self._detect_error_reason(resp.body, resp.body_snippet)
             details = self._safe_logger.build_error_details(
                 body=resp.body,
                 body_snippet=resp.body_snippet,

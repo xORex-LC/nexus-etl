@@ -27,8 +27,8 @@ class OkExecutor:
 
 class StubSpec:
     def __init__(self):
-        from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
-        self.adapter = EmployeesApplyAdapter()
+        from connector.datasets.employees.spec import make_employees_spec
+        self.adapter = make_employees_spec().get_apply_adapter()
 
     def get_apply_adapter(self):
         return self.adapter

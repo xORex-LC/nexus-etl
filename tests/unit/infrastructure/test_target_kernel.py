@@ -95,6 +95,26 @@ class TestRetryDirective:
     def test_unknown_defaults_to_no_retry(self, kernel: TargetKernel) -> None:
         assert kernel.retry_directive("UNKNOWN") == "NO_RETRY"
 
+    def test_conflict_resourceexists_resolves_mutation_retry(self, kernel: TargetKernel) -> None:
+        action = kernel.resolve_retry_action(
+            fault_kind="CONFLICT",
+            status_code=409,
+            error_reason="resourceexists",
+        )
+
+        assert action.directive == "RETRY_BACKOFF"
+        assert action.mutation == "regenerate_target_id"
+
+    def test_conflict_without_reason_stays_no_retry(self, kernel: TargetKernel) -> None:
+        action = kernel.resolve_retry_action(
+            fault_kind="CONFLICT",
+            status_code=409,
+            error_reason=None,
+        )
+
+        assert action.directive == "NO_RETRY"
+        assert action.mutation is None
+
 
 # ---------------------------------------------------------------------------
 # Проверка system_error_code

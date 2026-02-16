@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import uuid
+from typing import Any
+
+from connector.datasets.apply_adapter import OperationApplyAdapter
 from connector.datasets.spec import (
     DatasetSpec,
     ReportAdapter,
@@ -12,10 +16,11 @@ from connector.domain.dsl.specs import (
     ResolveSpec,
     SinkSpec,
 )
-from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
 from connector.domain.ports.cache.roles import EnrichLookupPort, PlanningRuntimePort
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies, ResolverSettings
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
+from connector.domain.planning.plan_models import PlanItem
+from connector.domain.ports.target.execution import ExecutionResult
 from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.matcher.match_engine import MatchEngine
 from connector.domain.dsl.loader import (
@@ -47,6 +52,9 @@ from connector.domain.transform.stages.stages import (
 )
 from connector.domain.transform.providers import TransformProviderDeps
 from connector.infra.sources.csv_reader import CsvRecordSource
+from connector.infra.target.providers.ankey_rest.payloads import (
+    build_user_upsert_payload,
+)
 from connector.datasets.employees.diagnostic_catalog import build_employees_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
 
@@ -67,7 +75,14 @@ class EmployeesSpec(DatasetSpec):
             conflict_code="MATCH_CONFLICT",
             conflict_field="matchKey",
         )
-        self._apply_adapter = EmployeesApplyAdapter(secrets=secrets)
+        self._apply_adapter = OperationApplyAdapter(
+            operation_alias="users.upsert",
+            payload_builder=build_user_upsert_payload,
+            dataset=self.dataset_name,
+            params_builder=_build_employees_operation_params,
+            on_failed_request_hook=_retry_on_resource_exists,
+            secrets=secrets,
+        )
 
     def build_planning_deps(
         self,
@@ -281,4 +296,31 @@ def _build_resolver_settings(settings) -> ResolverSettings:
         pending_on_expire=settings.pending_on_expire,
         pending_allow_partial=settings.pending_allow_partial,
         pending_retention_days=settings.pending_retention_days,
+    )
+
+
+def _build_employees_operation_params(item: PlanItem) -> dict[str, Any]:
+    return {"target_id": item.target_id}
+
+
+def _retry_on_resource_exists(
+    item: PlanItem,
+    result: ExecutionResult,
+    retries_left: int,
+) -> PlanItem | None:
+    if retries_left <= 0:
+        return None
+    if item.op != "create":
+        return None
+    if result.error_reason != "resourceexists":
+        return None
+    return PlanItem(
+        row_id=item.row_id,
+        line_no=item.line_no,
+        op=item.op,
+        target_id=str(uuid.uuid4()),
+        desired_state=item.desired_state,
+        changes=item.changes,
+        source_ref=item.source_ref,
+        secret_fields=item.secret_fields,
     )

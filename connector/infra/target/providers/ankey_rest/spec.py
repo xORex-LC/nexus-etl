@@ -43,6 +43,12 @@ def build_ankey_spec() -> TargetSpec:
         retry_rules=(
             RetryRule(directive="RETRY_BACKOFF", match_fault="TRANSIENT"),
             RetryRule(directive="RETRY_BACKOFF", match_fault="THROTTLE"),
+            RetryRule(
+                directive="RETRY_BACKOFF",
+                match_fault="CONFLICT",
+                match_reason="resourceexists",
+                mutation="regenerate_target_id",
+            ),
             RetryRule(directive="NO_RETRY", match_fault="AUTH"),
             RetryRule(directive="NO_RETRY", match_fault="PERMISSION"),
             RetryRule(directive="NO_RETRY", match_fault="DATA"),

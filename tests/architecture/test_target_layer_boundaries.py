@@ -20,13 +20,12 @@ COMMANDS_ROOT = REPO_ROOT / "connector" / "delivery" / "commands"
 USECASES_ROOT = REPO_ROOT / "connector" / "usecases"
 DOMAIN_ROOT = REPO_ROOT / "connector" / "domain"
 CACHE_REFRESH_USECASE = REPO_ROOT / "connector" / "usecases" / "cache_refresh_service.py"
-EMPLOYEES_APPLY_ADAPTER = (
+EMPLOYEES_DATASET_SPEC = (
     REPO_ROOT
     / "connector"
     / "datasets"
     / "employees"
-    / "load"
-    / "apply_adapter.py"
+    / "spec.py"
 )
 
 FORBIDDEN_ANKEY_NAMES = {
@@ -134,22 +133,24 @@ def test_cache_refresh_uses_operation_alias_instead_of_raw_target_path() -> None
     assert "list_operation_alias" in attrs, "cache refresh должен использовать operation alias из DSL-адаптера"
 
 
-def test_employees_apply_adapter_uses_provider_payload_builder() -> None:
-    imports = _import_froms(EMPLOYEES_APPLY_ADAPTER)
-    assert (
-        "connector.datasets.employees.load.user_payload",
-        ["buildUserUpsertPayload"],
-    ) not in imports, (
-        "employees apply_adapter не должен использовать legacy user_payload;"
-        " payload должен приходить из target provider"
+def test_employees_spec_uses_generic_adapter_and_provider_payload_builder() -> None:
+    imports = _import_froms(EMPLOYEES_DATASET_SPEC)
+
+    expected_adapter_import = (
+        "connector.datasets.apply_adapter",
+        ["OperationApplyAdapter"],
+    )
+    assert expected_adapter_import in imports, (
+        "employees spec должен использовать универсальный OperationApplyAdapter "
+        "из connector.datasets.apply_adapter"
     )
 
-    expected = (
+    expected_payload_import = (
         "connector.infra.target.providers.ankey_rest.payloads",
         ["build_user_upsert_payload"],
     )
-    assert expected in imports, (
-        "employees apply_adapter должен импортировать payload builder из target provider"
+    assert expected_payload_import in imports, (
+        "employees spec должен использовать payload builder из target provider"
     )
 
 

@@ -65,6 +65,7 @@ class TargetSafeLogger:
         retries_used: int,
         max_retries: int,
         delay_s: float,
+        mutation: str | None = None,
     ) -> None:
         if self._logger is None:
             return
@@ -75,4 +76,5 @@ class TargetSafeLogger:
             retries_used=retries_used,
             max_retries=max_retries,
             delay_s=round(delay_s, 3),
+            mutation=mutation,
         )

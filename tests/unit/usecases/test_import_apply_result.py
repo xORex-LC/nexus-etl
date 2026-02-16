@@ -94,8 +94,8 @@ def _fail_executor(code: SystemErrorCode = SystemErrorCode.DATA_INVALID) -> Dumm
 
 
 def _make_service(executor: DummyExecutor) -> ImportApplyService:
-    from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
-    adapter = EmployeesApplyAdapter()
+    from connector.datasets.employees.spec import make_employees_spec
+    adapter = make_employees_spec().get_apply_adapter()
     return ImportApplyService(executor, spec_resolver=lambda *a, **kw: DummySpec(adapter))
 
 
