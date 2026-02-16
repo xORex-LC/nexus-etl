@@ -45,6 +45,12 @@ def test_retry_rule_requires_matcher() -> None:
         RetryRule(directive="NO_RETRY")
 
 
+def test_retry_rule_can_match_by_reason() -> None:
+    rule = RetryRule(directive="RETRY_BACKOFF", match_reason="resourceexists", mutation="regenerate_target_id")
+    assert rule.match_reason == "resourceexists"
+    assert rule.mutation == "regenerate_target_id"
+
+
 def test_retry_config_validates_backoff_bounds() -> None:
     with pytest.raises(ValueError, match="backoff_max must be greater or equal"):
         RetryConfig(backoff_base=2.0, backoff_max=1.0)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from connector.config.app_settings import ApiSettings
 from connector.infra.http.ankey_client import AnkeyApiClient
+from connector.infra.target.core.mutations import TargetMutationRegistry
 from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.core.provider import TargetProvider
@@ -12,6 +13,7 @@ from connector.infra.target.core.runtime import DefaultTargetRuntime, TargetRunt
 from connector.infra.target.core.spec_models import TargetSpec
 from connector.infra.target.legacy.runtime import build_legacy_ankey_runtime
 from connector.infra.target.providers.ankey_rest.driver import AnkeyHttpDriver
+from connector.infra.target.providers.ankey_rest.mutations import build_ankey_mutations
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 
@@ -58,7 +60,11 @@ class AnkeyTargetProvider(TargetProvider):
         )
 
         driver = AnkeyHttpDriver(client)
-        gateway = TargetGateway(driver, kernel)
+        gateway = TargetGateway(
+            driver,
+            kernel,
+            mutation_registry=TargetMutationRegistry(build_ankey_mutations()),
+        )
         config = TargetConnectionConfig(
             target_type=self.target_type,
             base_url=base_url,

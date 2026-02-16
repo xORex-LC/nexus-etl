@@ -18,6 +18,7 @@ from connector.infra.target.core.spec_models import (
     OperationSpec,
     RedactionSpec,
     RetryDirective,
+    RetryRule,
     TargetSpec,
 )
 from connector.infra.target.transports.http import (
@@ -54,6 +55,14 @@ class ResolvedHttpOperation:
     expected_statuses: tuple[int, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class ResolvedRetryAction:
+    """Решение о retry для текущей ошибки."""
+
+    directive: RetryDirective
+    mutation: str | None = None
+
+
 class TargetKernel:
     """
     Назначение:
@@ -84,11 +93,7 @@ class TargetKernel:
             for r in spec.fault_rules
             if r.match_error_code is not None
         }
-        self._retry_by_fault: dict[TargetFaultKind, RetryDirective] = {
-            r.match_fault: r.directive
-            for r in spec.retry_rules
-            if r.match_fault is not None
-        }
+        self._retry_rules: tuple[RetryRule, ...] = spec.retry_rules
         self._operations: dict[str, OperationSpec] = {}
         self._compiled_http_operations: dict[str, HttpOperationDataModel] = {}
         for key, operation in spec.operations.items():
@@ -126,9 +131,35 @@ class TargetKernel:
 
         return "UNKNOWN"
 
+    def resolve_retry_action(
+        self,
+        *,
+        fault_kind: TargetFaultKind,
+        status_code: int | None = None,
+        error_reason: str | None = None,
+    ) -> ResolvedRetryAction:
+        """
+        Разрешить retry-директиву и мутацию по правилам spec.
+
+        Правила применяются в декларативном порядке (`spec.retry_rules`).
+        """
+        normalized_reason = error_reason.strip().lower() if isinstance(error_reason, str) else None
+        for rule in self._retry_rules:
+            if rule.match_fault is not None and rule.match_fault != fault_kind:
+                continue
+            if rule.match_status is not None and rule.match_status != status_code:
+                continue
+            if rule.match_reason is not None and rule.match_reason != normalized_reason:
+                continue
+            return ResolvedRetryAction(
+                directive=rule.directive,
+                mutation=rule.mutation,
+            )
+        return ResolvedRetryAction(directive="NO_RETRY", mutation=None)
+
     def retry_directive(self, fault_kind: TargetFaultKind) -> RetryDirective:
-        """Определить retry-директиву для указанного класса ошибки."""
-        return self._retry_by_fault.get(fault_kind, "NO_RETRY")
+        """Определить retry-директиву по fault-kind (совместимый API)."""
+        return self.resolve_retry_action(fault_kind=fault_kind).directive
 
     def resolve_operation(self, alias: str) -> OperationSpec:
         """Разрешить alias в декларацию операции."""

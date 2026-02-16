@@ -78,11 +78,23 @@ class RetryRule(_SpecModel):
     directive: RetryDirective
     match_fault: TargetFaultKind | None = None
     match_status: int | None = None
+    match_reason: str | None = None
+    mutation: str | None = None
 
     @model_validator(mode="after")
     def _validate_matcher(self) -> "RetryRule":
-        if self.match_fault is None and self.match_status is None:
-            raise ValueError("retry rule requires match_fault or match_status")
+        if self.match_fault is None and self.match_status is None and self.match_reason is None:
+            raise ValueError("retry rule requires match_fault, match_status or match_reason")
+        if self.match_reason is not None:
+            reason = self.match_reason.strip().lower()
+            if reason == "":
+                raise ValueError("retry rule match_reason must not be empty")
+            object.__setattr__(self, "match_reason", reason)
+        if self.mutation is not None:
+            mutation = self.mutation.strip()
+            if mutation == "":
+                raise ValueError("retry rule mutation must not be empty")
+            object.__setattr__(self, "mutation", mutation)
         return self
 
 

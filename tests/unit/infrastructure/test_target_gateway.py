@@ -7,9 +7,11 @@ import pytest
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import RequestSpec
 from connector.infra.http.ankey_client import ApiError
+from connector.infra.target.core.mutations import TargetMutationRegistry
 from connector.infra.target.driver import DriverError, DriverResponse
 from connector.infra.target.gateway import TargetGateway
 from connector.infra.target.kernel import TargetKernel
+from connector.infra.target.providers.ankey_rest.mutations import build_ankey_mutations
 from connector.infra.target.spec_ankey import build_ankey_spec
 
 
@@ -89,7 +91,11 @@ def _make_gateway(
         },
     )
     kernel = TargetKernel(spec)
-    return TargetGateway(driver, kernel)  # type: ignore[arg-type]
+    return TargetGateway(
+        driver,
+        kernel,
+        mutation_registry=TargetMutationRegistry(build_ankey_mutations()),
+    )  # type: ignore[arg-type]
 
 
 def test_execute_happy_path_returns_ok_and_masks_response() -> None:
@@ -176,7 +182,7 @@ def test_execute_detects_resourceexists_reason() -> None:
             )
         ]
     )
-    gateway = _make_gateway(driver=driver)
+    gateway = _make_gateway(driver=driver, max_attempts=0)
     spec = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
 
     result = gateway.execute(spec)
@@ -184,6 +190,37 @@ def test_execute_detects_resourceexists_reason() -> None:
     assert result.ok is False
     assert result.error_code == SystemErrorCode.CONFLICT
     assert result.error_reason == "resourceexists"
+
+
+def test_execute_operation_alias_applies_resourceexists_mutation_and_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import connector.infra.target.providers.ankey_rest.mutations as mutation_mod
+
+    monkeypatch.setattr(mutation_mod.uuid, "uuid4", lambda: "regen-123")
+    driver = StubDriver(
+        request_effects=[
+            DriverResponse(
+                status_code=409,
+                body={"message": "resourceexists"},
+                body_snippet="resource exists",
+            ),
+            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+        ]
+    )
+    gateway = _make_gateway(driver=driver, max_attempts=2)
+    spec = RequestSpec.operation(
+        alias="users.upsert",
+        params={"target_id": "orig-001"},
+        payload={"name": "Alice"},
+    )
+
+    result = gateway.execute(spec)
+
+    assert result.ok is True
+    assert len(driver.request_calls) == 2
+    assert driver.request_calls[0]["path"] == "/ankey/managed/user/orig-001"
+    assert driver.request_calls[1]["path"] == "/ankey/managed/user/regen-123"
 
 
 def test_execute_operation_alias_uses_spec_mapping() -> None:

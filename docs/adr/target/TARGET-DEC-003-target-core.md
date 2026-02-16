@@ -659,6 +659,41 @@ class AnkeyRestDriver:
 - payload mapping для `users.upsert` перенесён в provider-слой (`providers/ankey_rest/payloads/users.py`);
 - `datasets/employees/load/user_payload.py` оставлен как legacy-обёртка в миграционном контексте (без собственной бизнес-логики).
 
+### Этап 4: что удаляем (legacy cleanup checklist)
+
+Удаляем полностью (директории/файлы):
+- `connector/infra/target/legacy/__init__.py`
+- `connector/infra/target/legacy/runtime.py`
+- `connector/infra/target/legacy/ankey_paged_reader.py`
+- `connector/infra/target/ankey_gateway.py`
+- `connector/infra/target/providers/ankey/__init__.py`
+- `connector/infra/target/providers/ankey/provider.py`
+
+Удаляем compatibility wrappers (оставляем только `core/*` как primary API):
+- `connector/infra/target/factory.py`
+- `connector/infra/target/runtime.py`
+- `connector/infra/target/gateway.py`
+- `connector/infra/target/kernel.py`
+- `connector/infra/target/models.py`
+- `connector/infra/target/spec.py`
+- `connector/infra/target/spec_ankey.py`
+- `connector/infra/target/engines/__init__.py`
+- `connector/infra/target/engines/retry_engine.py`
+- `connector/infra/target/engines/error_normalizer.py`
+- `connector/infra/target/engines/safe_logging.py`
+
+Удаляем legacy-режим и fallback в runtime factory:
+- из `core/factory.py` убираем режимы `legacy/auto`, оставляем только `core`;
+- из `core/provider.py` и `providers/ankey_rest/provider.py` убираем `build_legacy_runtime(...)`;
+- из settings/CLI убираем конфиг `target_runtime_mode=legacy|auto`, оставляем единый core path.
+
+Удаляем legacy-связки в delivery bootstrap:
+- `build_api_client`, `build_api_executor`, `build_api_reader` из `connector/delivery/cli/bootstrap.py`;
+- прямой импорт `AnkeyTargetPagedReader` из legacy в `connector/delivery/cli/bootstrap.py`.
+
+Удаляем миграционные обёртки в dataset-слое:
+- `connector/datasets/employees/load/user_payload.py` (после перевода всех импортов на provider payload builder).
+
 ### Следующий этап roadmap
 
 - этап 4: финальный cleanup legacy-ветки после подтверждения паритета без fallback.

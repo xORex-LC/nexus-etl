@@ -14,7 +14,7 @@ from connector.infra.target.providers.ankey_rest.payloads import (
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.reporting.collector import ReportCollector
 from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
-from connector.datasets.employees.load.apply_adapter import EmployeesApplyAdapter
+from connector.datasets.employees.spec import make_employees_spec
 from connector.main import app
 from connector.domain.diagnostics.catalog import build_catalog
 
@@ -134,7 +134,7 @@ def test_payload_builder_contains_exact_keys():
     }
 
 def test_apply_adapter_builds_request():
-    adapter = EmployeesApplyAdapter()
+    adapter = make_employees_spec().get_apply_adapter()
     item = PlanItem(
         row_id="line:1",
         line_no=1,
@@ -219,7 +219,7 @@ def test_import_apply_stop_on_first_error():
             ExecutionResult(ok=False, status_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
         ]
     )
-    adapter = EmployeesApplyAdapter()
+    adapter = make_employees_spec().get_apply_adapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     apply_result = service.apply_plan(
         plan=plan,
@@ -293,7 +293,7 @@ def test_import_apply_max_actions_limits_requests():
             ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
         ]
     )
-    adapter = EmployeesApplyAdapter()
+    adapter = make_employees_spec().get_apply_adapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     service.apply_plan(
         plan=plan,
@@ -341,7 +341,7 @@ def test_import_apply_resource_exists_retries():
             ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
         ]
     )
-    adapter = EmployeesApplyAdapter()
+    adapter = make_employees_spec().get_apply_adapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     apply_result = service.apply_plan(
         plan=plan,
@@ -533,7 +533,7 @@ def test_apply_report_items_include_dataset():
             ExecutionResult(ok=False, status_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
         ]
     )
-    adapter = EmployeesApplyAdapter()
+    adapter = make_employees_spec().get_apply_adapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
     apply_result = service.apply_plan(
         plan=plan,
