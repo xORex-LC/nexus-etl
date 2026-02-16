@@ -4,7 +4,6 @@ import pytest
 
 from connector.infra.target.core.spec_models import (
     FaultRule,
-    HttpOperationData,
     OperationSpec,
     RetryConfig,
     RetryRule,
@@ -17,10 +16,10 @@ def test_operation_alias_is_trimmed() -> None:
     operation = OperationSpec(
         alias="  users.upsert  ",
         expected_statuses=(200, 201),
-        http=HttpOperationData(
-            method="PUT",
-            path_template="/ankey/managed/user/{target_id}",
-        ),
+        data={
+            "method": "PUT",
+            "path_template": "/ankey/managed/user/{target_id}",
+        },
     )
 
     assert operation.alias == "users.upsert"
@@ -31,7 +30,7 @@ def test_operation_alias_cannot_be_empty() -> None:
         OperationSpec(
             alias="   ",
             expected_statuses=(200,),
-            http=HttpOperationData(method="GET", path_template="/health"),
+            data={"method": "GET", "path_template": "/health"},
         )
 
 

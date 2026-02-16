@@ -63,12 +63,9 @@ def test_build_target_runtime_loads_operation_catalog(api_settings: ApiSettings)
     health_operation = gateway._kernel.resolve_operation("health.check")  # type: ignore[attr-defined]
 
     assert operation.alias == "users.upsert"
-    assert operation.http is not None
-    assert operation.http.path_template == "/ankey/managed/user/{target_id}"
-    assert list_operation.http is not None
-    assert list_operation.http.path_template == "/ankey/managed/user"
-    assert health_operation.http is not None
-    assert health_operation.http.path_template == "/ankey/managed/user"
+    assert operation.data["path_template"] == "/ankey/managed/user/{target_id}"
+    assert list_operation.data["path_template"] == "/ankey/managed/user"
+    assert health_operation.data["path_template"] == "/ankey/managed/user"
 
 
 def test_apply_retry_overrides_is_immutable(api_settings: ApiSettings) -> None:
@@ -89,13 +86,13 @@ def test_build_target_runtime_sets_single_attempt_client_and_injects_transport(
     captured: dict[str, object] = {}
     transport = object()
 
-    class FakeClient:
-        def __init__(self, **kwargs: object) -> None:
-            captured.update(kwargs)
-
     import connector.infra.target.providers.ankey_rest.provider as provider_mod
 
-    monkeypatch.setattr(provider_mod, "AnkeyApiClient", FakeClient)
+    def fake_build_http_client(settings):
+        captured["settings"] = settings
+        return object()
+
+    monkeypatch.setattr(provider_mod, "build_http_client", fake_build_http_client)
 
     runtime = build_target_runtime(
         api_settings,
@@ -105,9 +102,13 @@ def test_build_target_runtime_sets_single_attempt_client_and_injects_transport(
     )
 
     assert runtime.meta().base_url == "https://ankey.local:9443"
-    assert captured["retries"] == 0
-    assert captured["retryBackoffSeconds"] == 0
-    assert captured["transport"] is transport
+    settings = captured["settings"]
+    assert settings.base_url == "https://ankey.local:9443"
+    assert settings.timeout_seconds == api_settings.timeout_seconds
+    assert settings.tls_skip_verify == api_settings.tls_skip_verify
+    assert settings.ca_file == api_settings.ca_file
+    assert settings.transport is transport
+    assert settings.auth is not None
 
 
 def test_build_target_runtime_with_info_reports_core_mode(

@@ -6,7 +6,6 @@ import pytest
 
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import RequestSpec
-from connector.infra.http.ankey_client import ApiError
 from connector.infra.target.core.mutations import TargetMutationRegistry
 from connector.infra.target.driver import DriverError, DriverResponse
 from connector.infra.target.core.gateway import TargetGateway
@@ -321,15 +320,15 @@ def test_iter_pages_normalizes_driver_error() -> None:
     assert gateway.get_stats() == (0, 3, 1)
 
 
-def test_iter_pages_normalizes_api_error_and_sanitizes_details() -> None:
-    api_error = ApiError(
+def test_iter_pages_normalizes_driver_error_and_sanitizes_details() -> None:
+    driver_error = DriverError(
         "HTTP 500",
+        code="HTTP_500",
         status_code=500,
         body_snippet="x" * 600,
         details={"password": "very-secret"},
-        code="HTTP_500",
     )
-    driver = StubDriver(pages_effect=api_error)
+    driver = StubDriver(pages_effect=driver_error)
     gateway = _make_gateway(driver=driver)
 
     results = list(gateway.iter_pages("users.list", page_size=100, max_pages=2))

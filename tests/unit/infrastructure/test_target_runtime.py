@@ -14,6 +14,7 @@ class StubGateway:
         self.health = TargetCheckResult(ok=True, latency_ms=7)
         self.stats = (11, 3, 2)
         self.reset_called = False
+        self.close_called = False
 
     def health_check(self) -> TargetCheckResult:
         return self.health
@@ -23,6 +24,9 @@ class StubGateway:
 
     def reset_stats(self) -> None:
         self.reset_called = True
+
+    def close(self) -> None:
+        self.close_called = True
 
 
 def _config() -> TargetConnectionConfig:
@@ -110,3 +114,15 @@ def test_runtime_reset_delegates_to_gateway() -> None:
 
     assert gateway.reset_called is True
 
+
+def test_runtime_close_delegates_to_gateway() -> None:
+    gateway = StubGateway()
+    runtime = DefaultTargetRuntime(
+        gateway=gateway,  # type: ignore[arg-type]
+        config=_config(),
+        has_reader=False,
+    )
+
+    runtime.close()
+
+    assert gateway.close_called is True

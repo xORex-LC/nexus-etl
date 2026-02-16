@@ -227,8 +227,8 @@ def test_spec_property_returns_original(kernel: TargetKernel) -> None:
 def test_resolve_operation_returns_operation_spec(kernel: TargetKernel) -> None:
     operation = kernel.resolve_operation("users.upsert")
     assert operation.alias == "users.upsert"
-    assert operation.http is not None
-    assert operation.http.method == "PUT"
+    assert operation.kind == "http"
+    assert operation.data["method"] == "PUT"
 
 
 def test_resolve_operation_unknown_alias_raises(kernel: TargetKernel) -> None:
