@@ -7,6 +7,7 @@ from connector.infra.target.providers.ankey_rest.auth import AnkeyAuth
 from connector.infra.target.providers.ankey_rest.provider import (
     AnkeyTargetProvider,
     apply_retry_overrides,
+    build_transport_compiler_registry,
 )
 from connector.infra.target.providers.ankey_rest.payloads import (
     build_user_upsert_payload,
@@ -21,6 +22,7 @@ __all__ = [
     "AnkeyAuth",
     "AnkeyTargetProvider",
     "apply_retry_overrides",
+    "build_transport_compiler_registry",
     "build_ankey_mutations",
     "build_user_upsert_payload",
     "build_ankey_spec",

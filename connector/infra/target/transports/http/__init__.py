@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from connector.infra.target.transports.http.compiler import (
+    CompiledHttpOperation,
     compile_http_operation,
     compile_http_operation_data,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "HttpResponsePayload",
     "HttpNormalizedOutcome",
     "HttpOperationDataModel",
+    "CompiledHttpOperation",
     "HttpRequest",
     "compile_http_operation",
     "build_http_request",

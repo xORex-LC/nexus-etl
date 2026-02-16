@@ -10,6 +10,7 @@ from __future__ import annotations
 import pyperf
 
 from connector.infra.target.core.kernel import TargetKernel
+from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 SMALL = {
@@ -37,7 +38,10 @@ HEADERS = {
 
 
 def bench_redaction_small(loops: int) -> float:
-    kernel = TargetKernel(build_ankey_spec())
+    kernel = TargetKernel(
+        build_ankey_spec(),
+        compiler_registry=build_transport_compiler_registry(),
+    )
     timer = pyperf.perf_counter
     total = 0.0
     for _ in range(loops):
@@ -50,7 +54,10 @@ def bench_redaction_small(loops: int) -> float:
 
 
 def bench_redaction_medium(loops: int) -> float:
-    kernel = TargetKernel(build_ankey_spec())
+    kernel = TargetKernel(
+        build_ankey_spec(),
+        compiler_registry=build_transport_compiler_registry(),
+    )
     timer = pyperf.perf_counter
     total = 0.0
     for _ in range(loops):
@@ -63,7 +70,10 @@ def bench_redaction_medium(loops: int) -> float:
 
 
 def bench_redaction_large(loops: int) -> float:
-    kernel = TargetKernel(build_ankey_spec())
+    kernel = TargetKernel(
+        build_ankey_spec(),
+        compiler_registry=build_transport_compiler_registry(),
+    )
     timer = pyperf.perf_counter
     total = 0.0
     for _ in range(loops):

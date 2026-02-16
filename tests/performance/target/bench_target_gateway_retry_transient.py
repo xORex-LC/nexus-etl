@@ -15,6 +15,7 @@ from connector.domain.ports.target.execution import RequestSpec
 from connector.infra.target.driver import DriverResponse
 from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel
+from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 N = 1_000
@@ -100,7 +101,13 @@ class AuthFailDriver:
 
 
 def bench_gateway_retry_recovery(loops: int) -> float:
-    gateway = TargetGateway(RetryRecoveryDriver(), TargetKernel(_spec_no_sleep()))  # type: ignore[arg-type]
+    gateway = TargetGateway(
+        RetryRecoveryDriver(),
+        TargetKernel(
+            _spec_no_sleep(),
+            compiler_registry=build_transport_compiler_registry(),
+        ),
+    )  # type: ignore[arg-type]
     timer = pyperf.perf_counter
     total = 0.0
     for _ in range(loops):
@@ -113,7 +120,13 @@ def bench_gateway_retry_recovery(loops: int) -> float:
 
 
 def bench_gateway_no_retry_auth_fail(loops: int) -> float:
-    gateway = TargetGateway(AuthFailDriver(), TargetKernel(_spec_no_sleep()))  # type: ignore[arg-type]
+    gateway = TargetGateway(
+        AuthFailDriver(),
+        TargetKernel(
+            _spec_no_sleep(),
+            compiler_registry=build_transport_compiler_registry(),
+        ),
+    )  # type: ignore[arg-type]
     timer = pyperf.perf_counter
     total = 0.0
     for _ in range(loops):

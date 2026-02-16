@@ -17,6 +17,7 @@ from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.core.models import TargetConnectionConfig
 from connector.infra.target.core.runtime import DefaultTargetRuntime
+from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 N = 500
@@ -61,7 +62,13 @@ def _build_gateway() -> TargetGateway:
             )
         },
     )
-    return TargetGateway(AlwaysOkDriver(), TargetKernel(spec))  # type: ignore[arg-type]
+    return TargetGateway(
+        AlwaysOkDriver(),
+        TargetKernel(
+            spec,
+            compiler_registry=build_transport_compiler_registry(),
+        ),
+    )  # type: ignore[arg-type]
 
 
 SPEC = RequestSpec.operation(
