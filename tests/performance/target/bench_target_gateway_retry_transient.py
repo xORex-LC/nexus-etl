@@ -13,9 +13,9 @@ import pyperf
 
 from connector.domain.ports.target.execution import RequestSpec
 from connector.infra.target.driver import DriverResponse
-from connector.infra.target.gateway import TargetGateway
-from connector.infra.target.kernel import TargetKernel
-from connector.infra.target.spec_ankey import build_ankey_spec
+from connector.infra.target.core.gateway import TargetGateway
+from connector.infra.target.core.kernel import TargetKernel
+from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 N = 1_000
 SPEC = RequestSpec(method="POST", path="/users", expected_statuses=(200,))

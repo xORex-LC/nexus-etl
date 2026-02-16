@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pyperf
 
-from connector.infra.target.kernel import TargetKernel
-from connector.infra.target.spec_ankey import build_ankey_spec
+from connector.infra.target.core.kernel import TargetKernel
+from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 N = 200_000
 STATUSES = (200, 401, 403, 404, 409, 429, 500, 503, 504, 418)

@@ -5,7 +5,7 @@
 1. Команды delivery не должны импортировать низкоуровневые HTTP infra-модули.
 2. Команды delivery не должны напрямую импортировать Ankey-специфичные классы/исключения.
 3. Usecases/domain не должны зависеть от `connector.infra.target`.
-4. Команды delivery не должны напрямую использовать legacy API-билдеры из bootstrap.
+4. Legacy-файлы target-cleanup не должны возвращаться в репозиторий.
 """
 
 from __future__ import annotations
@@ -39,6 +39,26 @@ FORBIDDEN_BOOTSTRAP_BUILDERS = {
     "build_api_executor",
     "build_api_reader",
 }
+LEGACY_TARGET_PATHS = (
+    "connector/infra/target/legacy/__init__.py",
+    "connector/infra/target/legacy/runtime.py",
+    "connector/infra/target/legacy/ankey_paged_reader.py",
+    "connector/infra/target/ankey_gateway.py",
+    "connector/infra/target/providers/ankey/__init__.py",
+    "connector/infra/target/providers/ankey/provider.py",
+    "connector/infra/target/factory.py",
+    "connector/infra/target/runtime.py",
+    "connector/infra/target/gateway.py",
+    "connector/infra/target/kernel.py",
+    "connector/infra/target/models.py",
+    "connector/infra/target/spec.py",
+    "connector/infra/target/spec_ankey.py",
+    "connector/infra/target/engines/__init__.py",
+    "connector/infra/target/engines/retry_engine.py",
+    "connector/infra/target/engines/error_normalizer.py",
+    "connector/infra/target/engines/safe_logging.py",
+    "connector/datasets/employees/load/user_payload.py",
+)
 FORBIDDEN_RUNTIME_DEPENDENCIES = ("tenacity", "structlog", "pydantic_settings")
 ALLOWED_TENACITY_IMPORT_PATHS = {
     "connector/infra/target/core/engines/retry_engine.py",
@@ -114,6 +134,11 @@ def test_delivery_commands_do_not_use_legacy_bootstrap_builders() -> None:
                 if name in FORBIDDEN_BOOTSTRAP_BUILDERS:
                     violations.append(f"{rel}: from {module} import {name}")
     assert violations == [], "Найдены запрещённые bootstrap-билдеры:\n" + "\n".join(violations)
+
+
+def test_legacy_target_cleanup_files_are_removed() -> None:
+    existing = [path for path in LEGACY_TARGET_PATHS if (REPO_ROOT / path).exists()]
+    assert existing == [], "Legacy target-файлы должны быть удалены:\n" + "\n".join(existing)
 
 
 def test_usecases_do_not_import_target_infra() -> None:

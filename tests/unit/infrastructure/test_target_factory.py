@@ -3,12 +3,12 @@ from __future__ import annotations
 import pytest
 
 from connector.config.app_settings import ApiSettings
-from connector.infra.target.factory import (
+from connector.infra.target.core.factory import (
     build_target_runtime,
     build_target_runtime_with_info,
 )
-from connector.infra.target.providers.ankey import apply_retry_overrides
-from connector.infra.target.spec_ankey import build_ankey_spec
+from connector.infra.target.providers.ankey_rest.provider import apply_retry_overrides
+from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 
 @pytest.fixture()
@@ -24,7 +24,6 @@ def api_settings() -> ApiSettings:
         retries=7,
         retry_backoff_seconds=1.25,
         resource_exists_retries=3,
-        target_runtime_mode="auto",
     )
 
 
@@ -111,99 +110,24 @@ def test_build_target_runtime_sets_single_attempt_client_and_injects_transport(
     assert captured["transport"] is transport
 
 
-def test_build_target_runtime_legacy_mode_uses_api_retry_settings(
-    monkeypatch: pytest.MonkeyPatch,
+def test_build_target_runtime_with_info_reports_core_mode(
     api_settings: ApiSettings,
 ) -> None:
-    captured: dict[str, object] = {}
-
-    class FakeClient:
-        def __init__(self, **kwargs: object) -> None:
-            captured.update(kwargs)
-
-        def getJson(self, *_args, **_kwargs):  # noqa: N802
-            return {"items": []}
-
-        def getRetryAttempts(self) -> int:  # noqa: N802
-            return 0
-
-        def resetRetryAttempts(self) -> None:  # noqa: N802
-            return None
-
-    import connector.infra.target.legacy.runtime as legacy_runtime_mod
-
-    monkeypatch.setattr(legacy_runtime_mod, "AnkeyApiClient", FakeClient)
-
-    _ = build_target_runtime(
-        api_settings,
-        include_reader=False,
-        runtime_mode="legacy",
-    )
-
-    assert captured["retries"] == api_settings.retries
-    assert captured["retryBackoffSeconds"] == api_settings.retry_backoff_seconds
-
-
-def test_build_target_runtime_auto_falls_back_to_legacy(
-    monkeypatch: pytest.MonkeyPatch,
-    api_settings: ApiSettings,
-) -> None:
-    class StubRuntime:
-        @property
-        def executor(self):  # pragma: no cover - not used in this test
-            return object()
-
-        @property
-        def reader(self):  # pragma: no cover - not used in this test
-            return None
-
-        def check(self):
-            raise NotImplementedError
-
-        def meta(self):
-            class _Meta:
-                target_type = "ankey"
-                base_url = "https://stub"
-                transport = "http"
-
-            return _Meta()
-
-        def stats(self):
-            class _Stats:
-                requests_total = 0
-                retries_total = 0
-                failures_total = 0
-
-            return _Stats()
-
-        def reset(self) -> None:
-            return None
-
-    class FakeProvider:
-        target_type = "ankey"
-
-        def build_core_runtime(self, *_args, **_kwargs):
-            raise RuntimeError("core bootstrap failed")
-
-        def build_legacy_runtime(self, *_args, **_kwargs):
-            return StubRuntime()
-
-    import connector.infra.target.core.factory as factory_mod
-
-    monkeypatch.setattr(factory_mod, "_get_default_provider", lambda: FakeProvider())
-
     build = build_target_runtime_with_info(
         api_settings,
         include_reader=False,
-        runtime_mode="auto",
     )
 
-    assert build.requested_mode == "auto"
-    assert build.effective_mode == "legacy"
-    assert build.fallback_reason is not None
-    assert "core bootstrap failed" in build.fallback_reason
+    assert build.requested_mode == "core"
+    assert build.effective_mode == "core"
 
 
 def test_build_target_runtime_rejects_invalid_mode(api_settings: ApiSettings) -> None:
     with pytest.raises(ValueError):
         build_target_runtime(api_settings, include_reader=False, runtime_mode="broken")
+
+    with pytest.raises(ValueError):
+        build_target_runtime(api_settings, include_reader=False, runtime_mode="legacy")
+
+    with pytest.raises(ValueError):
+        build_target_runtime(api_settings, include_reader=False, runtime_mode="auto")

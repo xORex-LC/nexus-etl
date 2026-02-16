@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from typing import Any, Iterable, Iterator
 
 from connector.config.app_settings import (
-    ApiSettings,
     DatasetSettings,
     ObservabilitySettings,
     PathsSettings,
@@ -21,11 +20,8 @@ from connector.domain.transform.resolver.resolve_deps import PlanningDependencie
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.dsl_runtime import CacheDslRuntimeBundle, load_cache_dsl_runtime
 from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
-from connector.infra.http.ankey_client import AnkeyApiClient
-from connector.infra.http.request_executor import AnkeyRequestExecutor
-from connector.infra.target.legacy.ankey_paged_reader import AnkeyTargetPagedReader
 from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
-from connector.infra.target.factory import (
+from connector.infra.target.core.factory import (
     build_target_runtime,  # noqa: F401 — re-export
     build_target_runtime_with_info,  # noqa: F401 — re-export
 )
@@ -85,40 +81,6 @@ def open_cache(
         yield gateway, roles, cache_dsl_bundle
     finally:
         gateway.close()
-
-
-def build_api_client(api_settings: ApiSettings, *, transport: Any | None = None) -> AnkeyApiClient:
-    """
-    Назначение:
-        Создать HTTP клиента к Ankey API без пинга.
-    """
-    return AnkeyApiClient(
-        baseUrl=f"https://{api_settings.host}:{api_settings.port}",
-        username=api_settings.username or "",
-        password=api_settings.password or "",
-        timeoutSeconds=api_settings.timeout_seconds,
-        tlsSkipVerify=api_settings.tls_skip_verify,
-        caFile=api_settings.ca_file,
-        retries=api_settings.retries,
-        retryBackoffSeconds=api_settings.retry_backoff_seconds,
-        transport=transport,
-    )
-
-
-def build_api_executor(client: AnkeyApiClient) -> AnkeyRequestExecutor:
-    """
-    Назначение:
-        Адаптер для выполнения HTTP запросов.
-    """
-    return AnkeyRequestExecutor(client)
-
-
-def build_api_reader(client: AnkeyApiClient) -> AnkeyTargetPagedReader:
-    """
-    Назначение:
-        Reader для чтения страниц из API (cache refresh).
-    """
-    return AnkeyTargetPagedReader(client)
 
 
 def build_secret_provider(source: str | None, vault_file: str | None) -> SecretProviderProtocol:
@@ -225,9 +187,6 @@ __all__ = [
     "build_dataset_spec",
     "build_cache",
     "open_cache",
-    "build_api_client",
-    "build_api_executor",
-    "build_api_reader",
     "build_target_runtime",
     "build_target_runtime_with_info",
     "build_secret_provider",

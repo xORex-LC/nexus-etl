@@ -659,7 +659,7 @@ class AnkeyRestDriver:
 - payload mapping для `users.upsert` перенесён в provider-слой (`providers/ankey_rest/payloads/users.py`);
 - `datasets/employees/load/user_payload.py` оставлен как legacy-обёртка в миграционном контексте (без собственной бизнес-логики).
 
-### Этап 4: что удаляем (legacy cleanup checklist)
+### Этап 4: legacy cleanup checklist (закрыт)
 
 Удаляем полностью (директории/файлы):
 - `connector/infra/target/legacy/__init__.py`
@@ -696,7 +696,7 @@ class AnkeyRestDriver:
 
 ### Следующий этап roadmap
 
-- этап 4: финальный cleanup legacy-ветки после подтверждения паритета без fallback.
+- этап 5: выравнивание target-core дерева по transport/provider декомпозиции без legacy-алиасов.
 
 ---
 
@@ -718,3 +718,4 @@ class AnkeyRestDriver:
 | 2026-02-16 | Этап 0 закрыт: DEC принят, связи/ID синхронизированы, compatibility policy (`auto`) зафиксирован |
 | 2026-02-16 | Этап 3 закрыт: pydantic-spec + tenacity retry engine + structlog safe logging + architecture guards |
 | 2026-02-16 | Prep перед этапом 4 закрыт: engines в core + provider-owned payload mapping для users.upsert |
+| 2026-02-16 | Этап 4 закрыт: удалены legacy/runtime wrappers, fallback policy и legacy bootstrap builders |

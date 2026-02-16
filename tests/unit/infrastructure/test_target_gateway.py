@@ -9,10 +9,10 @@ from connector.domain.ports.target.execution import RequestSpec
 from connector.infra.http.ankey_client import ApiError
 from connector.infra.target.core.mutations import TargetMutationRegistry
 from connector.infra.target.driver import DriverError, DriverResponse
-from connector.infra.target.gateway import TargetGateway
-from connector.infra.target.kernel import TargetKernel
+from connector.infra.target.core.gateway import TargetGateway
+from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.providers.ankey_rest.mutations import build_ankey_mutations
-from connector.infra.target.spec_ankey import build_ankey_spec
+from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 
 class StubDriver:

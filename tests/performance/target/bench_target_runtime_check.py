@@ -10,11 +10,11 @@ from __future__ import annotations
 import pyperf
 
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.infra.target.models import (
+from connector.infra.target.core.models import (
     TargetCheckResult,
     TargetConnectionConfig,
 )
-from connector.infra.target.runtime import DefaultTargetRuntime
+from connector.infra.target.core.runtime import DefaultTargetRuntime
 
 N = 50_000
 

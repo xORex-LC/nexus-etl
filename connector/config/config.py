@@ -40,7 +40,6 @@ class Settings:
     timeout_seconds: float = 20.0
     retries: int = 3
     retry_backoff_seconds: float = 0.5
-    target_runtime_mode: str = "auto"
     include_deleted: bool = False
     dataset_name: str = "employees"
     report_items_limit: int = 200
@@ -481,12 +480,6 @@ _RANGE_RULES: list[tuple[str, str, str, str]] = [
 ]
 
 _ENUM_RULES: list[tuple[str, frozenset[str], str, str]] = [
-    (
-        "target_runtime_mode",
-        frozenset({"auto", "core", "legacy"}),
-        "target_runtime_mode must be one of: auto, core, legacy",
-        "Используйте значение auto, core или legacy.",
-    ),
     (
         "pending_on_expire",
         frozenset({"error", "report_only", "skip"}),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from connector.infra.target.engines.retry_engine import TargetRetryEngine
-from connector.infra.target.spec import RetryConfig
+from connector.infra.target.core.engines.retry_engine import TargetRetryEngine
+from connector.infra.target.core.spec_models import RetryConfig
 
 
 def test_can_retry_respects_retry_budget() -> None:
