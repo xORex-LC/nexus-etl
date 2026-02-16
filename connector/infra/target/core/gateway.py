@@ -21,7 +21,6 @@ from connector.common.sanitize import maskSecretsInObject, truncateText
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
 from connector.domain.ports.target.read import TargetPageResult
-from connector.infra.http.ankey_client import ApiError
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.core.mutations import TargetMutationRegistry
 from connector.infra.target.core.engines import (
@@ -215,39 +214,9 @@ class TargetGateway:
                     yield TargetPageResult(ok=True, page=page, items=safe_items)
                 return
             except DriverError as exc:
-                normalized = self._error_normalizer.from_error_code(exc.code)
-                fault = normalized.fault_kind
-                directive = self._kernel.retry_directive(fault)
-                # Если страницы уже начали выдавать — не ретраим, чтобы не дублировать данные.
-                if (
-                    last_page == 0
-                    and directive == "RETRY_BACKOFF"
-                    and self._retry_engine.can_retry(retries_used)
-                ):
-                    retries_used += 1
-                    self._retries_total += 1
-                    delay = self._retry_engine.sleep_before_retry(retries_used)
-                    self._safe_logger.debug_retry(
-                        operation="read",
-                        fault_kind=fault,
-                        retries_used=retries_used,
-                        max_retries=self._retry_engine.max_retries,
-                        delay_s=delay,
-                    )
-                    continue
-
-                self._failures_total += 1
-                yield TargetPageResult(
-                    ok=False,
-                    page=last_page,
-                    items=None,
-                    error_code=normalized.error_code,
-                    error_message=str(exc),
-                )
-                return
-            except ApiError as exc:
                 normalized = self._error_normalizer.from_status_or_code(
-                    status_code=exc.status_code, error_code=exc.code,
+                    status_code=exc.status_code,
+                    error_code=exc.code,
                 )
                 fault = normalized.fault_kind
                 directive = self._kernel.retry_directive(fault)
@@ -271,7 +240,7 @@ class TargetGateway:
 
                 self._failures_total += 1
                 error_details: dict[str, Any] | None = None
-                if isinstance(exc.details, dict):
+                if isinstance(exc.details, dict) and exc.details:
                     safe_details = self._safe_logger.safe_body(exc.details)
                     error_details = safe_details if isinstance(safe_details, dict) else None
                 body_snippet = exc.body_snippet or (
@@ -282,7 +251,6 @@ class TargetGateway:
                 if body_snippet is not None:
                     error_details = dict(error_details or {})
                     error_details["body_snippet"] = truncateText(str(body_snippet))
-
                 yield TargetPageResult(
                     ok=False,
                     page=last_page,
@@ -324,16 +292,6 @@ class TargetGateway:
             )
         except DriverError as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
-            normalized = self._error_normalizer.from_error_code(exc.code)
-            return TargetCheckResult(
-                ok=False,
-                latency_ms=latency_ms,
-                fault_kind=normalized.fault_kind,
-                error_code=normalized.error_code,
-                error_message=str(exc),
-            )
-        except ApiError as exc:  # pragma: no cover - защитный путь
-            latency_ms = int((time.monotonic() - start) * 1000)
             normalized = self._error_normalizer.from_status_or_code(
                 status_code=exc.status_code,
                 error_code=exc.code,
@@ -367,6 +325,9 @@ class TargetGateway:
         self._requests_total = 0
         self._retries_total = 0
         self._failures_total = 0
+
+    def close(self) -> None:
+        self._driver.close()
 
     # ------------------------------------------------------------------
     # Внутренние вспомогательные методы

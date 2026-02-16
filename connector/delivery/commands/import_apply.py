@@ -79,6 +79,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     )
     gateway = None
     apply_runtime = None
+    runtime = None
     identity_keys: dict[str, set[str]] = {}
     identity_id_fields: dict[str, str] = {}
     try:
@@ -167,6 +168,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             result.add_code(code)
         return result
     finally:
+        if runtime is not None:
+            runtime.close()
         if gateway is not None:
             gateway.close()
 

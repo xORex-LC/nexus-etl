@@ -17,6 +17,8 @@ class HttpRequest:
     path: str
     query: dict[str, Any]
     headers: dict[str, str]
+    json: Any | None = None
+    timeout_s: float | None = None
 
 
 def _render_path_template(

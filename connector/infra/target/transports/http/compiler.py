@@ -23,6 +23,6 @@ def compile_http_operation(operation: OperationSpec) -> HttpOperationDataModel:
     """
     if operation.kind != "http":
         raise ValueError(f"operation {operation.alias!r} is not http")
-    if operation.http is None:
-        raise ValueError(f"operation {operation.alias!r} requires http payload")
-    return compile_http_operation_data(operation.http.model_dump())
+    if not operation.data:
+        raise ValueError(f"operation {operation.alias!r} requires transport payload")
+    return compile_http_operation_data(operation.data)

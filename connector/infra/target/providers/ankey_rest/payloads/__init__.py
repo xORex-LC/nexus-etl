@@ -1,4 +1,4 @@
-"""Payload-конструкторы Ankey REST provider."""
+"""Конструкторы payload для Ankey REST-провайдера."""
 
 from __future__ import annotations
 

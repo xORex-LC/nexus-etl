@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from connector.config.app_settings import ApiSettings
-from connector.infra.http.ankey_client import AnkeyApiClient
 from connector.infra.target.core.mutations import TargetMutationRegistry
 from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel
@@ -11,9 +10,14 @@ from connector.infra.target.core.provider import TargetProvider
 from connector.infra.target.core.models import TargetConnectionConfig
 from connector.infra.target.core.runtime import DefaultTargetRuntime, TargetRuntime
 from connector.infra.target.core.spec_models import TargetSpec
+from connector.infra.target.providers.ankey_rest.auth import AnkeyAuth
 from connector.infra.target.providers.ankey_rest.driver import AnkeyHttpDriver
 from connector.infra.target.providers.ankey_rest.mutations import build_ankey_mutations
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.infra.target.transports.http.client_factory import (
+    HttpClientSettings,
+    build_http_client,
+)
 
 
 def apply_retry_overrides(
@@ -46,16 +50,18 @@ class AnkeyTargetProvider(TargetProvider):
         spec = apply_retry_overrides(spec, api_settings)
         kernel = TargetKernel(spec)
 
-        client = AnkeyApiClient(
-            baseUrl=base_url,
-            username=api_settings.username or "",
-            password=api_settings.password or "",
-            timeoutSeconds=api_settings.timeout_seconds,
-            tlsSkipVerify=api_settings.tls_skip_verify,
-            caFile=api_settings.ca_file,
-            retries=0,
-            retryBackoffSeconds=0,
-            transport=transport,
+        client = build_http_client(
+            HttpClientSettings(
+                base_url=base_url,
+                timeout_seconds=api_settings.timeout_seconds,
+                tls_skip_verify=api_settings.tls_skip_verify,
+                ca_file=api_settings.ca_file,
+                transport=transport,
+                auth=AnkeyAuth(
+                    username=api_settings.username or "",
+                    password=api_settings.password or "",
+                ),
+            )
         )
 
         driver = AnkeyHttpDriver(client)

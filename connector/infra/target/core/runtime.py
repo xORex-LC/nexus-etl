@@ -32,6 +32,7 @@ class TargetRuntime(Protocol):
         - meta(): типизированные метаданные target.
         - stats(): типизированная статистика.
         - reset(): сброс счётчиков.
+        - close(): освобождение ресурсов транспорта (например, httpx.Client).
     """
 
     @property
@@ -47,6 +48,8 @@ class TargetRuntime(Protocol):
     def stats(self) -> TargetStats: ...
 
     def reset(self) -> None: ...
+
+    def close(self) -> None: ...
 
 
 class DefaultTargetRuntime:
@@ -97,3 +100,6 @@ class DefaultTargetRuntime:
 
     def reset(self) -> None:
         self._gateway.reset_stats()
+
+    def close(self) -> None:
+        self._gateway.close()
