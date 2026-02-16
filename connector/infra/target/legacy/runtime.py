@@ -8,7 +8,7 @@ from connector.domain.ports.target.execution import RequestExecutorProtocol
 from connector.domain.ports.target.read import TargetPagedReaderProtocol
 from connector.infra.http.ankey_client import AnkeyApiClient, ApiError
 from connector.infra.http.request_executor import AnkeyRequestExecutor
-from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
+from connector.infra.target.legacy.ankey_paged_reader import AnkeyTargetPagedReader
 from connector.infra.target.models import (
     TargetCheckResult,
     TargetConnectionConfig,
@@ -20,7 +20,7 @@ from connector.infra.target.spec_ankey import build_ankey_spec
 
 
 class LegacyAnkeyRuntime(TargetRuntime):
-    """Legacy runtime adapter based on pre-target-core API components."""
+    """Legacy-адаптер runtime на базе API-компонентов до target-core."""
 
     def __init__(
         self,
@@ -72,7 +72,7 @@ class LegacyAnkeyRuntime(TargetRuntime):
                 error_code=error_code,
                 error_message=str(exc),
             )
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - защитный путь
             latency_ms = int((time.monotonic() - start) * 1000)
             return TargetCheckResult(
                 ok=False,

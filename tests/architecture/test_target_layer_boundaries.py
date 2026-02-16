@@ -1,11 +1,11 @@
 """
-Architecture guard tests for target boundaries.
+Архитектурные guard-тесты для границ target-слоя.
 
-Why these tests exist:
-1. Delivery commands must not import low-level HTTP infra modules.
-2. Delivery commands must not import Ankey-specific classes/exceptions directly.
-3. Usecases/domain must not depend on connector.infra.target.
-4. Delivery commands must not use legacy bootstrap API builders directly.
+Зачем нужны эти тесты:
+1. Команды delivery не должны импортировать низкоуровневые HTTP infra-модули.
+2. Команды delivery не должны напрямую импортировать Ankey-специфичные классы/исключения.
+3. Usecases/domain не должны зависеть от `connector.infra.target`.
+4. Команды delivery не должны напрямую использовать legacy API-билдеры из bootstrap.
 """
 
 from __future__ import annotations
@@ -15,10 +15,19 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+CONNECTOR_ROOT = REPO_ROOT / "connector"
 COMMANDS_ROOT = REPO_ROOT / "connector" / "delivery" / "commands"
 USECASES_ROOT = REPO_ROOT / "connector" / "usecases"
 DOMAIN_ROOT = REPO_ROOT / "connector" / "domain"
 CACHE_REFRESH_USECASE = REPO_ROOT / "connector" / "usecases" / "cache_refresh_service.py"
+EMPLOYEES_APPLY_ADAPTER = (
+    REPO_ROOT
+    / "connector"
+    / "datasets"
+    / "employees"
+    / "load"
+    / "apply_adapter.py"
+)
 
 FORBIDDEN_ANKEY_NAMES = {
     "AnkeyApiClient",
@@ -30,6 +39,13 @@ FORBIDDEN_BOOTSTRAP_BUILDERS = {
     "build_api_client",
     "build_api_executor",
     "build_api_reader",
+}
+FORBIDDEN_RUNTIME_DEPENDENCIES = ("tenacity", "structlog", "pydantic_settings")
+ALLOWED_TENACITY_IMPORT_PATHS = {
+    "connector/infra/target/core/engines/retry_engine.py",
+}
+ALLOWED_STRUCTLOG_IMPORT_PATHS = {
+    "connector/infra/target/core/engines/safe_logging.py",
 }
 
 
@@ -74,7 +90,7 @@ def _violations(root: Path, forbidden_prefixes: tuple[str, ...]) -> list[str]:
 
 def test_delivery_commands_do_not_import_infra_http() -> None:
     violations = _violations(COMMANDS_ROOT, ("connector.infra.http",))
-    assert violations == [], "Forbidden imports found:\n" + "\n".join(violations)
+    assert violations == [], "Найдены запрещённые импорты:\n" + "\n".join(violations)
 
 
 def test_delivery_commands_do_not_import_ankey_classes() -> None:
@@ -85,7 +101,7 @@ def test_delivery_commands_do_not_import_ankey_classes() -> None:
             for name in names:
                 if name in FORBIDDEN_ANKEY_NAMES:
                     violations.append(f"{rel}: from {module} import {name}")
-    assert violations == [], "Forbidden Ankey imports found:\n" + "\n".join(violations)
+    assert violations == [], "Найдены запрещённые импорты Ankey:\n" + "\n".join(violations)
 
 
 def test_delivery_commands_do_not_use_legacy_bootstrap_builders() -> None:
@@ -98,21 +114,65 @@ def test_delivery_commands_do_not_use_legacy_bootstrap_builders() -> None:
             for name in names:
                 if name in FORBIDDEN_BOOTSTRAP_BUILDERS:
                     violations.append(f"{rel}: from {module} import {name}")
-    assert violations == [], "Forbidden bootstrap builders found:\n" + "\n".join(violations)
+    assert violations == [], "Найдены запрещённые bootstrap-билдеры:\n" + "\n".join(violations)
 
 
 def test_usecases_do_not_import_target_infra() -> None:
     violations = _violations(USECASES_ROOT, ("connector.infra.target",))
-    assert violations == [], "Forbidden imports found:\n" + "\n".join(violations)
+    assert violations == [], "Найдены запрещённые импорты:\n" + "\n".join(violations)
 
 
 def test_domain_does_not_import_target_infra() -> None:
     violations = _violations(DOMAIN_ROOT, ("connector.infra.target",))
-    assert violations == [], "Forbidden imports found:\n" + "\n".join(violations)
+    assert violations == [], "Найдены запрещённые импорты:\n" + "\n".join(violations)
 
 
 def test_cache_refresh_uses_operation_alias_instead_of_raw_target_path() -> None:
     tree = ast.parse(CACHE_REFRESH_USECASE.read_text(encoding="utf-8"), filename=str(CACHE_REFRESH_USECASE))
     attrs = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    assert "list_path" not in attrs, "cache refresh must not depend on raw target paths"
-    assert "list_operation_alias" in attrs, "cache refresh must use operation alias from DSL adapter"
+    assert "list_path" not in attrs, "cache refresh не должен зависеть от сырых target-путей"
+    assert "list_operation_alias" in attrs, "cache refresh должен использовать operation alias из DSL-адаптера"
+
+
+def test_employees_apply_adapter_uses_provider_payload_builder() -> None:
+    imports = _import_froms(EMPLOYEES_APPLY_ADAPTER)
+    assert (
+        "connector.datasets.employees.load.user_payload",
+        ["buildUserUpsertPayload"],
+    ) not in imports, (
+        "employees apply_adapter не должен использовать legacy user_payload;"
+        " payload должен приходить из target provider"
+    )
+
+    expected = (
+        "connector.infra.target.providers.ankey_rest.payloads",
+        ["build_user_upsert_payload"],
+    )
+    assert expected in imports, (
+        "employees apply_adapter должен импортировать payload builder из target provider"
+    )
+
+
+def test_domain_usecases_delivery_do_not_import_target_core_external_libs() -> None:
+    violations: list[str] = []
+    for root in (DOMAIN_ROOT, USECASES_ROOT, COMMANDS_ROOT):
+        for path in _py_files(root):
+            rel = _rel(path)
+            for module in _imports(path):
+                if module.startswith(FORBIDDEN_RUNTIME_DEPENDENCIES):
+                    violations.append(f"{rel}: {module}")
+    assert violations == [], "Найдены запрещённые импорты runtime-зависимостей:\n" + "\n".join(violations)
+
+
+def test_tenacity_and_structlog_are_confined_to_target_engines() -> None:
+    violations: list[str] = []
+    for path in _py_files(CONNECTOR_ROOT):
+        rel = _rel(path)
+        modules = _imports(path)
+        if any(module.startswith("tenacity") for module in modules):
+            if rel not in ALLOWED_TENACITY_IMPORT_PATHS:
+                violations.append(f"{rel}: импорт tenacity вне target engines")
+        if any(module.startswith("structlog") for module in modules):
+            if rel not in ALLOWED_STRUCTLOG_IMPORT_PATHS:
+                violations.append(f"{rel}: импорт structlog вне target engines")
+    assert violations == [], "Нарушены границы зависимостей target runtime:\n" + "\n".join(violations)

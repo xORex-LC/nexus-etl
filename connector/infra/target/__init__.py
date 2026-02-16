@@ -2,7 +2,7 @@
 Пакет адаптеров к целевой системе (target).
 
 Предоставляет TargetRuntime — единую точку доступа для delivery-слоя,
-скрывая конкретную target-инфраструктуру (HTTP клиент, retry, etc).
+скрывая конкретную target-инфраструктуру (HTTP-клиент, retry и т.д.).
 """
 
 from connector.infra.target.factory import (

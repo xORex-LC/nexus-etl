@@ -1,5 +1,4 @@
 import json
-import logging
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -9,7 +8,9 @@ from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, Plan
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
-from connector.datasets.employees.load.user_payload import buildUserUpsertPayload
+from connector.infra.target.providers.ankey_rest.payloads import (
+    build_user_upsert_payload,
+)
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.reporting.collector import ReportCollector
 from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
@@ -98,7 +99,7 @@ def test_plan_reader_reads_items(tmp_path: Path):
     assert plan.items[0].target_id == "id-1"
 
 def test_payload_builder_contains_exact_keys():
-    payload = buildUserUpsertPayload(
+    payload = build_user_upsert_payload(
         {
             "email": "u@example.com",
             "last_name": "L",

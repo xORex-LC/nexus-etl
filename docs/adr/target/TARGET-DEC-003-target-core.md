@@ -257,38 +257,34 @@
 > Точная интеграция с текущим репозиторием может отличаться по именам файлов, но роли модулей — те же.
 
 ```text
-connector/
-  infra/
-    target/
-      core/
-        __init__.py
-        contracts.py          # Protocol/ABC: TargetRuntime/TargetDriver/TargetProvider/SecretProvider
-        models.py             # ExecutionResult/FaultKind/RetryDirective/TargetMeta/TargetStats/...
-        spec_models.py        # TargetSpec/OperationSpec/... (pydantic models)
-        kernel.py             # validate + compile(spec) -> CompiledTargetSpec
-        runtime.py            # TargetRuntime facade (no raw exceptions)
-        registry.py           # provider registry + runtime factory (manual v1)
-        engines/
-          __init__.py
-          retry_engine.py     # механика retry/backoff/jitter (tenacity wrapper)
-          error_normalizer.py # driver error/response -> FaultKind/ExecutionResult
-          safe_logging.py     # redaction + safe view (structlog processors)
-          mutations.py        # mutation hooks: ключ -> callable (опционально)
-        plugins.py            # (optional) entry_points discovery
-        telemetry.py          # (optional) OTel hooks
-      providers/
-        __init__.py
-        ankey_rest/
-          __init__.py
-          provider.py         # TargetProvider: load_spec() + build_driver()
-          spec.py             # Ankey TargetSpec: operations catalog + rules
-          driver.py           # AnkeyRestDriver (httpx), single-attempt I/O
-          auth.py             # auth helpers (optional)
-          parsing.py          # response parsing helpers (optional)
-          mutations.py        # ankey-specific mutation callables (optional)
-        # postgres_db/
-        # file/
-        # elasticsearch/
+connector/infra/target/
+  core/
+    contracts.py
+    models.py
+    spec_models.py        # TargetSpec + OperationSpec(kind+data) + retry/redaction rules (agnostic)
+    kernel.py             # validate + compile via transport registry
+    runtime.py            # facade: uses compiled_spec + engines + driver
+    registry.py           # providers registry
+    engines/
+      retry_engine.py     # tenacity wrapper
+      safe_logging.py     # structlog processors
+      mutations.py        # optional: apply mutation hooks
+  transports/
+    http/
+      op_models.py        # HttpOperationData (pydantic)
+      compiler.py         # compile OperationSpec.data -> CompiledHttpOperation
+      request_builder.py  # intent + compiled op -> HttpRequest
+      normalizer.py       # httpx response/exception -> ExecutionResult (FaultKind, Retry-After)
+      paging.py           # paging helpers (optional)
+      driver_base.py      # optional small base around httpx
+  providers/
+    ankey_rest/
+      spec.py             # TargetSpec + operations catalog (kind="http", data={...})
+      driver.py           # AnkeyRestDriver (httpx) OR wrapper around existing AnkeyApiClient
+      provider.py         # register provider, load_spec, build_driver, mutations()
+      payloads/
+        users.py          # provider-owned payload mapping для users.upsert
+      mutations.py        # regenerate_id etc (ankey-specific)
 ```
 
 ### Правило импортов (anti-leak)
@@ -642,12 +638,30 @@ class AnkeyRestDriver:
 - в явном виде зафиксирован compatibility policy (`core/auto/legacy`, default=`auto`);
 - определена точка удаления legacy: финальный cleanup этап roadmap.
 
-### Backlog этапа 1 (следующий шаг)
+### Backlog этапа 1 (закрыт)
 
 - выделить `TargetProvider` контракт и ручной registry в target-slice;
 - перенести Ankey wiring в provider-модуль без прямого знания Ankey в factory;
 - оставить совместимость с legacy через режим `auto`, но запретить развитие legacy-функционала;
 - расширить architecture tests на запрет новых импортов legacy target wiring в delivery-командах.
+
+### DoD этапа 3 (закрыт)
+
+- `TargetSpec`/`OperationSpec` переведены на `pydantic`-модели (`immutable + forbid extra`);
+- retry-механизм выделен в отдельный engine на базе `tenacity` (через внутреннюю обёртку);
+- safe logging/redaction выделены в engine c `structlog`-адаптером и без утечки raw payload наружу;
+- добавлены architecture-guards на границы импортов `tenacity/structlog/pydantic_settings`;
+- unit/e2e тесты и performance-bench scaffolding синхронизированы под pydantic-spec API (`model_copy`).
+
+### Готовность к этапу 4 (закрыт prep)
+
+- primary-реализации engines размещены в `infra/target/core/engines/*`; root `infra/target/engines/*` оставлены как compatibility wrappers;
+- payload mapping для `users.upsert` перенесён в provider-слой (`providers/ankey_rest/payloads/users.py`);
+- `datasets/employees/load/user_payload.py` оставлен как legacy-обёртка в миграционном контексте (без собственной бизнес-логики).
+
+### Следующий этап roadmap
+
+- этап 4: финальный cleanup legacy-ветки после подтверждения паритета без fallback.
 
 ---
 
@@ -667,3 +681,5 @@ class AnkeyRestDriver:
 | 2026-02-16 | Базовая модель TargetRuntime/TargetSpec и фиксация TargetCore как plugin-core |
 | 2026-02-16 | Инструменты/идиомы + зона ответственности/модули/контракты |
 | 2026-02-16 | Этап 0 закрыт: DEC принят, связи/ID синхронизированы, compatibility policy (`auto`) зафиксирован |
+| 2026-02-16 | Этап 3 закрыт: pydantic-spec + tenacity retry engine + structlog safe logging + architecture guards |
+| 2026-02-16 | Prep перед этапом 4 закрыт: engines в core + provider-owned payload mapping для users.upsert |

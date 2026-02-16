@@ -94,7 +94,7 @@ def test_build_target_runtime_sets_single_attempt_client_and_injects_transport(
         def __init__(self, **kwargs: object) -> None:
             captured.update(kwargs)
 
-    import connector.infra.target.providers.ankey.provider as provider_mod
+    import connector.infra.target.providers.ankey_rest.provider as provider_mod
 
     monkeypatch.setattr(provider_mod, "AnkeyApiClient", FakeClient)
 
@@ -188,7 +188,7 @@ def test_build_target_runtime_auto_falls_back_to_legacy(
         def build_legacy_runtime(self, *_args, **_kwargs):
             return StubRuntime()
 
-    import connector.infra.target.factory as factory_mod
+    import connector.infra.target.core.factory as factory_mod
 
     monkeypatch.setattr(factory_mod, "_get_default_provider", lambda: FakeProvider())
 

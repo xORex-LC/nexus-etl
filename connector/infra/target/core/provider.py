@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Protocol
 
 from connector.config.app_settings import ApiSettings
-from connector.infra.target.runtime import TargetRuntime
+from connector.infra.target.core.runtime import TargetRuntime
 
 
 class TargetProvider(Protocol):
-    """Provider contract for target runtime wiring."""
+    """Контракт провайдера для сборки target runtime."""
 
     target_type: str
 

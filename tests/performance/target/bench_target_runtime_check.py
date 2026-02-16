@@ -1,7 +1,7 @@
 """
-Benchmark: runtime.check() hot path (ok/fail).
+Бенчмарк: горячий путь `runtime.check()` (успех/ошибка).
 
-Run:
+Запуск:
     .venv/bin/python tests/performance/target/bench_target_runtime_check.py --fast
 """
 
@@ -89,4 +89,3 @@ if __name__ == "__main__":
     runner = pyperf.Runner()
     runner.bench_time_func("target_runtime_check_ok", bench_runtime_check_ok)
     runner.bench_time_func("target_runtime_check_fail", bench_runtime_check_fail)
-

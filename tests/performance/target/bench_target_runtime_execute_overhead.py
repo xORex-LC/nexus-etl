@@ -1,13 +1,12 @@
 """
-Benchmark: compare direct gateway.execute vs runtime.executor.execute.
+Бенчмарк: сравнение прямого `gateway.execute` и `runtime.executor.execute`.
 
-Run:
+Запуск:
     .venv/bin/python tests/performance/target/bench_target_runtime_execute_overhead.py --fast
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any, Iterator
 
 import pyperf
@@ -50,15 +49,17 @@ class AlwaysOkDriver:
 
 def _build_gateway() -> TargetGateway:
     spec = build_ankey_spec()
-    spec = replace(
-        spec,
-        retry_config=replace(
-            spec.retry_config,
-            max_attempts=0,
-            backoff_base=0.0,
-            backoff_max=0.0,
-            jitter=False,
-        ),
+    spec = spec.model_copy(
+        update={
+            "retry_config": spec.retry_config.model_copy(
+                update={
+                    "max_attempts": 0,
+                    "backoff_base": 0.0,
+                    "backoff_max": 0.0,
+                    "jitter": False,
+                },
+            )
+        },
     )
     return TargetGateway(AlwaysOkDriver(), TargetKernel(spec))  # type: ignore[arg-type]
 

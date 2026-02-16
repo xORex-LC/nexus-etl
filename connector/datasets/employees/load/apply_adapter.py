@@ -5,10 +5,12 @@ from dataclasses import dataclass, field
 
 from connector.datasets.spec import ApplyAdapter
 from connector.domain.ports.target.execution import RequestSpec, ExecutionResult
-from connector.datasets.employees.load.user_payload import buildUserUpsertPayload
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
 from connector.domain.planning.plan_models import PlanItem
+from connector.infra.target.providers.ankey_rest.payloads import (
+    build_user_upsert_payload,
+)
 
 
 @dataclass
@@ -48,7 +50,7 @@ class EmployeesApplyAdapter(ApplyAdapter):
                 )
             payload_source[secret_field] = secret
 
-        payload = buildUserUpsertPayload(payload_source)
+        payload = build_user_upsert_payload(payload_source)
         return RequestSpec.operation(
             alias="users.upsert",
             params={"target_id": item.target_id},

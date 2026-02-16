@@ -1,7 +1,7 @@
 """
-Benchmark: TargetKernel operation lookup (classify_fault + retry_directive).
+Бенчмарк: поиск правил в `TargetKernel` (`classify_fault` + `retry_directive`).
 
-Run:
+Запуск:
     .venv/bin/python tests/performance/target/bench_target_kernel_operation_lookup.py --fast
 """
 
@@ -36,4 +36,3 @@ def bench_kernel_lookup(loops: int) -> float:
 if __name__ == "__main__":
     runner = pyperf.Runner()
     runner.bench_time_func("target_kernel_lookup", bench_kernel_lookup)
-

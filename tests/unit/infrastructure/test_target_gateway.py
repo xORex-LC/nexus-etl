@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any, Iterable, Iterator
 
 import pytest
@@ -77,15 +76,17 @@ def _make_gateway(
     backoff_base: float = 0.0,
 ) -> TargetGateway:
     spec = build_ankey_spec()
-    spec = replace(
-        spec,
-        retry_config=replace(
-            spec.retry_config,
-            max_attempts=max_attempts,
-            backoff_base=backoff_base,
-            backoff_max=backoff_base,
-            jitter=False,
-        ),
+    spec = spec.model_copy(
+        update={
+            "retry_config": spec.retry_config.model_copy(
+                update={
+                    "max_attempts": max_attempts,
+                    "backoff_base": backoff_base,
+                    "backoff_max": backoff_base,
+                    "jitter": False,
+                },
+            )
+        },
     )
     kernel = TargetKernel(spec)
     return TargetGateway(driver, kernel)  # type: ignore[arg-type]
@@ -346,12 +347,12 @@ def test_health_check_unexpected_error_maps_to_transient() -> None:
 
 def test_health_check_uses_operation_alias_not_legacy_health_path() -> None:
     spec = build_ankey_spec()
-    spec = replace(
-        spec,
-        health_check=replace(
-            spec.health_check,
-            path="/legacy/health",
-        ),
+    spec = spec.model_copy(
+        update={
+            "health_check": spec.health_check.model_copy(
+                update={"path": "/legacy/health"},
+            )
+        },
     )
     driver = StubDriver(
         request_effects=[

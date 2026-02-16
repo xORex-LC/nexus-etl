@@ -4,11 +4,11 @@ from connector.infra.target.core.provider import TargetProvider
 
 
 class MissingTargetProviderError(LookupError):
-    """Raised when requested target provider is absent in registry."""
+    """Исключение при отсутствии запрошенного target-провайдера в реестре."""
 
 
 class TargetProviderRegistry:
-    """Manual registry for target providers."""
+    """Ручной реестр target-провайдеров."""
 
     def __init__(self) -> None:
         self._providers: dict[str, TargetProvider] = {}

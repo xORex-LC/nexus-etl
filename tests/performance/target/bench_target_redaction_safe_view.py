@@ -1,7 +1,7 @@
 """
-Benchmark: TargetKernel redaction/safe-view for headers and payloads.
+Бенчмарк: редактирование и безопасное представление в `TargetKernel` для заголовков и payload.
 
-Run:
+Запуск:
     .venv/bin/python tests/performance/target/bench_target_redaction_safe_view.py --fast
 """
 
@@ -80,4 +80,3 @@ if __name__ == "__main__":
     runner.bench_time_func("target_redaction_small", bench_redaction_small)
     runner.bench_time_func("target_redaction_medium", bench_redaction_medium)
     runner.bench_time_func("target_redaction_large", bench_redaction_large)
-
