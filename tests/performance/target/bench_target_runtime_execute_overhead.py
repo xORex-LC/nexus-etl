@@ -13,11 +13,11 @@ import pyperf
 
 from connector.domain.ports.target.execution import RequestSpec
 from connector.infra.target.driver import DriverResponse
-from connector.infra.target.gateway import TargetGateway
-from connector.infra.target.kernel import TargetKernel
-from connector.infra.target.models import TargetConnectionConfig
-from connector.infra.target.runtime import DefaultTargetRuntime
-from connector.infra.target.spec_ankey import build_ankey_spec
+from connector.infra.target.core.gateway import TargetGateway
+from connector.infra.target.core.kernel import TargetKernel
+from connector.infra.target.core.models import TargetConnectionConfig
+from connector.infra.target.core.runtime import DefaultTargetRuntime
+from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 N = 500
 

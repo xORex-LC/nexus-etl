@@ -18,7 +18,6 @@ class ApiSettings:
     retries: int
     retry_backoff_seconds: float
     resource_exists_retries: int
-    target_runtime_mode: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -109,7 +108,6 @@ _SLICE_FIELD_MAP: dict[type, dict[str, str]] = {
         "retries": "retries",
         "retry_backoff_seconds": "retry_backoff_seconds",
         "resource_exists_retries": "resource_exists_retries",
-        "target_runtime_mode": "target_runtime_mode",
     },
     PathsSettings: {
         "cache_dir": "cache_dir",

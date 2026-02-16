@@ -1,4 +1,4 @@
-"""Ankey target provider (core + legacy runtime wiring)."""
+"""Провайдер target для Ankey (wiring только через core runtime)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from connector.infra.target.core.provider import TargetProvider
 from connector.infra.target.core.models import TargetConnectionConfig
 from connector.infra.target.core.runtime import DefaultTargetRuntime, TargetRuntime
 from connector.infra.target.core.spec_models import TargetSpec
-from connector.infra.target.legacy.runtime import build_legacy_ankey_runtime
 from connector.infra.target.providers.ankey_rest.driver import AnkeyHttpDriver
 from connector.infra.target.providers.ankey_rest.mutations import build_ankey_mutations
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
@@ -74,19 +73,6 @@ class AnkeyTargetProvider(TargetProvider):
             gateway=gateway,
             config=config,
             has_reader=include_reader,
-        )
-
-    def build_legacy_runtime(
-        self,
-        api_settings: ApiSettings,
-        *,
-        transport: object | None = None,
-        include_reader: bool = True,
-    ) -> TargetRuntime:
-        return build_legacy_ankey_runtime(
-            api_settings,
-            transport=transport,
-            include_reader=include_reader,
         )
 
 

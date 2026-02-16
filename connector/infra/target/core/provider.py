@@ -18,11 +18,3 @@ class TargetProvider(Protocol):
         transport: object | None = None,
         include_reader: bool = True,
     ) -> TargetRuntime: ...
-
-    def build_legacy_runtime(
-        self,
-        api_settings: ApiSettings,
-        *,
-        transport: object | None = None,
-        include_reader: bool = True,
-    ) -> TargetRuntime: ...

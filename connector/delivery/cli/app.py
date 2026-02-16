@@ -96,11 +96,6 @@ def main(
     timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
     retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API calls"),
     retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff for retries"),
-    targetRuntimeMode: str | None = typer.Option(
-        None,
-        "--target-runtime-mode",
-        help="Target runtime mode: auto|core|legacy",
-    ),
     resourceExistsRetries: int | None = typer.Option(None, "--resource-exists-retries", help="Retries for resourceExists"),
     matchBatchSize: int | None = typer.Option(None, "--match-batch-size", help="Match micro-batch size"),
     matchFlushIntervalMs: int | None = typer.Option(
@@ -147,7 +142,6 @@ def main(
         "timeout_seconds": timeoutSeconds,
         "retries": retries,
         "retry_backoff_seconds": retryBackoffSeconds,
-        "target_runtime_mode": targetRuntimeMode,
         "resource_exists_retries": resourceExistsRetries,
         "match_batch_size": matchBatchSize,
         "match_flush_interval_ms": matchFlushIntervalMs,

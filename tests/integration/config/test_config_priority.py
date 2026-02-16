@@ -57,19 +57,6 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
     assert api_settings.port == 3333
     assert api_settings.username == "cli_user"
     assert api_settings.password == "cli_pass"
-    assert api_settings.target_runtime_mode == "auto"
-
-
-def test_target_runtime_mode_cli_override(tmp_path):
-    cfg = tmp_path / "config.yml"
-    cfg.write_text("target_runtime_mode: core\n", encoding="utf-8")
-
-    loaded = load_app_settings(
-        config_path=str(cfg),
-        cli_overrides={"target_runtime_mode": "legacy"},
-    )
-
-    assert loaded.app_settings.api.target_runtime_mode == "legacy"
 
 
 def test_batch_settings_priority_cli_over_env_over_config(tmp_path, monkeypatch):

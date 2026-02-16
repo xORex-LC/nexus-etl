@@ -10,9 +10,9 @@ from __future__ import annotations
 import pytest
 
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.infra.target.kernel import TargetKernel
-from connector.infra.target.spec import RedactionSpec
-from connector.infra.target.spec_ankey import build_ankey_spec
+from connector.infra.target.core.kernel import TargetKernel
+from connector.infra.target.core.spec_models import RedactionSpec
+from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 
 @pytest.fixture()

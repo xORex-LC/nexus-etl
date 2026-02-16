@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.infra.target.engines.error_normalizer import TargetErrorNormalizer
-from connector.infra.target.kernel import TargetKernel
-from connector.infra.target.spec_ankey import build_ankey_spec
+from connector.infra.target.core.engines.error_normalizer import TargetErrorNormalizer
+from connector.infra.target.core.kernel import TargetKernel
+from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 
 def test_from_status_maps_to_fault_and_system_code() -> None:

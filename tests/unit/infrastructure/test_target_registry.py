@@ -14,17 +14,11 @@ class _ProviderA:
     def build_core_runtime(self, *_args, **_kwargs):  # pragma: no cover - not used
         raise NotImplementedError
 
-    def build_legacy_runtime(self, *_args, **_kwargs):  # pragma: no cover - not used
-        raise NotImplementedError
-
 
 class _ProviderB:
     target_type = "b"
 
     def build_core_runtime(self, *_args, **_kwargs):  # pragma: no cover - not used
-        raise NotImplementedError
-
-    def build_legacy_runtime(self, *_args, **_kwargs):  # pragma: no cover - not used
         raise NotImplementedError
 
 

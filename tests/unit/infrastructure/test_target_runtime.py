@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from connector.infra.target.models import (
+from connector.infra.target.core.models import (
     TargetCheckResult,
     TargetConnectionConfig,
     TargetMeta,
     TargetStats,
 )
-from connector.infra.target.runtime import DefaultTargetRuntime
+from connector.infra.target.core.runtime import DefaultTargetRuntime
 
 
 class StubGateway:

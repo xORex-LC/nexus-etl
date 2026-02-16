@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from connector.infra.target.spec import (
+from connector.infra.target.core.spec_models import (
     FaultRule,
     HttpOperationData,
     OperationSpec,
@@ -10,7 +10,7 @@ from connector.infra.target.spec import (
     RetryRule,
     TargetSpec,
 )
-from connector.infra.target.spec_ankey import build_ankey_spec
+from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 
 def test_operation_alias_is_trimmed() -> None:

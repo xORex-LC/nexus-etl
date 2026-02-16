@@ -5,7 +5,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import connector.delivery.commands.check_api as check_api_command
-from connector.infra.target.factory import TargetRuntimeBuildResult
+from connector.infra.target.core.factory import TargetRuntimeBuildResult
 from connector.main import app
 
 
@@ -76,9 +76,8 @@ def test_check_api_smoke_works_with_slice_wiring(tmp_path: Path, monkeypatch) ->
         return TargetRuntimeBuildResult(
             runtime=_Runtime(),
             target_type="ankey",
-            requested_mode="auto",
+            requested_mode="core",
             effective_mode="core",
-            fallback_reason=None,
         )
 
     monkeypatch.setattr(check_api_command, "build_target_runtime_with_info", _build_target_runtime_with_info)
