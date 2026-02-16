@@ -1,5 +1,5 @@
 """
-Smoke-tests benchmark entrypoints for target performance suite.
+Проверка запуска точек входа бенчмарков для target performance-набора.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def _run_bench(script_name: str) -> None:
         capture_output=True,
         text=True,
     )
-    assert proc.returncode == 0, f"{script_name} failed:\n{proc.stdout}\n{proc.stderr}"
+    assert proc.returncode == 0, f"{script_name} завершился с ошибкой:\n{proc.stdout}\n{proc.stderr}"
 
 
 def test_bench_target_runtime_execute_overhead_entrypoint() -> None:
@@ -54,4 +54,3 @@ def test_bench_target_kernel_lookup_entrypoint() -> None:
 
 def test_bench_target_redaction_safe_view_entrypoint() -> None:
     _run_bench("bench_target_redaction_safe_view.py")
-

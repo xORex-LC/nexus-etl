@@ -1,13 +1,12 @@
 """
-Benchmark: gateway retry engine (transient recovery vs no-retry auth failure).
+Бенчмарк: retry-механизм `gateway` (восстановление после временной ошибки против auth-ошибки без ретрая).
 
-Run:
+Запуск:
     .venv/bin/python tests/performance/target/bench_target_gateway_retry_transient.py --fast
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any, Iterator
 
 import pyperf
@@ -24,20 +23,22 @@ SPEC = RequestSpec(method="POST", path="/users", expected_statuses=(200,))
 
 def _spec_no_sleep():
     spec = build_ankey_spec()
-    return replace(
-        spec,
-        retry_config=replace(
-            spec.retry_config,
-            max_attempts=2,
-            backoff_base=0.0,
-            backoff_max=0.0,
-            jitter=False,
-        ),
+    return spec.model_copy(
+        update={
+            "retry_config": spec.retry_config.model_copy(
+                update={
+                    "max_attempts": 2,
+                    "backoff_base": 0.0,
+                    "backoff_max": 0.0,
+                    "jitter": False,
+                },
+            )
+        },
     )
 
 
 class RetryRecoveryDriver:
-    """On each execute(): first 503 then 200."""
+    """На каждом execute(): сначала 503, затем 200."""
 
     def __init__(self) -> None:
         self.calls = 0

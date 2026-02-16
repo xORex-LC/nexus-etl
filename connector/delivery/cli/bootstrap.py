@@ -17,14 +17,13 @@ from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
 from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
-from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.dsl_runtime import CacheDslRuntimeBundle, load_cache_dsl_runtime
 from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
 from connector.infra.http.ankey_client import AnkeyApiClient
 from connector.infra.http.request_executor import AnkeyRequestExecutor
-from connector.infra.target.ankey_gateway import AnkeyTargetPagedReader
+from connector.infra.target.legacy.ankey_paged_reader import AnkeyTargetPagedReader
 from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
 from connector.infra.target.factory import (
     build_target_runtime,  # noqa: F401 — re-export

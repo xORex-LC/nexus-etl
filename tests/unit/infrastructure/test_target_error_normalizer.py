@@ -1,0 +1,33 @@
+from __future__ import annotations
+
+from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.infra.target.engines.error_normalizer import TargetErrorNormalizer
+from connector.infra.target.kernel import TargetKernel
+from connector.infra.target.spec_ankey import build_ankey_spec
+
+
+def test_from_status_maps_to_fault_and_system_code() -> None:
+    normalizer = TargetErrorNormalizer(TargetKernel(build_ankey_spec()))
+
+    result = normalizer.from_status(401)
+
+    assert result.fault_kind == "AUTH"
+    assert result.error_code == SystemErrorCode.AUTH_UNAUTHORIZED
+
+
+def test_from_error_code_maps_network_error_to_transient() -> None:
+    normalizer = TargetErrorNormalizer(TargetKernel(build_ankey_spec()))
+
+    result = normalizer.from_error_code("NETWORK_ERROR")
+
+    assert result.fault_kind == "TRANSIENT"
+    assert result.error_code == SystemErrorCode.INFRA_UNAVAILABLE
+
+
+def test_from_status_or_code_prefers_error_code() -> None:
+    normalizer = TargetErrorNormalizer(TargetKernel(build_ankey_spec()))
+
+    result = normalizer.from_status_or_code(status_code=401, error_code="NETWORK_ERROR")
+
+    assert result.fault_kind == "TRANSIENT"
+    assert result.error_code == SystemErrorCode.INFRA_UNAVAILABLE
