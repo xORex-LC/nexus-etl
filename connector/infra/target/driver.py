@@ -53,7 +53,11 @@ class TargetDriver(Protocol):
     def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
 
     def get_paged_items(
-        self, path: str, page_size: int, max_pages: int | None
+        self,
+        path: str,
+        page_size: int,
+        max_pages: int | None,
+        params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]: ...
 
 
@@ -99,6 +103,10 @@ class AnkeyHttpDriver:
             raise
 
     def get_paged_items(
-        self, path: str, page_size: int, max_pages: int | None
+        self,
+        path: str,
+        page_size: int,
+        max_pages: int | None,
+        params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]:
-        return self._client.getPagedItems(path, page_size, max_pages)
+        return self._client.getPagedItems(path, page_size, max_pages, params=params)

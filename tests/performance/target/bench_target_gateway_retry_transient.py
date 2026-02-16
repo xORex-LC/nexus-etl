@@ -60,7 +60,11 @@ class RetryRecoveryDriver:
         return {"ok": True}
 
     def get_paged_items(
-        self, path: str, page_size: int, max_pages: int | None
+        self,
+        path: str,
+        page_size: int,
+        max_pages: int | None,
+        params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]:
         return iter(())
 
@@ -81,7 +85,11 @@ class AuthFailDriver:
         return {"ok": True}
 
     def get_paged_items(
-        self, path: str, page_size: int, max_pages: int | None
+        self,
+        path: str,
+        page_size: int,
+        max_pages: int | None,
+        params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]:
         return iter(())
 
@@ -117,4 +125,3 @@ if __name__ == "__main__":
     runner = pyperf.Runner()
     runner.bench_time_func("target_gateway_retry_recovery", bench_gateway_retry_recovery)
     runner.bench_time_func("target_gateway_no_retry_auth_fail", bench_gateway_no_retry_auth_fail)
-

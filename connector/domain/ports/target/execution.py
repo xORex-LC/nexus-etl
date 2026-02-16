@@ -15,21 +15,39 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 class RequestSpec:
     """
     Назначение:
-        Унифицированная инструкция HTTP-запроса для слоя исполнения.
+        Унифицированная инструкция target-операции для слоя исполнения.
 
     Инварианты:
-        - method хранится в upper-case.
-        - expected_statuses не пуст.
+        - path-mode: method/path обязательны, expected_statuses не пуст.
+        - operation-mode: operation_alias обязателен; method/path/expected_statuses
+          не задаются, т.к. берутся строго из OperationSpec в target-core.
     """
 
-    method: str
-    path: str
+    method: str | None = None
+    path: str | None = None
     payload: Any | None = None
     headers: dict[str, str] | None = None
     query: dict[str, Any] | None = None
     expected_statuses: Sequence[int] = field(default_factory=tuple)
+    operation_alias: str | None = None
+    operation_params: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
+        if self.operation_alias is not None:
+            alias = self.operation_alias.strip()
+            if alias == "":
+                raise ValueError("operation_alias must not be empty")
+            self.operation_alias = alias
+            if self.method is not None or self.path is not None:
+                raise ValueError("method/path must be omitted when operation_alias is set")
+            if self.expected_statuses:
+                raise ValueError("expected_statuses must be omitted when operation_alias is set")
+            return
+
+        if not self.method:
+            raise ValueError("method is required when operation_alias is not set")
+        if not self.path:
+            raise ValueError("path is required when operation_alias is not set")
         self.method = self.method.upper()
         if not self.expected_statuses:
             raise ValueError("expected_statuses must not be empty")
@@ -51,6 +69,27 @@ class RequestSpec:
             headers=headers,
             query=query,
             expected_statuses=expected_statuses,
+        )
+
+    @classmethod
+    def operation(
+        cls,
+        alias: str,
+        *,
+        payload: Any | None = None,
+        headers: dict[str, str] | None = None,
+        query: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> "RequestSpec":
+        return cls(
+            method=None,
+            path=None,
+            payload=payload,
+            headers=headers,
+            query=query,
+            expected_statuses=tuple(),
+            operation_alias=alias,
+            operation_params=params,
         )
 
     @classmethod
@@ -114,6 +153,8 @@ class RequestSpec:
         Назначение:
             Проверить, входит ли статус в список допустимых.
         """
+        if not self.expected_statuses:
+            return False
         return status_code in self.expected_statuses
 
 

@@ -158,9 +158,10 @@ def test_apply_adapter_builds_request():
         source_ref={"match_key": "A"},
     )
     spec = adapter.to_request(item)
-    assert spec.method == "PUT"
-    assert spec.path.endswith("/ankey/managed/user/abc")
-    assert spec.query == {"_prettyPrint": "true", "decrypt": "false"}
+    assert spec.operation_alias == "users.upsert"
+    assert spec.operation_params == {"target_id": "abc"}
+    assert spec.method is None
+    assert spec.path is None
 
 def test_import_apply_stop_on_first_error():
     items = [

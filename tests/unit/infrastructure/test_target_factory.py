@@ -52,6 +52,26 @@ def test_build_target_runtime_applies_retry_overrides(api_settings: ApiSettings)
     assert spec.retry_config.backoff_base == 1.25
 
 
+def test_build_target_runtime_loads_operation_catalog(api_settings: ApiSettings) -> None:
+    runtime = build_target_runtime(
+        api_settings,
+        include_reader=False,
+        runtime_mode="core",
+    )
+    gateway = runtime.executor  # type: ignore[assignment]
+    operation = gateway._kernel.resolve_operation("users.upsert")  # type: ignore[attr-defined]
+    list_operation = gateway._kernel.resolve_operation("users.list")  # type: ignore[attr-defined]
+    health_operation = gateway._kernel.resolve_operation("health.check")  # type: ignore[attr-defined]
+
+    assert operation.alias == "users.upsert"
+    assert operation.http is not None
+    assert operation.http.path_template == "/ankey/managed/user/{target_id}"
+    assert list_operation.http is not None
+    assert list_operation.http.path_template == "/ankey/managed/user"
+    assert health_operation.http is not None
+    assert health_operation.http.path_template == "/ankey/managed/user"
+
+
 def test_apply_retry_overrides_is_immutable(api_settings: ApiSettings) -> None:
     original = build_ankey_spec()
     updated = apply_retry_overrides(original, api_settings)

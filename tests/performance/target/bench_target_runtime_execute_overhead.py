@@ -39,7 +39,11 @@ class AlwaysOkDriver:
         return {"ok": True}
 
     def get_paged_items(
-        self, path: str, page_size: int, max_pages: int | None
+        self,
+        path: str,
+        page_size: int,
+        max_pages: int | None,
+        params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]:
         return iter(())
 
@@ -102,4 +106,3 @@ if __name__ == "__main__":
     runner = pyperf.Runner()
     runner.bench_time_func(f"target_direct_execute_{N}", bench_direct_execute)
     runner.bench_time_func(f"target_runtime_execute_{N}", bench_runtime_execute)
-

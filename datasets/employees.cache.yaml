@@ -78,7 +78,7 @@ schema:
       unique: false
 sync:
   dataset: employees
-  list_path: /ankey/managed/user
+  list_operation_alias: users.list
   report_entity: user
   include_deleted_default: false
   item_key:

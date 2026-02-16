@@ -197,3 +197,38 @@ def test_spec_property_returns_original(kernel: TargetKernel) -> None:
     spec = build_ankey_spec()
     k = TargetKernel(spec)
     assert k.spec is spec
+
+
+# ---------------------------------------------------------------------------
+# operation aliases
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_operation_returns_operation_spec(kernel: TargetKernel) -> None:
+    operation = kernel.resolve_operation("users.upsert")
+    assert operation.alias == "users.upsert"
+    assert operation.http is not None
+    assert operation.http.method == "PUT"
+
+
+def test_resolve_operation_unknown_alias_raises(kernel: TargetKernel) -> None:
+    with pytest.raises(ValueError, match="unknown operation alias"):
+        kernel.resolve_operation("users.unknown")
+
+
+def test_build_http_operation_renders_path_and_merges_defaults(kernel: TargetKernel) -> None:
+    request = kernel.build_http_operation(
+        "users.upsert",
+        operation_params={"target_id": "abc-123"},
+        query_overrides={"decrypt": "true"},
+    )
+
+    assert request.method == "PUT"
+    assert request.path == "/ankey/managed/user/abc-123"
+    assert request.expected_statuses == (200, 201)
+    assert request.query == {"_prettyPrint": "true", "decrypt": "true"}
+
+
+def test_build_http_operation_requires_path_params(kernel: TargetKernel) -> None:
+    with pytest.raises(ValueError, match="missing path params"):
+        kernel.build_http_operation("users.upsert")

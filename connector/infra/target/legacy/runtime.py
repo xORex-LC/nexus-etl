@@ -16,6 +16,7 @@ from connector.infra.target.models import (
     TargetStats,
 )
 from connector.infra.target.runtime import TargetRuntime
+from connector.infra.target.spec_ankey import build_ankey_spec
 
 
 class LegacyAnkeyRuntime(TargetRuntime):
@@ -43,8 +44,18 @@ class LegacyAnkeyRuntime(TargetRuntime):
 
     def check(self) -> TargetCheckResult:
         start = time.monotonic()
+        health_op = build_ankey_spec().operations["health.check"]
+        health_http = health_op.http
+        path = "/ankey/managed/user"
+        params: dict[str, int | str] = {"page": 1, "rows": 1, "_queryFilter": "true"}
+        if health_http is not None:
+            path = health_http.path_template
+            params = {
+                key: int(value) if str(value).isdigit() else str(value)
+                for key, value in health_http.query_defaults.items()
+            }
         try:
-            self._client.getJson("/ankey/managed/user", {"page": 1, "rows": 1, "_queryFilter": "true"})  # noqa: N802
+            self._client.getJson(path, params)  # noqa: N802
             latency_ms = int((time.monotonic() - start) * 1000)
             return TargetCheckResult(ok=True, latency_ms=latency_ms)
         except ApiError as exc:

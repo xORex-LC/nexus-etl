@@ -245,7 +245,7 @@ schema:
 
 sync:
   dataset: employees
-  list_path: /ankey/managed/user  # REST API endpoint
+  list_operation_alias: users.list  # Alias операции list в target layer
   report_entity: user
   include_deleted_default: false
 
@@ -436,7 +436,7 @@ class CacheDatasetSpec(BaseModel):
 ```python
 class CacheSyncSpec(BaseModel):
     dataset: str | None                    # Имя датасета (может быть null)
-    list_path: str                         # REST API endpoint для list
+    list_operation_alias: str              # Alias list-операции target
     report_entity: str                     # Entity name для reporting
     include_deleted_default: bool = False  # Включать deleted по умолчанию
 
@@ -451,7 +451,7 @@ class CacheSyncSpec(BaseModel):
 **Пример из YAML**:
 ```yaml
 sync:
-  list_path: /ankey/managed/user
+  list_operation_alias: users.list
   report_entity: user
   item_key:
     sources: [_id, id]
@@ -650,9 +650,11 @@ if options.fail_on_missing_sync and not dataset_spec.sync:
 - `dataset` — имя датасета
 - `schema.primary_key` — первичный ключ
 - `schema.columns` — список колонок
-- `sync.list_path` — REST API endpoint (если есть sync)
+- `sync.list_operation_alias` — alias list-операции target (если есть sync)
 - `sync.item_key` — правило формирования PK (если есть sync)
 - `sync.projection` — маппинг полей (если есть sync)
+
+> Примечание по совместимости: loader принимает legacy-ключ `list_path`, но runtime-контракт и документация используют `list_operation_alias`.
 
 **Опциональные поля**:
 - `sync` — весь блок синхронизации (датасет может быть без sync)
@@ -825,7 +827,7 @@ schema:
       unique: false
 
 sync:
-  list_path: /ankey/managed/department
+  list_operation_alias: departments.list
   report_entity: department
   item_key:
     sources: [_id, id]
@@ -854,6 +856,9 @@ datasets:
 ```
 
 3. **Перезапустить приложение** → компилятор автоматически подхватит новый датасет
+
+4. **Добавить alias операции в target-provider spec**:
+   - например `departments.list` в `TargetSpec.operations` соответствующего provider.
 
 **Результат**:
 - Новый датасет в `runtime.cache_specs`

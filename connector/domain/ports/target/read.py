@@ -40,7 +40,7 @@ class TargetPagedReaderProtocol(Protocol):
 
     def iter_pages(
         self,
-        path: str,
+        operation_alias: str,
         page_size: int,
         max_pages: int | None,
         params: dict[str, Any] | None = None,
@@ -49,6 +49,7 @@ class TargetPagedReaderProtocol(Protocol):
         Назначение:
             Итеративно возвращать страницы данных.
         Контракт:
+            - operation_alias разрешается через TargetSpec/TargetKernel.
             - Возвращает последовательность TargetPageResult без исключений наружу.
         """
         ...

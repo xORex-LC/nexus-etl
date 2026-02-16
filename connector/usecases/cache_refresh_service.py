@@ -123,7 +123,11 @@ class CacheRefreshUseCase:
                             "pages": 0,
                         },
                     )
-                    for page_result in self.target_reader.iter_pages(adapter.list_path, page_size, max_pages):
+                    for page_result in self.target_reader.iter_pages(
+                        adapter.list_operation_alias,
+                        page_size,
+                        max_pages,
+                    ):
                         if not page_result.ok:
                             code = page_result.error_code.name if page_result.error_code else "API_ERROR"
                             error_stats[code] = error_stats.get(code, 0) + 1

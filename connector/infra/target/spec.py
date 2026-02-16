@@ -13,7 +13,7 @@ TargetSpec — декларативная спецификация target-сис
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from connector.infra.target.models import TargetFaultKind
 
@@ -71,6 +71,37 @@ class RetryConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class HttpOperationData:
+    """HTTP-часть декларации alias-операции target."""
+
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
+    path_template: str
+    query_defaults: dict[str, Any] = field(default_factory=dict)
+    header_defaults: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class OperationSpec:
+    """Декларация target-операции, разрешаемой по alias."""
+
+    alias: str
+    kind: Literal["http"] = "http"
+    expected_statuses: tuple[int, ...] = (200,)
+    timeout_ms: int | None = None
+    retry_profile: str | None = None
+    redaction_override: dict[str, Any] | None = None
+    http: HttpOperationData | None = None
+
+    def __post_init__(self) -> None:
+        if self.alias.strip() == "":
+            raise ValueError("operation alias must not be empty")
+        if self.kind == "http" and self.http is None:
+            raise ValueError("http operation requires http payload")
+        if not self.expected_statuses:
+            raise ValueError("operation expected_statuses must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
 class RedactionSpec:
     """Правила маскирования для безопасного логирования."""
 
@@ -106,3 +137,4 @@ class TargetSpec:
     retry_rules: tuple[RetryRule, ...]
     retry_config: RetryConfig
     redaction: RedactionSpec
+    operations: dict[str, OperationSpec] = field(default_factory=dict)
