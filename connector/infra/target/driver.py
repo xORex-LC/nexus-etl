@@ -26,11 +26,24 @@ class DriverResponse:
 
 
 class DriverError(Exception):
-    """Транспортная ошибка (сеть, таймаут). Не содержит HTTP-статуса."""
+    """Транспортная/протокольная ошибка одной попытки I/O."""
 
-    def __init__(self, message: str, code: str = "NETWORK_ERROR") -> None:
+    def __init__(
+        self,
+        message: str,
+        code: str = "NETWORK_ERROR",
+        *,
+        status_code: int | None = None,
+        body_snippet: str | None = None,
+        details: dict[str, Any] | None = None,
+        retry_after_s: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.status_code = status_code
+        self.body_snippet = body_snippet
+        self.details = details or {}
+        self.retry_after_s = retry_after_s
 
 
 class TargetDriver(Protocol):
@@ -55,3 +68,5 @@ class TargetDriver(Protocol):
         max_pages: int | None,
         params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]: ...
+
+    def close(self) -> None: ...

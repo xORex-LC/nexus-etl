@@ -114,21 +114,6 @@ class RetryConfig(_SpecModel):
         return self
 
 
-class HttpOperationData(_SpecModel):
-    """HTTP-часть декларации alias-операции target."""
-
-    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
-    path_template: str
-    query_defaults: dict[str, Any] = Field(default_factory=dict)
-    header_defaults: dict[str, str] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def _validate_path_template(self) -> "HttpOperationData":
-        if not self.path_template.startswith("/"):
-            raise ValueError("path_template must start with '/'")
-        return self
-
-
 class OperationSpec(_SpecModel):
     """Декларация target-операции, разрешаемой по alias."""
 
@@ -138,7 +123,8 @@ class OperationSpec(_SpecModel):
     timeout_ms: int | None = Field(default=None, ge=1)
     retry_profile: str | None = None
     redaction_override: dict[str, Any] | None = None
-    http: HttpOperationData | None = None
+    # Transport-specific payload (http/db/file/...) is opaque for target-core.
+    data: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_operation(self) -> "OperationSpec":
@@ -146,8 +132,8 @@ class OperationSpec(_SpecModel):
         if alias == "":
             raise ValueError("operation alias must not be empty")
         object.__setattr__(self, "alias", alias)
-        if self.kind == "http" and self.http is None:
-            raise ValueError("http operation requires http payload")
+        if self.kind == "http" and not self.data:
+            raise ValueError("http operation requires transport payload")
         if not self.expected_statuses:
             raise ValueError("operation expected_statuses must not be empty")
         return self

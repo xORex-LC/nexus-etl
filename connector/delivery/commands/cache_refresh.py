@@ -47,6 +47,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 
+    runtime = None
     try:
         with open_cache(app_settings.paths) as (_gateway, cache_roles, cache_dsl_bundle):
             unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
@@ -79,7 +80,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 drift_rebuild_scope=runtime_policy.drift_rebuild_scope,
             )
             service = CacheCommandService(cache_roles.cache_admin, cache_refresh)
-
             return service.refresh(
                 page_size=opts.page_size or app_settings.refresh.page_size,
                 max_pages=opts.max_pages or app_settings.refresh.max_pages,
@@ -108,6 +108,9 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
         typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
+    finally:
+        if runtime is not None:
+            runtime.close()
 
 
 __all__ = ["handler", "Options"]

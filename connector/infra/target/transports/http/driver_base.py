@@ -1,19 +1,14 @@
-"""Базовый протокол HTTP-драйвера транспорта (без привязки к провайдеру)."""
+"""Базовый протокол HTTP transport request_once контракта."""
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Protocol
 
-from connector.infra.target.driver import DriverResponse
+import httpx
+
+from connector.infra.target.transports.http.request_builder import HttpRequest
+from connector.infra.target.transports.http.request_once import HttpOutcome
 
 
-class HttpDriverBase(Protocol):
-    def request(
-        self,
-        method: str,
-        path: str,
-        *,
-        params: dict[str, Any] | None = None,
-        json: Any | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> DriverResponse: ...
+class HttpRequestOncePort(Protocol):
+    def __call__(self, client: httpx.Client, req: HttpRequest) -> HttpOutcome: ...

@@ -37,30 +37,34 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         include_reader=False,
     )
     runtime = build_result.runtime
-    report.set_context("target_runtime", _runtime_context(build_result))
-    result = runtime.check()
-    target_meta = runtime.meta()
+    try:
+        report.set_context("target_runtime", _runtime_context(build_result))
+        result = runtime.check()
+        target_meta = runtime.meta()
 
-    if result.ok:
+        if result.ok:
+            logEvent(
+                ctx.logger, logging.INFO, run_id, "api",
+                f"api ok base_url={target_meta.base_url} latency_ms={result.latency_ms}",
+            )
+            report.set_context(
+                "apply_target",
+                {
+                    "target_type": target_meta.target_type,
+                    "transport": target_meta.transport,
+                    "target_runtime_mode": build_result.effective_mode,
+                },
+            )
+            return result_with(SystemErrorCode.OK)
+
         logEvent(
-            ctx.logger, logging.INFO, run_id, "api",
-            f"api ok base_url={target_meta.base_url} latency_ms={result.latency_ms}",
+            ctx.logger, logging.ERROR, run_id, "api",
+            f"API check failed: {result.error_message}",
         )
-        report.set_context(
-            "apply_target",
-            {
-                "target_type": target_meta.transport,
-                "target_runtime_mode": build_result.effective_mode,
-            },
-        )
-        return result_with(SystemErrorCode.OK)
-
-    logEvent(
-        ctx.logger, logging.ERROR, run_id, "api",
-        f"API check failed: {result.error_message}",
-    )
-    typer.echo("ERROR: API check failed (see logs/report)", err=True)
-    return result_with(result.error_code or SystemErrorCode.INFRA_UNAVAILABLE)
+        typer.echo("ERROR: API check failed (see logs/report)", err=True)
+        return result_with(result.error_code or SystemErrorCode.INFRA_UNAVAILABLE)
+    finally:
+        runtime.close()
 
 
 __all__ = ["handler", "Options"]
