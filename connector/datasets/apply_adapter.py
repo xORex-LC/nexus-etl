@@ -7,11 +7,10 @@ from connector.datasets.spec import ApplyAdapter
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
 from connector.domain.planning.plan_models import PlanItem
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
-from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
+from connector.domain.ports.target.execution import RequestSpec
 
 PayloadBuilder = Callable[[dict[str, Any]], dict[str, Any]]
 ParamsBuilder = Callable[[PlanItem], dict[str, Any] | None]
-FailureRetryHook = Callable[[PlanItem, ExecutionResult, int], PlanItem | None]
 
 
 @dataclass
@@ -23,14 +22,13 @@ class OperationApplyAdapter(ApplyAdapter):
         - гидрировать секреты из SecretProvider по `item.secret_fields`;
         - собрать payload через переданный payload_builder;
         - собрать параметры операции через params_builder;
-        - при необходимости делегировать retry-модификацию в on_failed_request_hook.
+        - отдать готовый alias-intent `RequestSpec`.
     """
 
     operation_alias: str
     payload_builder: PayloadBuilder
     dataset: str
     params_builder: ParamsBuilder | None = None
-    on_failed_request_hook: FailureRetryHook | None = None
     secrets: SecretProviderProtocol | None = field(default=None)
 
     def to_request(self, item: PlanItem) -> RequestSpec:
@@ -42,16 +40,6 @@ class OperationApplyAdapter(ApplyAdapter):
             params=params,
             payload=payload,
         )
-
-    def on_failed_request(
-        self,
-        item: PlanItem,
-        result: ExecutionResult,
-        retries_left: int,
-    ) -> PlanItem | None:
-        if self.on_failed_request_hook is None:
-            return None
-        return self.on_failed_request_hook(item, result, retries_left)
 
     def _hydrate_payload_source(self, item: PlanItem) -> dict[str, Any]:
         payload_source = dict(item.desired_state)

@@ -104,7 +104,6 @@ def bench_apply_all_error_bounded(loops: int) -> float:
             max_actions=None,
             dry_run=False,
             max_item_outcomes=MAX_OUTCOMES,
-            resource_exists_retries=0,
         )
         total += timer() - t0
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
 from connector.datasets.apply_adapter import OperationApplyAdapter
@@ -20,7 +19,6 @@ from connector.domain.ports.cache.roles import EnrichLookupPort, PlanningRuntime
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies, ResolverSettings
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.planning.plan_models import PlanItem
-from connector.domain.ports.target.execution import ExecutionResult
 from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.matcher.match_engine import MatchEngine
 from connector.domain.dsl.loader import (
@@ -80,7 +78,6 @@ class EmployeesSpec(DatasetSpec):
             payload_builder=build_user_upsert_payload,
             dataset=self.dataset_name,
             params_builder=_build_employees_operation_params,
-            on_failed_request_hook=_retry_on_resource_exists,
             secrets=secrets,
         )
 
@@ -300,27 +297,10 @@ def _build_resolver_settings(settings) -> ResolverSettings:
 
 
 def _build_employees_operation_params(item: PlanItem) -> dict[str, Any]:
-    return {"target_id": item.target_id}
-
-
-def _retry_on_resource_exists(
-    item: PlanItem,
-    result: ExecutionResult,
-    retries_left: int,
-) -> PlanItem | None:
-    if retries_left <= 0:
-        return None
-    if item.op != "create":
-        return None
-    if result.error_reason != "resourceexists":
-        return None
-    return PlanItem(
-        row_id=item.row_id,
-        line_no=item.line_no,
-        op=item.op,
-        target_id=str(uuid.uuid4()),
-        desired_state=item.desired_state,
-        changes=item.changes,
-        source_ref=item.source_ref,
-        secret_fields=item.secret_fields,
-    )
+    target_id = item.target_id
+    if target_id is None:
+        raise ValueError("target_id is required for operation users.upsert")
+    normalized = str(target_id).strip()
+    if normalized == "":
+        raise ValueError("target_id is required for operation users.upsert")
+    return {"target_id": normalized}

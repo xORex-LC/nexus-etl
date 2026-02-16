@@ -52,7 +52,6 @@ class ImportApplyService:
         max_actions: int | None,
         dry_run: bool,
         max_item_outcomes: int,
-        resource_exists_retries: int,
         telemetry: ApplyTelemetrySink | None = None,
     ) -> ApplyResult:
         sink: ApplyTelemetrySink = telemetry or NullApplyTelemetrySink()
@@ -87,17 +86,115 @@ class ImportApplyService:
                 break
 
             actions_count += 1
-            if not item.target_id:
+            try:
+                if dry_run:
+                    exec_result = ExecutionResult(
+                        ok=True, status_code=200, response_json={"dry_run": True},
+                        error_code=None, error_message=None,
+                    )
+                else:
+                    if apply_adapter is None:
+                        raise ValueError("Apply adapter is not configured")
+                    request_spec = apply_adapter.to_request(item)
+                    boundary_errors: list = []
+                    exec_result: ExecutionResult | None = None
+                    with diagnostic_boundary(
+                        stage=DiagnosticStage.APPLY,
+                        catalog=catalog,
+                        sink=boundary_errors,
+                        record_ref=None,
+                    ):
+                        exec_result = self.executor.execute(request_spec)
+                    if boundary_errors:
+                        failed += 1
+                        for diag in boundary_errors:
+                            error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
+                            sys_code = system_code_of(catalog, diag)
+                            system_codes.add(sys_code)
+                            sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                        if stop_policy.is_fatal(system_code_of(catalog, boundary_errors[0])):
+                            fatal_error = True
+                        _add_outcome(ApplyItemOutcome(
+                            record_ref=ref,
+                            op=action,
+                            status="FAILED",
+                            target_id=item.target_id,
+                            diagnostics=tuple(boundary_errors),
+                        ))
+                        if stop_on_first_error and failed:
+                            break
+                        continue
+                    if exec_result is None:
+                        failed += 1
+                        diag = diag_error(
+                            catalog=catalog,
+                            stage=DiagnosticStage.APPLY,
+                            code="INTERNAL_ERROR",
+                            field=None,
+                            message="empty execution result",
+                            record_ref=None,
+                        )
+                        error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
+                        sys_code = system_code_of(catalog, diag)
+                        system_codes.add(sys_code)
+                        sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                        _add_outcome(ApplyItemOutcome(
+                            record_ref=ref,
+                            op=action,
+                            status="FAILED",
+                            target_id=item.target_id,
+                            diagnostics=(diag,),
+                        ))
+                        if stop_on_first_error and failed:
+                            break
+                        continue
+
+                if exec_result.ok:
+                    if action == "create":
+                        created += 1
+                    elif action == "update":
+                        updated += 1
+                    sink.on_item_ok(record_ref=ref, op=action, target_id=item.target_id)
+                    self._update_identity_index(
+                        dataset=dataset_name,
+                        desired_state=item.desired_state,
+                        response_json=exec_result.response_json,
+                        source_ref=item.source_ref,
+                    )
+                    continue
+
                 failed += 1
-                diag = diag_error(
+                diag = translate_execution_result(
                     catalog=catalog,
-                    stage=DiagnosticStage.APPLY,
-                    code="TARGET_ID_MISSING",
-                    field="target_id",
-                    message="target_id is required",
+                    stage=DiagnosticStage.SINK,
+                    result=exec_result,
                     record_ref=None,
                 )
                 error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
+                sys_code = system_code_of(catalog, diag)
+                system_codes.add(sys_code)
+                if stop_policy.is_fatal(sys_code):
+                    fatal_error = True
+                sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                _add_outcome(ApplyItemOutcome(
+                    record_ref=ref,
+                    op=action,
+                    status="FAILED",
+                    target_id=item.target_id,
+                    diagnostics=(diag,),
+                ))
+            except MissingRequiredSecretError as exc:
+                failed += 1
+                err_code = exc.code
+                error_stats[err_code] = error_stats.get(err_code, 0) + 1
+                diag = diag_error(
+                    catalog=catalog,
+                    stage=DiagnosticStage.APPLY,
+                    code=err_code,
+                    field=exc.field,
+                    message=str(exc),
+                    record_ref=None,
+                )
                 sys_code = system_code_of(catalog, diag)
                 system_codes.add(sys_code)
                 sink.on_item_error(record_ref=ref, op=action, diag=diag)
@@ -105,164 +202,31 @@ class ImportApplyService:
                     record_ref=ref,
                     op=action,
                     status="FAILED",
-                    target_id=None,
+                    target_id=item.target_id,
                     diagnostics=(diag,),
                 ))
-                if stop_on_first_error:
-                    break
-                continue
-
-            retries_left = resource_exists_retries
-            current_item = item
-            while True:
-                try:
-                    if dry_run:
-                        exec_result = ExecutionResult(
-                            ok=True, status_code=200, response_json={"dry_run": True},
-                            error_code=None, error_message=None,
-                        )
-                    else:
-                        if apply_adapter is None:
-                            raise ValueError("Apply adapter is not configured")
-                        request_spec = apply_adapter.to_request(current_item)
-                        boundary_errors: list = []
-                        exec_result: ExecutionResult | None = None
-                        with diagnostic_boundary(
-                            stage=DiagnosticStage.APPLY,
-                            catalog=catalog,
-                            sink=boundary_errors,
-                            record_ref=None,
-                        ):
-                            exec_result = self.executor.execute(request_spec)
-                        if boundary_errors:
-                            failed += 1
-                            for diag in boundary_errors:
-                                error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
-                                sys_code = system_code_of(catalog, diag)
-                                system_codes.add(sys_code)
-                                sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                            if stop_policy.is_fatal(system_code_of(catalog, boundary_errors[0])):
-                                fatal_error = True
-                            _add_outcome(ApplyItemOutcome(
-                                record_ref=ref,
-                                op=action,
-                                status="FAILED",
-                                target_id=current_item.target_id,
-                                diagnostics=tuple(boundary_errors),
-                            ))
-                            break
-                        if exec_result is None:
-                            failed += 1
-                            diag = diag_error(
-                                catalog=catalog,
-                                stage=DiagnosticStage.APPLY,
-                                code="INTERNAL_ERROR",
-                                field=None,
-                                message="empty execution result",
-                                record_ref=None,
-                            )
-                            error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
-                            sys_code = system_code_of(catalog, diag)
-                            system_codes.add(sys_code)
-                            sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                            _add_outcome(ApplyItemOutcome(
-                                record_ref=ref,
-                                op=action,
-                                status="FAILED",
-                                target_id=current_item.target_id,
-                                diagnostics=(diag,),
-                            ))
-                            break
-
-                    if exec_result.ok:
-                        if action == "create":
-                            created += 1
-                        elif action == "update":
-                            updated += 1
-                        sink.on_item_ok(record_ref=ref, op=action, target_id=current_item.target_id)
-                        self._update_identity_index(
-                            dataset=dataset_name,
-                            desired_state=current_item.desired_state,
-                            response_json=exec_result.response_json,
-                            source_ref=current_item.source_ref,
-                        )
-                        break
-
-                    next_item = None
-                    if not dry_run and apply_adapter:
-                        next_item = apply_adapter.on_failed_request(current_item, exec_result, retries_left)
-                    if next_item and retries_left > 0:
-                        retries_left -= 1
-                        current_item = next_item
-                        continue
-
-                    failed += 1
-                    diag = translate_execution_result(
-                        catalog=catalog,
-                        stage=DiagnosticStage.SINK,
-                        result=exec_result,
-                        record_ref=None,
-                    )
-                    error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
-                    sys_code = system_code_of(catalog, diag)
-                    system_codes.add(sys_code)
-                    if stop_policy.is_fatal(sys_code):
-                        fatal_error = True
-                    sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                    _add_outcome(ApplyItemOutcome(
-                        record_ref=ref,
-                        op=action,
-                        status="FAILED",
-                        target_id=current_item.target_id,
-                        diagnostics=(diag,),
-                    ))
-                    break
-                except MissingRequiredSecretError as exc:
-                    failed += 1
-                    err_code = exc.code
-                    error_stats[err_code] = error_stats.get(err_code, 0) + 1
-                    diag = diag_error(
-                        catalog=catalog,
-                        stage=DiagnosticStage.APPLY,
-                        code=err_code,
-                        field=exc.field,
-                        message=str(exc),
-                        record_ref=None,
-                    )
-                    sys_code = system_code_of(catalog, diag)
-                    system_codes.add(sys_code)
-                    sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                    _add_outcome(ApplyItemOutcome(
-                        record_ref=ref,
-                        op=action,
-                        status="FAILED",
-                        target_id=current_item.target_id,
-                        diagnostics=(diag,),
-                    ))
-                    break
-                except Exception as exc:
-                    failed += 1
-                    err_code = "UNEXPECTED_ERROR"
-                    error_stats[err_code] = error_stats.get(err_code, 0) + 1
-                    diag = diag_error(
-                        catalog=catalog,
-                        stage=DiagnosticStage.APPLY,
-                        code=err_code,
-                        field=None,
-                        message=str(exc),
-                        record_ref=None,
-                    )
-                    sys_code = system_code_of(catalog, diag)
-                    system_codes.add(sys_code)
-                    sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                    _add_outcome(ApplyItemOutcome(
-                        record_ref=ref,
-                        op=action,
-                        status="FAILED",
-                        target_id=current_item.target_id,
-                        diagnostics=(diag,),
-                    ))
-                    break
+            except Exception as exc:
+                failed += 1
+                err_code = "UNEXPECTED_ERROR"
+                error_stats[err_code] = error_stats.get(err_code, 0) + 1
+                diag = diag_error(
+                    catalog=catalog,
+                    stage=DiagnosticStage.APPLY,
+                    code=err_code,
+                    field=None,
+                    message=str(exc),
+                    record_ref=None,
+                )
+                sys_code = system_code_of(catalog, diag)
+                system_codes.add(sys_code)
+                sink.on_item_error(record_ref=ref, op=action, diag=diag)
+                _add_outcome(ApplyItemOutcome(
+                    record_ref=ref,
+                    op=action,
+                    status="FAILED",
+                    target_id=item.target_id,
+                    diagnostics=(diag,),
+                ))
 
             if stop_on_first_error and failed:
                 break

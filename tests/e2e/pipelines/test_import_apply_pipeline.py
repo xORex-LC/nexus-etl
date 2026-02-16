@@ -161,8 +161,6 @@ def test_apply_adapter_builds_request():
     spec = adapter.to_request(item)
     assert spec.operation_alias == "users.upsert"
     assert spec.operation_params == {"target_id": "abc"}
-    assert spec.method is None
-    assert spec.path is None
 
 def test_import_apply_stop_on_first_error():
     items = [
@@ -228,7 +226,6 @@ def test_import_apply_stop_on_first_error():
         max_actions=None,
         dry_run=False,
         max_item_outcomes=10,
-        resource_exists_retries=0,
     )
     assert apply_result.primary_code != SystemErrorCode.OK
     assert apply_result.summary.failed == 1
@@ -302,11 +299,10 @@ def test_import_apply_max_actions_limits_requests():
         max_actions=1,
         dry_run=False,
         max_item_outcomes=10,
-        resource_exists_retries=0,
     )
     assert len(executor.calls) == 1
 
-def test_import_apply_resource_exists_retries():
+def test_import_apply_does_not_retry_resource_exists_in_usecase():
     items = [
         PlanItem(
             row_id="line:1",
@@ -338,7 +334,6 @@ def test_import_apply_resource_exists_retries():
             ExecutionResult(
                 ok=False, status_code=409, error_code=SystemErrorCode.CONFLICT, error_message="conflict", error_reason="resourceexists"
             ),
-            ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
         ]
     )
     adapter = make_employees_spec().get_apply_adapter()
@@ -350,11 +345,10 @@ def test_import_apply_resource_exists_retries():
         max_actions=None,
         dry_run=False,
         max_item_outcomes=10,
-        resource_exists_retries=1,
     )
-    assert apply_result.primary_code == SystemErrorCode.OK
-    assert apply_result.summary.created == 1
-    assert len(executor.calls) == 2
+    assert apply_result.primary_code == SystemErrorCode.CONFLICT
+    assert apply_result.summary.failed == 1
+    assert len(executor.calls) == 1
 
 def test_import_apply_requires_plan(tmp_path: Path):
     result = runner.invoke(
@@ -542,7 +536,6 @@ def test_apply_report_items_include_dataset():
         max_actions=None,
         dry_run=False,
         max_item_outcomes=10,
-        resource_exists_retries=0,
     )
     assert apply_result.primary_code != SystemErrorCode.OK
 

@@ -31,7 +31,6 @@ class Options:
     max_actions: int | None = None
     dry_run: bool | None = None
     report_items_limit: int | None = None
-    resource_exists_retries: int | None = None
     secrets_from: str | None = None
     vault_file: str | None = None
 
@@ -57,11 +56,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         opts.report_items_limit
         if opts.report_items_limit is not None
         else app_settings.observability.report_items_limit
-    )
-    resource_exists_retries = (
-        opts.resource_exists_retries
-        if opts.resource_exists_retries is not None
-        else app_settings.api.resource_exists_retries
     )
     stop_on_first_error = (
         opts.stop_on_first_error
@@ -114,7 +108,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 "stop_on_first_error": stop_on_first_error,
                 "max_actions": max_actions,
                 "dry_run": dry_run,
-                "resource_exists_retries": resource_exists_retries,
                 "retries": app_settings.api.retries,
                 "retry_backoff_seconds": app_settings.api.retry_backoff_seconds,
             },
@@ -153,7 +146,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             max_actions=max_actions,
             dry_run=dry_run,
             max_item_outcomes=report_items_limit,
-            resource_exists_retries=resource_exists_retries,
             telemetry=telemetry_sink,
         )
 

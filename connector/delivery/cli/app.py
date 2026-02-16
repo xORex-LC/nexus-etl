@@ -96,7 +96,6 @@ def main(
     timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
     retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API calls"),
     retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff for retries"),
-    resourceExistsRetries: int | None = typer.Option(None, "--resource-exists-retries", help="Retries for resourceExists"),
     matchBatchSize: int | None = typer.Option(None, "--match-batch-size", help="Match micro-batch size"),
     matchFlushIntervalMs: int | None = typer.Option(
         None,
@@ -142,7 +141,6 @@ def main(
         "timeout_seconds": timeoutSeconds,
         "retries": retries,
         "retry_backoff_seconds": retryBackoffSeconds,
-        "resource_exists_retries": resourceExistsRetries,
         "match_batch_size": matchBatchSize,
         "match_flush_interval_ms": matchFlushIntervalMs,
         "resolve_batch_size": resolveBatchSize,
@@ -369,7 +367,6 @@ def importApply(
     stopOnFirstError: bool | None = cli_options.STOP_ON_FIRST_ERROR,
     maxActions: int | None = cli_options.MAX_ACTIONS,
     dryRun: bool | None = cli_options.DRY_RUN,
-    resourceExistsRetries: int | None = cli_options.RESOURCE_EXISTS_RETRIES,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     secretsFrom: str | None = cli_options.SECRETS_FROM,
     vaultFile: str | None = cli_options.VAULT_FILE,
@@ -380,7 +377,6 @@ def importApply(
         max_actions=maxActions,
         dry_run=dryRun,
         report_items_limit=reportItemsLimit,
-        resource_exists_retries=resourceExistsRetries,
         secrets_from=secretsFrom,
         vault_file=vaultFile,
     )
