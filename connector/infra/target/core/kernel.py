@@ -44,17 +44,6 @@ _FAULT_TO_SYSTEM: dict[TargetFaultKind, SystemErrorCode] = {
 
 
 @dataclass(frozen=True, slots=True)
-class ResolvedHttpOperation:
-    """Скомпилированный HTTP-запрос из alias OperationSpec."""
-
-    method: str
-    path: str
-    query: dict[str, Any]
-    headers: dict[str, str]
-    expected_statuses: tuple[int, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class ResolvedRetryAction:
     """Решение о retry для текущей ошибки."""
 
@@ -171,48 +160,18 @@ class TargetKernel:
             raise ValueError(f"unknown operation alias: {alias}")
         return operation
 
-    def build_http_operation(
-        self,
-        alias: str,
-        *,
-        operation_params: dict[str, Any] | None = None,
-        query_overrides: dict[str, Any] | None = None,
-        header_overrides: dict[str, str] | None = None,
-    ) -> ResolvedHttpOperation:
-        """
-        Построить HTTP-запрос строго из OperationSpec.
-        `method/path/expected_statuses` берутся только из alias-каталога.
+    def get_compiled_operation(self, alias: str) -> tuple[OperationSpec, CompiledOperation]:
+        """Вернуть пару (OperationSpec, CompiledOperation) по alias.
+
+        Контракт:
+            - CompiledOperation opaque для вызывающего кода (gateway).
+            - Вызывающий передаёт compiled_request в driver без распаковки.
         """
         operation = self.resolve_operation(alias)
-        if operation.kind != "http":
-            raise ValueError(f"operation {alias!r} is not http")
         compiled = self._compiled_operations.get(alias)
         if compiled is None:
             raise ValueError(f"operation {alias!r} is not compiled")
-
-        request = compiled.build(
-            alias=alias,
-            operation_params=operation_params,
-            query_overrides=query_overrides,
-            header_overrides=header_overrides,
-        )
-        method = getattr(request, "method", None)
-        path = getattr(request, "path", None)
-        query = getattr(request, "query", None)
-        headers = getattr(request, "headers", None)
-        if not isinstance(method, str) or not isinstance(path, str):
-            raise ValueError(f"operation {alias!r} produced invalid request payload")
-        if query is None:
-            query = {}
-        if headers is None:
-            headers = {}
-        return ResolvedHttpOperation(
-            method=method,
-            path=path,
-            query=dict(query),
-            headers=dict(headers),
-            expected_statuses=operation.expected_statuses,
-        )
+        return operation, compiled
 
     def system_error_code(self, fault_kind: TargetFaultKind) -> SystemErrorCode:
         """Перевести FaultKind в SystemErrorCode для диагностик."""

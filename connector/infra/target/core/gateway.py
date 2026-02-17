@@ -71,22 +71,20 @@ class TargetGateway:
         current_spec = spec
 
         while True:
-            resolved = self._resolve_execute_request(current_spec)
-            if isinstance(resolved, ExecutionResult):
+            try:
+                _, compiled = self._kernel.get_compiled_operation(current_spec.operation_alias)
+                compiled_request = compiled.build(
+                    alias=current_spec.operation_alias,
+                    operation_params=current_spec.operation_params,
+                )
+            except ValueError as exc:
                 self._failures_total += 1
-                return resolved
+                return self._spec_error(str(exc))
 
-            method, path, params, headers, expected_statuses = resolved
             self._requests_total += 1
 
             try:
-                resp = self._driver.request(
-                    method,
-                    path,
-                    params=params,
-                    json=current_spec.payload,
-                    headers=headers,
-                )
+                resp = self._driver.execute(compiled_request, current_spec.payload)
             except DriverError as exc:
                 normalized = self._error_normalizer.from_error_code(exc.code)
                 fault = normalized.fault_kind
@@ -119,7 +117,7 @@ class TargetGateway:
                     error_message=truncateText(str(exc)),
                 )
 
-            if resp.status_code in expected_statuses:
+            if resp.ok:
                 safe_body = self._sanitize(resp.body)
                 safe_json = safe_body if isinstance(safe_body, (dict, list)) else None
                 return ExecutionResult(
@@ -187,26 +185,32 @@ class TargetGateway:
         """
         Чтение страниц из target. Нормализует ошибки в TargetPageResult.
         """
-        resolved = self._resolve_read_operation(
-            operation_alias,
-            query_overrides=params,
-        )
-        if isinstance(resolved, TargetPageResult):
+        try:
+            _, compiled = self._kernel.get_compiled_operation(operation_alias)
+            compiled_request = compiled.build(
+                alias=operation_alias,
+                query_overrides=params,
+            )
+        except ValueError as exc:
             self._failures_total += 1
-            yield resolved
+            yield TargetPageResult(
+                ok=False,
+                page=0,
+                items=None,
+                error_code=self._kernel.system_error_code("SPEC"),
+                error_message=truncateText(str(exc)),
+            )
             return
 
-        path, query = resolved
         retries_used = 0
         last_page = 0
 
         while True:
             try:
-                for page, items in self._driver.get_paged_items(
-                    path,
+                for page, items in self._driver.iter_batches(
+                    compiled_request,
                     page_size,
                     max_pages,
-                    params=query,
                 ):
                     self._requests_total += 1
                     last_page = page
@@ -267,28 +271,29 @@ class TargetGateway:
 
     def health_check(self) -> TargetCheckResult:
         """Выполнить health-check через operation alias `health.check`."""
-        resolved = self._resolve_health_operation()
-        if isinstance(resolved, TargetCheckResult):
-            return resolved
-        method, path, query, headers, expected_statuses = resolved
+        try:
+            _, compiled = self._kernel.get_compiled_operation("health.check")
+            compiled_request = compiled.build(alias="health.check")
+        except ValueError as exc:
+            return TargetCheckResult(
+                ok=False,
+                fault_kind="SPEC",
+                error_code=self._kernel.system_error_code("SPEC"),
+                error_message=truncateText(str(exc)),
+            )
         start = time.monotonic()
         try:
-            response = self._driver.request(
-                method,
-                path,
-                params=query,
-                headers=headers,
-            )
+            resp = self._driver.execute(compiled_request, None)
             latency_ms = int((time.monotonic() - start) * 1000)
-            if response.status_code in expected_statuses:
+            if resp.ok:
                 return TargetCheckResult(ok=True, latency_ms=latency_ms)
-            normalized = self._error_normalizer.from_status(response.status_code)
+            normalized = self._error_normalizer.from_status(resp.status_code)
             return TargetCheckResult(
                 ok=False,
                 latency_ms=latency_ms,
                 fault_kind=normalized.fault_kind,
                 error_code=normalized.error_code,
-                error_message=f"HTTP {response.status_code}",
+                error_message=f"HTTP {resp.status_code}",
             )
         except DriverError as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
@@ -357,25 +362,6 @@ class TargetGateway:
             return "resourceexists"
         return None
 
-    def _resolve_execute_request(
-        self,
-        spec: RequestSpec,
-    ) -> tuple[str, str, dict[str, Any] | None, dict[str, str] | None, tuple[int, ...]] | ExecutionResult:
-        try:
-            operation = self._kernel.build_http_operation(
-                spec.operation_alias,
-                operation_params=spec.operation_params,
-            )
-        except ValueError as exc:
-            return self._spec_error(str(exc))
-        return (
-            operation.method,
-            operation.path,
-            operation.query or None,
-            operation.headers or None,
-            operation.expected_statuses,
-        )
-
     def _spec_error(self, message: str) -> ExecutionResult:
         return ExecutionResult(
             ok=False,
@@ -383,53 +369,4 @@ class TargetGateway:
             response_json=None,
             error_code=self._kernel.system_error_code("SPEC"),
             error_message=truncateText(message),
-        )
-
-    def _resolve_read_operation(
-        self,
-        operation_alias: str,
-        *,
-        query_overrides: dict[str, Any] | None = None,
-    ) -> tuple[str, dict[str, Any] | None] | TargetPageResult:
-        try:
-            operation = self._kernel.build_http_operation(
-                operation_alias,
-                query_overrides=query_overrides,
-            )
-        except ValueError as exc:
-            return TargetPageResult(
-                ok=False,
-                page=0,
-                items=None,
-                error_code=self._kernel.system_error_code("SPEC"),
-                error_message=truncateText(str(exc)),
-            )
-        if operation.method != "GET":
-            return TargetPageResult(
-                ok=False,
-                page=0,
-                items=None,
-                error_code=self._kernel.system_error_code("SPEC"),
-                error_message=f"operation {operation_alias!r} must use GET for read_pages",
-            )
-        return operation.path, (operation.query or None)
-
-    def _resolve_health_operation(
-        self,
-    ) -> tuple[str, str, dict[str, Any] | None, dict[str, str] | None, tuple[int, ...]] | TargetCheckResult:
-        try:
-            operation = self._kernel.build_http_operation("health.check")
-        except ValueError as exc:
-            return TargetCheckResult(
-                ok=False,
-                fault_kind="SPEC",
-                error_code=self._kernel.system_error_code("SPEC"),
-                error_message=truncateText(str(exc)),
-            )
-        return (
-            operation.method,
-            operation.path,
-            operation.query or None,
-            operation.headers or None,
-            operation.expected_statuses,
         )

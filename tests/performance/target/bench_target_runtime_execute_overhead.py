@@ -24,28 +24,24 @@ N = 500
 
 
 class AlwaysOkDriver:
-    def request(
+    def execute(
         self,
-        method: str,
-        path: str,
-        *,
-        params: dict[str, Any] | None = None,
-        json: Any | None = None,
-        headers: dict[str, str] | None = None,
+        compiled_request: Any,
+        payload: Any | None = None,
     ) -> DriverResponse:
-        return DriverResponse(status_code=200, body={"id": "u-1"}, body_snippet=None)
+        return DriverResponse(ok=True, status_code=200, body={"id": "u-1"}, body_snippet=None)
 
-    def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        return {"ok": True}
-
-    def get_paged_items(
+    def iter_batches(
         self,
-        path: str,
-        page_size: int,
-        max_pages: int | None,
+        compiled_request: Any,
+        batch_size: int,
+        max_batches: int | None,
         params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]:
         return iter(())
+
+    def close(self) -> None:
+        pass
 
 
 def _build_gateway() -> TargetGateway:

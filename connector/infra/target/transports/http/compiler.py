@@ -15,6 +15,7 @@ class CompiledHttpOperation:
     """Скомпилированная HTTP-операция с валидированными transport-данными."""
 
     op_data: HttpOperationDataModel
+    expected_statuses: tuple[int, ...]  # из OperationSpec.expected_statuses
 
     def build(
         self,
@@ -24,12 +25,21 @@ class CompiledHttpOperation:
         query_overrides: dict[str, Any] | None = None,
         header_overrides: dict[str, str] | None = None,
     ) -> HttpRequest:
-        return build_http_request(
+        req = build_http_request(
             alias=alias,
             op_data=self.op_data,
             operation_params=operation_params,
             query_overrides=query_overrides,
             header_overrides=header_overrides,
+        )
+        return HttpRequest(
+            method=req.method,
+            path=req.path,
+            query=req.query,
+            headers=req.headers,
+            json=req.json,
+            timeout_s=req.timeout_s,
+            expected_statuses=self.expected_statuses,
         )
 
 
@@ -50,4 +60,7 @@ def compile_http_operation(operation: OperationSpec) -> CompiledHttpOperation:
         raise ValueError(f"operation {operation.alias!r} is not http")
     if not operation.data:
         raise ValueError(f"operation {operation.alias!r} requires transport payload")
-    return CompiledHttpOperation(op_data=compile_http_operation_data(operation.data))
+    return CompiledHttpOperation(
+        op_data=compile_http_operation_data(operation.data),
+        expected_statuses=operation.expected_statuses,
+    )
