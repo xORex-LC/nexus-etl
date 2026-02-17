@@ -28,13 +28,13 @@ def test_build_error_details_truncates_snippet_and_masks_body() -> None:
     )
 
     details = logger.build_error_details(
-        body={"user": "alice", "password": "secret"},
-        body_snippet="x" * 600,
+        payload={"user": "alice", "password": "secret"},
+        content_preview="x" * 600,
     )
 
     assert details is not None
-    assert details["response_json"] == {"user": "alice", "password": "***"}
-    snippet = details["body_snippet"]
+    assert details["response_payload"] == {"user": "alice", "password": "***"}
+    snippet = details["content_preview"]
     assert isinstance(snippet, str)
     assert len(snippet) <= 500
     assert snippet.endswith("...")

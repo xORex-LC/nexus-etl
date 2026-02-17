@@ -7,6 +7,7 @@ from connector.infra.target.core.factory import (
     build_target_runtime,
     build_target_runtime_with_info,
 )
+from connector.infra.target.core.registry import MissingTargetProviderError
 from connector.infra.target.providers.ankey_rest.provider import apply_retry_overrides
 from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
@@ -132,3 +133,8 @@ def test_build_target_runtime_rejects_invalid_mode(api_settings: ApiSettings) ->
 
     with pytest.raises(ValueError):
         build_target_runtime(api_settings, include_reader=False, runtime_mode="auto")
+
+
+def test_build_target_runtime_rejects_unknown_target_type(api_settings: ApiSettings) -> None:
+    with pytest.raises(MissingTargetProviderError):
+        build_target_runtime(api_settings, include_reader=False, target_type="unknown-target")

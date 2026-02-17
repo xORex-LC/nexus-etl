@@ -24,7 +24,7 @@ MAX_OUTCOMES = 100
 class FailExecutor:
     def execute(self, spec: RequestSpec) -> ExecutionResult:
         return ExecutionResult(
-            ok=False, status_code=400,
+            ok=False, answer_code=400,
             error_code=SystemErrorCode.DATA_INVALID,
             error_message="bad request",
         )

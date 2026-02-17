@@ -214,7 +214,7 @@ def test_import_apply_stop_on_first_error():
     plan = _make_plan(items)
     executor = DummyExecutor(
         [
-            ExecutionResult(ok=False, status_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
+            ExecutionResult(ok=False, answer_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
         ]
     )
     adapter = make_employees_spec().get_apply_adapter()
@@ -286,8 +286,8 @@ def test_import_apply_max_actions_limits_requests():
     plan = _make_plan(items)
     executor = DummyExecutor(
         [
-            ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
-            ExecutionResult(ok=True, status_code=200, response_json={"ok": True}),
+            ExecutionResult(ok=True, answer_code=200, response_payload={"ok": True}),
+            ExecutionResult(ok=True, answer_code=200, response_payload={"ok": True}),
         ]
     )
     adapter = make_employees_spec().get_apply_adapter()
@@ -332,7 +332,7 @@ def test_import_apply_does_not_retry_resource_exists_in_usecase():
     executor = DummyExecutor(
         [
             ExecutionResult(
-                ok=False, status_code=409, error_code=SystemErrorCode.CONFLICT, error_message="conflict", error_reason="resourceexists"
+                ok=False, answer_code=409, error_code=SystemErrorCode.CONFLICT, error_message="conflict", error_reason="resourceexists"
             ),
         ]
     )
@@ -524,7 +524,7 @@ def test_apply_report_items_include_dataset():
     )
     executor = DummyExecutor(
         [
-            ExecutionResult(ok=False, status_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
+            ExecutionResult(ok=False, answer_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
         ]
     )
     adapter = make_employees_spec().get_apply_adapter()

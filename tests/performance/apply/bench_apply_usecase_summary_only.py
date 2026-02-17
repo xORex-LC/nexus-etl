@@ -22,7 +22,7 @@ N = 50_000
 
 class OkExecutor:
     def execute(self, spec: RequestSpec) -> ExecutionResult:
-        return ExecutionResult(ok=True, status_code=200, response_json={"_id": "id-ok"})
+        return ExecutionResult(ok=True, answer_code=200, response_payload={"_id": "id-ok"})
 
 
 class StubSpec:

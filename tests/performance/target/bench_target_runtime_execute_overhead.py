@@ -29,7 +29,7 @@ class AlwaysOkDriver:
         compiled_request: Any,
         payload: Any | None = None,
     ) -> DriverResponse:
-        return DriverResponse(ok=True, status_code=200, body={"id": "u-1"}, body_snippet=None)
+        return DriverResponse(ok=True, answer_code=200, payload={"id": "u-1"}, content_preview=None)
 
     def iter_batches(
         self,

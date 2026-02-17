@@ -62,3 +62,12 @@ def test_target_spec_rejects_operation_alias_key_mismatch() -> None:
 
     with pytest.raises(ValueError, match="operation alias key mismatch"):
         TargetSpec.model_validate(payload)
+
+
+def test_target_spec_rejects_missing_health_operation_alias() -> None:
+    spec = build_ankey_spec()
+    payload = spec.model_dump()
+    payload["health"]["operation_alias"] = "health.unknown"
+
+    with pytest.raises(ValueError, match="health operation alias is not declared"):
+        TargetSpec.model_validate(payload)

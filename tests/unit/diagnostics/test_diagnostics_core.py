@@ -43,8 +43,8 @@ def test_translator_maps_execution_result() -> None:
     catalog = ErrorCatalog(strict=False)
     result = ExecutionResult(
         ok=False,
-        status_code=401,
-        response_json=None,
+        answer_code=401,
+        response_payload=None,
         error_code=SystemErrorCode.AUTH_UNAUTHORIZED,
         error_message="unauthorized",
         error_reason=None,
@@ -92,8 +92,8 @@ def test_translator_preserves_infra_timeout_code() -> None:
     catalog = build_catalog(None, strict=True)
     result = ExecutionResult(
         ok=False,
-        status_code=None,
-        response_json=None,
+        answer_code=None,
+        response_payload=None,
         error_code=SystemErrorCode.INFRA_TIMEOUT,
         error_message="timeout",
         error_reason=None,

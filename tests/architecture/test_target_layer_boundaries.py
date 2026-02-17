@@ -27,6 +27,13 @@ EMPLOYEES_DATASET_SPEC = (
     / "employees"
     / "spec.py"
 )
+TARGET_GATEWAY_CORE = REPO_ROOT / "connector" / "infra" / "target" / "core" / "gateway.py"
+TARGET_EXECUTION_PORT = REPO_ROOT / "connector" / "domain" / "ports" / "target" / "execution.py"
+TARGET_DRIVER_CONTRACT = REPO_ROOT / "connector" / "infra" / "target" / "driver.py"
+TARGET_SAFE_LOGGING_ENGINE = (
+    REPO_ROOT / "connector" / "infra" / "target" / "core" / "engines" / "safe_logging.py"
+)
+TARGET_FACTORY_CORE = REPO_ROOT / "connector" / "infra" / "target" / "core" / "factory.py"
 
 FORBIDDEN_ANKEY_NAMES = {
     "AnkeyApiClient",
@@ -57,6 +64,7 @@ LEGACY_TARGET_PATHS = (
     "connector/infra/target/engines/retry_engine.py",
     "connector/infra/target/engines/error_normalizer.py",
     "connector/infra/target/engines/safe_logging.py",
+    "connector/infra/target/core/contracts.py",
     "connector/datasets/employees/load/user_payload.py",
 )
 FORBIDDEN_RUNTIME_DEPENDENCIES = ("tenacity", "structlog", "pydantic_settings")
@@ -66,6 +74,8 @@ ALLOWED_TENACITY_IMPORT_PATHS = {
 ALLOWED_STRUCTLOG_IMPORT_PATHS = {
     "connector/infra/target/core/engines/safe_logging.py",
 }
+FORBIDDEN_CORE_LITERALS = ("resourceexists", "health.check")
+FORBIDDEN_TARGET_LEGACY_LITERALS = ("response_json", "body_snippet")
 
 
 def _py_files(root: Path) -> list[Path]:
@@ -202,3 +212,38 @@ def test_tenacity_and_structlog_are_confined_to_target_engines() -> None:
             if rel not in ALLOWED_STRUCTLOG_IMPORT_PATHS:
                 violations.append(f"{rel}: импорт structlog вне target engines")
     assert violations == [], "Нарушены границы зависимостей target runtime:\n" + "\n".join(violations)
+
+
+def test_target_gateway_core_has_no_provider_reason_or_hardcoded_health_alias() -> None:
+    source = TARGET_GATEWAY_CORE.read_text(encoding="utf-8")
+    violations = [literal for literal in FORBIDDEN_CORE_LITERALS if literal in source]
+    assert violations == [], (
+        "core gateway не должен содержать provider-специфичные literals "
+        "или hardcoded health alias:\n" + "\n".join(violations)
+    )
+
+
+def test_target_neutral_contracts_do_not_reintroduce_legacy_literals() -> None:
+    violations: list[str] = []
+    files = (
+        TARGET_EXECUTION_PORT,
+        TARGET_DRIVER_CONTRACT,
+        TARGET_GATEWAY_CORE,
+        TARGET_SAFE_LOGGING_ENGINE,
+    )
+    for path in files:
+        source = path.read_text(encoding="utf-8")
+        for literal in FORBIDDEN_TARGET_LEGACY_LITERALS:
+            if literal in source:
+                violations.append(f"{_rel(path)}: {literal}")
+    assert violations == [], (
+        "В target neutral слоях не должны возвращаться legacy-поля:\n"
+        + "\n".join(violations)
+    )
+
+
+def test_target_factory_core_does_not_import_concrete_provider() -> None:
+    source = TARGET_FACTORY_CORE.read_text(encoding="utf-8")
+    assert "providers.ankey_rest" not in source, (
+        "core factory не должен импортировать конкретный провайдер напрямую"
+    )

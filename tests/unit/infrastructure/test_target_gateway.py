@@ -7,6 +7,7 @@ import pytest
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import RequestSpec
 from connector.infra.target.core.mutations import TargetMutationRegistry
+from connector.infra.target.core.spec_models import RetryRule
 from connector.infra.target.driver import DriverError, DriverResponse
 from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel
@@ -41,7 +42,7 @@ class StubDriver:
             }
         )
         if not self._execute_effects:
-            return DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None)
+            return DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None)
         effect = self._execute_effects.pop(0)
         if isinstance(effect, Exception):
             raise effect
@@ -68,19 +69,23 @@ def _make_gateway(
     driver: StubDriver,
     max_attempts: int = 3,
     backoff_base: float = 0.0,
+    spec_updates: dict[str, Any] | None = None,
 ) -> TargetGateway:
     spec = build_ankey_spec()
+    update_payload: dict[str, Any] = {
+        "retry_config": spec.retry_config.model_copy(
+            update={
+                "max_attempts": max_attempts,
+                "backoff_base": backoff_base,
+                "backoff_max": backoff_base,
+                "jitter": False,
+            },
+        )
+    }
+    if spec_updates:
+        update_payload.update(spec_updates)
     spec = spec.model_copy(
-        update={
-            "retry_config": spec.retry_config.model_copy(
-                update={
-                    "max_attempts": max_attempts,
-                    "backoff_base": backoff_base,
-                    "backoff_max": backoff_base,
-                    "jitter": False,
-                },
-            )
-        },
+        update=update_payload,
     )
     kernel = TargetKernel(
         spec,
@@ -106,9 +111,9 @@ def test_execute_happy_path_returns_ok_and_masks_response() -> None:
         request_effects=[
             DriverResponse(
                 ok=True,
-                status_code=200,
-                body={"name": "Alice", "password": "secret"},
-                body_snippet=None,
+                answer_code=200,
+                payload={"name": "Alice", "password": "secret"},
+                content_preview=None,
             )
         ]
     )
@@ -118,16 +123,16 @@ def test_execute_happy_path_returns_ok_and_masks_response() -> None:
     result = gateway.execute(spec)
 
     assert result.ok is True
-    assert result.status_code == 200
-    assert result.response_json == {"name": "Alice", "password": "***"}
+    assert result.answer_code == 200
+    assert result.response_payload == {"name": "Alice", "password": "***"}
     assert gateway.get_stats() == (1, 0, 0)
 
 
 def test_execute_retries_on_transient_and_then_succeeds() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(ok=False, status_code=503, body={"error": "temporary"}, body_snippet="temporary"),
-            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=False, answer_code=503, payload={"error": "temporary"}, content_preview="temporary"),
+            DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None),
         ]
     )
     gateway = _make_gateway(driver=driver, max_attempts=2)
@@ -136,14 +141,14 @@ def test_execute_retries_on_transient_and_then_succeeds() -> None:
     result = gateway.execute(spec)
 
     assert result.ok is True
-    assert result.status_code == 200
+    assert result.answer_code == 200
     assert gateway.get_stats() == (2, 1, 0)
 
 
 def test_execute_no_retry_on_auth_error() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(ok=False, status_code=401, body={"message": "unauthorized"}, body_snippet="unauthorized")
+            DriverResponse(ok=False, answer_code=401, payload={"message": "unauthorized"}, content_preview="unauthorized")
         ]
     )
     gateway = _make_gateway(driver=driver)
@@ -152,7 +157,7 @@ def test_execute_no_retry_on_auth_error() -> None:
     result = gateway.execute(spec)
 
     assert result.ok is False
-    assert result.status_code == 401
+    assert result.answer_code == 401
     assert result.error_code == SystemErrorCode.AUTH_UNAUTHORIZED
     assert gateway.get_stats() == (1, 0, 1)
 
@@ -171,7 +176,7 @@ def test_execute_retries_on_driver_error_and_exhausts() -> None:
     result = gateway.execute(spec)
 
     assert result.ok is False
-    assert result.status_code is None
+    assert result.answer_code is None
     assert result.error_code == SystemErrorCode.INFRA_UNAVAILABLE
     assert gateway.get_stats() == (3, 2, 1)
 
@@ -181,9 +186,10 @@ def test_execute_detects_resourceexists_reason() -> None:
         request_effects=[
             DriverResponse(
                 ok=False,
-                status_code=409,
-                body={"message": "resourceexists"},
-                body_snippet="resource exists",
+                answer_code=409,
+                payload={"message": "resourceexists"},
+                content_preview="resource exists",
+                error_reason="resourceexists",
             )
         ]
     )
@@ -207,11 +213,12 @@ def test_execute_operation_alias_applies_resourceexists_mutation_and_retries(
         request_effects=[
             DriverResponse(
                 ok=False,
-                status_code=409,
-                body={"message": "resourceexists"},
-                body_snippet="resource exists",
+                answer_code=409,
+                payload={"message": "resourceexists"},
+                content_preview="resource exists",
+                error_reason="resourceexists",
             ),
-            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None),
         ]
     )
     gateway = _make_gateway(driver=driver, max_attempts=2)
@@ -229,10 +236,57 @@ def test_execute_operation_alias_applies_resourceexists_mutation_and_retries(
     assert driver.request_calls[1]["path"] == "/ankey/managed/user/regen-123"
 
 
+def test_execute_retries_on_retry_after_directive() -> None:
+    driver = StubDriver(
+        request_effects=[
+            DriverResponse(
+                ok=False,
+                answer_code=429,
+                payload={"error": "throttle"},
+                content_preview="throttle",
+                retry_after_s=0.0,
+            ),
+            DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None),
+        ]
+    )
+    gateway = _make_gateway(driver=driver, max_attempts=1)
+
+    result = gateway.execute(_upsert_spec())
+
+    assert result.ok is True
+    assert gateway.get_stats() == (2, 1, 0)
+
+
+def test_execute_escalate_stops_retry_cycle() -> None:
+    driver = StubDriver(
+        request_effects=[
+            DriverError("network down"),
+            DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None),
+        ]
+    )
+    gateway = _make_gateway(
+        driver=driver,
+        max_attempts=3,
+        spec_updates={
+            "retry_rules": (
+                RetryRule(directive="ESCALATE", match_fault="TRANSIENT"),
+            ),
+        },
+    )
+
+    result = gateway.execute(_upsert_spec())
+
+    assert result.ok is False
+    assert result.error_code == SystemErrorCode.INFRA_UNAVAILABLE
+    assert result.error_details is not None
+    assert result.error_details.get("escalated") is True
+    assert gateway.get_stats() == (1, 0, 1)
+
+
 def test_execute_operation_alias_uses_spec_mapping() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None),
         ]
     )
     gateway = _make_gateway(driver=driver)
@@ -263,7 +317,7 @@ def test_execute_operation_alias_unknown_returns_spec_error() -> None:
 
     assert result.ok is False
     assert result.error_code == SystemErrorCode.INTERNAL_ERROR
-    assert result.status_code is None
+    assert result.answer_code is None
     assert "unknown operation alias" in (result.error_message or "")
     assert len(driver.request_calls) == 0
     assert gateway.get_stats() == (0, 0, 1)
@@ -323,8 +377,8 @@ def test_iter_pages_normalizes_driver_error_and_sanitizes_details() -> None:
     driver_error = DriverError(
         "HTTP 500",
         code="HTTP_500",
-        status_code=500,
-        body_snippet="x" * 600,
+        answer_code=500,
+        content_preview="x" * 600,
         details={"password": "very-secret"},
     )
     driver = StubDriver(pages_effect=driver_error)
@@ -338,7 +392,7 @@ def test_iter_pages_normalizes_driver_error_and_sanitizes_details() -> None:
     assert fail.error_code == SystemErrorCode.INFRA_UNAVAILABLE
     assert fail.error_details is not None
     assert fail.error_details["password"] == "***"
-    snippet = fail.error_details["body_snippet"]
+    snippet = fail.error_details["content_preview"]
     assert isinstance(snippet, str)
     assert len(snippet) <= 500
     assert snippet.endswith("...")
@@ -347,7 +401,7 @@ def test_iter_pages_normalizes_driver_error_and_sanitizes_details() -> None:
 def test_health_check_ok() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None),
         ]
     )
     gateway = _make_gateway(driver=driver)
@@ -386,7 +440,7 @@ def test_health_check_unexpected_error_maps_to_transient() -> None:
 def test_health_check_uses_operation_catalog_alias() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None),
         ],
     )
     gateway = _make_gateway(driver=driver)
@@ -401,7 +455,7 @@ def test_health_check_uses_operation_catalog_alias() -> None:
 def test_reset_stats_resets_all_counters() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None),
         ]
     )
     gateway = _make_gateway(driver=driver)
