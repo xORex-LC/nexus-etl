@@ -43,6 +43,8 @@ def build_transport_compiler_registry() -> TransportCompilerRegistry:
 
 
 class AnkeyTargetProvider:
+    """Provider сборки target runtime для Ankey REST."""
+
     target_type = "ankey"
 
     def __init__(self, api_settings: ApiSettings) -> None:
@@ -54,6 +56,7 @@ class AnkeyTargetProvider:
         transport: object | None = None,
         include_reader: bool = True,
     ) -> TargetRuntime:
+        """Собрать runtime Ankey REST на компонентах target-core."""
         api = self._api_settings
         base_url = f"https://{api.host}:{api.port}"
 

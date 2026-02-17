@@ -15,7 +15,8 @@ class CompiledHttpOperation:
     """Скомпилированная HTTP-операция с валидированными transport-данными."""
 
     op_data: HttpOperationDataModel
-    expected_statuses: tuple[int, ...]  # из OperationSpec.expected_statuses
+    # expected_statuses пробрасывается из ``OperationSpec.expected_statuses``.
+    expected_statuses: tuple[int, ...]
 
     def build(
         self,
@@ -25,6 +26,7 @@ class CompiledHttpOperation:
         query_overrides: dict[str, Any] | None = None,
         header_overrides: dict[str, str] | None = None,
     ) -> HttpRequest:
+        """Собрать готовый ``HttpRequest`` с merged runtime-overrides."""
         req = build_http_request(
             alias=alias,
             op_data=self.op_data,

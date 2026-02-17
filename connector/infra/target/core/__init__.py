@@ -1,3 +1,5 @@
+"""Публичные контракты и реестр target-core runtime."""
+
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.ports.target.execution import RequestExecutorProtocol
 from connector.domain.ports.target.read import TargetPagedReaderProtocol

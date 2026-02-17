@@ -105,7 +105,7 @@ class OperationSpec(_SpecModel):
     timeout_ms: int | None = Field(default=None, ge=1)
     retry_profile: str | None = None
     redaction_override: dict[str, Any] | None = None
-    # Transport-specific payload (http/db/file/...) is opaque for target-core.
+    # Transport-specific payload (http/db/file/...) остаётся opaque для target-core.
     data: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -171,18 +171,25 @@ class TargetSpec(_SpecModel):
     operations: dict[str, OperationSpec] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _validate_operations(self) -> "TargetSpec":
+    def _validate_spec_integrity(self) -> "TargetSpec":
+        """Проверить целостность спецификации target.
+
+        Инварианты:
+            - health-check требует capability ``check``;
+            - health operation alias должен присутствовать в каталоге operations;
+            - ключ ``operations`` должен совпадать с ``OperationSpec.alias``.
+        """
+        if "check" not in self.capabilities:
+            raise ValueError(
+                "health specification requires 'check' capability in target capabilities",
+            )
+        if self.health.operation_alias not in self.operations:
+            raise ValueError(
+                f"health operation alias is not declared: {self.health.operation_alias!r}",
+            )
         for alias, operation in self.operations.items():
             if alias != operation.alias:
                 raise ValueError(
                     f"operation alias key mismatch: key={alias!r}, alias={operation.alias!r}",
                 )
-        if self.health.operation_alias not in self.operations:
-            raise ValueError(
-                f"health operation alias is not declared: {self.health.operation_alias!r}",
-            )
-        if "check" not in self.capabilities:
-            raise ValueError(
-                "health specification requires 'check' capability in target capabilities",
-            )
         return self

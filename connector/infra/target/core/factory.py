@@ -1,4 +1,4 @@
-"""Фабрика TargetRuntime (только core runtime)."""
+"""Фабрика сборки ``TargetRuntime`` через зарегистрированные providers."""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ EffectiveTargetRuntimeMode = Literal["core"]
 
 @dataclass(frozen=True)
 class TargetRuntimeBuildResult:
+    """Результат сборки runtime с метаданными режима и провайдера."""
+
     runtime: TargetRuntime
     target_type: str
     requested_mode: TargetRuntimeMode
@@ -31,6 +33,10 @@ def build_target_runtime(
     runtime_mode: str | None = None,
     target_type: str | None = None,
 ) -> TargetRuntime:
+    """Собрать ``TargetRuntime`` для target-провайдера.
+
+    Упрощённый фасад над ``build_target_runtime_with_info``, возвращающий только runtime.
+    """
     return build_target_runtime_with_info(
         api_settings,
         transport=transport,
@@ -48,6 +54,14 @@ def build_target_runtime_with_info(
     runtime_mode: str | None = None,
     target_type: str | None = None,
 ) -> TargetRuntimeBuildResult:
+    """Собрать runtime и вернуть служебную информацию о выборе провайдера.
+
+    Алгоритм:
+        1. Нормализовать runtime-mode и проверить допустимые значения.
+        2. Построить реестр доступных providers.
+        3. Выбрать provider по ``target_type`` либо provider по умолчанию.
+        4. Собрать runtime выбранным provider.
+    """
     requested_mode = _resolve_runtime_mode(runtime_mode=runtime_mode)
     registry = build_default_target_provider_registry(api_settings)
     provider = registry.get(target_type) if target_type else registry.get_default()
@@ -67,6 +81,7 @@ def _resolve_runtime_mode(
     *,
     runtime_mode: str | None = None,
 ) -> TargetRuntimeMode:
+    """Нормализовать runtime-mode и проверить поддерживаемые значения."""
     candidate = runtime_mode if runtime_mode is not None else "core"
     normalized = str(candidate).strip().lower()
     allowed: set[str] = {"core"}

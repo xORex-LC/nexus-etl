@@ -13,6 +13,8 @@ _PATH_TEMPLATE_PARAM_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
 @dataclass(frozen=True, slots=True)
 class HttpRequest:
+    """Транспортный DTO HTTP-запроса для однократного исполнения."""
+
     method: str
     path: str
     query: dict[str, Any]
@@ -28,6 +30,7 @@ def _render_path_template(
     path_template: str,
     params: dict[str, Any] | None,
 ) -> str:
+    """Подставить operation-параметры в path-template и проверить обязательные параметры."""
     params = params or {}
     required = _PATH_TEMPLATE_PARAM_RE.findall(path_template)
     missing = [name for name in required if name not in params]
@@ -48,7 +51,7 @@ def build_http_request(
     query_overrides: dict[str, Any] | None = None,
     header_overrides: dict[str, str] | None = None,
 ) -> HttpRequest:
-    """Собрать транспортный HTTP-запрос (без исполнения)."""
+    """Собрать transport-level HTTP-запрос (без выполнения I/O)."""
     path = _render_path_template(
         alias=alias,
         path_template=op_data.path_template,

@@ -1,3 +1,5 @@
+"""Контракты provider-слоя для сборки target runtime."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -6,7 +8,11 @@ from connector.infra.target.core.runtime import TargetRuntime
 
 
 class TargetProvider(Protocol):
-    """Контракт провайдера для сборки target runtime."""
+    """Контракт провайдера target-инфраструктуры.
+
+    Провайдер инкапсулирует wiring конкретной реализации транспорта и
+    возвращает готовый ``TargetRuntime`` для delivery-слоя.
+    """
 
     target_type: str
 
@@ -15,4 +21,11 @@ class TargetProvider(Protocol):
         *,
         transport: object | None = None,
         include_reader: bool = True,
-    ) -> TargetRuntime: ...
+    ) -> TargetRuntime:
+        """Собрать runtime конкретного target-провайдера.
+
+        Args:
+            transport: опциональный transport override (например, mock transport в тестах).
+            include_reader: включать ли read-интерфейс в runtime.
+        """
+        ...

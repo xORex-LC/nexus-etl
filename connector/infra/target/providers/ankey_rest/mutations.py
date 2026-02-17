@@ -25,6 +25,7 @@ def regenerate_target_id(request_spec: RequestSpec) -> RequestSpec:
 
 
 def build_ankey_mutations() -> Mapping[str, TargetMutation]:
+    """Собрать словарь доступных retry-мутаций для Ankey provider."""
     return {
         "regenerate_target_id": regenerate_target_id,
     }

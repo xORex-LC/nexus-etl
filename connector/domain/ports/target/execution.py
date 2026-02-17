@@ -20,19 +20,6 @@ ResponsePayloadFormat = Literal[
 ]
 
 
-def infer_response_payload_format(payload: Any) -> ResponsePayloadFormat:
-    """Определить формат полезной нагрузки для нейтрального ответа."""
-    if payload is None:
-        return "none"
-    if isinstance(payload, (dict, list)):
-        return "json"
-    if isinstance(payload, str):
-        return "text"
-    if isinstance(payload, (bytes, bytearray, memoryview)):
-        return "bytes"
-    return "object"
-
-
 @dataclass(frozen=True, slots=True)
 class RequestSpec:
     """
@@ -86,17 +73,9 @@ class ExecutionResult:
     error_code: SystemErrorCode | None = None
     error_message: str | None = None
     error_reason: str | None = None
-    error_details: Mapping[str, Any] | None = None
+    error_details: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        response_payload = self.response_payload
-        if self.response_format == "none" and response_payload is not None:
-            object.__setattr__(
-                self,
-                "response_format",
-                infer_response_payload_format(response_payload),
-            )
-
         if self.error_details is not None:
             object.__setattr__(self, "error_details", dict(self.error_details))
 

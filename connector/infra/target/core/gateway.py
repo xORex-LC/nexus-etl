@@ -22,15 +22,16 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
 from connector.domain.ports.target.read import TargetPageResult
 from connector.infra.target.core.engines import (
-    NormalizedFault,
     TargetErrorNormalizer,
+    TargetFaultHandler,
+    TargetResultBuilder,
     TargetRetryEngine,
     TargetSafeLogger,
 )
 from connector.infra.target.core.kernel import ResolvedRetryAction, TargetKernel
 from connector.infra.target.core.models import TargetCheckResult
 from connector.infra.target.core.mutations import TargetMutationRegistry
-from connector.infra.target.driver import DriverError, DriverResponse, TargetDriver
+from connector.infra.target.driver import DriverError, TargetDriver
 
 
 class TargetGateway:
@@ -41,6 +42,8 @@ class TargetGateway:
     Взаимодействия:
         - TargetDriver: I/O с одной попыткой.
         - TargetKernel: `classify_fault` → `retry_directive` → `system_error_code`.
+        - TargetFaultHandler: классификация ошибок и сборка error_details.
+        - TargetResultBuilder: конструктор ExecutionResult.
     """
 
     def __init__(
@@ -54,8 +57,11 @@ class TargetGateway:
         self._kernel = kernel
         self._mutations = mutation_registry or TargetMutationRegistry()
         self._retry_engine = TargetRetryEngine(kernel.spec.retry_config)
-        self._error_normalizer = TargetErrorNormalizer(kernel)
-        self._safe_logger = TargetSafeLogger(kernel, logger_name=__name__)
+        safe_logger = TargetSafeLogger(kernel, logger_name=__name__)
+        normalizer = TargetErrorNormalizer(kernel)
+        self._safe_logger = safe_logger
+        self._fault_handler = TargetFaultHandler(kernel, normalizer, safe_logger)
+        self._result_builder = TargetResultBuilder(kernel, safe_logger)
         self._requests_total: int = 0
         self._retries_total: int = 0
         self._failures_total: int = 0
@@ -66,11 +72,12 @@ class TargetGateway:
 
     def execute(self, spec: RequestSpec) -> ExecutionResult:
         """Выполнить RequestSpec с retry по spec.retry_rules. Никогда не бросает."""
+        _OP = "execute"
         try:
-            self._kernel.require_capability("execute")
+            self._kernel.require_capability(_OP)
         except ValueError as exc:
             self._failures_total += 1
-            return self._spec_error(str(exc))
+            return self._result_builder.spec_error(str(exc))
 
         retries_used = 0
         current_spec = spec
@@ -84,96 +91,53 @@ class TargetGateway:
                 )
             except ValueError as exc:
                 self._failures_total += 1
-                return self._spec_error(str(exc))
+                return self._result_builder.spec_error(str(exc))
             except Exception as exc:
                 self._failures_total += 1
-                return self._unexpected_failure(exc)
+                return self._result_builder.unexpected_failure(exc)
 
             self._requests_total += 1
 
             try:
                 resp = self._driver.execute(compiled_request, current_spec.payload)
             except DriverError as exc:
-                normalized, retry_action = self._resolve_driver_error(exc)
-                try:
-                    should_retry, retries_used, current_spec = self._apply_retry_action(
-                        operation="execute",
-                        fault_kind=normalized.fault_kind,
-                        retry_action=retry_action,
-                        retries_used=retries_used,
-                        current_spec=current_spec,
-                        retry_after_s=exc.retry_after_s,
-                    )
-                except ValueError as mutation_error:
-                    self._failures_total += 1
-                    return self._spec_error(str(mutation_error))
-                if should_retry:
-                    continue
-
-                self._failures_total += 1
-                error_details = self._driver_error_details(exc)
-                if retry_action.directive == "ESCALATE":
-                    error_details = self._mark_escalated(error_details)
-                return ExecutionResult(
-                    ok=False,
-                    answer_code=exc.answer_code,
-                    response_payload=None,
-                    error_code=normalized.error_code,
-                    error_message=truncateText(str(exc)),
-                    error_reason=exc.error_reason,
-                    error_details=error_details,
+                normalized, retry_action = self._fault_handler.from_driver_error(exc)
+                retry_after_s: float | None = exc.retry_after_s
+                # В Python переменная исключения из ``except as`` очищается после блока.
+                # Сохраняем ссылку явно, чтобы использовать её в отложенном замыкании.
+                captured = exc
+                make_error = lambda: self._result_builder.from_driver_error(
+                    captured, normalized, self._fault_handler.build_exc_details(captured, retry_action)
                 )
             except Exception as exc:
                 self._failures_total += 1
-                return self._unexpected_failure(exc)
-
-            if resp.ok:
-                safe_payload = self._sanitize(resp.payload)
-                return ExecutionResult(
-                    ok=True,
-                    answer_code=resp.answer_code,
-                    response_payload=safe_payload,
-                    response_format=resp.payload_format,
+                return self._result_builder.unexpected_failure(exc)
+            else:
+                if resp.ok:
+                    return self._result_builder.execute_success(resp)
+                normalized, retry_action = self._fault_handler.from_driver_response(resp)
+                retry_after_s = resp.retry_after_s
+                make_error = lambda: self._result_builder.from_response_error(
+                    resp, normalized, self._fault_handler.build_resp_details(resp, retry_action)
                 )
 
-            normalized, retry_action = self._resolve_driver_response(resp)
             try:
-                should_retry, retries_used, current_spec = self._apply_retry_action(
-                    operation="execute",
+                should_retry, retries_used, current_spec = self._apply_execute_retry(
+                    operation=_OP,
                     fault_kind=normalized.fault_kind,
                     retry_action=retry_action,
                     retries_used=retries_used,
                     current_spec=current_spec,
-                    retry_after_s=resp.retry_after_s,
+                    retry_after_s=retry_after_s,
                 )
             except ValueError as mutation_error:
                 self._failures_total += 1
-                return self._spec_error(str(mutation_error))
+                return self._result_builder.spec_error(str(mutation_error))
             if should_retry:
                 continue
 
             self._failures_total += 1
-            details = self._safe_logger.build_error_details(
-                payload=resp.payload,
-                content_preview=resp.content_preview,
-            )
-            if resp.error_reason is not None:
-                details = dict(details or {})
-                details["error_reason"] = resp.error_reason
-            if retry_action.directive == "ESCALATE":
-                details = self._mark_escalated(details)
-            safe_payload = details.get("response_payload") if isinstance(details, dict) else None
-
-            return ExecutionResult(
-                ok=False,
-                answer_code=resp.answer_code,
-                response_payload=safe_payload,
-                response_format=resp.payload_format if safe_payload is not None else "none",
-                error_code=normalized.error_code,
-                error_message=self._format_answer_failure(resp.answer_code),
-                error_reason=resp.error_reason,
-                error_details=details,
-            )
+            return make_error()
 
     # ------------------------------------------------------------------
     # Реализация TargetPagedReaderProtocol
@@ -187,6 +151,13 @@ class TargetGateway:
         params: dict[str, Any] | None = None,
     ) -> Iterable[TargetPageResult]:
         """Чтение страниц из target. Нормализует ошибки в TargetPageResult."""
+        retries_used = 0
+        last_page = 0
+
+        def _fail_page(error_code: str, error_message: str, error_details=None) -> TargetPageResult:
+            # Единая точка создания fail-страницы упрощает одинаковую обработку ошибок.
+            return TargetPageResult(ok=False, page=last_page, items=None, error_code=error_code, error_message=error_message, error_details=error_details)
+
         try:
             self._kernel.require_capability("read_paged")
             _, compiled = self._kernel.get_compiled_operation(operation_alias)
@@ -196,27 +167,12 @@ class TargetGateway:
             )
         except ValueError as exc:
             self._failures_total += 1
-            yield TargetPageResult(
-                ok=False,
-                page=0,
-                items=None,
-                error_code=self._kernel.system_error_code("SPEC"),
-                error_message=truncateText(str(exc)),
-            )
+            yield _fail_page(self._kernel.system_error_code("SPEC"), truncateText(str(exc)))
             return
         except Exception as exc:
             self._failures_total += 1
-            yield TargetPageResult(
-                ok=False,
-                page=0,
-                items=None,
-                error_code=SystemErrorCode.INFRA_UNAVAILABLE,
-                error_message=truncateText(str(exc)),
-            )
+            yield _fail_page(SystemErrorCode.INFRA_UNAVAILABLE, truncateText(str(exc)))
             return
-
-        retries_used = 0
-        last_page = 0
 
         while True:
             try:
@@ -231,53 +187,26 @@ class TargetGateway:
                     yield TargetPageResult(ok=True, page=page, items=safe_items)
                 return
             except DriverError as exc:
-                normalized, retry_action = self._resolve_driver_error(exc)
+                normalized, retry_action = self._fault_handler.from_driver_error(exc)
                 # Если страницы уже начали выдавать — не ретраим, чтобы не дублировать данные.
                 if last_page == 0:
-                    try:
-                        should_retry, retries_used, _ = self._apply_retry_action(
-                            operation="read",
-                            fault_kind=normalized.fault_kind,
-                            retry_action=retry_action,
-                            retries_used=retries_used,
-                            current_spec=None,
-                            retry_after_s=exc.retry_after_s,
-                        )
-                    except ValueError as mutation_error:
-                        self._failures_total += 1
-                        yield TargetPageResult(
-                            ok=False,
-                            page=last_page,
-                            items=None,
-                            error_code=self._kernel.system_error_code("SPEC"),
-                            error_message=truncateText(str(mutation_error)),
-                        )
-                        return
+                    should_retry, retries_used = self._apply_read_retry(
+                        operation="read",
+                        fault_kind=normalized.fault_kind,
+                        retry_action=retry_action,
+                        retries_used=retries_used,
+                        retry_after_s=exc.retry_after_s,
+                    )
                     if should_retry:
                         continue
 
                 self._failures_total += 1
-                error_details = self._driver_error_details(exc)
-                if retry_action.directive == "ESCALATE":
-                    error_details = self._mark_escalated(error_details)
-                yield TargetPageResult(
-                    ok=False,
-                    page=last_page,
-                    items=None,
-                    error_code=normalized.error_code,
-                    error_message=truncateText(str(exc)),
-                    error_details=error_details or None,
-                )
+                error_details = self._fault_handler.build_exc_details(exc, retry_action)
+                yield _fail_page(normalized.error_code, truncateText(str(exc)), error_details)
                 return
             except Exception as exc:
                 self._failures_total += 1
-                yield TargetPageResult(
-                    ok=False,
-                    page=last_page,
-                    items=None,
-                    error_code=SystemErrorCode.INFRA_UNAVAILABLE,
-                    error_message=truncateText(str(exc)),
-                )
+                yield _fail_page(SystemErrorCode.INFRA_UNAVAILABLE, truncateText(str(exc)))
                 return
 
     # ------------------------------------------------------------------
@@ -300,41 +229,31 @@ class TargetGateway:
             )
 
         start = time.monotonic()
+        resp = None
+        driver_exc: DriverError | None = None
+        unexpected_exc: Exception | None = None
         try:
             resp = self._driver.execute(compiled_request, None)
-            latency_ms = int((time.monotonic() - start) * 1000)
-            if resp.ok:
-                return TargetCheckResult(ok=True, latency_ms=latency_ms)
-            normalized = self._error_normalizer.from_status(self._as_status_code(resp.answer_code))
-            return TargetCheckResult(
-                ok=False,
-                latency_ms=latency_ms,
-                fault_kind=normalized.fault_kind,
-                error_code=normalized.error_code,
-                error_message=self._format_answer_failure(resp.answer_code),
-            )
         except DriverError as exc:
-            latency_ms = int((time.monotonic() - start) * 1000)
-            normalized = self._error_normalizer.from_status_or_code(
-                status_code=self._as_status_code(exc.answer_code),
-                error_code=exc.code,
-            )
-            return TargetCheckResult(
-                ok=False,
-                latency_ms=latency_ms,
-                fault_kind=normalized.fault_kind,
-                error_code=normalized.error_code,
-                error_message=truncateText(str(exc)),
-            )
+            driver_exc = exc
         except Exception as exc:
-            latency_ms = int((time.monotonic() - start) * 1000)
-            return TargetCheckResult(
-                ok=False,
-                latency_ms=latency_ms,
-                fault_kind="TRANSIENT",
-                error_code=SystemErrorCode.INFRA_UNAVAILABLE,
-                error_message=truncateText(str(exc)),
-            )
+            unexpected_exc = exc
+
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        def _fail(fault_kind: str, error_code: str, error_message: str) -> TargetCheckResult:
+            return TargetCheckResult(ok=False, latency_ms=latency_ms, fault_kind=fault_kind, error_code=error_code, error_message=error_message)
+
+        if driver_exc is not None:
+            normalized, _ = self._fault_handler.from_driver_error(driver_exc)
+            return _fail(normalized.fault_kind, normalized.error_code, truncateText(str(driver_exc)))
+        if unexpected_exc is not None:
+            return _fail("TRANSIENT", SystemErrorCode.INFRA_UNAVAILABLE, truncateText(str(unexpected_exc)))
+        assert resp is not None
+        if resp.ok:
+            return TargetCheckResult(ok=True, latency_ms=latency_ms)
+        normalized, _ = self._fault_handler.from_driver_response(resp)
+        return _fail(normalized.fault_kind, normalized.error_code, TargetFaultHandler.format_answer_failure(resp.answer_code))
 
     # ------------------------------------------------------------------
     # Счётчики
@@ -359,19 +278,17 @@ class TargetGateway:
     # Внутренние вспомогательные методы
     # ------------------------------------------------------------------
 
-    def _sanitize(self, payload: Any) -> Any:
-        return self._safe_logger.safe_body(payload)
-
-    def _apply_retry_action(
+    def _apply_execute_retry(
         self,
         *,
         operation: str,
         fault_kind: str,
         retry_action: ResolvedRetryAction,
         retries_used: int,
-        current_spec: RequestSpec | None,
+        current_spec: RequestSpec,
         retry_after_s: float | None = None,
-    ) -> tuple[bool, int, RequestSpec | None]:
+    ) -> tuple[bool, int, RequestSpec]:
+        """Применить retry-решение для execute. Может поднять ValueError при мутации."""
         directive = retry_action.directive
         if directive not in {"RETRY_BACKOFF", "RETRY_AFTER"}:
             return False, retries_used, current_spec
@@ -379,18 +296,11 @@ class TargetGateway:
             return False, retries_used, current_spec
 
         if retry_action.mutation is not None:
-            if current_spec is None:
-                raise ValueError(
-                    f"retry mutation {retry_action.mutation!r} cannot be applied without request spec",
-                )
             current_spec = self._mutations.apply(retry_action.mutation, current_spec)
 
         retries_used += 1
         self._retries_total += 1
-        if directive == "RETRY_AFTER" and retry_after_s is not None:
-            delay = self._retry_engine.sleep_exact(retry_after_s)
-        else:
-            delay = self._retry_engine.sleep_before_retry(retries_used)
+        delay = self._compute_retry_delay(directive, retry_after_s, retries_used)
         self._safe_logger.debug_retry(
             operation=operation,
             fault_kind=fault_kind,
@@ -401,86 +311,42 @@ class TargetGateway:
         )
         return True, retries_used, current_spec
 
-    def _driver_error_details(self, exc: DriverError) -> dict[str, Any] | None:
-        error_details: dict[str, Any] | None = None
-        if isinstance(exc.details, dict) and exc.details:
-            safe_details = self._safe_logger.safe_body(exc.details)
-            error_details = safe_details if isinstance(safe_details, dict) else None
-        content_preview = exc.content_preview or (
-            error_details.get("content_preview")
-            if isinstance(error_details, dict)
-            else None
-        )
-        if content_preview is not None:
-            error_details = dict(error_details or {})
-            truncated = truncateText(str(content_preview))
-            error_details["content_preview"] = truncated
-        if exc.error_reason is not None:
-            error_details = dict(error_details or {})
-            error_details["error_reason"] = exc.error_reason
-        return error_details
-
-    def _resolve_driver_error(
+    def _apply_read_retry(
         self,
-        exc: DriverError,
-    ) -> tuple[NormalizedFault, ResolvedRetryAction]:
-        status_code = self._as_status_code(exc.answer_code)
-        normalized = self._error_normalizer.from_status_or_code(
-            status_code=status_code,
-            error_code=exc.code,
-        )
-        retry_action = self._kernel.resolve_retry_action(
-            fault_kind=normalized.fault_kind,
-            status_code=status_code,
-            error_reason=exc.error_reason,
-        )
-        return normalized, retry_action
+        *,
+        operation: str,
+        fault_kind: str,
+        retry_action: ResolvedRetryAction,
+        retries_used: int,
+        retry_after_s: float | None = None,
+    ) -> tuple[bool, int]:
+        """Применить retry-решение для read. Мутации не поддерживаются."""
+        directive = retry_action.directive
+        if directive not in {"RETRY_BACKOFF", "RETRY_AFTER"}:
+            return False, retries_used
+        if not self._retry_engine.can_retry(retries_used):
+            return False, retries_used
 
-    def _resolve_driver_response(
+        retries_used += 1
+        self._retries_total += 1
+        delay = self._compute_retry_delay(directive, retry_after_s, retries_used)
+        self._safe_logger.debug_retry(
+            operation=operation,
+            fault_kind=fault_kind,
+            retries_used=retries_used,
+            max_retries=self._retry_engine.max_retries,
+            delay_s=delay,
+            mutation=None,
+        )
+        return True, retries_used
+
+    def _compute_retry_delay(
         self,
-        resp: DriverResponse,
-    ) -> tuple[NormalizedFault, ResolvedRetryAction]:
-        status_code = self._as_status_code(resp.answer_code)
-        normalized = self._error_normalizer.from_status(status_code)
-        retry_action = self._kernel.resolve_retry_action(
-            fault_kind=normalized.fault_kind,
-            status_code=status_code,
-            error_reason=resp.error_reason,
-        )
-        return normalized, retry_action
-
-    @staticmethod
-    def _mark_escalated(details: dict[str, Any] | None) -> dict[str, Any]:
-        payload = dict(details or {})
-        payload["escalated"] = True
-        return payload
-
-    @staticmethod
-    def _as_status_code(answer_code: int | str | None) -> int | None:
-        if type(answer_code) is int:
-            return answer_code
-        return None
-
-    @staticmethod
-    def _format_answer_failure(answer_code: int | str | None) -> str:
-        if answer_code is None:
-            return "target operation failed"
-        return f"target answer {answer_code}"
-
-    def _unexpected_failure(self, exc: Exception) -> ExecutionResult:
-        return ExecutionResult(
-            ok=False,
-            answer_code=None,
-            response_payload=None,
-            error_code=SystemErrorCode.INFRA_UNAVAILABLE,
-            error_message=truncateText(str(exc)),
-        )
-
-    def _spec_error(self, message: str) -> ExecutionResult:
-        return ExecutionResult(
-            ok=False,
-            answer_code=None,
-            response_payload=None,
-            error_code=self._kernel.system_error_code("SPEC"),
-            error_message=truncateText(message),
-        )
+        directive: str,
+        retry_after_s: float | None,
+        retries_used: int,
+    ) -> float:
+        """Рассчитать и выполнить задержку перед повтором."""
+        if directive == "RETRY_AFTER" and retry_after_s is not None:
+            return self._retry_engine.sleep_exact(retry_after_s)
+        return self._retry_engine.sleep_before_retry(retries_used)

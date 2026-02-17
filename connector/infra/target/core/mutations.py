@@ -22,6 +22,11 @@ class TargetMutationRegistry:
         self._mutations: dict[str, TargetMutation] = dict(mutations or {})
 
     def register(self, name: str, mutation: TargetMutation) -> None:
+        """Зарегистрировать мутацию по имени.
+
+        Raises:
+            ValueError: если имя пустое или уже зарегистрировано.
+        """
         normalized = name.strip()
         if normalized == "":
             raise ValueError("mutation name must not be empty")
@@ -30,6 +35,11 @@ class TargetMutationRegistry:
         self._mutations[normalized] = mutation
 
     def apply(self, name: str, request_spec: RequestSpec) -> RequestSpec:
+        """Применить мутацию к ``RequestSpec`` по имени.
+
+        Raises:
+            ValueError: если мутация не зарегистрирована.
+        """
         mutation = self._mutations.get(name)
         if mutation is None:
             raise ValueError(f"unknown mutation: {name}")

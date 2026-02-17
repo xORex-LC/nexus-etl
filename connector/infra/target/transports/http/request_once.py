@@ -14,6 +14,8 @@ _BODY_SNIPPET_LIMIT = 200
 
 @dataclass(frozen=True, slots=True)
 class HttpResponsePayload:
+    """Данные HTTP-ответа, полученные за одну попытку запроса."""
+
     status_code: int
     headers: dict[str, str]
     body: Any | None
@@ -22,6 +24,8 @@ class HttpResponsePayload:
 
 @dataclass(frozen=True, slots=True)
 class HttpErrorPayload:
+    """Нормализованная transport-ошибка однократной HTTP-попытки."""
+
     code: str
     message: str
     details: dict[str, Any] | None = None
@@ -29,11 +33,14 @@ class HttpErrorPayload:
 
 @dataclass(frozen=True, slots=True)
 class HttpOutcome:
+    """Результат одной HTTP-попытки: либо ``response``, либо ``error``."""
+
     response: HttpResponsePayload | None = None
     error: HttpErrorPayload | None = None
 
 
 def _parse_body(response: httpx.Response) -> tuple[Any | None, str | None]:
+    """Распарсить body как JSON, а при невалидном JSON вернуть текст."""
     text = response.text if response.text else None
     body_snippet = text[:_BODY_SNIPPET_LIMIT] if text else None
     if not text:

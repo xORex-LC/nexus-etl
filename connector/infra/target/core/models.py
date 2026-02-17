@@ -28,7 +28,7 @@ TargetFaultKind = Literal[
 
 @dataclass(frozen=True, slots=True)
 class TargetMeta:
-    """Метаданные target-системы."""
+    """Метаданные target-системы для внешних слоёв."""
 
     target_type: str
     transport: str
@@ -52,7 +52,13 @@ class TargetStats:
 
 @dataclass(frozen=True, slots=True)
 class TargetCheckResult:
-    """Результат проверки доступности target-системы."""
+    """Результат проверки доступности target-системы.
+
+    Контракт:
+        - ``ok=True`` означает успешное прохождение health-check;
+        - при ``ok=False`` поля ``fault_kind``/``error_code`` объясняют причину;
+        - ``latency_ms`` указывается, если была выполнена попытка обращения к target.
+    """
 
     ok: bool
     latency_ms: int | None = None
@@ -63,7 +69,7 @@ class TargetCheckResult:
 
 @dataclass(frozen=True, slots=True)
 class TargetConnectionConfig:
-    """Конфигурация подключения к target."""
+    """Минимальная конфигурация подключения для метаданных runtime."""
 
     target_type: str
     endpoint: str

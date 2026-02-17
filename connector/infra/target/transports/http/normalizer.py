@@ -12,6 +12,8 @@ from connector.infra.target.transports.http.request_once import HttpOutcome
 
 @dataclass(frozen=True, slots=True)
 class HttpNormalizedOutcome:
+    """Нормализованный результат одной HTTP-попытки."""
+
     status_code: int | None
     body: Any | None
     body_snippet: str | None
@@ -21,6 +23,7 @@ class HttpNormalizedOutcome:
 
 
 def _parse_retry_after(value: str | None) -> float | None:
+    """Распарсить ``Retry-After`` (секунды или HTTP-date) в секунды ожидания."""
     if not value:
         return None
     candidate = value.strip()
@@ -42,6 +45,7 @@ def _parse_retry_after(value: str | None) -> float | None:
 
 
 def _header_value_case_insensitive(headers: dict[str, str], name: str) -> str | None:
+    """Прочитать значение заголовка без учёта регистра ключа."""
     lookup = name.strip().lower()
     for key, value in headers.items():
         if key.lower() == lookup:
