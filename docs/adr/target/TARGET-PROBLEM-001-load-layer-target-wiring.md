@@ -1,6 +1,6 @@
 # TARGET-PROBLEM-001: Нечистая граница load-слоя (apply/refresh/check) и зависимость CLI wiring от конкретного target
 
-> **Статус**: Открыта  
+> **Статус**: Решена в [TARGET-DEC-001](./TARGET-DEC-001-target-runtime-target-spec-slice.md), уточнена в [TARGET-DEC-003](./TARGET-DEC-003-target-core.md)  
 > **Дата создания**: 2026-02-13  
 > **Затронутые компоненты**: `connector/delivery/cli/bootstrap.py`, `connector/delivery/commands/import_apply.py`, `connector/delivery/commands/cache_refresh.py`, `connector/delivery/commands/check_api.py`, `connector/infra/http/ankey_client.py`, `connector/infra/http/request_executor.py`, `connector/infra/target/ankey_gateway.py`
 
@@ -155,3 +155,5 @@
 |------|---------|
 | 2026-02-13 | Зафиксирована проблема: target wiring и target специфика размазаны по CLI bootstrap и командам |
 | 2026-02-13 | Принято начать с “чистоты load-слоя” (оформить target slice и единый контракт сборки портов) |
+| 2026-02-13 | Принято решение [TARGET-DEC-001](./TARGET-DEC-001-target-runtime-target-spec-slice.md) |
+| 2026-02-16 | Консолидировано и расширено решением [TARGET-DEC-003](./TARGET-DEC-003-target-core.md) |
