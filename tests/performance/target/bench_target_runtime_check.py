@@ -52,8 +52,8 @@ def _runtime(gateway: object) -> DefaultTargetRuntime:
         gateway=gateway,  # type: ignore[arg-type]
         config=TargetConnectionConfig(
             target_type="ankey",
-            base_url="https://bench.local",
-            username="bench",
+            endpoint="https://bench.local",
+            transport="http",
         ),
         has_reader=False,
     )

@@ -98,7 +98,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
         runtime = build_result.runtime
         target_meta = runtime.meta()
-        base_url = target_meta.base_url
+        endpoint = target_meta.endpoint
 
         report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
         report.set_context(
@@ -116,7 +116,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         report.set_context(
             "apply_target",
             {
-                "base_url": base_url,
+                "endpoint": endpoint,
                 "user": app_settings.api.username,
                 "target_runtime_mode": build_result.effective_mode,
             },

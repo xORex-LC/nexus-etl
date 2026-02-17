@@ -179,7 +179,7 @@ class TargetKernel:
 
     def redact_headers(self, headers: dict[str, str]) -> dict[str, str]:
         """Замаскировать запрещённые заголовки для безопасного логирования."""
-        forbidden = self._spec.redaction.forbidden_headers
+        forbidden = self._spec.redaction.forbidden_metadata_keys
         return {
             k: ("***" if k.lower() in forbidden else v) for k, v in headers.items()
         }

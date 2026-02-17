@@ -86,8 +86,8 @@ class DefaultTargetRuntime:
     def meta(self) -> TargetMeta:
         return TargetMeta(
             target_type=self._config.target_type,
-            base_url=self._config.base_url,
             transport=self._config.transport,
+            endpoint=self._config.endpoint,
         )
 
     def stats(self) -> TargetStats:

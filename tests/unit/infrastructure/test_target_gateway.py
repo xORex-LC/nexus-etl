@@ -383,27 +383,13 @@ def test_health_check_unexpected_error_maps_to_transient() -> None:
     assert result.error_code == SystemErrorCode.INFRA_UNAVAILABLE
 
 
-def test_health_check_uses_operation_alias_not_legacy_health_path() -> None:
-    spec = build_ankey_spec()
-    spec = spec.model_copy(
-        update={
-            "health_check": spec.health_check.model_copy(
-                update={"path": "/legacy/health"},
-            )
-        },
-    )
+def test_health_check_uses_operation_catalog_alias() -> None:
     driver = StubDriver(
         request_effects=[
             DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
         ],
     )
-    gateway = TargetGateway(
-        driver,
-        TargetKernel(
-            spec,
-            compiler_registry=build_transport_compiler_registry(),
-        ),
-    )  # type: ignore[arg-type]
+    gateway = _make_gateway(driver=driver)
 
     result = gateway.health_check()
 
