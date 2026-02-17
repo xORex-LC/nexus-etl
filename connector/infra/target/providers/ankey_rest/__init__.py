@@ -15,7 +15,6 @@ from connector.infra.target.providers.ankey_rest.payloads import (
 from connector.infra.target.providers.ankey_rest.mutations import (
     build_ankey_mutations,
 )
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 
 __all__ = [
     "AnkeyHttpDriver",
@@ -25,5 +24,4 @@ __all__ = [
     "build_transport_compiler_registry",
     "build_ankey_mutations",
     "build_user_upsert_payload",
-    "build_ankey_spec",
 ]

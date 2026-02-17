@@ -18,7 +18,7 @@ from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.core.models import TargetConnectionConfig
 from connector.infra.target.core.runtime import DefaultTargetRuntime
 from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.domain.target_dsl import load_target_spec
 
 N = 500
 
@@ -45,7 +45,7 @@ class AlwaysOkDriver:
 
 
 def _build_gateway() -> TargetGateway:
-    spec = build_ankey_spec()
+    spec = load_target_spec("ankey")
     spec = spec.model_copy(
         update={
             "retry_config": spec.retry_config.model_copy(

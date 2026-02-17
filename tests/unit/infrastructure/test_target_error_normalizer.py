@@ -4,13 +4,13 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.target.core.engines.error_normalizer import TargetErrorNormalizer
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.domain.target_dsl import load_target_spec
 
 
 def test_from_status_maps_to_fault_and_system_code() -> None:
     normalizer = TargetErrorNormalizer(
         TargetKernel(
-            build_ankey_spec(),
+            load_target_spec("ankey"),
             compiler_registry=build_transport_compiler_registry(),
         )
     )
@@ -24,7 +24,7 @@ def test_from_status_maps_to_fault_and_system_code() -> None:
 def test_from_error_code_maps_network_error_to_transient() -> None:
     normalizer = TargetErrorNormalizer(
         TargetKernel(
-            build_ankey_spec(),
+            load_target_spec("ankey"),
             compiler_registry=build_transport_compiler_registry(),
         )
     )
@@ -38,7 +38,7 @@ def test_from_error_code_maps_network_error_to_transient() -> None:
 def test_from_status_or_code_prefers_error_code() -> None:
     normalizer = TargetErrorNormalizer(
         TargetKernel(
-            build_ankey_spec(),
+            load_target_spec("ankey"),
             compiler_registry=build_transport_compiler_registry(),
         )
     )

@@ -11,7 +11,7 @@ import pyperf
 
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.domain.target_dsl import load_target_spec
 
 SMALL = {
     "id": "u1",
@@ -39,7 +39,7 @@ HEADERS = {
 
 def bench_redaction_small(loops: int) -> float:
     kernel = TargetKernel(
-        build_ankey_spec(),
+        load_target_spec("ankey"),
         compiler_registry=build_transport_compiler_registry(),
     )
     timer = pyperf.perf_counter
@@ -55,7 +55,7 @@ def bench_redaction_small(loops: int) -> float:
 
 def bench_redaction_medium(loops: int) -> float:
     kernel = TargetKernel(
-        build_ankey_spec(),
+        load_target_spec("ankey"),
         compiler_registry=build_transport_compiler_registry(),
     )
     timer = pyperf.perf_counter
@@ -71,7 +71,7 @@ def bench_redaction_medium(loops: int) -> float:
 
 def bench_redaction_large(loops: int) -> float:
     kernel = TargetKernel(
-        build_ankey_spec(),
+        load_target_spec("ankey"),
         compiler_registry=build_transport_compiler_registry(),
     )
     timer = pyperf.perf_counter

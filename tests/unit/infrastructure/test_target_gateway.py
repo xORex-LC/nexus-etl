@@ -13,7 +13,7 @@ from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.providers.ankey_rest.mutations import build_ankey_mutations
 from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.domain.target_dsl import load_target_spec
 
 
 class StubDriver:
@@ -71,7 +71,7 @@ def _make_gateway(
     backoff_base: float = 0.0,
     spec_updates: dict[str, Any] | None = None,
 ) -> TargetGateway:
-    spec = build_ankey_spec()
+    spec = load_target_spec("ankey")
     update_payload: dict[str, Any] = {
         "retry_config": spec.retry_config.model_copy(
             update={

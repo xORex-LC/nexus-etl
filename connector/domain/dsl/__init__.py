@@ -5,6 +5,7 @@
 
 from connector.domain.dsl.engine import EngineResult, TransformationEngine
 from connector.domain.dsl.issues import DslIssue, DslSeverity, DslLoadError
+from connector.domain.dsl.specs._base import DslBaseModel
 from connector.domain.dsl.loader import (
     load_source_spec_for_dataset,
     load_mapping_spec,
@@ -54,6 +55,7 @@ from connector.domain.dsl.specs import (
 __all__ = [
     "EngineResult",
     "TransformationEngine",
+    "DslBaseModel",
     "DslIssue",
     "DslSeverity",
     "DslLoadError",

@@ -9,7 +9,7 @@ from connector.infra.target.core.factory import (
 )
 from connector.infra.target.core.registry import MissingTargetProviderError
 from connector.infra.target.providers.ankey_rest.provider import apply_retry_overrides
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.domain.target_dsl import load_target_spec
 
 
 @pytest.fixture()
@@ -70,7 +70,7 @@ def test_build_target_runtime_loads_operation_catalog(api_settings: ApiSettings)
 
 
 def test_apply_retry_overrides_is_immutable(api_settings: ApiSettings) -> None:
-    original = build_ankey_spec()
+    original = load_target_spec("ankey")
     updated = apply_retry_overrides(original, api_settings)
 
     assert updated is not original

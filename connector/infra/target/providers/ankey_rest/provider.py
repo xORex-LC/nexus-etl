@@ -13,7 +13,6 @@ from connector.infra.target.core.transport_compiler import TransportCompilerRegi
 from connector.infra.target.providers.ankey_rest.auth import AnkeyAuth
 from connector.infra.target.providers.ankey_rest.driver import AnkeyHttpDriver
 from connector.infra.target.providers.ankey_rest.mutations import build_ankey_mutations
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
 from connector.infra.target.transports.http.compiler import compile_http_operation
 from connector.infra.target.transports.http.client_factory import (
     HttpClientSettings,
@@ -60,7 +59,8 @@ class AnkeyTargetProvider:
         api = self._api_settings
         base_url = f"https://{api.host}:{api.port}"
 
-        spec = build_ankey_spec()
+        from connector.domain.target_dsl import load_target_spec  # lazy: разрывает circular import
+        spec = load_target_spec("ankey")
         spec = apply_retry_overrides(spec, api)
         kernel = TargetKernel(
             spec,
