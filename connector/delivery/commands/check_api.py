@@ -45,7 +45,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         if result.ok:
             logEvent(
                 ctx.logger, logging.INFO, run_id, "api",
-                f"api ok base_url={target_meta.base_url} latency_ms={result.latency_ms}",
+                f"api ok endpoint={target_meta.endpoint} latency_ms={result.latency_ms}",
             )
             report.set_context(
                 "apply_target",

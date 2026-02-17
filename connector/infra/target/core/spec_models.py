@@ -2,9 +2,9 @@
 TargetSpec — декларативная спецификация target-системы.
 
 Назначение:
-    Декларативное описание target: возможности, проверка доступности, пагинация,
-    правила классификации ошибок (`fault_rules`), retry-политики (`retry_rules`),
-    правила безопасного логирования (`redaction`), каталог operation aliases.
+    Декларативное описание target: возможности, правила классификации ошибок
+    (`fault_rules`), retry-политики (`retry_rules`), правила безопасного
+    логирования (`redaction`), каталог operation aliases.
 """
 
 from __future__ import annotations
@@ -26,24 +26,6 @@ class _SpecModel(BaseModel):
         extra="forbid",
         frozen=True,
     )
-
-
-class HealthCheckSpec(_SpecModel):
-    """Описание операции health-check."""
-
-    path: str
-    params: dict[str, str] = Field(default_factory=dict)
-    expected_status: int = 200
-
-
-class PagingSpec(_SpecModel):
-    """Стратегия пагинации target."""
-
-    strategy: Literal["offset_limit", "cursor"] = "offset_limit"
-    page_param: str = "page"
-    size_param: str = "rows"
-    filter_param: str = "_queryFilter"
-    filter_value: str = "true"
 
 
 class FaultRule(_SpecModel):
@@ -142,7 +124,7 @@ class OperationSpec(_SpecModel):
 class RedactionSpec(_SpecModel):
     """Правила маскирования для безопасного логирования."""
 
-    forbidden_headers: frozenset[str] = frozenset(
+    forbidden_metadata_keys: frozenset[str] = frozenset(
         {
             "authorization",
             "cookie",
@@ -167,8 +149,6 @@ class TargetSpec(_SpecModel):
 
     target_type: str
     capabilities: frozenset[TargetCapability]
-    health_check: HealthCheckSpec
-    paging: PagingSpec
     fault_rules: tuple[FaultRule, ...]
     retry_rules: tuple[RetryRule, ...]
     retry_config: RetryConfig

@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from connector.infra.target.core.spec_models import (
     FaultRule,
-    HealthCheckSpec,
     OperationSpec,
-    PagingSpec,
     RedactionSpec,
     RetryConfig,
     RetryRule,
@@ -19,11 +17,6 @@ def build_ankey_spec() -> TargetSpec:
     return TargetSpec(
         target_type="ankey",
         capabilities=frozenset({"check", "execute", "read_paged"}),
-        health_check=HealthCheckSpec(
-            path="/ankey/managed/user",
-            params={"page": "1", "rows": "1", "_queryFilter": "true"},
-        ),
-        paging=PagingSpec(),
         fault_rules=(
             # Аутентификация / авторизация
             FaultRule(fault_kind="AUTH", match_status=401),

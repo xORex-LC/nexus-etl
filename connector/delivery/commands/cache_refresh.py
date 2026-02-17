@@ -60,7 +60,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             )
             runtime = build_result.runtime
             target_meta = runtime.meta()
-            base_url = target_meta.base_url
+            endpoint = target_meta.endpoint
             reader = runtime.reader
             report.set_context("target_runtime", _runtime_context(build_result))
 
@@ -95,7 +95,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 report_items_limit=(
                     opts.report_items_limit or app_settings.observability.report_items_limit
                 ),
-                api_base_url=base_url,
+                api_base_url=endpoint,
                 retries=opts.retries or app_settings.api.retries,
                 retry_backoff_seconds=opts.retry_backoff_seconds or app_settings.api.retry_backoff_seconds,
                 dataset=opts.dataset,

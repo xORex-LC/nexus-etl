@@ -32,7 +32,7 @@ def test_build_target_runtime_returns_runtime_with_typed_meta(api_settings: ApiS
 
     meta = runtime.meta()
     assert meta.target_type == "ankey"
-    assert meta.base_url == "https://ankey.local:9443"
+    assert meta.endpoint == "https://ankey.local:9443"
     assert meta.transport == "http"
     assert runtime.reader is None
     assert runtime.executor is not None
@@ -101,7 +101,7 @@ def test_build_target_runtime_sets_single_attempt_client_and_injects_transport(
         runtime_mode="core",
     )
 
-    assert runtime.meta().base_url == "https://ankey.local:9443"
+    assert runtime.meta().endpoint == "https://ankey.local:9443"
     settings = captured["settings"]
     assert settings.base_url == "https://ankey.local:9443"
     assert settings.timeout_seconds == api_settings.timeout_seconds

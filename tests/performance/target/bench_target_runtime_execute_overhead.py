@@ -93,8 +93,8 @@ def bench_runtime_execute(loops: int) -> float:
         gateway=gateway,
         config=TargetConnectionConfig(
             target_type="ankey",
-            base_url="https://bench.local",
-            username="bench",
+            endpoint="https://bench.local",
+            transport="http",
         ),
         has_reader=False,
     )

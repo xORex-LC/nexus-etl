@@ -31,8 +31,8 @@ class TargetMeta:
     """Метаданные target-системы."""
 
     target_type: str
-    base_url: str | None = None
-    transport: str = "http"
+    transport: str
+    endpoint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +60,6 @@ class TargetConnectionConfig:
     """Конфигурация подключения к target."""
 
     target_type: str
-    base_url: str
-    username: str
-    transport: str = "http"
+    endpoint: str
+    transport: str
+    principal: str = ""

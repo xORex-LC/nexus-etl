@@ -86,8 +86,9 @@ class AnkeyTargetProvider:
         )
         config = TargetConnectionConfig(
             target_type=self.target_type,
-            base_url=base_url,
-            username=api.username or "",
+            endpoint=base_url,
+            transport="http",
+            principal=api.username or "",
         )
         return DefaultTargetRuntime(
             gateway=gateway,

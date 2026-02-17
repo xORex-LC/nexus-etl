@@ -32,9 +32,9 @@ class StubGateway:
 def _config() -> TargetConnectionConfig:
     return TargetConnectionConfig(
         target_type="ankey",
-        base_url="https://ankey.example:8443",
-        username="svc-user",
+        endpoint="https://ankey.example:8443",
         transport="http",
+        principal="svc-user",
     )
 
 
@@ -71,8 +71,8 @@ def test_runtime_meta_returns_typed_model() -> None:
 
     assert runtime.meta() == TargetMeta(
         target_type="ankey",
-        base_url="https://ankey.example:8443",
         transport="http",
+        endpoint="https://ankey.example:8443",
     )
 
 
