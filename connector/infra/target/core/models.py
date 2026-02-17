@@ -37,7 +37,13 @@ class TargetMeta:
 
 @dataclass(frozen=True, slots=True)
 class TargetStats:
-    """Статистика взаимодействия с target."""
+    """Статистика взаимодействия с target.
+
+    Семантика v1:
+        - requests_total: число execute-попыток + успешно выданных страниц read.
+        - retries_total: число повторов, выполненных gateway.
+        - failures_total: число завершившихся неуспехом операций gateway.
+    """
 
     requests_total: int = 0
     retries_total: int = 0

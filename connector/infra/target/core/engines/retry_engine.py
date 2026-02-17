@@ -72,3 +72,12 @@ class TargetRetryEngine:
         if delay > 0:
             self._sleep_fn(delay)
         return delay
+
+    def sleep_exact(self, delay_s: float | None) -> float:
+        """Подождать фиксированную задержку (например, Retry-After)."""
+        if delay_s is None:
+            return 0.0
+        delay = max(0.0, float(delay_s))
+        if delay > 0:
+            self._sleep_fn(delay)
+        return delay

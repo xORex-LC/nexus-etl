@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from connector.infra.target.core.spec_models import (
     FaultRule,
+    HealthSpec,
     OperationSpec,
     RedactionSpec,
     RetryConfig,
@@ -34,7 +35,7 @@ def build_ankey_spec() -> TargetSpec:
         ),
         retry_rules=(
             RetryRule(directive="RETRY_BACKOFF", match_fault="TRANSIENT"),
-            RetryRule(directive="RETRY_BACKOFF", match_fault="THROTTLE"),
+            RetryRule(directive="RETRY_AFTER", match_fault="THROTTLE"),
             RetryRule(
                 directive="RETRY_BACKOFF",
                 match_fault="CONFLICT",
@@ -49,6 +50,7 @@ def build_ankey_spec() -> TargetSpec:
         ),
         retry_config=RetryConfig(),
         redaction=RedactionSpec(),
+        health=HealthSpec(operation_alias="health.check"),
         operations={
             "health.check": OperationSpec(
                 alias="health.check",

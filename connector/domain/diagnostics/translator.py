@@ -76,7 +76,8 @@ def translate_execution_result(
     """
     code = map_system_code(result.error_code)
     details = {
-        "status_code": result.status_code,
+        "answer_code": result.answer_code,
+        "response_format": result.response_format,
         "error_code": result.error_code.value if result.error_code else None,
         "error_reason": result.error_reason,
         "error_details": result.error_details,

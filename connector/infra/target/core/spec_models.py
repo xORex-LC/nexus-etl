@@ -144,6 +144,20 @@ class RedactionSpec(_SpecModel):
     body_mode: Literal["none", "keys_only", "truncated"] = "truncated"
 
 
+class HealthSpec(_SpecModel):
+    """Декларация health-check операции target-провайдера."""
+
+    operation_alias: str = "health.check"
+
+    @model_validator(mode="after")
+    def _validate_alias(self) -> "HealthSpec":
+        alias = self.operation_alias.strip()
+        if alias == "":
+            raise ValueError("health operation alias must not be empty")
+        object.__setattr__(self, "operation_alias", alias)
+        return self
+
+
 class TargetSpec(_SpecModel):
     """Полная спецификация target-системы."""
 
@@ -153,6 +167,7 @@ class TargetSpec(_SpecModel):
     retry_rules: tuple[RetryRule, ...]
     retry_config: RetryConfig
     redaction: RedactionSpec
+    health: HealthSpec
     operations: dict[str, OperationSpec] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -162,4 +177,12 @@ class TargetSpec(_SpecModel):
                 raise ValueError(
                     f"operation alias key mismatch: key={alias!r}, alias={operation.alias!r}",
                 )
+        if self.health.operation_alias not in self.operations:
+            raise ValueError(
+                f"health operation alias is not declared: {self.health.operation_alias!r}",
+            )
+        if "check" not in self.capabilities:
+            raise ValueError(
+                "health specification requires 'check' capability in target capabilities",
+            )
         return self

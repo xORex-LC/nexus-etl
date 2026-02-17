@@ -7,12 +7,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, TypeVar
 
 from connector.infra.target.core.spec_models import OperationSpec
 
+TCompiledRequest = TypeVar("TCompiledRequest")
 
-class CompiledOperation(Protocol):
+
+class CompiledOperation(Protocol[TCompiledRequest]):
     """Скомпилированная операция конкретного транспорта."""
 
     def build(
@@ -22,10 +24,10 @@ class CompiledOperation(Protocol):
         operation_params: dict[str, Any] | None = None,
         query_overrides: dict[str, Any] | None = None,
         header_overrides: dict[str, str] | None = None,
-    ) -> Any: ...
+    ) -> TCompiledRequest: ...
 
 
-OperationCompiler = Callable[[OperationSpec], CompiledOperation]
+OperationCompiler = Callable[[OperationSpec], CompiledOperation[Any]]
 
 
 class TransportCompilerRegistry:
@@ -40,7 +42,7 @@ class TransportCompilerRegistry:
             raise ValueError("kind транспорта не должен быть пустым")
         self._compilers[normalized] = compiler
 
-    def compile(self, operation: OperationSpec) -> CompiledOperation:
+    def compile(self, operation: OperationSpec) -> CompiledOperation[Any]:
         compiler = self._compilers.get(operation.kind)
         if compiler is None:
             raise ValueError(
