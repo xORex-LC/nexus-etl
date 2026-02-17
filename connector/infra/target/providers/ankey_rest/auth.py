@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+
 import httpx
 
 
@@ -12,7 +14,9 @@ class AnkeyAuth(httpx.Auth):
         self._username = username
         self._password = password
 
-    def auth_flow(self, request: httpx.Request):  # type: ignore[override]
+    def auth_flow(
+        self, request: httpx.Request
+    ) -> Generator[httpx.Request, httpx.Response, None]:
         """Добавить Ankey-заголовки аутентификации и вернуть модифицированный запрос."""
         request.headers["X-Ankey-Username"] = self._username
         request.headers["X-Ankey-Password"] = self._password

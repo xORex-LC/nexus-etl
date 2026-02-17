@@ -30,13 +30,3 @@ class HttpPagingStrategy(Protocol):
         ...
 
 
-def merge_paging_query(
-    *,
-    defaults: dict[str, Any] | None,
-    overrides: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """Объединить параметры пагинации и overrides без модификации входных словарей."""
-    query: dict[str, Any] = dict(defaults or {})
-    if overrides:
-        query.update(overrides)
-    return query
