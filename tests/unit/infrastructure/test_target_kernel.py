@@ -243,9 +243,10 @@ def test_resolve_operation_unknown_alias_raises(kernel: TargetKernel) -> None:
         kernel.resolve_operation("users.unknown")
 
 
-def test_build_http_operation_renders_path_and_merges_defaults(kernel: TargetKernel) -> None:
-    request = kernel.build_http_operation(
-        "users.upsert",
+def test_get_compiled_operation_renders_path_and_merges_defaults(kernel: TargetKernel) -> None:
+    _, compiled = kernel.get_compiled_operation("users.upsert")
+    request = compiled.build(
+        alias="users.upsert",
         operation_params={"target_id": "abc-123"},
         query_overrides={"decrypt": "true"},
     )
@@ -256,6 +257,12 @@ def test_build_http_operation_renders_path_and_merges_defaults(kernel: TargetKer
     assert request.query == {"_prettyPrint": "true", "decrypt": "true"}
 
 
-def test_build_http_operation_requires_path_params(kernel: TargetKernel) -> None:
+def test_get_compiled_operation_unknown_alias_raises(kernel: TargetKernel) -> None:
+    with pytest.raises(ValueError, match="unknown operation alias"):
+        kernel.get_compiled_operation("users.unknown")
+
+
+def test_get_compiled_operation_requires_path_params(kernel: TargetKernel) -> None:
+    _, compiled = kernel.get_compiled_operation("users.upsert")
     with pytest.raises(ValueError, match="missing path params"):
-        kernel.build_http_operation("users.upsert")
+        compiled.build(alias="users.upsert")

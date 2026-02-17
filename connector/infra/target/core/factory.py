@@ -1,4 +1,4 @@
-"""Фабрика TargetRuntime с реестром провайдеров (только core runtime)."""
+"""Фабрика TargetRuntime (только core runtime)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 from connector.config.app_settings import ApiSettings
-from connector.infra.target.core.registry import TargetProviderRegistry
 from connector.infra.target.core.runtime import TargetRuntime
 from connector.infra.target.providers import AnkeyTargetProvider
 
@@ -45,9 +44,8 @@ def build_target_runtime_with_info(
     runtime_mode: str | None = None,
 ) -> TargetRuntimeBuildResult:
     requested_mode = _resolve_runtime_mode(runtime_mode=runtime_mode)
-    provider = _get_default_provider()
+    provider = AnkeyTargetProvider(api_settings)
     runtime = provider.build_core_runtime(
-        api_settings,
         transport=transport,
         include_reader=include_reader,
     )
@@ -72,16 +70,3 @@ def _resolve_runtime_mode(
             f"{candidate!r}. Expected one of: core",
         )
     return normalized  # type: ignore[return-value]
-
-
-def _build_default_registry() -> TargetProviderRegistry:
-    registry = TargetProviderRegistry()
-    registry.register(AnkeyTargetProvider(), default=True)
-    return registry
-
-
-_DEFAULT_PROVIDER_REGISTRY = _build_default_registry()
-
-
-def _get_default_provider():
-    return _DEFAULT_PROVIDER_REGISTRY.get_default()

@@ -19,6 +19,7 @@ class HttpRequest:
     headers: dict[str, str]
     json: Any | None = None
     timeout_s: float | None = None
+    expected_statuses: tuple[int, ...] = (200,)
 
 
 def _render_path_template(

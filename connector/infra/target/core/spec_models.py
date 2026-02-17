@@ -118,7 +118,7 @@ class OperationSpec(_SpecModel):
     """Декларация target-операции, разрешаемой по alias."""
 
     alias: str
-    kind: Literal["http"] = "http"
+    kind: str = "http"
     expected_statuses: tuple[int, ...] = (200,)
     timeout_ms: int | None = Field(default=None, ge=1)
     retry_profile: str | None = None

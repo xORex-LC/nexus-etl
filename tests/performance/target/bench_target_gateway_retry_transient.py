@@ -48,56 +48,48 @@ class RetryRecoveryDriver:
     def __init__(self) -> None:
         self.calls = 0
 
-    def request(
+    def execute(
         self,
-        method: str,
-        path: str,
-        *,
-        params: dict[str, Any] | None = None,
-        json: Any | None = None,
-        headers: dict[str, str] | None = None,
+        compiled_request: Any,
+        payload: Any | None = None,
     ) -> DriverResponse:
         self.calls += 1
         if self.calls % 2 == 1:
-            return DriverResponse(status_code=503, body={"error": "tmp"}, body_snippet="tmp")
-        return DriverResponse(status_code=200, body={"ok": True}, body_snippet=None)
+            return DriverResponse(ok=False, status_code=503, body={"error": "tmp"}, body_snippet="tmp")
+        return DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None)
 
-    def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        return {"ok": True}
-
-    def get_paged_items(
+    def iter_batches(
         self,
-        path: str,
-        page_size: int,
-        max_pages: int | None,
+        compiled_request: Any,
+        batch_size: int,
+        max_batches: int | None,
         params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]:
         return iter(())
+
+    def close(self) -> None:
+        pass
 
 
 class AuthFailDriver:
-    def request(
+    def execute(
         self,
-        method: str,
-        path: str,
-        *,
-        params: dict[str, Any] | None = None,
-        json: Any | None = None,
-        headers: dict[str, str] | None = None,
+        compiled_request: Any,
+        payload: Any | None = None,
     ) -> DriverResponse:
-        return DriverResponse(status_code=401, body={"error": "auth"}, body_snippet="auth")
+        return DriverResponse(ok=False, status_code=401, body={"error": "auth"}, body_snippet="auth")
 
-    def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        return {"ok": True}
-
-    def get_paged_items(
+    def iter_batches(
         self,
-        path: str,
-        page_size: int,
-        max_pages: int | None,
+        compiled_request: Any,
+        batch_size: int,
+        max_batches: int | None,
         params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]:
         return iter(())
+
+    def close(self) -> None:
+        pass
 
 
 def bench_gateway_retry_recovery(loops: int) -> float:

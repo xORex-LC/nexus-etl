@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterator
 
 import pytest
 
@@ -20,55 +20,47 @@ class StubDriver:
         self,
         *,
         request_effects: list[DriverResponse | Exception] | None = None,
-        get_json_effect: Any = None,
-        pages_effect: Iterable[tuple[int, list[Any]]] | Exception | None = None,
+        pages_effect: list[tuple[int, list[Any]]] | Exception | None = None,
     ) -> None:
-        self._request_effects = list(request_effects or [])
-        self._get_json_effect = get_json_effect
+        self._execute_effects = list(request_effects or [])
         self._pages_effect = pages_effect
         self.request_calls: list[dict[str, Any]] = []
 
-    def request(
+    def execute(
         self,
-        method: str,
-        path: str,
-        *,
-        params: dict[str, Any] | None = None,
-        json: Any | None = None,
-        headers: dict[str, str] | None = None,
+        compiled_request: Any,
+        payload: Any | None = None,
     ) -> DriverResponse:
         self.request_calls.append(
             {
-                "method": method,
-                "path": path,
-                "params": params,
-                "json": json,
-                "headers": headers,
+                "method": compiled_request.method,
+                "path": compiled_request.path,
+                "params": compiled_request.query,
+                "json": payload,
+                "headers": compiled_request.headers,
             }
         )
-        if not self._request_effects:
-            return DriverResponse(status_code=200, body={"ok": True}, body_snippet=None)
-        effect = self._request_effects.pop(0)
+        if not self._execute_effects:
+            return DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None)
+        effect = self._execute_effects.pop(0)
         if isinstance(effect, Exception):
             raise effect
         return effect
 
-    def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        if isinstance(self._get_json_effect, Exception):
-            raise self._get_json_effect
-        return self._get_json_effect
-
-    def get_paged_items(
+    def iter_batches(
         self,
-        path: str,
-        page_size: int,
-        max_pages: int | None,
+        compiled_request: Any,
+        batch_size: int,
+        max_batches: int | None,
         params: dict[str, Any] | None = None,
     ) -> Iterator[tuple[int, list[Any]]]:
         if isinstance(self._pages_effect, Exception):
             raise self._pages_effect
         for page in self._pages_effect or []:
             yield page
+
+    def close(self) -> None:
+        pass
 
 
 def _make_gateway(
@@ -113,6 +105,7 @@ def test_execute_happy_path_returns_ok_and_masks_response() -> None:
     driver = StubDriver(
         request_effects=[
             DriverResponse(
+                ok=True,
                 status_code=200,
                 body={"name": "Alice", "password": "secret"},
                 body_snippet=None,
@@ -133,8 +126,8 @@ def test_execute_happy_path_returns_ok_and_masks_response() -> None:
 def test_execute_retries_on_transient_and_then_succeeds() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(status_code=503, body={"error": "temporary"}, body_snippet="temporary"),
-            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=False, status_code=503, body={"error": "temporary"}, body_snippet="temporary"),
+            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
         ]
     )
     gateway = _make_gateway(driver=driver, max_attempts=2)
@@ -150,7 +143,7 @@ def test_execute_retries_on_transient_and_then_succeeds() -> None:
 def test_execute_no_retry_on_auth_error() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(status_code=401, body={"message": "unauthorized"}, body_snippet="unauthorized")
+            DriverResponse(ok=False, status_code=401, body={"message": "unauthorized"}, body_snippet="unauthorized")
         ]
     )
     gateway = _make_gateway(driver=driver)
@@ -187,6 +180,7 @@ def test_execute_detects_resourceexists_reason() -> None:
     driver = StubDriver(
         request_effects=[
             DriverResponse(
+                ok=False,
                 status_code=409,
                 body={"message": "resourceexists"},
                 body_snippet="resource exists",
@@ -212,11 +206,12 @@ def test_execute_operation_alias_applies_resourceexists_mutation_and_retries(
     driver = StubDriver(
         request_effects=[
             DriverResponse(
+                ok=False,
                 status_code=409,
                 body={"message": "resourceexists"},
                 body_snippet="resource exists",
             ),
-            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
         ]
     )
     gateway = _make_gateway(driver=driver, max_attempts=2)
@@ -237,7 +232,7 @@ def test_execute_operation_alias_applies_resourceexists_mutation_and_retries(
 def test_execute_operation_alias_uses_spec_mapping() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
         ]
     )
     gateway = _make_gateway(driver=driver)
@@ -352,7 +347,7 @@ def test_iter_pages_normalizes_driver_error_and_sanitizes_details() -> None:
 def test_health_check_ok() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
         ]
     )
     gateway = _make_gateway(driver=driver)
@@ -399,7 +394,7 @@ def test_health_check_uses_operation_alias_not_legacy_health_path() -> None:
     )
     driver = StubDriver(
         request_effects=[
-            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
         ],
     )
     gateway = TargetGateway(
@@ -420,7 +415,7 @@ def test_health_check_uses_operation_alias_not_legacy_health_path() -> None:
 def test_reset_stats_resets_all_counters() -> None:
     driver = StubDriver(
         request_effects=[
-            DriverResponse(status_code=200, body={"ok": True}, body_snippet=None),
+            DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None),
         ]
     )
     gateway = _make_gateway(driver=driver)

@@ -6,7 +6,6 @@ from connector.config.app_settings import ApiSettings
 from connector.infra.target.core.mutations import TargetMutationRegistry
 from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel
-from connector.infra.target.core.provider import TargetProvider
 from connector.infra.target.core.models import TargetConnectionConfig
 from connector.infra.target.core.runtime import DefaultTargetRuntime, TargetRuntime
 from connector.infra.target.core.spec_models import TargetSpec
@@ -43,20 +42,23 @@ def build_transport_compiler_registry() -> TransportCompilerRegistry:
     return registry
 
 
-class AnkeyTargetProvider(TargetProvider):
+class AnkeyTargetProvider:
     target_type = "ankey"
+
+    def __init__(self, api_settings: ApiSettings) -> None:
+        self._api_settings = api_settings
 
     def build_core_runtime(
         self,
-        api_settings: ApiSettings,
         *,
         transport: object | None = None,
         include_reader: bool = True,
     ) -> TargetRuntime:
-        base_url = f"https://{api_settings.host}:{api_settings.port}"
+        api = self._api_settings
+        base_url = f"https://{api.host}:{api.port}"
 
         spec = build_ankey_spec()
-        spec = apply_retry_overrides(spec, api_settings)
+        spec = apply_retry_overrides(spec, api)
         kernel = TargetKernel(
             spec,
             compiler_registry=build_transport_compiler_registry(),
@@ -65,13 +67,13 @@ class AnkeyTargetProvider(TargetProvider):
         client = build_http_client(
             HttpClientSettings(
                 base_url=base_url,
-                timeout_seconds=api_settings.timeout_seconds,
-                tls_skip_verify=api_settings.tls_skip_verify,
-                ca_file=api_settings.ca_file,
+                timeout_seconds=api.timeout_seconds,
+                tls_skip_verify=api.tls_skip_verify,
+                ca_file=api.ca_file,
                 transport=transport,
                 auth=AnkeyAuth(
-                    username=api_settings.username or "",
-                    password=api_settings.password or "",
+                    username=api.username or "",
+                    password=api.password or "",
                 ),
             )
         )
@@ -85,13 +87,14 @@ class AnkeyTargetProvider(TargetProvider):
         config = TargetConnectionConfig(
             target_type=self.target_type,
             base_url=base_url,
-            username=api_settings.username or "",
+            username=api.username or "",
         )
         return DefaultTargetRuntime(
             gateway=gateway,
             config=config,
             has_reader=include_reader,
         )
+
 
 __all__ = [
     "AnkeyTargetProvider",
