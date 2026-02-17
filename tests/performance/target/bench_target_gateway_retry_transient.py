@@ -55,8 +55,8 @@ class RetryRecoveryDriver:
     ) -> DriverResponse:
         self.calls += 1
         if self.calls % 2 == 1:
-            return DriverResponse(ok=False, status_code=503, body={"error": "tmp"}, body_snippet="tmp")
-        return DriverResponse(ok=True, status_code=200, body={"ok": True}, body_snippet=None)
+            return DriverResponse(ok=False, answer_code=503, payload={"error": "tmp"}, content_preview="tmp")
+        return DriverResponse(ok=True, answer_code=200, payload={"ok": True}, content_preview=None)
 
     def iter_batches(
         self,
@@ -77,7 +77,7 @@ class AuthFailDriver:
         compiled_request: Any,
         payload: Any | None = None,
     ) -> DriverResponse:
-        return DriverResponse(ok=False, status_code=401, body={"error": "auth"}, body_snippet="auth")
+        return DriverResponse(ok=False, answer_code=401, payload={"error": "auth"}, content_preview="auth")
 
     def iter_batches(
         self,
@@ -126,7 +126,7 @@ def bench_gateway_no_retry_auth_fail(loops: int) -> float:
         for _ in range(N):
             result = gateway.execute(SPEC)
             assert not result.ok
-            assert result.status_code == 401
+            assert result.answer_code == 401
         total += timer() - t0
     return total
 

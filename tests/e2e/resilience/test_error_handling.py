@@ -1,13 +1,12 @@
 import httpx
-import pytest
 from typer.testing import CliRunner
 
-from connector.infra.target.driver import DriverError
 from connector.infra.target.providers.ankey_rest.driver import AnkeyHttpDriver
 from connector.infra.target.transports.http.client_factory import (
     HttpClientSettings,
     build_http_client,
 )
+from connector.infra.target.transports.http.request_builder import HttpRequest
 from connector.main import app
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
@@ -100,7 +99,7 @@ def test_cache_refresh_max_pages_exceeded(monkeypatch, tmp_path):
     assert result.exit_code == 2
 
 
-def test_driver_invalid_json():
+def test_driver_invalid_json_returns_text_payload():
     def responder(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="not-json")
 
@@ -113,9 +112,18 @@ def test_driver_invalid_json():
     )
     driver = AnkeyHttpDriver(client)
     try:
-        with pytest.raises(DriverError) as excinfo:
-            driver.get_json("/path")
-        assert excinfo.value.code == "INVALID_JSON"
+        response = driver.execute(
+            HttpRequest(
+                method="GET",
+                path="/path",
+                query={},
+                headers={},
+                expected_statuses=(200,),
+            )
+        )
+        assert response.ok is True
+        assert response.payload == "not-json"
+        assert response.payload_format == "text"
     finally:
         driver.close()
 
@@ -165,7 +173,7 @@ def test_import_apply_error_stats():
         ],
     )
     executor = DummyExecutor(
-        ExecutionResult(ok=False, status_code=400, error_code=SystemErrorCode.DATA_INVALID, error_message="HTTP 400")
+        ExecutionResult(ok=False, answer_code=400, error_code=SystemErrorCode.DATA_INVALID, error_message="HTTP 400")
     )
     adapter = make_employees_spec().get_apply_adapter()
     service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))

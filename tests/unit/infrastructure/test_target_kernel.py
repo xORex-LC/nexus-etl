@@ -78,8 +78,8 @@ class TestRetryDirective:
     def test_transient_gets_retry_backoff(self, kernel: TargetKernel) -> None:
         assert kernel.retry_directive("TRANSIENT") == "RETRY_BACKOFF"
 
-    def test_throttle_gets_retry_backoff(self, kernel: TargetKernel) -> None:
-        assert kernel.retry_directive("THROTTLE") == "RETRY_BACKOFF"
+    def test_throttle_gets_retry_after(self, kernel: TargetKernel) -> None:
+        assert kernel.retry_directive("THROTTLE") == "RETRY_AFTER"
 
     def test_auth_gets_no_retry(self, kernel: TargetKernel) -> None:
         assert kernel.retry_directive("AUTH") == "NO_RETRY"
@@ -236,6 +236,10 @@ def test_resolve_operation_returns_operation_spec(kernel: TargetKernel) -> None:
     assert operation.alias == "users.upsert"
     assert operation.kind == "http"
     assert operation.data["method"] == "PUT"
+
+
+def test_health_operation_alias_is_resolved_from_spec(kernel: TargetKernel) -> None:
+    assert kernel.health_operation_alias() == "health.check"
 
 
 def test_resolve_operation_unknown_alias_raises(kernel: TargetKernel) -> None:

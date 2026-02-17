@@ -86,11 +86,11 @@ def _make_item(row_id: str = "line:1", line_no: int = 1, op: str = "create", tar
 
 
 def _ok_executor() -> DummyExecutor:
-    return DummyExecutor(ExecutionResult(ok=True, status_code=200, response_json={"_id": "id-1"}))
+    return DummyExecutor(ExecutionResult(ok=True, answer_code=200, response_payload={"_id": "id-1"}))
 
 
 def _fail_executor(code: SystemErrorCode = SystemErrorCode.DATA_INVALID) -> DummyExecutor:
-    return DummyExecutor(ExecutionResult(ok=False, status_code=400, error_code=code, error_message="bad request"))
+    return DummyExecutor(ExecutionResult(ok=False, answer_code=400, error_code=code, error_message="bad request"))
 
 
 def _make_service(executor: DummyExecutor) -> ImportApplyService:

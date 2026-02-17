@@ -17,7 +17,7 @@ class DummyExecutor(RequestExecutorProtocol):
     def execute(self, spec: RequestSpec) -> ExecutionResult:
         self.calls += 1
         self.last_spec = spec
-        return ExecutionResult(ok=True, status_code=200, response_json={"ok": True})
+        return ExecutionResult(ok=True, answer_code=200, response_payload={"ok": True})
 
 
 def make_plan(op: str, desired_state: dict, secret_fields: list[str] | None = None) -> Plan:
