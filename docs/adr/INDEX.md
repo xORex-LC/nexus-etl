@@ -64,6 +64,10 @@ docs/adr/
 | [DSL-DEC-001](./dsl/DSL-DEC-001-strict-compile-validation-and-diagnostics-hardening.md) | Decision | Усиление compile/load контракта и диагностик DSL Core | Принято / реализовано | 2026-02-12 |
 | [DSL-PROBLEM-002](./dsl/DSL-PROBLEM-002-dsl-core-coupling-and-contract-drift-under-scale.md) | Problem | Архитектурная связность DSL Core и дрейф контрактов при росте | Решена в DSL-DEC-002 | 2026-02-13 |
 | [DSL-DEC-002](./dsl/DSL-DEC-002-modular-dsl-core-and-contract-stabilization.md) | Decision | Модульная декомпозиция DSL Core и стабилизация compile/runtime контрактов | Принято / реализовано | 2026-02-13 |
+| [DSL-PROBLEM-003](./dsl/DSL-PROBLEM-003-dsl-core-mixed-responsibilities.md) | Problem | DSL Core смешивает generic инфраструктуру с layer-специфичным кодом | Решена в DSL-DEC-003 | 2026-02-17 |
+| [DSL-PROBLEM-004](./dsl/DSL-PROBLEM-004-inconsistent-transform-compile-architecture.md) | Problem | Неконсистентная compile-архитектура transform стейджей | Решена в DSL-DEC-004 | 2026-02-17 |
+| [DSL-DEC-003](./dsl/DSL-DEC-003-per-layer-dsl-modules.md) | Decision | Per-layer DSL модули и чистый DSL Core | Принято | 2026-02-17 |
+| [DSL-DEC-004](./dsl/DSL-DEC-004-standardized-compile-contract.md) | Decision | Стандартизированный compile-контракт transform стейджей | Принято | 2026-02-17 |
 
 ### Target
 
