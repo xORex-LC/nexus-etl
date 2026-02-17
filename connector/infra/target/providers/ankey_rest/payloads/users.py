@@ -6,6 +6,7 @@ from typing import Any
 
 
 def _to_int_or_none(value: Any) -> int | None:
+    """Преобразовать значение в int или ``None`` для nullable numeric полей."""
     if value is None or value == "":
         return None
     if isinstance(value, bool):
@@ -16,6 +17,7 @@ def _to_int_or_none(value: Any) -> int | None:
 
 
 def _to_bool(value: Any) -> bool:
+    """Преобразовать значение в bool по правилам Ankey payload-контракта."""
     if isinstance(value, bool):
         return value
     if isinstance(value, int):

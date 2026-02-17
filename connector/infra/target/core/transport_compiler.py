@@ -15,7 +15,12 @@ TCompiledRequest = TypeVar("TCompiledRequest")
 
 
 class CompiledOperation(Protocol[TCompiledRequest]):
-    """Скомпилированная операция конкретного транспорта."""
+    """Скомпилированная операция конкретного транспорта.
+
+    Контракт:
+        - принимает runtime-параметры операции;
+        - возвращает transport-specific запрос, opaque для target-core.
+    """
 
     def build(
         self,
@@ -31,18 +36,24 @@ OperationCompiler = Callable[[OperationSpec], CompiledOperation[Any]]
 
 
 class TransportCompilerRegistry:
-    """Реестр компиляторов по `operation.kind`."""
+    """Реестр компиляторов по ``operation.kind``."""
 
     def __init__(self) -> None:
         self._compilers: dict[str, OperationCompiler] = {}
 
     def register(self, kind: str, compiler: OperationCompiler) -> None:
+        """Зарегистрировать compiler для transport kind."""
         normalized = kind.strip().lower()
         if normalized == "":
             raise ValueError("kind транспорта не должен быть пустым")
         self._compilers[normalized] = compiler
 
     def compile(self, operation: OperationSpec) -> CompiledOperation[Any]:
+        """Скомпилировать operation в transport-specific объект.
+
+        Raises:
+            ValueError: если для ``operation.kind`` не зарегистрирован compiler.
+        """
         compiler = self._compilers.get(operation.kind)
         if compiler is None:
             raise ValueError(

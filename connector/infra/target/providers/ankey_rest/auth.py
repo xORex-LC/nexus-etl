@@ -13,6 +13,7 @@ class AnkeyAuth(httpx.Auth):
         self._password = password
 
     def auth_flow(self, request: httpx.Request):  # type: ignore[override]
+        """Добавить Ankey-заголовки аутентификации и вернуть модифицированный запрос."""
         request.headers["X-Ankey-Username"] = self._username
         request.headers["X-Ankey-Password"] = self._password
         request.headers["X-Ankey-NoSession"] = "true"

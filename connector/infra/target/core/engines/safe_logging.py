@@ -30,14 +30,17 @@ class TargetSafeLogger:
         self._logger = structlog.get_logger(logger_name) if structlog is not None else None
 
     def redact_headers(self, headers: dict[str, str] | None) -> dict[str, str] | None:
+        """Замаскировать чувствительные заголовки."""
         if headers is None:
             return None
         return self._kernel.redact_headers(headers)
 
     def redact_payload(self, payload: Any) -> Any:
+        """Замаскировать чувствительные поля payload."""
         return self._kernel.redact_payload(payload)
 
     def safe_body(self, body: Any) -> Any:
+        """Подготовить безопасное представление body для логов/диагностик."""
         return self._kernel.safe_body(body)
 
     def build_error_details(
@@ -46,6 +49,7 @@ class TargetSafeLogger:
         payload: Any,
         content_preview: str | None,
     ) -> dict[str, Any] | None:
+        """Собрать безопасные детали ошибки для результирующих диагностик."""
         details: dict[str, Any] | None = None
         safe_preview = truncateText(content_preview) if content_preview else None
         if safe_preview:
@@ -66,6 +70,7 @@ class TargetSafeLogger:
         delay_s: float,
         mutation: str | None = None,
     ) -> None:
+        """Записать debug-лог о запланированном retry (если логгер доступен)."""
         if self._logger is None:
             return
         self._logger.debug(

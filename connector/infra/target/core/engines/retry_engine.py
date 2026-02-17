@@ -18,6 +18,8 @@ from connector.infra.target.core.spec_models import RetryConfig
 
 @dataclass(frozen=True, slots=True)
 class _RetryAttemptState:
+    """Минимальный адаптер состояния попытки для стратегий tenacity."""
+
     attempt_number: int
 
 
@@ -55,9 +57,11 @@ class TargetRetryEngine:
 
     @property
     def max_retries(self) -> int:
+        """Вернуть максимально допустимое число повторов."""
         return self._config.max_attempts
 
     def can_retry(self, retries_used: int) -> bool:
+        """Проверить, не исчерпан ли retry-бюджет."""
         return retries_used < self._config.max_attempts
 
     def sleep_before_retry(self, retries_used: int) -> float:

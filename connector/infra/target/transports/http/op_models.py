@@ -26,4 +26,5 @@ class HttpOperationDataModel(BaseModel):
             raise ValueError("path_template must start with '/'")
         return self
 
+
 __all__ = ["HttpOperationDataModel"]

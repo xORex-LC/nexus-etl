@@ -13,6 +13,8 @@ from connector.infra.target.core.models import TargetFaultKind
 
 @dataclass(frozen=True, slots=True)
 class NormalizedFault:
+    """Нормализованная классификация ошибки для target-потока."""
+
     fault_kind: TargetFaultKind
     error_code: SystemErrorCode
 
@@ -24,6 +26,7 @@ class TargetErrorNormalizer:
         self._kernel = kernel
 
     def from_status(self, status_code: int | None) -> NormalizedFault:
+        """Нормализовать ошибку только по статус-коду."""
         fault = self._kernel.classify_fault(status_code=status_code)
         return NormalizedFault(
             fault_kind=fault,
@@ -31,6 +34,7 @@ class TargetErrorNormalizer:
         )
 
     def from_error_code(self, error_code: str | None) -> NormalizedFault:
+        """Нормализовать ошибку только по driver error_code."""
         fault = self._kernel.classify_fault(error_code=error_code)
         return NormalizedFault(
             fault_kind=fault,
@@ -43,6 +47,7 @@ class TargetErrorNormalizer:
         status_code: int | None = None,
         error_code: str | None = None,
     ) -> NormalizedFault:
+        """Нормализовать ошибку по комбинации status/error_code."""
         fault = self._kernel.classify_fault(
             status_code=status_code,
             error_code=error_code,

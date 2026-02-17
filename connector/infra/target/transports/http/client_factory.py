@@ -13,7 +13,7 @@ HttpEventHooks = dict[str, list[Callable[..., Any]]]
 
 @dataclass(frozen=True, slots=True)
 class HttpClientSettings:
-    """Параметры сборки `httpx.Client`."""
+    """Параметры сборки ``httpx.Client`` для target HTTP-транспорта."""
 
     base_url: str
     timeout_seconds: float = 20.0
@@ -34,7 +34,7 @@ class HttpClientSettings:
 
 
 def build_http_client(settings: HttpClientSettings) -> httpx.Client:
-    """Собрать настроенный `httpx.Client` для транспорта с одной попыткой I/O."""
+    """Собрать настроенный ``httpx.Client`` для транспорта с одной попыткой I/O."""
     verify: bool | str = True
     if settings.tls_skip_verify:
         verify = False

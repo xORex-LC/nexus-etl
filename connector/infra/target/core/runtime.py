@@ -74,16 +74,20 @@ class DefaultTargetRuntime:
 
     @property
     def executor(self) -> RequestExecutorProtocol:
+        """Вернуть executor-интерфейс для execute-пайплайнов."""
         return self._gateway  # type: ignore[return-value]
 
     @property
     def reader(self) -> TargetPagedReaderProtocol | None:
+        """Вернуть reader-интерфейс или ``None``, если чтение отключено."""
         return self._gateway if self._has_reader else None  # type: ignore[return-value]
 
     def check(self) -> TargetCheckResult:
+        """Проверить доступность target через health-check gateway."""
         return self._gateway.health_check()
 
     def meta(self) -> TargetMeta:
+        """Вернуть метаданные подключённого target."""
         return TargetMeta(
             target_type=self._config.target_type,
             transport=self._config.transport,
@@ -91,6 +95,7 @@ class DefaultTargetRuntime:
         )
 
     def stats(self) -> TargetStats:
+        """Вернуть агрегированные счётчики запросов/retry/failures."""
         req, ret, fail = self._gateway.get_stats()
         return TargetStats(
             requests_total=req,
@@ -99,7 +104,9 @@ class DefaultTargetRuntime:
         )
 
     def reset(self) -> None:
+        """Сбросить runtime-счётчики gateway."""
         self._gateway.reset_stats()
 
     def close(self) -> None:
+        """Освободить ресурсы транспорта."""
         self._gateway.close()

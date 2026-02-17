@@ -17,19 +17,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterator, Protocol, TypeVar
 
-from connector.domain.ports.target.execution import (
-    ResponsePayloadFormat,
-    infer_response_payload_format,
-)
+from connector.domain.ports.target.execution import ResponsePayloadFormat
 
-TCompiledRequest = TypeVar("TCompiledRequest", contravariant=True)
+
+def infer_response_payload_format(payload: Any) -> ResponsePayloadFormat:
+    """Определить нейтральный формат полезной нагрузки по типу объекта."""
+    if payload is None:
+        return "none"
+    if isinstance(payload, (dict, list)):
+        return "json"
+    if isinstance(payload, str):
+        return "text"
+    if isinstance(payload, (bytes, bytearray, memoryview)):
+        return "bytes"
+    return "object"
+
+
+TCompiledRequest = TypeVar("TCompiledRequest")
 
 
 @dataclass(frozen=True, slots=True)
 class DriverResponse:
     """Результат одной I/O попытки."""
 
-    ok: bool              # драйвер определяет успех по своей транспортной логике
+    # Драйвер определяет успех по своей транспортной логике.
+    ok: bool
     answer_code: int | str | None = None
     payload: Any = None
     content_preview: str | None = None
@@ -47,7 +59,13 @@ class DriverResponse:
 
 
 class DriverError(Exception):
-    """Транспортная/протокольная ошибка одной попытки I/O."""
+    """Транспортная/протокольная ошибка одной попытки I/O.
+
+    Контракт:
+        - ``code`` описывает техническую категорию сбоя;
+        - ``answer_code`` содержит код ответа транспорта (если он был получен);
+        - ``details`` предназначен для безопасной диагностики после redaction.
+    """
 
     def __init__(
         self,
