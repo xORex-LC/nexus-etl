@@ -3,6 +3,13 @@
     DSL loader public API.
 """
 
+from connector.domain.dsl.loader._common import (
+    _load_registry_or_raise as load_registry,
+    _load_spec_from_path as load_spec_from_path,
+    _read_yaml as read_yaml,
+    _repo_root as find_repo_root,
+    _validate_spec_or_raise as validate_spec,
+)
 from connector.domain.dsl.loader.cache import (
     load_cache_build_options_for_runtime,
     load_cache_dataset_spec,
@@ -29,6 +36,12 @@ from connector.domain.dsl.loader.transform import (
 )
 
 __all__ = [
+    # Generic loader utilities
+    "read_yaml",
+    "find_repo_root",
+    "load_registry",
+    "validate_spec",
+    "load_spec_from_path",
     # Transform loaders
     "load_mapping_spec",
     "load_mapping_spec_for_dataset",

@@ -13,13 +13,13 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.core.spec_models import RedactionSpec
 from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.domain.target_dsl import load_target_spec
 
 
 @pytest.fixture()
 def kernel() -> TargetKernel:
     return TargetKernel(
-        build_ankey_spec(),
+        load_target_spec("ankey"),
         compiler_registry=build_transport_compiler_registry(),
     )
 
@@ -218,7 +218,7 @@ class TestSafeBody:
 
 
 def test_spec_property_returns_original(kernel: TargetKernel) -> None:
-    spec = build_ankey_spec()
+    spec = load_target_spec("ankey")
     k = TargetKernel(
         spec,
         compiler_registry=build_transport_compiler_registry(),

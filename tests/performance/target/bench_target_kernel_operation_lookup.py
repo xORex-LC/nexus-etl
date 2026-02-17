@@ -11,7 +11,7 @@ import pyperf
 
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.domain.target_dsl import load_target_spec
 
 N = 200_000
 STATUSES = (200, 401, 403, 404, 409, 429, 500, 503, 504, 418)
@@ -20,7 +20,7 @@ ERROR_CODES = (None, "NETWORK_ERROR")
 
 def bench_kernel_lookup(loops: int) -> float:
     kernel = TargetKernel(
-        build_ankey_spec(),
+        load_target_spec("ankey"),
         compiler_registry=build_transport_compiler_registry(),
     )
     timer = pyperf.perf_counter

@@ -1,3 +1,6 @@
+targets:
+  ankey: targets/ankey.target.yaml
+
 datasets:
   employees:
     source: employees.source.yaml

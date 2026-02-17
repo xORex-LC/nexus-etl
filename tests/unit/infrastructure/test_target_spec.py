@@ -9,7 +9,7 @@ from connector.infra.target.core.spec_models import (
     RetryRule,
     TargetSpec,
 )
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.domain.target_dsl import load_target_spec
 
 
 def test_operation_alias_is_trimmed() -> None:
@@ -56,7 +56,7 @@ def test_retry_config_validates_backoff_bounds() -> None:
 
 
 def test_target_spec_rejects_operation_alias_key_mismatch() -> None:
-    spec = build_ankey_spec()
+    spec = load_target_spec("ankey")
     payload = spec.model_dump()
     payload["operations"]["users.upsert"]["alias"] = "users.create"
 
@@ -65,7 +65,7 @@ def test_target_spec_rejects_operation_alias_key_mismatch() -> None:
 
 
 def test_target_spec_rejects_missing_health_operation_alias() -> None:
-    spec = build_ankey_spec()
+    spec = load_target_spec("ankey")
     payload = spec.model_dump()
     payload["health"]["operation_alias"] = "health.unknown"
 

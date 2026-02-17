@@ -16,7 +16,7 @@ from connector.infra.target.driver import DriverResponse
 from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel
 from connector.infra.target.providers.ankey_rest.provider import build_transport_compiler_registry
-from connector.infra.target.providers.ankey_rest.spec import build_ankey_spec
+from connector.domain.target_dsl import load_target_spec
 
 N = 1_000
 SPEC = RequestSpec.operation(
@@ -27,7 +27,7 @@ SPEC = RequestSpec.operation(
 
 
 def _spec_no_sleep():
-    spec = build_ankey_spec()
+    spec = load_target_spec("ankey")
     return spec.model_copy(
         update={
             "retry_config": spec.retry_config.model_copy(
