@@ -65,14 +65,18 @@ docs/adr/
 | [DSL-PROBLEM-002](./dsl/DSL-PROBLEM-002-dsl-core-coupling-and-contract-drift-under-scale.md) | Problem | Архитектурная связность DSL Core и дрейф контрактов при росте | Решена в DSL-DEC-002 | 2026-02-13 |
 | [DSL-DEC-002](./dsl/DSL-DEC-002-modular-dsl-core-and-contract-stabilization.md) | Decision | Модульная декомпозиция DSL Core и стабилизация compile/runtime контрактов | Принято / реализовано | 2026-02-13 |
 
-### Load
+### Target
 
 | ID | Тип | Название | Статус | Дата |
 |----|-----|----------|--------|------|
-| [TARGET-PROBLEM-001](./target/TARGET-DEC-001-target-runtime-target-spec-slice.md) | Problem | Нечистая граница load-слоя (apply/refresh/check) и зависимость CLI wiring от конкретного target | Открыта (отложена) | 2026-02-13 |
-| [TARGET-DEC-001](./target/TARGET-DEC-001-target-runtime-target-spec-slice.md) | Decision | <...> | Рассматривается / Планируется | 2026-02-13 |
-| [TARGET-PROBLEM-002](./target/TARGET-PROBLEM-002-usecase-output-infra-leaks.md) | Problem | Use-case Apply загрязнён output/infra деталями и размывает границы ответственности | Открыта (решается) | 2026-02-13 |
-| [TARGET-DEC-002](./target/TARGET-DEC-002-usecase-apply-result-presenter.md) | Decision | <...> | Рассматривается / Планируется | 2026-02-13 |
+| [TARGET-PROBLEM-001](./target/TARGET-PROBLEM-001-load-layer-target-wiring.md) | Problem | Нечистая граница load-слоя (apply/refresh/check) и зависимость CLI wiring от конкретного target | Закрыта (решена в TARGET-DEC-001, уточнена TARGET-DEC-003) | 2026-02-13 |
+| [TARGET-DEC-001](./target/TARGET-DEC-001-target-runtime-target-spec-slice.md) | Decision | TargetRuntime + target-spec slice для изоляции load-слоя от target-инфры | Принято / реализовано (частично superseded TARGET-DEC-003) | 2026-02-13 |
+| [TARGET-PROBLEM-002](./target/TARGET-PROBLEM-002-usecase-output-infra-leaks.md) | Problem | Use-case Apply загрязнён output/infra деталями и размывает границы ответственности | Закрыта (решена в TARGET-DEC-002) | 2026-02-13 |
+| [TARGET-DEC-002](./target/TARGET-DEC-002-usecase-apply-result-presenter.md) | Decision | Apply use-case возвращает ApplyResult, а отчёт формируется презентером | Принято / реализовано | 2026-02-13 |
+| [TARGET-PROBLEM-003](./target/TARGET-PROBLEM-003-target-core.md) | Problem | “Коммодити”-механики Target слоя | Закрыта (решена в TARGET-DEC-003) | 2026-02-16 |
+| [TARGET-DEC-003](./target/TARGET-DEC-003-target-core.md) | Decision | TargetCore как plugin-core (core механики + provider-правила) | Принято / реализовано (каноничное для target-core) | 2026-02-16 |
+| [TARGET-PROBLEM-004](./target/TARGET-PROBLEM-004-hardcoded-provider-spec.md) | Problem | Поведенческая spec провайдера захардкожена в Python | Решена в TARGET-DEC-004 | 2026-02-17 |
+| [TARGET-DEC-004](./target/TARGET-DEC-004-target-dsl-declarative-provider.md) | Decision | target-dsl — YAML-описание поведенческой spec провайдера | Принято / реализовано | 2026-02-17 |
 
 _(Список поддерживается как актуальный реестр ADR по слоям.)_
 

@@ -1,6 +1,6 @@
 # TARGET-PROBLEM-002: Use-case Apply загрязнён output/infra деталями и размывает границы ответственности
 
-> **Статус**: Открыта
+> **Статус**: Решена в [TARGET-DEC-002](./TARGET-DEC-002-usecase-apply-result-presenter.md)
 > **Дата создания**: 2026-02-13
 > **Затронутые компоненты**: `connector/usecases/import_apply_service.py`, `connector/domain/report/report_collector.py`, `connector/infra/logging/setup.py`, `connector/delivery/commands/import_apply.py`
 
@@ -134,3 +134,5 @@ rg -n "report\.|set_meta|set_context" connector/delivery/commands/import_apply.p
 |------|---------|
 | 2026-02-13 | Зафиксирована проблема: use-case apply смешивает orchestration, output и infra детали |
 | 2026-02-13 | Принято выделить отдельную PROBLEM для последующего DECISION (граница use-case ↔ output/infra) |
+| 2026-02-13 | Принято решение [TARGET-DEC-002](./TARGET-DEC-002-usecase-apply-result-presenter.md) |
+| 2026-02-14 | Реализовано разделение `ApplyResult` (use-case) и `ApplyReportPresenter` (delivery) |
