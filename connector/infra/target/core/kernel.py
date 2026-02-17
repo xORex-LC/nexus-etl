@@ -11,12 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from connector.common.sanitize import maskSecretsInObject
+from connector.common.sanitize import maskSecretsInObject, truncateText
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.target.core.models import TargetFaultKind
 from connector.infra.target.core.spec_models import (
     OperationSpec,
     RedactionSpec,
+    TargetCapability,
     RetryDirective,
     RetryRule,
     TargetSpec,
@@ -87,8 +88,9 @@ class TargetKernel:
             if r.match_error_code is not None
         }
         self._retry_rules: tuple[RetryRule, ...] = spec.retry_rules
+        self._capabilities: frozenset[TargetCapability] = spec.capabilities
         self._operations: dict[str, OperationSpec] = {}
-        self._compiled_operations: dict[str, CompiledOperation] = {}
+        self._compiled_operations: dict[str, CompiledOperation[Any]] = {}
         for key, operation in spec.operations.items():
             if key != operation.alias:
                 raise ValueError(
@@ -160,7 +162,7 @@ class TargetKernel:
             raise ValueError(f"unknown operation alias: {alias}")
         return operation
 
-    def get_compiled_operation(self, alias: str) -> tuple[OperationSpec, CompiledOperation]:
+    def get_compiled_operation(self, alias: str) -> tuple[OperationSpec, CompiledOperation[Any]]:
         """Вернуть пару (OperationSpec, CompiledOperation) по alias.
 
         Контракт:
@@ -172,6 +174,21 @@ class TargetKernel:
         if compiled is None:
             raise ValueError(f"operation {alias!r} is not compiled")
         return operation, compiled
+
+    def has_capability(self, capability: TargetCapability) -> bool:
+        """Проверить, поддерживает ли target заданную capability."""
+        return capability in self._capabilities
+
+    def require_capability(self, capability: TargetCapability) -> None:
+        """Проверить обязательную capability и поднять спецификационную ошибку."""
+        if not self.has_capability(capability):
+            raise ValueError(
+                f"target capability {capability!r} is not supported by target_type={self._spec.target_type!r}",
+            )
+
+    def health_operation_alias(self) -> str:
+        """Вернуть operation alias для health-check из спецификации."""
+        return self._spec.health.operation_alias
 
     def system_error_code(self, fault_kind: TargetFaultKind) -> SystemErrorCode:
         """Перевести FaultKind в SystemErrorCode для диагностик."""
@@ -193,6 +210,8 @@ class TargetKernel:
         mode = (redaction or self._spec.redaction).body_mode
         if mode == "none":
             return None
+        if isinstance(body, str):
+            return truncateText(body)
         if mode == "keys_only" and isinstance(body, dict):
             return list(body.keys())
         return maskSecretsInObject(body)

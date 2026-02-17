@@ -7,7 +7,9 @@ from typing import Literal
 
 from connector.config.app_settings import ApiSettings
 from connector.infra.target.core.runtime import TargetRuntime
-from connector.infra.target.providers import AnkeyTargetProvider
+from connector.infra.target.providers.registry import (
+    build_default_target_provider_registry,
+)
 
 TargetRuntimeMode = Literal["core"]
 EffectiveTargetRuntimeMode = Literal["core"]
@@ -27,12 +29,14 @@ def build_target_runtime(
     transport: object | None = None,
     include_reader: bool = True,
     runtime_mode: str | None = None,
+    target_type: str | None = None,
 ) -> TargetRuntime:
     return build_target_runtime_with_info(
         api_settings,
         transport=transport,
         include_reader=include_reader,
         runtime_mode=runtime_mode,
+        target_type=target_type,
     ).runtime
 
 
@@ -42,9 +46,11 @@ def build_target_runtime_with_info(
     transport: object | None = None,
     include_reader: bool = True,
     runtime_mode: str | None = None,
+    target_type: str | None = None,
 ) -> TargetRuntimeBuildResult:
     requested_mode = _resolve_runtime_mode(runtime_mode=runtime_mode)
-    provider = AnkeyTargetProvider(api_settings)
+    registry = build_default_target_provider_registry(api_settings)
+    provider = registry.get(target_type) if target_type else registry.get_default()
     runtime = provider.build_core_runtime(
         transport=transport,
         include_reader=include_reader,

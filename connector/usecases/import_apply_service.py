@@ -89,7 +89,7 @@ class ImportApplyService:
             try:
                 if dry_run:
                     exec_result = ExecutionResult(
-                        ok=True, status_code=200, response_json={"dry_run": True},
+                        ok=True, answer_code=200, response_payload={"dry_run": True},
                         error_code=None, error_message=None,
                     )
                 else:
@@ -158,7 +158,7 @@ class ImportApplyService:
                     self._update_identity_index(
                         dataset=dataset_name,
                         desired_state=item.desired_state,
-                        response_json=exec_result.response_json,
+                        response_payload=exec_result.response_payload,
                         source_ref=item.source_ref,
                     )
                     continue
@@ -270,7 +270,7 @@ class ImportApplyService:
         *,
         dataset: str,
         desired_state: dict[str, Any],
-        response_json: Any | None,
+        response_payload: Any | None,
         source_ref: dict[str, Any] | None,
     ) -> None:
         if self.apply_runtime is None:
@@ -280,8 +280,8 @@ class ImportApplyService:
             return
         id_field = self.identity_id_fields.get(dataset, "_id")
         resolved_id = None
-        if isinstance(response_json, dict):
-            resolved_id = response_json.get(id_field)
+        if isinstance(response_payload, dict):
+            resolved_id = response_payload.get(id_field)
         if resolved_id is None:
             resolved_id = desired_state.get(id_field)
         if resolved_id is None:

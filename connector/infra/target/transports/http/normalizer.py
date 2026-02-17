@@ -41,6 +41,14 @@ def _parse_retry_after(value: str | None) -> float | None:
     return delta if delta > 0 else 0.0
 
 
+def _header_value_case_insensitive(headers: dict[str, str], name: str) -> str | None:
+    lookup = name.strip().lower()
+    for key, value in headers.items():
+        if key.lower() == lookup:
+            return value
+    return None
+
+
 def normalize_http_outcome(outcome: HttpOutcome) -> HttpNormalizedOutcome:
     """Преобразовать транспортный результат в стабильный нормализованный DTO."""
     if outcome.error is not None:
@@ -62,7 +70,9 @@ def normalize_http_outcome(outcome: HttpOutcome) -> HttpNormalizedOutcome:
             retry_after_s=None,
         )
 
-    retry_after_s = _parse_retry_after(outcome.response.headers.get("Retry-After"))
+    headers = outcome.response.headers
+    retry_after_raw = _header_value_case_insensitive(headers, "Retry-After")
+    retry_after_s = _parse_retry_after(retry_after_raw)
     return HttpNormalizedOutcome(
         status_code=outcome.response.status_code,
         body=outcome.response.body,

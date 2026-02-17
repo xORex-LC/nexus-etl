@@ -38,23 +38,22 @@ class TargetSafeLogger:
         return self._kernel.redact_payload(payload)
 
     def safe_body(self, body: Any) -> Any:
-        if isinstance(body, str):
-            return truncateText(body)
         return self._kernel.safe_body(body)
 
     def build_error_details(
         self,
         *,
-        body: Any,
-        body_snippet: str | None,
+        payload: Any,
+        content_preview: str | None,
     ) -> dict[str, Any] | None:
         details: dict[str, Any] | None = None
-        safe_snippet = truncateText(body_snippet) if body_snippet else None
-        if safe_snippet:
-            details = {"body_snippet": safe_snippet}
-        if isinstance(body, (dict, list)):
+        safe_preview = truncateText(content_preview) if content_preview else None
+        if safe_preview:
+            details = {"content_preview": safe_preview}
+        if isinstance(payload, (dict, list)):
             details = details or {}
-            details["response_json"] = self.safe_body(body)
+            safe_payload = self.safe_body(payload)
+            details["response_payload"] = safe_payload
         return details
 
     def debug_retry(
