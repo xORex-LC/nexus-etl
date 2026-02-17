@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Delivery-команда применения готового import plan.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -14,6 +19,7 @@ from connector.delivery.cli.bootstrap import (
     build_diagnostics_catalog,
     build_secret_provider,
 )
+from connector.delivery.commands.import_apply_dry_run_executor import DryRunExecutor
 from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
 from connector.delivery.telemetry.apply_logging_sink import LoggingApplyTelemetrySink
 from connector.domain.diagnostics.command_result import CommandResult
@@ -22,6 +28,7 @@ from connector.datasets.registry import build_identity_index_plan, get_spec
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.infra.logging.setup import logEvent
 from connector.usecases.import_apply_service import ImportApplyService
+from connector.usecases.common.identity_sync import IdentityIndexSyncer
 
 
 @dataclass(frozen=True)
@@ -43,6 +50,7 @@ def _runtime_context(build_result) -> dict[str, str]:
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+    """Собрать runtime/deps и выполнить apply use-case для указанного плана."""
     app_settings = ctx.app_settings
     if app_settings is None:
         raise ValueError("App settings are not initialized")
@@ -124,7 +132,18 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         report.set_context("target_runtime", _runtime_context(build_result))
 
         secrets_provider = build_secret_provider(opts.secrets_from, opts.vault_file)
-        executor = runtime.executor
+        dataset_spec = get_spec(dataset_name, secrets=secrets_provider)
+        apply_adapter = dataset_spec.get_apply_adapter()
+        executor = DryRunExecutor() if dry_run else runtime.executor
+        identity_syncer = (
+            IdentityIndexSyncer(
+                runtime=apply_runtime,
+                identity_keys=identity_keys,
+                identity_id_fields=identity_id_fields,
+            )
+            if apply_runtime is not None
+            else None
+        )
 
         telemetry_sink = LoggingApplyTelemetrySink(
             logger=ctx.logger,
@@ -132,20 +151,13 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             dataset=dataset_name,
         )
 
-        service = ImportApplyService(
-            executor,
-            secrets=secrets_provider,
-            spec_resolver=get_spec,
-            apply_runtime=apply_runtime,
-            identity_keys=identity_keys,
-            identity_id_fields=identity_id_fields,
-        )
+        service = ImportApplyService(executor, identity_syncer=identity_syncer)
         apply_result = service.apply_plan(
             plan=plan,
             catalog=catalog,
+            apply_adapter=apply_adapter,
             stop_on_first_error=stop_on_first_error,
             max_actions=max_actions,
-            dry_run=dry_run,
             max_item_outcomes=report_items_limit,
             telemetry=telemetry_sink,
         )

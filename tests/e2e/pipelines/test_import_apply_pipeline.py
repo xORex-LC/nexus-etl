@@ -35,13 +35,6 @@ class DummyExecutor:
         return result
 
 
-class DummySpec:
-    def __init__(self, adapter):
-        self.adapter = adapter
-
-    def get_apply_adapter(self):
-        return self.adapter
-
 def _make_plan(items: list[PlanItem]) -> Plan:
     return Plan(
         meta=PlanMeta(
@@ -218,13 +211,13 @@ def test_import_apply_stop_on_first_error():
         ]
     )
     adapter = make_employees_spec().get_apply_adapter()
-    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
+    service = ImportApplyService(executor)
     apply_result = service.apply_plan(
         plan=plan,
         catalog=CATALOG,
+        apply_adapter=adapter,
         stop_on_first_error=True,
         max_actions=None,
-        dry_run=False,
         max_item_outcomes=10,
     )
     assert apply_result.primary_code != SystemErrorCode.OK
@@ -291,13 +284,13 @@ def test_import_apply_max_actions_limits_requests():
         ]
     )
     adapter = make_employees_spec().get_apply_adapter()
-    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
+    service = ImportApplyService(executor)
     service.apply_plan(
         plan=plan,
         catalog=CATALOG,
+        apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=1,
-        dry_run=False,
         max_item_outcomes=10,
     )
     assert len(executor.calls) == 1
@@ -337,13 +330,13 @@ def test_import_apply_does_not_retry_resource_exists_in_usecase():
         ]
     )
     adapter = make_employees_spec().get_apply_adapter()
-    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
+    service = ImportApplyService(executor)
     apply_result = service.apply_plan(
         plan=plan,
         catalog=CATALOG,
+        apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=None,
-        dry_run=False,
         max_item_outcomes=10,
     )
     assert apply_result.primary_code == SystemErrorCode.CONFLICT
@@ -528,13 +521,13 @@ def test_apply_report_items_include_dataset():
         ]
     )
     adapter = make_employees_spec().get_apply_adapter()
-    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
+    service = ImportApplyService(executor)
     apply_result = service.apply_plan(
         plan=plan,
         catalog=CATALOG,
+        apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=None,
-        dry_run=False,
         max_item_outcomes=10,
     )
     assert apply_result.primary_code != SystemErrorCode.OK

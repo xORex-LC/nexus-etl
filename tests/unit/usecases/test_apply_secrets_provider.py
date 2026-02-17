@@ -5,6 +5,7 @@ from connector.infra.secrets.null_provider import NullSecretProvider
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec, RequestExecutorProtocol
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.datasets.employees.spec import make_employees_spec
 
 CATALOG = build_catalog("employees", strict=True)
 
@@ -56,16 +57,17 @@ def base_desired_state(with_password: bool = False) -> dict:
 
 def test_apply_create_uses_secret_provider_when_missing_password():
     provider = DictSecretProvider({("employees", "password", "row1", 1): "secret123"})
+    adapter = make_employees_spec(secrets=provider).get_apply_adapter()
     executor = DummyExecutor()
-    service = ImportApplyService(executor=executor, secrets=provider)
+    service = ImportApplyService(executor=executor)
     plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
 
     result = service.apply_plan(
         plan=plan,
         catalog=CATALOG,
+        apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=None,
-        dry_run=False,
         max_item_outcomes=10,
     )
 
@@ -78,16 +80,17 @@ def test_apply_create_uses_secret_provider_when_missing_password():
 
 def test_apply_create_fails_when_secret_missing():
     provider = NullSecretProvider()
+    adapter = make_employees_spec(secrets=provider).get_apply_adapter()
     executor = DummyExecutor()
-    service = ImportApplyService(executor=executor, secrets=provider)
+    service = ImportApplyService(executor=executor)
     plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
 
     result = service.apply_plan(
         plan=plan,
         catalog=CATALOG,
+        apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=None,
-        dry_run=False,
         max_item_outcomes=10,
     )
 
@@ -110,16 +113,17 @@ class CountingProvider(NullSecretProvider):
 
 def test_apply_update_does_not_request_secret():
     provider = CountingProvider()
+    adapter = make_employees_spec(secrets=provider).get_apply_adapter()
     executor = DummyExecutor()
-    service = ImportApplyService(executor=executor, secrets=provider)
+    service = ImportApplyService(executor=executor)
     plan = make_plan("update", base_desired_state(with_password=True), secret_fields=[])
 
     result = service.apply_plan(
         plan=plan,
         catalog=CATALOG,
+        apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=None,
-        dry_run=False,
         max_item_outcomes=10,
     )
 

@@ -52,7 +52,7 @@ def test_check_api_smoke_works_with_slice_wiring(tmp_path: Path, monkeypatch) ->
         def meta(self):
             class _Meta:
                 target_type = "ankey"
-                base_url = "https://3.3.3.3:3333"
+                endpoint = "https://3.3.3.3:3333"
                 transport = "http"
 
             return _Meta()

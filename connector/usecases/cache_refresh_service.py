@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Use-case обновления cache-данных из target-источника с пост-обновлением identity.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -12,11 +17,11 @@ from connector.domain.models import DiagnosticStage
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.reporting.diagnostics import split_report_diagnostics
-from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.domain.ports.cache.models import UpsertResult
 from connector.domain.ports.cache.roles import CacheRefreshPort
 from connector.domain.ports.target.read import TargetPagedReaderProtocol
 from connector.infra.logging.setup import logEvent
+from connector.usecases.common.identity_sync import IdentityIndexSyncer
 
 
 class CacheRefreshUseCase:
@@ -34,8 +39,7 @@ class CacheRefreshUseCase:
         target_reader: TargetPagedReaderProtocol,
         cache_refresh: CacheRefreshPort,
         adapters: list[CacheSyncAdapterProtocol],
-        identity_keys: dict[str, set[str]] | None = None,
-        identity_id_fields: dict[str, str] | None = None,
+        identity_syncer: IdentityIndexSyncer | None = None,
         refresh_planner: CacheRefreshPlanner | None = None,
         dependency_graph: CacheDependencyGraph | None = None,
         schema_hashes: dict[str, str] | None = None,
@@ -46,8 +50,7 @@ class CacheRefreshUseCase:
         self.target_reader = target_reader
         self.cache_refresh = cache_refresh
         self.adapters = adapters
-        self.identity_keys = identity_keys or {}
-        self.identity_id_fields = identity_id_fields or {}
+        self.identity_syncer = identity_syncer
         self._adapters_by_dataset = {adapter.dataset: adapter for adapter in adapters}
         if len(self._adapters_by_dataset) != len(adapters):
             raise ValueError("Duplicate cache adapter dataset names are not allowed")
@@ -176,7 +179,13 @@ class CacheRefreshUseCase:
                                     stats["inserted"] += 1
                                 else:
                                     stats["updated"] += 1
-                                self._update_identity_index(adapter.dataset, mapped)
+                                if self.identity_syncer is not None:
+                                    id_field = self.identity_syncer.id_field_for(adapter.dataset)
+                                    self.identity_syncer.sync(
+                                        dataset=adapter.dataset,
+                                        resolved_id=mapped.get(id_field),
+                                        key_values=mapped,
+                                    )
                                 report.add_item(
                                     status="OK",
                                     row_ref=None,
@@ -287,33 +296,6 @@ class CacheRefreshUseCase:
             "by_dataset": stats_by_dataset,
             "total": totals,
         }
-
-    def _update_identity_index(self, dataset: str, mapped: dict[str, Any]) -> None:
-        key_names = self.identity_keys.get(dataset)
-        if not key_names:
-            return
-        id_field = self.identity_id_fields.get(dataset, "_id")
-        resolved_id = mapped.get(id_field)
-        if resolved_id is None:
-            return
-        resolved_id_str = str(resolved_id).strip()
-        if resolved_id_str == "":
-            return
-        for key_name in key_names:
-            value = mapped.get(key_name)
-            if value is None:
-                continue
-            value_str = str(value).strip()
-            if value_str == "":
-                continue
-            identity_key = format_identity_key(key_name, value_str)
-            self.cache_refresh.upsert_identity(dataset, identity_key, resolved_id_str)
-            self._resolve_pending_for_key(dataset, identity_key)
-
-    def _resolve_pending_for_key(self, dataset: str, identity_key: str) -> None:
-        pending = self.cache_refresh.list_pending_for_key(dataset, identity_key)
-        for item in pending:
-            self.cache_refresh.mark_resolved(item.pending_id)
 
 
 def _sum_stats(stats_by_dataset: dict[str, dict[str, int]]) -> dict[str, int]:

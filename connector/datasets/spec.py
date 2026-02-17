@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Контракты dataset-плагина для transform/planning/apply сценариев.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,19 +26,8 @@ from connector.domain.transform.stages.stages import (
     NormalizeStage,
     ResolveStage,
 )
-from connector.domain.ports.target.execution import RequestSpec
+from connector.domain.ports.target.apply import ApplyAdapterProtocol
 from connector.domain.transform.core.source_record import SourceRecord
-
-
-class ApplyAdapter(Protocol):
-    """
-    Назначение:
-        Преобразует плановую операцию в спецификацию запроса на исполнение.
-    Взаимодействия:
-        Используется на слое apply для получения RequestSpec из PlanItem.
-    """
-
-    def to_request(self, item) -> RequestSpec: ...
 
 
 @dataclass(frozen=True)
@@ -113,5 +107,5 @@ class DatasetSpec(Protocol):
         csv_has_header: bool,
     ) -> Iterable[SourceRecord]: ...
     def get_report_adapter(self) -> ReportAdapter: ...
-    def get_apply_adapter(self) -> ApplyAdapter: ...
+    def get_apply_adapter(self) -> ApplyAdapterProtocol: ...
     def get_diagnostic_catalog(self, strict: bool) -> ErrorCatalog: ...

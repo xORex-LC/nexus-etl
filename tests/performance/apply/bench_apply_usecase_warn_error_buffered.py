@@ -30,15 +30,6 @@ class FailExecutor:
         )
 
 
-class StubSpec:
-    def __init__(self):
-        from connector.datasets.employees.spec import make_employees_spec
-        self.adapter = make_employees_spec().get_apply_adapter()
-
-    def get_apply_adapter(self):
-        return self.adapter
-
-
 def _build_plan(n: int) -> Plan:
     items = [
         PlanItem(
@@ -89,9 +80,11 @@ def _build_plan(n: int) -> Plan:
 
 def bench_apply_all_error_bounded(loops: int) -> float:
     plan = _build_plan(N)
-    stub = StubSpec()
+    from connector.datasets.employees.spec import make_employees_spec
+
+    adapter = make_employees_spec().get_apply_adapter()
     executor = FailExecutor()
-    service = ImportApplyService(executor, spec_resolver=lambda *a, **kw: stub)
+    service = ImportApplyService(executor)
 
     total = 0.0
     timer = pyperf.perf_counter
@@ -100,9 +93,9 @@ def bench_apply_all_error_bounded(loops: int) -> float:
         result = service.apply_plan(
             plan=plan,
             catalog=CATALOG,
+            apply_adapter=adapter,
             stop_on_first_error=False,
             max_actions=None,
-            dry_run=False,
             max_item_outcomes=MAX_OUTCOMES,
         )
         total += timer() - t0

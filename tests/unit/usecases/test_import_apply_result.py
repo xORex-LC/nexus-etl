@@ -4,16 +4,14 @@ Unit-тесты контракта ImportApplyService.apply_plan() → ApplyResu
 
 from __future__ import annotations
 
-import pytest
-
+from connector.delivery.commands.import_apply_dry_run_executor import DryRunExecutor
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.models import DiagnosticSeverity
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.domain.planning.record_ref import RecordRef
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
-from connector.usecases.apply.models import ApplyItemOutcome, ApplyResult, ApplySummary
-from connector.usecases.apply.telemetry import ApplyTelemetrySink, NullApplyTelemetrySink
+from connector.usecases.apply.models import ApplyResult, ApplySummary
+from connector.usecases.apply.telemetry import NullApplyTelemetrySink
 from connector.usecases.import_apply_service import ImportApplyService
 
 CATALOG = build_catalog("employees", strict=True)
@@ -27,14 +25,6 @@ class DummyExecutor:
     def execute(self, spec: RequestSpec) -> ExecutionResult:
         self.calls.append(spec)
         return self.result
-
-
-class DummySpec:
-    def __init__(self, adapter):
-        self.adapter = adapter
-
-    def get_apply_adapter(self):
-        return self.adapter
 
 
 def _make_plan(items: list[PlanItem], *, skipped: int = 0) -> Plan:
@@ -93,18 +83,21 @@ def _fail_executor(code: SystemErrorCode = SystemErrorCode.DATA_INVALID) -> Dumm
     return DummyExecutor(ExecutionResult(ok=False, answer_code=400, error_code=code, error_message="bad request"))
 
 
-def _make_service(executor: DummyExecutor) -> ImportApplyService:
+def _make_adapter():
     from connector.datasets.employees.spec import make_employees_spec
-    adapter = make_employees_spec().get_apply_adapter()
-    return ImportApplyService(executor, spec_resolver=lambda *a, **kw: DummySpec(adapter))
+    return make_employees_spec().get_apply_adapter()
+
+
+def _make_service(executor: DummyExecutor) -> ImportApplyService:
+    return ImportApplyService(executor)
 
 
 def _apply(service: ImportApplyService, plan: Plan, **kwargs) -> ApplyResult:
     defaults = dict(
         catalog=CATALOG,
+        apply_adapter=_make_adapter(),
         stop_on_first_error=False,
         max_actions=None,
-        dry_run=False,
         max_item_outcomes=100,
     )
     defaults.update(kwargs)
@@ -188,8 +181,24 @@ class TestApplyResultContract:
 
 
 class TestApplyDryRun:
-    def test_dry_run_returns_ok(self):
-        result = _apply(_make_service(_fail_executor()), _make_plan([_make_item()]), dry_run=True)
+    def test_dry_run_executor_keeps_apply_path_and_calls_adapter(self):
+        class SpyAdapter:
+            def __init__(self):
+                self.calls = 0
+
+            def to_request(self, item: PlanItem) -> RequestSpec:
+                self.calls += 1
+                return RequestSpec.operation(
+                    alias="users.upsert",
+                    payload={"target_id": item.target_id},
+                    params={"target_id": item.target_id},
+                )
+
+        adapter = SpyAdapter()
+        service = ImportApplyService(DryRunExecutor())
+        result = _apply(service, _make_plan([_make_item()]), apply_adapter=adapter)
+
+        assert adapter.calls == 1
         assert result.primary_code == SystemErrorCode.OK
         assert result.summary.created == 1
         assert result.summary.failed == 0

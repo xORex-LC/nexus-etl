@@ -1,62 +1,119 @@
+"""
+Назначение:
+    Оркестратор apply-операций поверх target executor с агрегацией доменного результата.
+"""
+
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Callable
 
-from connector.domain.planning.plan_models import Plan
+from connector.domain.planning.plan_models import Operation, Plan, PlanItem
 from connector.domain.planning.record_ref import RecordRef
-from connector.datasets.registry import get_spec
-from connector.datasets.spec import DatasetSpec
-from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol
-from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
-from connector.domain.transform.matcher.identity_keys import format_identity_key
-from connector.domain.ports.cache.roles import ApplyRuntimePort
-from connector.domain.models import DiagnosticStage
+from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.diagnostics.policies import SystemErrorCode, resolve_primary_code
+from connector.domain.diagnostics.policies import StopPolicy, SystemErrorCode, resolve_primary_code
 from connector.domain.diagnostics.translator import translate_execution_result, system_code_of
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.policies import default_stop_policy
+from connector.domain.ports.target.apply import ApplyAdapterProtocol
+from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol
 from connector.usecases.apply.models import ApplyItemOutcome, ApplyResult, ApplySummary
 from connector.usecases.apply.telemetry import ApplyTelemetrySink, NullApplyTelemetrySink
+from connector.usecases.common.identity_sync import IdentityIndexSyncer
+
+_OUTCOME_STATUS_FAILED = "FAILED"
+
+
+@dataclass
+class _ItemProcessContext:
+    """Контекст обработки одного plan-item: телеметрия, стоп-политика и агрегаторы ошибок."""
+
+    catalog: ErrorCatalog
+    sink: ApplyTelemetrySink
+    stop_policy: StopPolicy
+    error_stats: dict[str, int]
+    system_codes: set[SystemErrorCode]
+    add_outcome: Callable[[ApplyItemOutcome], None]
+
+    def register_error(self, *, ref: RecordRef, action: str, diag: DiagnosticItem) -> SystemErrorCode:
+        self.error_stats[diag.code] = self.error_stats.get(diag.code, 0) + 1
+        sys_code = system_code_of(self.catalog, diag)
+        self.system_codes.add(sys_code)
+        self.sink.on_item_error(record_ref=ref, op=action, diag=diag)
+        return sys_code
+
+    def add_failed_outcome(
+        self,
+        *,
+        item: PlanItem,
+        action: str,
+        diagnostics: tuple[DiagnosticItem, ...],
+    ) -> None:
+        self.add_outcome(
+            ApplyItemOutcome(
+                record_ref=item.record_ref,
+                op=action,
+                status=_OUTCOME_STATUS_FAILED,
+                target_id=item.target_id,
+                diagnostics=diagnostics,
+            )
+        )
+
+    def is_fatal(self, sys_code: SystemErrorCode) -> bool:
+        return self.stop_policy.is_fatal(sys_code)
+
+
+@dataclass(frozen=True, slots=True)
+class _ItemProcessResult:
+    """Приращения итоговых счётчиков после обработки одного элемента плана."""
+
+    created_inc: int = 0
+    updated_inc: int = 0
+    failed_inc: int = 0
+    item_fatal: bool = False
 
 
 class ImportApplyService:
     """
-    Оркестратор выполнения плана импорта.
+    Назначение/ответственность:
+        Выполняет plan-item через adapter+executor, применяет stop-политику и
+        возвращает агрегированный ApplyResult.
     """
 
     def __init__(
         self,
         executor: RequestExecutorProtocol,
-        secrets: SecretProviderProtocol | None = None,
-        spec_resolver: Callable[..., DatasetSpec] = get_spec,
-        apply_runtime: ApplyRuntimePort | None = None,
-        identity_keys: dict[str, set[str]] | None = None,
-        identity_id_fields: dict[str, str] | None = None,
-    ):
+        identity_syncer: IdentityIndexSyncer | None = None,
+    ) -> None:
         self.executor = executor
-        self.secrets = secrets
-        self.spec_resolver = spec_resolver
-        self.apply_runtime = apply_runtime
-        self.identity_keys = identity_keys or {}
-        self.identity_id_fields = identity_id_fields or {}
+        self.identity_syncer = identity_syncer
 
     def apply_plan(
         self,
         plan: Plan,
         catalog: ErrorCatalog,
+        apply_adapter: ApplyAdapterProtocol | None,
         *,
         stop_on_first_error: bool,
         max_actions: int | None,
-        dry_run: bool,
         max_item_outcomes: int,
         telemetry: ApplyTelemetrySink | None = None,
     ) -> ApplyResult:
+        """
+        Выполнить план импорта и вернуть итог apply-цикла.
+
+        Контракт:
+            - `plan.meta.dataset` обязателен;
+            - `apply_adapter` должен быть настроен для преобразования PlanItem -> RequestSpec;
+            - `max_item_outcomes` ограничивает число сохранённых per-item outcome.
+        """
         sink: ApplyTelemetrySink = telemetry or NullApplyTelemetrySink()
         created = updated = failed = 0
-        rows_with_warnings = 0  # TODO: увеличивать счётчик, когда адаптеры начнут возвращать field-level warnings; вызывать sink.on_item_warn()
+        # На текущем контракте apply-adapter нет field-level warnings, поэтому всегда 0.
+        rows_with_warnings = 0
         skipped = getattr(plan.summary, "skipped", 0) if plan and plan.summary else 0
         actions_count = 0
         error_stats: dict[str, int] = {}
@@ -68,8 +125,7 @@ class ImportApplyService:
         dataset_name = getattr(plan.meta, "dataset", None)
         if not dataset_name:
             raise ValueError("Plan meta.dataset is required for apply")
-        dataset_spec = self.spec_resolver(dataset_name, secrets=self.secrets)
-        apply_adapter = dataset_spec.get_apply_adapter()
+
         stop_policy = default_stop_policy()
 
         def _add_outcome(outcome: ApplyItemOutcome) -> None:
@@ -79,156 +135,32 @@ class ImportApplyService:
             else:
                 outcomes_dropped = True
 
+        context = _ItemProcessContext(
+            catalog=catalog,
+            sink=sink,
+            stop_policy=stop_policy,
+            error_stats=error_stats,
+            system_codes=system_codes,
+            add_outcome=_add_outcome,
+        )
+
         for item in plan.items:
-            action = item.op
-            ref = item.record_ref
             if max_actions is not None and actions_count >= max_actions:
                 break
 
             actions_count += 1
-            try:
-                if dry_run:
-                    exec_result = ExecutionResult(
-                        ok=True, answer_code=200, response_payload={"dry_run": True},
-                        error_code=None, error_message=None,
-                    )
-                else:
-                    if apply_adapter is None:
-                        raise ValueError("Apply adapter is not configured")
-                    request_spec = apply_adapter.to_request(item)
-                    boundary_errors: list = []
-                    exec_result: ExecutionResult | None = None
-                    with diagnostic_boundary(
-                        stage=DiagnosticStage.APPLY,
-                        catalog=catalog,
-                        sink=boundary_errors,
-                        record_ref=None,
-                    ):
-                        exec_result = self.executor.execute(request_spec)
-                    if boundary_errors:
-                        failed += 1
-                        for diag in boundary_errors:
-                            error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
-                            sys_code = system_code_of(catalog, diag)
-                            system_codes.add(sys_code)
-                            sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                        if stop_policy.is_fatal(system_code_of(catalog, boundary_errors[0])):
-                            fatal_error = True
-                        _add_outcome(ApplyItemOutcome(
-                            record_ref=ref,
-                            op=action,
-                            status="FAILED",
-                            target_id=item.target_id,
-                            diagnostics=tuple(boundary_errors),
-                        ))
-                        if stop_on_first_error and failed:
-                            break
-                        continue
-                    if exec_result is None:
-                        failed += 1
-                        diag = diag_error(
-                            catalog=catalog,
-                            stage=DiagnosticStage.APPLY,
-                            code="INTERNAL_ERROR",
-                            field=None,
-                            message="empty execution result",
-                            record_ref=None,
-                        )
-                        error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
-                        sys_code = system_code_of(catalog, diag)
-                        system_codes.add(sys_code)
-                        sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                        _add_outcome(ApplyItemOutcome(
-                            record_ref=ref,
-                            op=action,
-                            status="FAILED",
-                            target_id=item.target_id,
-                            diagnostics=(diag,),
-                        ))
-                        if stop_on_first_error and failed:
-                            break
-                        continue
+            item_result = self._process_item(
+                item=item,
+                dataset_name=dataset_name,
+                apply_adapter=apply_adapter,
+                context=context,
+            )
+            created += item_result.created_inc
+            updated += item_result.updated_inc
+            failed += item_result.failed_inc
+            fatal_error = fatal_error or item_result.item_fatal
 
-                if exec_result.ok:
-                    if action == "create":
-                        created += 1
-                    elif action == "update":
-                        updated += 1
-                    sink.on_item_ok(record_ref=ref, op=action, target_id=item.target_id)
-                    self._update_identity_index(
-                        dataset=dataset_name,
-                        desired_state=item.desired_state,
-                        response_payload=exec_result.response_payload,
-                        source_ref=item.source_ref,
-                    )
-                    continue
-
-                failed += 1
-                diag = translate_execution_result(
-                    catalog=catalog,
-                    stage=DiagnosticStage.SINK,
-                    result=exec_result,
-                    record_ref=None,
-                )
-                error_stats[diag.code] = error_stats.get(diag.code, 0) + 1
-                sys_code = system_code_of(catalog, diag)
-                system_codes.add(sys_code)
-                if stop_policy.is_fatal(sys_code):
-                    fatal_error = True
-                sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                _add_outcome(ApplyItemOutcome(
-                    record_ref=ref,
-                    op=action,
-                    status="FAILED",
-                    target_id=item.target_id,
-                    diagnostics=(diag,),
-                ))
-            except MissingRequiredSecretError as exc:
-                failed += 1
-                err_code = exc.code
-                error_stats[err_code] = error_stats.get(err_code, 0) + 1
-                diag = diag_error(
-                    catalog=catalog,
-                    stage=DiagnosticStage.APPLY,
-                    code=err_code,
-                    field=exc.field,
-                    message=str(exc),
-                    record_ref=None,
-                )
-                sys_code = system_code_of(catalog, diag)
-                system_codes.add(sys_code)
-                sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                _add_outcome(ApplyItemOutcome(
-                    record_ref=ref,
-                    op=action,
-                    status="FAILED",
-                    target_id=item.target_id,
-                    diagnostics=(diag,),
-                ))
-            except Exception as exc:
-                failed += 1
-                err_code = "UNEXPECTED_ERROR"
-                error_stats[err_code] = error_stats.get(err_code, 0) + 1
-                diag = diag_error(
-                    catalog=catalog,
-                    stage=DiagnosticStage.APPLY,
-                    code=err_code,
-                    field=None,
-                    message=str(exc),
-                    record_ref=None,
-                )
-                sys_code = system_code_of(catalog, diag)
-                system_codes.add(sys_code)
-                sink.on_item_error(record_ref=ref, op=action, diag=diag)
-                _add_outcome(ApplyItemOutcome(
-                    record_ref=ref,
-                    op=action,
-                    status="FAILED",
-                    target_id=item.target_id,
-                    diagnostics=(diag,),
-                ))
-
-            if stop_on_first_error and failed:
+            if stop_on_first_error and item_result.failed_inc > 0:
                 break
 
         if not system_codes:
@@ -265,7 +197,204 @@ class ImportApplyService:
 
         return result
 
-    def _update_identity_index(
+    def _process_item(
+        self,
+        *,
+        item: PlanItem,
+        dataset_name: str,
+        apply_adapter: ApplyAdapterProtocol | None,
+        context: _ItemProcessContext,
+    ) -> _ItemProcessResult:
+        action = item.op
+        ref = item.record_ref
+        try:
+            exec_result, boundary_errors = self._execute_item(
+                item=item,
+                apply_adapter=apply_adapter,
+                context=context,
+            )
+            if boundary_errors:
+                return self._handle_boundary_errors(
+                    item=item,
+                    action=action,
+                    ref=ref,
+                    context=context,
+                    boundary_errors=boundary_errors,
+                )
+
+            if exec_result is None:
+                diag = diag_error(
+                    catalog=context.catalog,
+                    stage=DiagnosticStage.APPLY,
+                    code="INTERNAL_ERROR",
+                    field=None,
+                    message="empty execution result",
+                    record_ref=None,
+                )
+                return self._handle_single_failure_diag(
+                    item=item,
+                    action=action,
+                    ref=ref,
+                    context=context,
+                    diag=diag,
+                    fatal=False,
+                )
+
+            if exec_result.ok:
+                return self._handle_success_item(
+                    item=item,
+                    action=action,
+                    dataset_name=dataset_name,
+                    response_payload=exec_result.response_payload,
+                    sink=context.sink,
+                )
+
+            diag = translate_execution_result(
+                catalog=context.catalog,
+                stage=DiagnosticStage.SINK,
+                result=exec_result,
+                record_ref=None,
+            )
+            sys_code = system_code_of(context.catalog, diag)
+            return self._handle_single_failure_diag(
+                item=item,
+                action=action,
+                ref=ref,
+                context=context,
+                diag=diag,
+                fatal=context.is_fatal(sys_code),
+            )
+        except MissingRequiredSecretError as exc:
+            return self._handle_exception_failure(
+                item=item,
+                action=action,
+                ref=ref,
+                context=context,
+                code=exc.code,
+                field=exc.field,
+                message=str(exc),
+            )
+        except Exception as exc:
+            return self._handle_exception_failure(
+                item=item,
+                action=action,
+                ref=ref,
+                context=context,
+                code="UNEXPECTED_ERROR",
+                field=None,
+                message=str(exc),
+            )
+
+    def _execute_item(
+        self,
+        *,
+        item: PlanItem,
+        apply_adapter: ApplyAdapterProtocol | None,
+        context: _ItemProcessContext,
+    ) -> tuple[ExecutionResult | None, tuple[DiagnosticItem, ...]]:
+        if apply_adapter is None:
+            raise ValueError("Apply adapter is not configured")
+        request_spec = apply_adapter.to_request(item)
+        boundary_errors: list[DiagnosticItem] = []
+        exec_result: ExecutionResult | None = None
+        with diagnostic_boundary(
+            stage=DiagnosticStage.APPLY,
+            catalog=context.catalog,
+            sink=boundary_errors,
+            record_ref=None,
+        ):
+            exec_result = self.executor.execute(request_spec)
+        return exec_result, tuple(boundary_errors)
+
+    def _handle_boundary_errors(
+        self,
+        *,
+        item: PlanItem,
+        action: str,
+        ref: RecordRef,
+        context: _ItemProcessContext,
+        boundary_errors: tuple[DiagnosticItem, ...],
+    ) -> _ItemProcessResult:
+        first_sys_code: SystemErrorCode | None = None
+        for diag in boundary_errors:
+            sys_code = context.register_error(ref=ref, action=action, diag=diag)
+            if first_sys_code is None:
+                first_sys_code = sys_code
+        context.add_failed_outcome(
+            item=item,
+            action=action,
+            diagnostics=tuple(boundary_errors),
+        )
+        item_fatal = context.is_fatal(first_sys_code) if first_sys_code is not None else False
+        return _ItemProcessResult(failed_inc=1, item_fatal=item_fatal)
+
+    def _handle_success_item(
+        self,
+        *,
+        item: PlanItem,
+        action: str,
+        dataset_name: str,
+        response_payload: Any | None,
+        sink: ApplyTelemetrySink,
+    ) -> _ItemProcessResult:
+        created_inc = 1 if action == Operation.CREATE else 0
+        updated_inc = 1 if action == Operation.UPDATE else 0
+        sink.on_item_ok(record_ref=item.record_ref, op=action, target_id=item.target_id)
+        self._sync_identity_index(
+            dataset=dataset_name,
+            desired_state=item.desired_state,
+            response_payload=response_payload,
+            source_ref=item.source_ref,
+        )
+        return _ItemProcessResult(created_inc=created_inc, updated_inc=updated_inc)
+
+    def _handle_single_failure_diag(
+        self,
+        *,
+        item: PlanItem,
+        action: str,
+        ref: RecordRef,
+        context: _ItemProcessContext,
+        diag: DiagnosticItem,
+        fatal: bool,
+    ) -> _ItemProcessResult:
+        context.register_error(ref=ref, action=action, diag=diag)
+        context.add_failed_outcome(
+            item=item,
+            action=action,
+            diagnostics=(diag,),
+        )
+        return _ItemProcessResult(failed_inc=1, item_fatal=fatal)
+
+    def _handle_exception_failure(
+        self,
+        *,
+        item: PlanItem,
+        action: str,
+        ref: RecordRef,
+        context: _ItemProcessContext,
+        code: str,
+        field: str | None,
+        message: str,
+    ) -> _ItemProcessResult:
+        diag = diag_error(
+            catalog=context.catalog,
+            stage=DiagnosticStage.APPLY,
+            code=code,
+            field=field,
+            message=message,
+            record_ref=None,
+        )
+        return self._handle_single_failure_diag(
+            item=item,
+            action=action,
+            ref=ref,
+            context=context,
+            diag=diag,
+            fatal=False,
+        )
+
+    def _sync_identity_index(
         self,
         *,
         dataset: str,
@@ -273,38 +402,17 @@ class ImportApplyService:
         response_payload: Any | None,
         source_ref: dict[str, Any] | None,
     ) -> None:
-        if self.apply_runtime is None:
+        if self.identity_syncer is None:
             return
-        key_names = self.identity_keys.get(dataset)
-        if not key_names:
-            return
-        id_field = self.identity_id_fields.get(dataset, "_id")
-        resolved_id = None
-        if isinstance(response_payload, dict):
-            resolved_id = response_payload.get(id_field)
+
+        id_field = self.identity_syncer.id_field_for(dataset)
+        resolved_id = response_payload.get(id_field) if isinstance(response_payload, dict) else None
         if resolved_id is None:
             resolved_id = desired_state.get(id_field)
-        if resolved_id is None:
-            return
-        resolved_id_str = str(resolved_id).strip()
-        if resolved_id_str == "":
-            return
-        for key_name in key_names:
-            value = desired_state.get(key_name)
-            if value is None and isinstance(source_ref, dict):
-                value = source_ref.get(key_name)
-            if value is None:
-                continue
-            value_str = str(value).strip()
-            if value_str == "":
-                continue
-            identity_key = format_identity_key(key_name, value_str)
-            self.apply_runtime.upsert_identity(dataset, identity_key, resolved_id_str)
-            self._resolve_pending_for_key(dataset, identity_key)
 
-    def _resolve_pending_for_key(self, dataset: str, identity_key: str) -> None:
-        if self.apply_runtime is None:
-            return
-        pending = self.apply_runtime.list_pending_for_key(dataset, identity_key)
-        for item in pending:
-            self.apply_runtime.mark_resolved(item.pending_id)
+        key_values: dict[str, Any] = {}
+        if isinstance(source_ref, dict):
+            key_values.update(source_ref)
+        key_values.update(desired_state)
+
+        self.identity_syncer.sync(dataset=dataset, resolved_id=resolved_id, key_values=key_values)
