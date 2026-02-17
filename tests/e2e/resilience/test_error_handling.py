@@ -54,14 +54,6 @@ class DummyExecutor:
         return self.result
 
 
-class DummySpec:
-    def __init__(self, adapter):
-        self.adapter = adapter
-
-    def get_apply_adapter(self):
-        return self.adapter
-
-
 def test_cache_refresh_max_pages_exceeded(monkeypatch, tmp_path):
     def responder(request: httpx.Request) -> httpx.Response:
         # Всегда возвращаем непустую страницу, чтобы сработал guard max_pages.
@@ -176,13 +168,13 @@ def test_import_apply_error_stats():
         ExecutionResult(ok=False, answer_code=400, error_code=SystemErrorCode.DATA_INVALID, error_message="HTTP 400")
     )
     adapter = make_employees_spec().get_apply_adapter()
-    service = ImportApplyService(executor, spec_resolver=lambda *args, **kwargs: DummySpec(adapter))
+    service = ImportApplyService(executor)
     result = service.apply_plan(
         plan=plan,
         catalog=CATALOG,
+        apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=None,
-        dry_run=False,
         max_item_outcomes=10,
     )
     assert result.primary_code != SystemErrorCode.OK

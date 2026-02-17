@@ -1,12 +1,17 @@
+"""
+Назначение:
+    Универсальная реализация `ApplyAdapterProtocol` для operation-alias режима.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from connector.datasets.spec import ApplyAdapter
 from connector.domain.diagnostics.exceptions import MissingRequiredSecretError
 from connector.domain.planning.plan_models import PlanItem
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
+from connector.domain.ports.target.apply import ApplyAdapterProtocol
 from connector.domain.ports.target.execution import RequestSpec
 
 PayloadBuilder = Callable[[dict[str, Any]], dict[str, Any]]
@@ -14,7 +19,7 @@ ParamsBuilder = Callable[[PlanItem], dict[str, Any] | None]
 
 
 @dataclass
-class OperationApplyAdapter(ApplyAdapter):
+class OperationApplyAdapter(ApplyAdapterProtocol):
     """
     Универсальный адаптер apply для operation-alias режима.
 

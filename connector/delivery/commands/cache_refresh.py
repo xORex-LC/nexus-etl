@@ -1,3 +1,8 @@
+"""
+Назначение:
+    Delivery-команда обновления cache-слоя из target-системы.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -18,6 +23,7 @@ from connector.infra.cache.dsl_runtime import build_sync_adapters
 from connector.infra.logging.setup import logEvent
 from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
+from connector.usecases.common.identity_sync import IdentityIndexSyncer
 
 
 @dataclass(frozen=True)
@@ -42,6 +48,7 @@ def _runtime_context(build_result) -> dict[str, str]:
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+    """Собрать runtime/deps и запустить cache refresh use-case."""
     app_settings = ctx.app_settings
     if app_settings is None:
         raise ValueError("App settings are not initialized")
@@ -66,13 +73,17 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
             adapters = build_sync_adapters(cache_dsl_bundle)
             identity_keys, identity_id_fields = build_identity_index_plan()
+            identity_syncer = IdentityIndexSyncer(
+                runtime=cache_roles.cache_refresh,
+                identity_keys=identity_keys,
+                identity_id_fields=identity_id_fields,
+            )
             runtime_policy = cache_dsl_bundle.runtime.policy
             cache_refresh = CacheRefreshUseCase(
                 reader,
                 cache_roles.cache_refresh,
                 adapters,
-                identity_keys=identity_keys,
-                identity_id_fields=identity_id_fields,
+                identity_syncer=identity_syncer,
                 dependency_graph=cache_dsl_bundle.runtime.dependency_graph,
                 schema_hashes=cache_dsl_bundle.runtime.schema_hashes,
                 drift_mode=runtime_policy.drift_mode,
