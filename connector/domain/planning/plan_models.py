@@ -75,6 +75,7 @@ class PlanItem:
     changes: dict[str, Any]
     source_ref: dict[str, Any] | None = None
     secret_fields: list[str] = field(default_factory=list)
+    secret_lifecycle: dict[str, Any] | None = None
 
     @property
     def record_ref(self) -> RecordRef:

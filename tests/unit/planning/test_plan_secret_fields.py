@@ -19,10 +19,16 @@ def test_plan_builder_serializes_secret_fields():
         changes={},
         target_id="id-1",
         secret_fields=["password"],
+        secret_lifecycle={"mode": "ephemeral", "delete_on_success": True, "ttl_seconds": 300},
     )
     builder.add_resolved(resolved)
     result = builder.build()
     assert result.items[0]["secret_fields"] == ["password"]
+    assert result.items[0]["secret_lifecycle"] == {
+        "mode": "ephemeral",
+        "delete_on_success": True,
+        "ttl_seconds": 300,
+    }
 
 
 def test_plan_reader_reads_secret_fields(tmp_path: Path):
@@ -48,6 +54,7 @@ def test_plan_reader_reads_secret_fields(tmp_path: Path):
                         "desired_state": {"email": "a@b.c"},
                         "changes": {"mail": "a@b.c"},
                         "secret_fields": ["password"],
+                        "secret_lifecycle": {"mode": "persistent", "delete_on_success": False, "ttl_seconds": None},
                     }
                 ],
             },
@@ -57,3 +64,8 @@ def test_plan_reader_reads_secret_fields(tmp_path: Path):
     )
     plan = readPlanFile(str(plan_path))
     assert plan.items[0].secret_fields == ["password"]
+    assert plan.items[0].secret_lifecycle == {
+        "mode": "persistent",
+        "delete_on_success": False,
+        "ttl_seconds": None,
+    }

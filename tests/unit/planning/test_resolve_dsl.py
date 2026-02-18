@@ -50,6 +50,9 @@ def test_resolve_dsl_compile_matches_employees_contract():
     assert compiled.resolve_rules.diff_policy is not None
     assert compiled.resolve_rules.build_source_ref is not None
     assert compiled.resolve_rules.secret_fields_for_op is not None
+    assert compiled.resolve_rules.secret_lifecycle is not None
+    assert compiled.resolve_rules.secret_lifecycle.mode == "persistent"
+    assert compiled.resolve_rules.secret_lifecycle.delete_on_success is False
 
 
 def test_resolve_dsl_requires_sink_when_from_sink_enabled():
@@ -142,6 +145,37 @@ def test_resolve_dsl_compiled_rules_behavior():
     }
     assert compiled.resolve_rules.secret_fields_for_op("create", desired, existing) == ["password"]
     assert compiled.resolve_rules.secret_fields_for_op("update", desired, existing) == []
+    assert compiled.resolve_rules.secret_lifecycle is not None
+    assert compiled.resolve_rules.secret_lifecycle.mode == "persistent"
+
+
+def test_resolve_dsl_compiles_ephemeral_secret_lifecycle():
+    spec = ResolveSpec.model_validate(
+        {
+            "dataset": "employees",
+            "resolve": {
+                "desired_state": {"mode": "project_fields", "fields": ["email"]},
+                "diff": {"mode": "compare_fields", "fields": [{"field": "email"}]},
+                "secrets": {
+                    "mode": "by_op",
+                    "create": ["password"],
+                    "update": [],
+                    "lifecycle": {
+                        "mode": "ephemeral",
+                        "delete_on_success": True,
+                        "ttl_seconds": 300,
+                    },
+                },
+            },
+        }
+    )
+
+    compiled = ResolveDsl().compile(spec, sink_spec=load_sink_spec_for_dataset("employees"))
+    lifecycle = compiled.resolve_rules.secret_lifecycle
+    assert lifecycle is not None
+    assert lifecycle.mode == "ephemeral"
+    assert lifecycle.delete_on_success is True
+    assert lifecycle.ttl_seconds == 300
 
 
 def test_resolve_engine_wraps_lookup_core():

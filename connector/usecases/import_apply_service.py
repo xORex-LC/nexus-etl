@@ -18,6 +18,7 @@ from connector.domain.diagnostics.policies import StopPolicy, SystemErrorCode, r
 from connector.domain.diagnostics.translator import translate_execution_result, system_code_of
 from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.policies import default_stop_policy
+from connector.domain.ports.secrets.retention import SecretApplyRetentionHookProtocol
 from connector.domain.ports.target.apply import ApplyAdapterProtocol
 from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol
 from connector.usecases.apply.models import ApplyItemOutcome, ApplyResult, ApplySummary
@@ -35,8 +36,11 @@ class _ItemProcessContext:
     sink: ApplyTelemetrySink
     stop_policy: StopPolicy
     error_stats: dict[str, int]
+    retention_stats: dict[str, int]
     system_codes: set[SystemErrorCode]
     add_outcome: Callable[[ApplyItemOutcome], None]
+    plan_run_id: str | None
+    retention_hook: SecretApplyRetentionHookProtocol | None = None
 
     def register_error(self, *, ref: RecordRef, action: str, diag: DiagnosticItem) -> SystemErrorCode:
         self.error_stats[diag.code] = self.error_stats.get(diag.code, 0) + 1
@@ -65,6 +69,12 @@ class _ItemProcessContext:
     def is_fatal(self, sys_code: SystemErrorCode) -> bool:
         return self.stop_policy.is_fatal(sys_code)
 
+    def register_retention(self, counters: dict[str, int] | None) -> None:
+        if not counters:
+            return
+        for key, value in counters.items():
+            self.retention_stats[key] = self.retention_stats.get(key, 0) + int(value)
+
 
 @dataclass(frozen=True, slots=True)
 class _ItemProcessResult:
@@ -87,9 +97,11 @@ class ImportApplyService:
         self,
         executor: RequestExecutorProtocol,
         identity_syncer: IdentityIndexSyncer | None = None,
+        secret_retention: SecretApplyRetentionHookProtocol | None = None,
     ) -> None:
         self.executor = executor
         self.identity_syncer = identity_syncer
+        self.secret_retention = secret_retention
 
     def apply_plan(
         self,
@@ -117,6 +129,7 @@ class ImportApplyService:
         skipped = getattr(plan.summary, "skipped", 0) if plan and plan.summary else 0
         actions_count = 0
         error_stats: dict[str, int] = {}
+        retention_stats: dict[str, int] = {}
         fatal_error = False
         system_codes: set[SystemErrorCode] = set()
         item_outcomes: list[ApplyItemOutcome] = []
@@ -140,8 +153,11 @@ class ImportApplyService:
             sink=sink,
             stop_policy=stop_policy,
             error_stats=error_stats,
+            retention_stats=retention_stats,
             system_codes=system_codes,
             add_outcome=_add_outcome,
+            plan_run_id=getattr(plan.meta, "run_id", None),
+            retention_hook=self.secret_retention,
         )
 
         for item in plan.items:
@@ -177,6 +193,7 @@ class ImportApplyService:
             items_total=actions_count,
             rows_with_warnings=rows_with_warnings,
             error_stats=dict(error_stats),
+            retention_stats=dict(retention_stats),
         )
 
         result = ApplyResult(
@@ -246,7 +263,7 @@ class ImportApplyService:
                     action=action,
                     dataset_name=dataset_name,
                     response_payload=exec_result.response_payload,
-                    sink=context.sink,
+                    context=context,
                 )
 
             diag = translate_execution_result(
@@ -335,17 +352,27 @@ class ImportApplyService:
         action: str,
         dataset_name: str,
         response_payload: Any | None,
-        sink: ApplyTelemetrySink,
+        context: _ItemProcessContext,
     ) -> _ItemProcessResult:
         created_inc = 1 if action == Operation.CREATE else 0
         updated_inc = 1 if action == Operation.UPDATE else 0
-        sink.on_item_ok(record_ref=item.record_ref, op=action, target_id=item.target_id)
+        context.sink.on_item_ok(record_ref=item.record_ref, op=action, target_id=item.target_id)
         self._sync_identity_index(
             dataset=dataset_name,
             desired_state=item.desired_state,
             response_payload=response_payload,
             source_ref=item.source_ref,
         )
+        if context.retention_hook is not None:
+            retention_counters = context.retention_hook.on_apply_success(
+                dataset=dataset_name,
+                op=action,
+                source_ref=item.source_ref,
+                secret_fields=list(item.secret_fields or []),
+                secret_lifecycle=item.secret_lifecycle,
+                run_id=context.plan_run_id,
+            )
+            context.register_retention(dict(retention_counters))
         return _ItemProcessResult(created_inc=created_inc, updated_inc=updated_inc)
 
     def _handle_single_failure_diag(

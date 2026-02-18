@@ -13,7 +13,9 @@ from connector.config.app_settings import (
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
+from connector.domain.ports.secrets.retention import SecretApplyRetentionHookProtocol
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
+from connector.domain.secrets.vault_retention_service import VaultRetentionService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
 from connector.domain.secrets.vault_startup_guard import VaultStartupGuard
@@ -191,6 +193,47 @@ class _VaultReadProviderRuntime(SecretProviderProtocol):
         self._vault_db.close()
 
 
+class _VaultRetentionRuntime(SecretApplyRetentionHookProtocol):
+    """
+    Назначение:
+        Runtime-обёртка retention/maintenance hooks с lifecycle SQLite connection.
+    """
+
+    def __init__(self, *, paths_settings: PathsSettings) -> None:
+        self._vault_db = VaultSqliteDb(cache_dir=paths_settings.cache_dir)
+        self._service = VaultRetentionService(
+            repository=SqliteVaultRepository(self._vault_db),
+            locator=SecretLocatorService(),
+        )
+
+    def on_apply_success(
+        self,
+        *,
+        dataset: str,
+        op: str,
+        source_ref: dict[str, Any] | None,
+        secret_fields: list[str],
+        secret_lifecycle: dict[str, Any] | None,
+        run_id: str | None,
+    ) -> dict[str, int]:
+        return dict(
+            self._service.on_apply_success(
+                dataset=dataset,
+                op=op,
+                source_ref=source_ref,
+                secret_fields=secret_fields,
+                secret_lifecycle=secret_lifecycle,
+                run_id=run_id,
+            )
+        )
+
+    def run_maintenance(self) -> dict[str, int]:
+        return dict(self._service.run_maintenance())
+
+    def close(self) -> None:
+        self._vault_db.close()
+
+
 def build_secret_provider(
     source: str | None,
     vault_file: str | None,
@@ -219,6 +262,22 @@ def build_secret_provider(
             raise ValueError("paths_settings is required for source='vault'")
         return _VaultReadProviderRuntime(paths_settings=paths_settings, run_id=run_id)
     return NullSecretProvider()
+
+
+def build_secret_retention_hook(
+    source: str | None,
+    *,
+    paths_settings: PathsSettings | None = None,
+) -> SecretApplyRetentionHookProtocol | None:
+    """
+    Назначение:
+        Собрать retention hook для apply-runtime в vault-mode.
+    """
+    if source != "vault":
+        return None
+    if paths_settings is None:
+        raise ValueError("paths_settings is required for source='vault'")
+    return _VaultRetentionRuntime(paths_settings=paths_settings)
 
 
 @dataclass(frozen=True)
@@ -307,6 +366,7 @@ __all__ = [
     "build_target_runtime",
     "build_target_runtime_with_info",
     "build_secret_provider",
+    "build_secret_retention_hook",
     "PipelineContext",
     "build_pipeline_context",
 ]

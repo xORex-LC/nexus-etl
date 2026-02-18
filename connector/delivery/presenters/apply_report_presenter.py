@@ -35,6 +35,7 @@ class ApplyReportPresenter:
         # Дополняем существующий context["apply"], чтобы не потерять поля из handler.
         apply_ctx = dict(collector.context.get("apply", {}))
         apply_ctx["error_stats"] = dict(summary.error_stats)
+        apply_ctx["retention_stats"] = dict(summary.retention_stats)
         apply_ctx.update(runtime_context or {})
         collector.set_context("apply", apply_ctx)
 
