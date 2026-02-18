@@ -23,6 +23,10 @@ from connector.domain.secrets.errors import (
     VaultStartupStorageReadonlyError,
     VaultStartupUninitializedReadonlyError,
 )
+from connector.domain.secrets.vault_rollout_policy import (
+    VaultRolloutPolicySettings,
+    evaluate_vault_rollout,
+)
 from connector.infra.logging.setup import logEvent
 from connector.usecases.import_plan_service import ImportPlanService
 
@@ -57,10 +61,27 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
 
     gateway = None
     try:
-        if opts.vault_file:
+        dataset_name, _spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+        rollout_decision = evaluate_vault_rollout(
+            settings=_rollout_settings(app_settings),
+            requested_vault=bool(opts.vault_file),
+            dataset=dataset_name,
+            run_id=run_id,
+            command_name="import-plan",
+        )
+        if opts.vault_file and not rollout_decision.vault_enabled:
+            typer.echo(
+                (
+                    "ERROR: vault rollout policy blocks import-plan vault path "
+                    f"(mode={rollout_decision.mode}, reason={rollout_decision.reason})"
+                ),
+                err=True,
+            )
+            return result_with(SystemErrorCode.INTERNAL_ERROR)
+
+        if rollout_decision.startup_guard_required:
             ensure_vault_startup_ready(paths_settings=app_settings.paths)
 
-        dataset_name, _spec = build_dataset_spec(opts.dataset, app_settings.dataset)
         gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
 
         include_deleted_value = (
@@ -77,7 +98,7 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
 
         with open_secret_store(
             paths_settings=app_settings.paths,
-            enabled=bool(opts.vault_file),
+            enabled=rollout_decision.vault_enabled,
         ) as secret_store:
             service = ImportPlanService()
             return service.run(
@@ -110,6 +131,16 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
     finally:
         if gateway is not None:
             gateway.close()
+
+
+def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:
+    rollout = app_settings.vault_rollout
+    return VaultRolloutPolicySettings(
+        mode=rollout.mode,
+        canary_percent=rollout.canary_percent,
+        canary_datasets=rollout.canary_datasets,
+        canary_seed=rollout.canary_seed,
+    )
 
 
 __all__ = ["handler", "Options"]

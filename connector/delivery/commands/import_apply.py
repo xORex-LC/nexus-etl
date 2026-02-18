@@ -33,6 +33,14 @@ from connector.domain.secrets.errors import (
     VaultStartupStorageReadonlyError,
     VaultStartupUninitializedReadonlyError,
 )
+from connector.domain.secrets.vault_rollout_metrics import (
+    VaultRolloutThresholds,
+    build_vault_operational_metrics,
+)
+from connector.domain.secrets.vault_rollout_policy import (
+    VaultRolloutPolicySettings,
+    evaluate_vault_rollout,
+)
 from connector.datasets.registry import build_identity_index_plan, get_spec
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.infra.logging.setup import logEvent
@@ -89,7 +97,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         else app_settings.execution.stop_on_first_error
     )
     max_actions = opts.max_actions if opts.max_actions is not None else app_settings.execution.max_actions
-    dry_run = opts.dry_run if opts.dry_run is not None else app_settings.execution.dry_run
+    configured_dry_run = opts.dry_run if opts.dry_run is not None else app_settings.execution.dry_run
 
     try:
         plan = readPlanFile(opts.plan_path or "")
@@ -98,11 +106,35 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         typer.echo(f"ERROR: import apply failed: {exc}", err=True)
         return result_with(SystemErrorCode.IO_ERROR)
 
-    if opts.secrets_from == "vault":
+    requested_vault = opts.secrets_from == "vault"
+    rollout_decision = evaluate_vault_rollout(
+        settings=_rollout_settings(app_settings),
+        requested_vault=requested_vault,
+        dataset=plan.meta.dataset,
+        run_id=plan.meta.run_id or run_id,
+        command_name="import-apply",
+    )
+    if requested_vault and not rollout_decision.vault_enabled:
+        typer.echo(
+            (
+                "ERROR: vault rollout policy blocks import-apply vault path "
+                f"(mode={rollout_decision.mode}, reason={rollout_decision.reason})"
+            ),
+            err=True,
+        )
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
+
+    startup_guard_passed = True
+    if rollout_decision.startup_guard_required:
         try:
             ensure_vault_startup_ready(paths_settings=app_settings.paths)
+            startup_guard_passed = True
         except _STARTUP_ERRORS as exc:
+            startup_guard_passed = False
             return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
+
+    effective_secrets_from = "vault" if rollout_decision.vault_enabled else opts.secrets_from
+    dry_run = configured_dry_run or rollout_decision.force_dry_run
 
     dataset_name = plan.meta.dataset
     catalog = ctx.catalog or build_diagnostics_catalog(
@@ -143,8 +175,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 "stop_on_first_error": stop_on_first_error,
                 "max_actions": max_actions,
                 "dry_run": dry_run,
+                "configured_dry_run": configured_dry_run,
                 "retries": app_settings.api.retries,
                 "retry_backoff_seconds": app_settings.api.retry_backoff_seconds,
+                "vault_rollout": rollout_decision.to_context(),
             },
         )
         report.set_context(
@@ -158,13 +192,13 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         report.set_context("target_runtime", _runtime_context(build_result))
 
         secrets_provider = build_secret_provider(
-            opts.secrets_from,
+            effective_secrets_from,
             opts.vault_file,
             paths_settings=app_settings.paths,
             run_id=plan.meta.run_id,
         )
         secret_retention = build_secret_retention_hook(
-            opts.secrets_from,
+            effective_secrets_from,
             paths_settings=app_settings.paths,
         )
         dataset_spec = get_spec(dataset_name, secrets=secrets_provider)
@@ -202,11 +236,18 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
 
         maintenance_stats = secret_retention.run_maintenance() if secret_retention is not None else {}
+        operational_metrics = build_vault_operational_metrics(
+            summary=apply_result.summary,
+            startup_guard_passed=startup_guard_passed,
+            thresholds=_rollout_thresholds(app_settings),
+        )
         runtime_context: dict = {
             "retries_used": runtime.stats().retries_total,
             "target_runtime_mode": build_result.effective_mode,
             "target_runtime_requested_mode": build_result.requested_mode,
             "vault_maintenance": dict(maintenance_stats),
+            "vault_rollout": rollout_decision.to_context(),
+            "vault_operational": operational_metrics,
         }
 
         ApplyReportPresenter.present(
@@ -233,5 +274,26 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             runtime.close()
         if gateway is not None:
             gateway.close()
+
+
+def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:
+    rollout = app_settings.vault_rollout
+    return VaultRolloutPolicySettings(
+        mode=rollout.mode,
+        canary_percent=rollout.canary_percent,
+        canary_datasets=rollout.canary_datasets,
+        canary_seed=rollout.canary_seed,
+    )
+
+
+def _rollout_thresholds(app_settings) -> VaultRolloutThresholds:
+    rollout = app_settings.vault_rollout
+    return VaultRolloutThresholds(
+        row_failure_rate_threshold_pct=rollout.row_failure_rate_threshold_pct,
+        vault_error_rate_threshold_pct=rollout.vault_error_rate_threshold_pct,
+        latency_regression_threshold_pct=rollout.latency_regression_threshold_pct,
+        busy_timeout_rate_threshold_pct=rollout.busy_timeout_rate_threshold_pct,
+        schema_changed_rate_threshold_pct=rollout.schema_changed_rate_threshold_pct,
+    )
 
 __all__ = ["handler", "Options"]
