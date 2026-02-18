@@ -37,6 +37,7 @@ def build_user_upsert_payload(source: dict[str, Any]) -> dict[str, Any]:
 
     Контракт:
         - обязательный набор входных полей проверяется полностью;
+        - `password` опционален: если не передан/пустой, поле не включается в payload;
         - выход соответствует текущему API-контракту Ankey `/ankey/managed/user/{target_id}`.
     """
     required_keys = [
@@ -47,7 +48,6 @@ def build_user_upsert_payload(source: dict[str, Any]) -> dict[str, Any]:
         "is_logon_disable",
         "user_name",
         "phone",
-        "password",
         "personnel_number",
         "organization_id",
         "position",
@@ -57,7 +57,7 @@ def build_user_upsert_payload(source: dict[str, Any]) -> dict[str, Any]:
     if missing:
         raise ValueError(f"Missing required fields for payload: {', '.join(missing)}")
 
-    return {
+    payload = {
         "mail": source.get("email"),
         "lastName": source.get("last_name"),
         "firstName": source.get("first_name"),
@@ -65,7 +65,6 @@ def build_user_upsert_payload(source: dict[str, Any]) -> dict[str, Any]:
         "isLogonDisabled": _to_bool(source.get("is_logon_disable")),
         "userName": source.get("user_name"),
         "phone": source.get("phone"),
-        "password": source.get("password"),
         "personnelNumber": source.get("personnel_number"),
         "managerId": _to_int_or_none(source.get("manager_id")),
         "organization_id": _to_int_or_none(source.get("organization_id")),
@@ -73,6 +72,10 @@ def build_user_upsert_payload(source: dict[str, Any]) -> dict[str, Any]:
         "avatarId": None,
         "usrOrgTabNum": source.get("usr_org_tab_num"),
     }
+    password = source.get("password")
+    if password not in (None, ""):
+        payload["password"] = password
+    return payload
 
 
 __all__ = ["build_user_upsert_payload"]

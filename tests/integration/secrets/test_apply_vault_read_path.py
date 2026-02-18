@@ -61,7 +61,13 @@ def _base_desired_state(*, password: str = "") -> dict[str, object]:
     }
 
 
-def _make_plan(*, op: str, secret_fields: list[str], run_id: str = DEFAULT_RUN_ID) -> Plan:
+def _make_plan(
+    *,
+    op: str,
+    secret_fields: list[str],
+    run_id: str = DEFAULT_RUN_ID,
+    source_match_key: str = DEFAULT_MATCH_KEY,
+) -> Plan:
     item = PlanItem(
         row_id="row-1",
         line_no=1,
@@ -69,7 +75,7 @@ def _make_plan(*, op: str, secret_fields: list[str], run_id: str = DEFAULT_RUN_I
         target_id="target-1",
         desired_state=_base_desired_state(password=""),
         changes={},
-        source_ref={"match_key": DEFAULT_MATCH_KEY},
+        source_ref={"match_key": source_match_key},
         secret_fields=secret_fields,
     )
     return Plan(
@@ -175,6 +181,22 @@ def test_apply_vault_missing_required_secret_blocks_target(
 ):
     _set_master_key(monkeypatch)
     plan = _make_plan(op=op, secret_fields=["password"])
+
+    result, executor = _run_apply(tmp_path=tmp_path, plan=plan)
+
+    assert result.primary_code == SystemErrorCode.DATA_INVALID
+    assert len(executor.calls) == 0
+    assert result.item_outcomes
+    assert result.item_outcomes[0].diagnostics[0].code == "SECRET_REQUIRED"
+
+
+def test_apply_vault_locator_drift_blocks_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _write_vault_secret(tmp_path=tmp_path, monkeypatch=monkeypatch)
+    plan = _make_plan(
+        op=Operation.CREATE,
+        secret_fields=["password"],
+        source_match_key="Doe|John|M|9999",
+    )
 
     result, executor = _run_apply(tmp_path=tmp_path, plan=plan)
 
