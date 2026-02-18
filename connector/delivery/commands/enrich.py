@@ -4,15 +4,23 @@ import sqlite3
 from dataclasses import dataclass
 
 from connector.delivery.cli.context import CommandContext
-from connector.delivery.commands.common import sqlite_cache_error_result
+from connector.delivery.commands.common import sqlite_cache_error_result, vault_startup_error_result
 from connector.delivery.cli.bootstrap import (
     build_cache,
     build_dataset_spec,
     build_diagnostics_catalog,
+    ensure_vault_startup_ready,
     open_secret_store,
     build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.secrets.errors import (
+    SecretKeyConfigError,
+    VaultStartupKeyValidationError,
+    VaultStartupProbeCorruptedError,
+    VaultStartupStorageReadonlyError,
+    VaultStartupUninitializedReadonlyError,
+)
 from connector.usecases.enrich_usecase import EnrichUseCase
 
 
@@ -23,6 +31,15 @@ class Options:
     report_items_limit: int | None = None
     include_enriched_items: bool | None = None
     vault_file: str | None = None
+
+
+_STARTUP_ERRORS = (
+    SecretKeyConfigError,
+    VaultStartupKeyValidationError,
+    VaultStartupProbeCorruptedError,
+    VaultStartupStorageReadonlyError,
+    VaultStartupUninitializedReadonlyError,
+)
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
@@ -40,6 +57,12 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         else app_settings.observability.report_items_limit
     )
     include_enriched_items_value = opts.include_enriched_items if opts.include_enriched_items is not None else True
+
+    if opts.vault_file:
+        try:
+            ensure_vault_startup_ready(paths_settings=app_settings.paths)
+        except _STARTUP_ERRORS as exc:
+            return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
 
     dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_settings.dataset)
     catalog = ctx.catalog or build_diagnostics_catalog(

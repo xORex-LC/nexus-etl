@@ -12,18 +12,26 @@ import sqlite3
 import typer
 
 from connector.delivery.cli.context import CommandContext
-from connector.delivery.commands.common import log_sqlite_cache_error, result_with
+from connector.delivery.commands.common import log_sqlite_cache_error, result_with, vault_startup_error_result
 from connector.delivery.cli.bootstrap import (
     build_cache,
     build_target_runtime_with_info,
     build_diagnostics_catalog,
     build_secret_provider,
+    ensure_vault_startup_ready,
 )
 from connector.delivery.commands.import_apply_dry_run_executor import DryRunExecutor
 from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
 from connector.delivery.telemetry.apply_logging_sink import LoggingApplyTelemetrySink
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.secrets.errors import (
+    SecretKeyConfigError,
+    VaultStartupKeyValidationError,
+    VaultStartupProbeCorruptedError,
+    VaultStartupStorageReadonlyError,
+    VaultStartupUninitializedReadonlyError,
+)
 from connector.datasets.registry import build_identity_index_plan, get_spec
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.infra.logging.setup import logEvent
@@ -40,6 +48,15 @@ class Options:
     report_items_limit: int | None = None
     secrets_from: str | None = None
     vault_file: str | None = None
+
+
+_STARTUP_ERRORS = (
+    SecretKeyConfigError,
+    VaultStartupKeyValidationError,
+    VaultStartupProbeCorruptedError,
+    VaultStartupStorageReadonlyError,
+    VaultStartupUninitializedReadonlyError,
+)
 
 
 def _runtime_context(build_result) -> dict[str, str]:
@@ -79,6 +96,12 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         logEvent(ctx.logger, logging.ERROR, run_id, "plan", f"Import apply failed: {exc}")
         typer.echo(f"ERROR: import apply failed: {exc}", err=True)
         return result_with(SystemErrorCode.IO_ERROR)
+
+    if opts.secrets_from == "vault":
+        try:
+            ensure_vault_startup_ready(paths_settings=app_settings.paths)
+        except _STARTUP_ERRORS as exc:
+            return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
 
     dataset_name = plan.meta.dataset
     catalog = ctx.catalog or build_diagnostics_catalog(
