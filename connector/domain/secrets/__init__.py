@@ -14,6 +14,7 @@ from connector.domain.secrets.errors import (
     VaultStartupUninitializedReadonlyError,
 )
 from connector.domain.secrets.models import VaultDekRecord, VaultProbeRecord, VaultSecretRecord
+from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 
 __all__ = [
     "SecretDecryptionError",
@@ -26,6 +27,7 @@ __all__ = [
     "VaultDomainError",
     "VaultProbeRecord",
     "VaultSecretRecord",
+    "SecretVaultReadService",
     "VaultStartupKeyValidationError",
     "VaultStartupProbeCorruptedError",
     "VaultStartupStorageReadonlyError",
