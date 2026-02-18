@@ -146,3 +146,24 @@ def test_field_level_source_trace(tmp_path, monkeypatch):
     assert loaded.source_trace["host"] == "config"
     assert loaded.source_trace["port"] == "env"
     assert loaded.source_trace["retries"] == "cli"
+
+
+def test_vault_rollout_settings_loaded_from_env(tmp_path, monkeypatch):
+    cfg = tmp_path / "config.yml"
+    cfg.write_text("dataset_name: employees\n", encoding="utf-8")
+
+    monkeypatch.setenv("ANKEY_VAULT_ROLLOUT_MODE", "canary")
+    monkeypatch.setenv("ANKEY_VAULT_CANARY_PERCENT", "15")
+    monkeypatch.setenv("ANKEY_VAULT_CANARY_DATASETS", "employees,organizations")
+    monkeypatch.setenv("ANKEY_VAULT_ROW_FAILURE_RATE_THRESHOLD_PCT", "2.5")
+
+    loaded = load_app_settings(
+        config_path=str(cfg),
+        cli_overrides={},
+    )
+
+    rollout = loaded.app_settings.vault_rollout
+    assert rollout.mode == "canary"
+    assert rollout.canary_percent == 15
+    assert rollout.canary_datasets == ("employees", "organizations")
+    assert rollout.row_failure_rate_threshold_pct == 2.5
