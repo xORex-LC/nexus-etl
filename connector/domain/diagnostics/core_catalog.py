@@ -75,6 +75,7 @@ def build_core_catalog(*, strict: bool) -> ErrorCatalog:
         CatalogEntry("ENRICH_NO_CANDIDATES", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.WARNING),
         CatalogEntry("ENRICH_AMBIGUOUS", SystemErrorCode.CONFLICT, severity=DiagnosticSeverity.WARNING),
         CatalogEntry("ENRICH_TARGET_MISMATCH", SystemErrorCode.INTERNAL_ERROR, severity=DiagnosticSeverity.ERROR),
+        CatalogEntry("SECRET_MATCH_KEY_MISSING", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("SECRET_STORE_ERROR", SystemErrorCode.IO_ERROR, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("SECRET_REQUIRED", SystemErrorCode.DATA_INVALID, severity=DiagnosticSeverity.ERROR),
         CatalogEntry("INVALID_JSON", SystemErrorCode.IO_ERROR, severity=DiagnosticSeverity.ERROR),

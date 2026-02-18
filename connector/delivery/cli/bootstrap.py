@@ -12,7 +12,9 @@ from connector.config.app_settings import (
 )
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.ports.secrets.provider import SecretProviderProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
+from connector.domain.secrets.secret_locator_service import SecretLocatorService
+from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
 from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
@@ -20,7 +22,14 @@ from connector.domain.transform.resolver.resolve_deps import PlanningDependencie
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.dsl_runtime import CacheDslRuntimeBundle, load_cache_dsl_runtime
 from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
-from connector.infra.secrets import NullSecretProvider, PromptSecretProvider, CompositeSecretProvider
+from connector.infra.secrets import (
+    CompositeSecretProvider,
+    EnvVaultKeyProvider,
+    FernetEnvelopeCipher,
+    NullSecretProvider,
+    PromptSecretProvider,
+)
+from connector.infra.secrets.sqlite import SqliteVaultRepository, VaultSqliteDb
 from connector.infra.target.core.factory import (
     build_target_runtime,  # noqa: F401 — re-export
     build_target_runtime_with_info,  # noqa: F401 — re-export
@@ -81,6 +90,38 @@ def open_cache(
         yield gateway, roles, cache_dsl_bundle
     finally:
         gateway.close()
+
+
+@contextmanager
+def open_secret_store(
+    *,
+    paths_settings: PathsSettings,
+    enabled: bool,
+) -> Iterator[SecretStoreProtocol | None]:
+    """
+    Назначение:
+        Собрать lifecycle write-store для секрета в vault backend.
+
+    Контракт:
+        - при `enabled=False` возвращает `None` без инициализации vault-зависимостей;
+        - при `enabled=True` открывает отдельный vault DB и закрывает его по завершении.
+    """
+    if not enabled:
+        yield None
+        return
+
+    vault_db = VaultSqliteDb(cache_dir=paths_settings.cache_dir)
+    try:
+        repository = SqliteVaultRepository(vault_db)
+        store = SecretVaultWriteService(
+            repository=repository,
+            cipher=FernetEnvelopeCipher(),
+            key_provider=EnvVaultKeyProvider(),
+            locator=SecretLocatorService(),
+        )
+        yield store
+    finally:
+        vault_db.close()
 
 
 def build_secret_provider(source: str | None, vault_file: str | None) -> SecretProviderProtocol:
@@ -187,6 +228,7 @@ __all__ = [
     "build_dataset_spec",
     "build_cache",
     "open_cache",
+    "open_secret_store",
     "build_target_runtime",
     "build_target_runtime_with_info",
     "build_secret_provider",

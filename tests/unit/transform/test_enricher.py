@@ -163,6 +163,32 @@ def test_enricher_reports_missing_match_key():
     assert result.match_key is None
 
 
+def test_enricher_reports_secret_match_key_missing_when_store_needs_locator():
+    row = NormalizedEmployeesRow(
+        email="user@example.com",
+        last_name="Doe",
+        first_name="John",
+        middle_name=None,
+        is_logon_disable=False,
+        user_name="jdoe",
+        phone="+111",
+        password=None,
+        personnel_number="100",
+        manager_id=None,
+        organization_id=20,
+        position="Engineer",
+        avatar_id=None,
+        usr_org_tab_num="TAB-100",
+        target_id="RID-1",
+    )
+    enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()))
+    result = enricher.enrich(_build_result(row, {"password": "secret"}))
+
+    codes = {issue.code for issue in result.errors}
+    assert "SECRET_MATCH_KEY_MISSING" in codes
+    assert result.match_key is None
+
+
 def test_enricher_runs_only_allowed_ops_on_error():
     row = NormalizedEmployeesRow(
         email="user@example.com",

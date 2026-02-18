@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.bootstrap import build_cache, build_dataset_spec
+from connector.delivery.cli.bootstrap import build_cache, build_dataset_spec, open_secret_store
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import result_with, sqlite_cache_error_result
 from connector.domain.diagnostics.command_result import CommandResult
@@ -51,23 +51,27 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
             opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
         )
 
-        service = ImportPlanService()
-        return service.run(
-            pending_replay=cache_roles.pending_replay,
-            enrich_lookup=cache_roles.enrich_lookup,
-            planning_runtime=cache_roles.planning_runtime,
-            csv_has_header=csv_has_header_value,
-            include_deleted=include_deleted_value,
-            observability_settings=app_settings.observability,
-            pending_settings=app_settings.pending,
-            matching_runtime_settings=app_settings.matching_runtime,
-            dataset=dataset_name,
-            logger=ctx.logger,
-            run_id=run_id,
-            report_items_limit=report_items_limit_value,
-            report_dir=app_settings.paths.report_dir,
-            vault_file=opts.vault_file,
-        )
+        with open_secret_store(
+            paths_settings=app_settings.paths,
+            enabled=bool(opts.vault_file),
+        ) as secret_store:
+            service = ImportPlanService()
+            return service.run(
+                pending_replay=cache_roles.pending_replay,
+                enrich_lookup=cache_roles.enrich_lookup,
+                planning_runtime=cache_roles.planning_runtime,
+                csv_has_header=csv_has_header_value,
+                include_deleted=include_deleted_value,
+                observability_settings=app_settings.observability,
+                pending_settings=app_settings.pending,
+                matching_runtime_settings=app_settings.matching_runtime,
+                dataset=dataset_name,
+                logger=ctx.logger,
+                run_id=run_id,
+                report_items_limit=report_items_limit_value,
+                report_dir=app_settings.paths.report_dir,
+                secret_store=secret_store,
+            )
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
