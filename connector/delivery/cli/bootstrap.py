@@ -16,6 +16,7 @@ from connector.domain.ports.secrets.provider import SecretProviderProtocol, Secr
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
+from connector.domain.secrets.vault_startup_guard import VaultStartupGuard
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
 from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
@@ -120,6 +121,28 @@ def open_secret_store(
             locator=SecretLocatorService(),
         )
         yield store
+    finally:
+        vault_db.close()
+
+
+def ensure_vault_startup_ready(*, paths_settings: PathsSettings) -> None:
+    """
+    Назначение:
+        Выполнить startup fail-fast проверку vault перед запуском use-case в vault-mode.
+
+    Контракт:
+        - открывает отдельное vault DB соединение;
+        - валидирует keyring/probe/storage через `VaultStartupGuard`;
+        - всегда закрывает соединение в конце проверки.
+    """
+    vault_db = VaultSqliteDb(cache_dir=paths_settings.cache_dir)
+    try:
+        guard = VaultStartupGuard(
+            repository=SqliteVaultRepository(vault_db),
+            cipher=FernetEnvelopeCipher(),
+            key_provider=EnvVaultKeyProvider(),
+        )
+        guard.ensure_ready()
     finally:
         vault_db.close()
 
@@ -280,6 +303,7 @@ __all__ = [
     "build_cache",
     "open_cache",
     "open_secret_store",
+    "ensure_vault_startup_ready",
     "build_target_runtime",
     "build_target_runtime_with_info",
     "build_secret_provider",

@@ -6,11 +6,23 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.bootstrap import build_cache, build_dataset_spec, open_secret_store
+from connector.delivery.cli.bootstrap import (
+    build_cache,
+    build_dataset_spec,
+    ensure_vault_startup_ready,
+    open_secret_store,
+)
 from connector.delivery.cli.context import CommandContext
-from connector.delivery.commands.common import result_with, sqlite_cache_error_result
+from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.secrets.errors import (
+    SecretKeyConfigError,
+    VaultStartupKeyValidationError,
+    VaultStartupProbeCorruptedError,
+    VaultStartupStorageReadonlyError,
+    VaultStartupUninitializedReadonlyError,
+)
 from connector.infra.logging.setup import logEvent
 from connector.usecases.import_plan_service import ImportPlanService
 
@@ -22,6 +34,15 @@ class Options:
     report_items_limit: int | None = None
     dataset: str | None = None
     vault_file: str | None = None
+
+
+_STARTUP_ERRORS = (
+    SecretKeyConfigError,
+    VaultStartupKeyValidationError,
+    VaultStartupProbeCorruptedError,
+    VaultStartupStorageReadonlyError,
+    VaultStartupUninitializedReadonlyError,
+)
 
 
 def handler(ctx: CommandContext, opts: Options) -> CommandResult:
@@ -36,6 +57,9 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
 
     gateway = None
     try:
+        if opts.vault_file:
+            ensure_vault_startup_ready(paths_settings=app_settings.paths)
+
         dataset_name, _spec = build_dataset_spec(opts.dataset, app_settings.dataset)
         gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
 
@@ -75,6 +99,8 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
+    except _STARTUP_ERRORS as exc:
+        return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="plan", exc=exc)
     except Exception as exc:
