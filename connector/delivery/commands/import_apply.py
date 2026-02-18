@@ -88,6 +88,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     gateway = None
     apply_runtime = None
     runtime = None
+    secrets_provider = None
     identity_keys: dict[str, set[str]] = {}
     identity_id_fields: dict[str, str] = {}
     try:
@@ -131,7 +132,12 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
         report.set_context("target_runtime", _runtime_context(build_result))
 
-        secrets_provider = build_secret_provider(opts.secrets_from, opts.vault_file)
+        secrets_provider = build_secret_provider(
+            opts.secrets_from,
+            opts.vault_file,
+            paths_settings=app_settings.paths,
+            run_id=plan.meta.run_id,
+        )
         dataset_spec = get_spec(dataset_name, secrets=secrets_provider)
         apply_adapter = dataset_spec.get_apply_adapter()
         executor = DryRunExecutor() if dry_run else runtime.executor
@@ -180,6 +186,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             result.add_code(code)
         return result
     finally:
+        if secrets_provider is not None:
+            close = getattr(secrets_provider, "close", None)
+            if callable(close):
+                close()
         if runtime is not None:
             runtime.close()
         if gateway is not None:

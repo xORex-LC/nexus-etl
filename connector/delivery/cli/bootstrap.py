@@ -14,6 +14,7 @@ from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
+from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
@@ -23,7 +24,6 @@ from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.dsl_runtime import CacheDslRuntimeBundle, load_cache_dsl_runtime
 from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
 from connector.infra.secrets import (
-    CompositeSecretProvider,
     EnvVaultKeyProvider,
     FernetEnvelopeCipher,
     NullSecretProvider,
@@ -124,26 +124,77 @@ def open_secret_store(
         vault_db.close()
 
 
-def build_secret_provider(source: str | None, vault_file: str | None) -> SecretProviderProtocol:
+class _VaultReadProviderRuntime(SecretProviderProtocol):
     """
     Назначение:
-        Фабрика провайдера секретов.
+        Runtime-обёртка vault read provider c управлением lifecycle SQLite connection.
+
+    Граница:
+        Наружу публикуется только `SecretProviderProtocol` + `close()` для composition-root.
+    """
+
+    def __init__(self, *, paths_settings: PathsSettings, run_id: str | None) -> None:
+        self._vault_db = VaultSqliteDb(cache_dir=paths_settings.cache_dir)
+        self._provider = SecretVaultReadService(
+            repository=SqliteVaultRepository(self._vault_db),
+            cipher=FernetEnvelopeCipher(),
+            key_provider=EnvVaultKeyProvider(),
+            locator=SecretLocatorService(),
+            default_run_id=run_id,
+        )
+
+    def get_secret(
+        self,
+        *,
+        dataset: str,
+        field: str,
+        row_id: str | None = None,
+        line_no: int | None = None,
+        source_ref: dict | None = None,
+        target_id: str | None = None,
+        run_id: str | None = None,
+    ) -> str | None:
+        return self._provider.get_secret(
+            dataset=dataset,
+            field=field,
+            row_id=row_id,
+            line_no=line_no,
+            source_ref=source_ref,
+            target_id=target_id,
+            run_id=run_id,
+        )
+
+    def close(self) -> None:
+        self._vault_db.close()
+
+
+def build_secret_provider(
+    source: str | None,
+    vault_file: str | None,
+    *,
+    paths_settings: PathsSettings | None = None,
+    run_id: str | None = None,
+) -> SecretProviderProtocol:
+    """
+    Назначение:
+        Фабрика провайдера секретов для apply.
+
     Контракт:
         - source None/"none" -> NullSecretProvider
         - source "prompt" -> PromptSecretProvider
-        - source "vault" -> Composite(FileVault -> Prompt)
-        - любое другое значение: NullSecretProvider
+        - source "vault" -> vault-only `SecretVaultReadService` (без prompt/CSV fallback)
+        - любое другое значение -> NullSecretProvider
     """
+    _ = vault_file  # legacy compatibility: runtime больше не читает CSV vault в режиме source=vault.
+
     if not source or source == "none":
         return NullSecretProvider()
     if source == "prompt":
         return PromptSecretProvider()
     if source == "vault":
-        if not vault_file:
-            return PromptSecretProvider()
-        from connector.infra.secrets import FileVaultSecretProvider
-
-        return CompositeSecretProvider([FileVaultSecretProvider(vault_file), PromptSecretProvider()])
+        if paths_settings is None:
+            raise ValueError("paths_settings is required for source='vault'")
+        return _VaultReadProviderRuntime(paths_settings=paths_settings, run_id=run_id)
     return NullSecretProvider()
 
 
