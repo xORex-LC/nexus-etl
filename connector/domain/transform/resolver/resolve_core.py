@@ -26,7 +26,12 @@ from connector.domain.transform.matcher.match_models import (
     build_fingerprint_for_keys,
     resolve_decision_status,
 )
-from connector.domain.transform.matcher.rules import LinkFieldRule, LinkRules, ResolveRules
+from connector.domain.transform.matcher.rules import (
+    LinkFieldRule,
+    LinkRules,
+    ResolveRules,
+    SecretLifecyclePolicy,
+)
 from connector.domain.ports.cache.models import PendingLink
 from connector.domain.ports.cache.roles import ResolveRuntimePort
 
@@ -228,6 +233,7 @@ class ResolveCore:
             target_id=target_id,
             source_ref=source_ref,
             secret_fields=secret_fields,
+            secret_lifecycle=_serialize_secret_lifecycle(self.resolve_rules.secret_lifecycle),
         )
         if not pending_created and self.cache_gateway is not None:
             self.cache_gateway.mark_resolved_for_source(matched.row_ref.row_id)
@@ -735,6 +741,16 @@ def _serialize_candidate(candidate) -> dict[str, Any] | None:
         "score": candidate.score,
         "match_mode": candidate.match_mode,
         "evidence": candidate.evidence,
+    }
+
+
+def _serialize_secret_lifecycle(policy: SecretLifecyclePolicy | None) -> dict[str, Any] | None:
+    if policy is None:
+        return None
+    return {
+        "mode": policy.mode,
+        "delete_on_success": bool(policy.delete_on_success),
+        "ttl_seconds": policy.ttl_seconds,
     }
 
 

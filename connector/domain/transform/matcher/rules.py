@@ -22,6 +22,23 @@ MergePolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
 
 
 @dataclass(frozen=True)
+class SecretLifecyclePolicy:
+    """
+    Назначение:
+        Runtime-конфигурация retention policy для apply cleanup.
+
+    Поля:
+        mode: persistent/ephemeral.
+        delete_on_success: удалять ли секреты после успешного apply-op.
+        ttl_seconds: опциональный TTL для maintenance hooks.
+    """
+
+    mode: str = "persistent"
+    delete_on_success: bool = False
+    ttl_seconds: int | None = None
+
+
+@dataclass(frozen=True)
 class SourceDedupRules:
     """
     Назначение:
@@ -128,6 +145,7 @@ class ResolveRules:
     build_source_ref: BuildSourceRef | None = None
     diff_policy: DiffPolicy | None = None
     secret_fields_for_op: SecretFieldsPolicy | None = None
+    secret_lifecycle: SecretLifecyclePolicy | None = None
     merge_policy: MergePolicy | None = None
 
 

@@ -15,6 +15,7 @@ from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import log_sqlite_cache_error, result_with, vault_startup_error_result
 from connector.delivery.cli.bootstrap import (
     build_cache,
+    build_secret_retention_hook,
     build_target_runtime_with_info,
     build_diagnostics_catalog,
     build_secret_provider,
@@ -112,6 +113,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     apply_runtime = None
     runtime = None
     secrets_provider = None
+    secret_retention = None
     identity_keys: dict[str, set[str]] = {}
     identity_id_fields: dict[str, str] = {}
     try:
@@ -161,6 +163,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             paths_settings=app_settings.paths,
             run_id=plan.meta.run_id,
         )
+        secret_retention = build_secret_retention_hook(
+            opts.secrets_from,
+            paths_settings=app_settings.paths,
+        )
         dataset_spec = get_spec(dataset_name, secrets=secrets_provider)
         apply_adapter = dataset_spec.get_apply_adapter()
         executor = DryRunExecutor() if dry_run else runtime.executor
@@ -180,7 +186,11 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             dataset=dataset_name,
         )
 
-        service = ImportApplyService(executor, identity_syncer=identity_syncer)
+        service = ImportApplyService(
+            executor,
+            identity_syncer=identity_syncer,
+            secret_retention=secret_retention,
+        )
         apply_result = service.apply_plan(
             plan=plan,
             catalog=catalog,
@@ -191,10 +201,12 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             telemetry=telemetry_sink,
         )
 
+        maintenance_stats = secret_retention.run_maintenance() if secret_retention is not None else {}
         runtime_context: dict = {
             "retries_used": runtime.stats().retries_total,
             "target_runtime_mode": build_result.effective_mode,
             "target_runtime_requested_mode": build_result.requested_mode,
+            "vault_maintenance": dict(maintenance_stats),
         }
 
         ApplyReportPresenter.present(
@@ -209,6 +221,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             result.add_code(code)
         return result
     finally:
+        if secret_retention is not None:
+            close_retention = getattr(secret_retention, "close", None)
+            if callable(close_retention):
+                close_retention()
         if secrets_provider is not None:
             close = getattr(secrets_provider, "close", None)
             if callable(close):

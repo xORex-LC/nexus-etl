@@ -532,9 +532,26 @@ class ResolveSecretsSpec(DslBaseModel):
         Декларативная политика секретов для resolver output.
     """
 
+    class LifecycleSpec(DslBaseModel):
+        """
+        Назначение:
+            Декларативная политика retention для секретов в apply-runtime.
+        """
+
+        mode: Literal["persistent", "ephemeral"] = "persistent"
+        delete_on_success: bool | None = None
+        ttl_seconds: int | None = None
+
+        @model_validator(mode="after")
+        def _validate_ttl(self) -> "ResolveSecretsSpec.LifecycleSpec":
+            if self.ttl_seconds is not None and self.ttl_seconds <= 0:
+                raise ValueError("resolve.secrets.lifecycle.ttl_seconds must be greater than 0")
+            return self
+
     mode: Literal["none", "by_op"] = "none"
     create: list[str] = Field(default_factory=list)
     update: list[str] = Field(default_factory=list)
+    lifecycle: LifecycleSpec | None = None
 
 
 class ResolveLinkKeySpec(DslBaseModel):
