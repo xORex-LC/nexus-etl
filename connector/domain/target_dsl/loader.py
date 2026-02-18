@@ -17,7 +17,7 @@ from typing import Any
 
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.loader import find_repo_root, load_registry, read_yaml
-from connector.infra.target.core.spec_models import TargetSpec
+from connector.domain.target_dsl.spec_models import TargetSpec
 
 
 def load_target_spec(target_type: str) -> TargetSpec:

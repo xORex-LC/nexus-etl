@@ -116,7 +116,7 @@ def test_apply_update_does_not_request_secret():
     adapter = make_employees_spec(secrets=provider).get_apply_adapter()
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor)
-    plan = make_plan("update", base_desired_state(with_password=True), secret_fields=[])
+    plan = make_plan("update", base_desired_state(with_password=False), secret_fields=[])
 
     result = service.apply_plan(
         plan=plan,
@@ -130,3 +130,5 @@ def test_apply_update_does_not_request_secret():
     assert result.primary_code == SystemErrorCode.OK
     assert provider.calls == 0
     assert executor.calls == 1
+    assert executor.last_spec is not None
+    assert "password" not in executor.last_spec.payload
