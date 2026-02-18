@@ -32,6 +32,7 @@ from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.ports.cache.roles import EnrichLookupPort, PendingReplayPort, PlanningRuntimePort
+from connector.domain.ports.secrets.provider import SecretStoreProtocol
 
 
 class ImportPlanService:
@@ -55,18 +56,13 @@ class ImportPlanService:
         run_id: str,
         report_items_limit: int,
         report_dir: str,
-        vault_file: str | None = None,
+        secret_store: SecretStoreProtocol | None = None,
     ) -> CommandResult:
         generated_at = getNowIso()
 
         dataset_spec = get_spec(dataset)
         strict = observability_settings.diagnostics_strict
         catalog = build_catalog(dataset, strict=strict)
-        secret_store = None
-        if vault_file:
-            from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
-
-            secret_store = FileVaultSecretStore(vault_file)
         enrich_deps = dataset_spec.build_enrich_deps(
             None,
             enrich_lookup=enrich_lookup,

@@ -9,10 +9,10 @@ from connector.delivery.cli.bootstrap import (
     build_cache,
     build_dataset_spec,
     build_diagnostics_catalog,
+    open_secret_store,
     build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
 from connector.usecases.enrich_usecase import EnrichUseCase
 
 
@@ -51,32 +51,35 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     gateway = None
     try:
         gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
-        secret_store = FileVaultSecretStore(opts.vault_file) if opts.vault_file else None
-        pipeline_ctx = build_pipeline_context(
-            dataset_spec=dataset_spec,
-            dataset_name=dataset_name,
-            cache_roles=cache_roles,
-            pending_settings=app_settings.pending,
-            observability_settings=app_settings.observability,
-            catalog=catalog,
-            csv_has_header=csv_has_header_value,
-            secret_store=secret_store,
-        )
-        usecase = EnrichUseCase(
-            report_items_limit=report_items_limit_value,
-            include_enriched_items=include_enriched_items_value,
-        )
-        return usecase.run(
-            row_source=pipeline_ctx.row_source,
-            map_stage=pipeline_ctx.map_stage,
-            normalize_stage=pipeline_ctx.normalize_stage,
-            enrich_stage=pipeline_ctx.enrich_stage,
-            dataset=dataset_name,
-            logger=ctx.logger,
-            run_id=run_id,
-            report=report,
-            catalog=catalog,
-        )
+        with open_secret_store(
+            paths_settings=app_settings.paths,
+            enabled=bool(opts.vault_file),
+        ) as secret_store:
+            pipeline_ctx = build_pipeline_context(
+                dataset_spec=dataset_spec,
+                dataset_name=dataset_name,
+                cache_roles=cache_roles,
+                pending_settings=app_settings.pending,
+                observability_settings=app_settings.observability,
+                catalog=catalog,
+                csv_has_header=csv_has_header_value,
+                secret_store=secret_store,
+            )
+            usecase = EnrichUseCase(
+                report_items_limit=report_items_limit_value,
+                include_enriched_items=include_enriched_items_value,
+            )
+            return usecase.run(
+                row_source=pipeline_ctx.row_source,
+                map_stage=pipeline_ctx.map_stage,
+                normalize_stage=pipeline_ctx.normalize_stage,
+                enrich_stage=pipeline_ctx.enrich_stage,
+                dataset=dataset_name,
+                logger=ctx.logger,
+                run_id=run_id,
+                report=report,
+                catalog=catalog,
+            )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="enrich", exc=exc)
     finally:
