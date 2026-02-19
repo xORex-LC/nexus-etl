@@ -77,6 +77,7 @@ def _build_plan(meta_raw: dict, summary_raw: dict, items_raw: list, path: str) -
                 changes=raw.get("changes") if isinstance(raw.get("changes"), dict) else {},
                 source_ref=raw.get("source_ref") if isinstance(raw.get("source_ref"), dict) else None,
                 secret_fields=raw.get("secret_fields") if isinstance(raw.get("secret_fields"), list) else [],
+                secret_lifecycle=raw.get("secret_lifecycle") if isinstance(raw.get("secret_lifecycle"), dict) else None,
             )
         )
 

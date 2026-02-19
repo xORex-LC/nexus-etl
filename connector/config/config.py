@@ -66,6 +66,17 @@ class Settings:
     # Срок хранения обработанных pending-записей (в днях). 0 = не чистить.
     pending_retention_days: int = 14
 
+    # Vault rollout/operations
+    vault_rollout_mode: str = "full"
+    vault_canary_percent: int = 100
+    vault_canary_datasets: str = ""
+    vault_canary_seed: str = "vault-rollout-v1"
+    vault_row_failure_rate_threshold_pct: float = 5.0
+    vault_error_rate_threshold_pct: float = 5.0
+    vault_latency_regression_threshold_pct: float = 15.0
+    vault_busy_timeout_rate_threshold_pct: float = 0.0
+    vault_schema_changed_rate_threshold_pct: float = 0.0
+
 
 @dataclass(frozen=True)
 class SettingsIssue:
@@ -477,6 +488,36 @@ _RANGE_RULES: list[tuple[str, str, str, str]] = [
     ("match_batch_size", ">0", "match_batch_size must be greater than 0", "Укажите положительное значение match_batch_size."),
     ("resolve_batch_size", ">0", "resolve_batch_size must be greater than 0", "Укажите положительное значение resolve_batch_size."),
     ("pending_ttl_seconds", ">0", "pending_ttl_seconds must be greater than 0", "Укажите положительное значение pending_ttl_seconds."),
+    (
+        "vault_row_failure_rate_threshold_pct",
+        ">=0",
+        "vault_row_failure_rate_threshold_pct must be >= 0",
+        "Укажите vault_row_failure_rate_threshold_pct >= 0.",
+    ),
+    (
+        "vault_error_rate_threshold_pct",
+        ">=0",
+        "vault_error_rate_threshold_pct must be >= 0",
+        "Укажите vault_error_rate_threshold_pct >= 0.",
+    ),
+    (
+        "vault_latency_regression_threshold_pct",
+        ">=0",
+        "vault_latency_regression_threshold_pct must be >= 0",
+        "Укажите vault_latency_regression_threshold_pct >= 0.",
+    ),
+    (
+        "vault_busy_timeout_rate_threshold_pct",
+        ">=0",
+        "vault_busy_timeout_rate_threshold_pct must be >= 0",
+        "Укажите vault_busy_timeout_rate_threshold_pct >= 0.",
+    ),
+    (
+        "vault_schema_changed_rate_threshold_pct",
+        ">=0",
+        "vault_schema_changed_rate_threshold_pct must be >= 0",
+        "Укажите vault_schema_changed_rate_threshold_pct >= 0.",
+    ),
 ]
 
 _ENUM_RULES: list[tuple[str, frozenset[str], str, str]] = [
@@ -485,6 +526,12 @@ _ENUM_RULES: list[tuple[str, frozenset[str], str, str]] = [
         frozenset({"error", "report_only", "skip"}),
         "pending_on_expire must be one of: error, report_only, skip",
         "Используйте значение error, report_only или skip.",
+    ),
+    (
+        "vault_rollout_mode",
+        frozenset({"off", "staging_dry_run", "canary", "full"}),
+        "vault_rollout_mode must be one of: off, staging_dry_run, canary, full",
+        "Используйте rollout mode: off, staging_dry_run, canary или full.",
     ),
 ]
 
@@ -523,6 +570,18 @@ def _validate_settings(settings: Settings) -> list[SettingsIssue]:
                 message=message,
                 hint=hint,
             ))
+
+    if settings.vault_canary_percent < 0 or settings.vault_canary_percent > 100:
+        issues.append(
+            SettingsIssue(
+                code="settings.validation.range",
+                field_path="vault_canary_percent",
+                source="validation",
+                raw_value=settings.vault_canary_percent,
+                message="vault_canary_percent must be in range 0..100",
+                hint="Укажите целое значение от 0 до 100.",
+            )
+        )
 
     if (settings.host is None) != (settings.port is None):
         issues.append(SettingsIssue(

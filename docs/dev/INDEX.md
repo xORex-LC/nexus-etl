@@ -19,6 +19,9 @@
 ### Config
 - [CLI/Settings Layer](layers/config/cli-settings-layer.md) — Загрузка/валидация настроек и CLI runtime boundary
 
+### Vault/Security
+- [Vault Core](layers/vault/vault-core.md) — Бизнес-логика жизненного цикла секретов (`enrich -> plan -> apply`) и портовые границы
+
 ### Transform
 - [Resolve DSL](layers/resolver/resolve-dsl.md) — Правила разрешения конфликтов
 - [Resolve Core](layers/resolver/resolve-core.md) — Алгоритмы resolve и FK resolution

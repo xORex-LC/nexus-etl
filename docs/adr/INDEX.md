@@ -29,6 +29,10 @@ docs/adr/
 │   ├── DSL-PROBLEM-001-...md
 │   ├── DSL-DEC-001-...md
 │   └── ...
+├── vault/              # ADR для Vault/Security слоя
+│   ├── VAULT-PROBLEM-001-...md
+│   ├── VAULT-DEC-001-...md
+│   └── ...
 ├── transform/          # ADR для Transform слоя (resolve, mapping, etc)
 │   ├── RESOLVE-PROBLEM-001-...md
 │   ├── RESOLVE-DEC-001-...md
@@ -81,6 +85,13 @@ docs/adr/
 | [TARGET-DEC-003](./target/TARGET-DEC-003-target-core.md) | Decision | TargetCore как plugin-core (core механики + provider-правила) | Принято / реализовано (каноничное для target-core) | 2026-02-16 |
 | [TARGET-PROBLEM-004](./target/TARGET-PROBLEM-004-hardcoded-provider-spec.md) | Problem | Поведенческая spec провайдера захардкожена в Python | Решена в TARGET-DEC-004 | 2026-02-17 |
 | [TARGET-DEC-004](./target/TARGET-DEC-004-target-dsl-declarative-provider.md) | Decision | target-dsl — YAML-описание поведенческой spec провайдера | Принято / реализовано | 2026-02-17 |
+
+### Vault
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [VAULT-PROBLEM-001](./vault/VAULT-PROBLEM-001-plaintext-dev-vault-and-missing-crypto-lifecycle.md) | Problem | Plaintext dev-vault и отсутствующий production-контур секретов | Решена в VAULT-DEC-001 | 2026-02-18 |
+| [VAULT-DEC-001](./vault/VAULT-DEC-001-envelope-encrypted-vault-with-hexagonal-ports.md) | Decision | Envelope-encrypted vault с hexagonal разделением crypto/storage | Принято | 2026-02-18 |
 
 _(Список поддерживается как актуальный реестр ADR по слоям.)_
 

@@ -1,0 +1,202 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from cryptography.fernet import Fernet
+
+from connector.config.app_settings import PathsSettings
+from connector.datasets.employees.spec import make_employees_spec
+from connector.delivery.cli.bootstrap import build_secret_provider, build_secret_retention_hook
+from connector.domain.diagnostics.catalog import build_catalog
+from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.planning.plan_models import Operation, Plan, PlanItem, PlanMeta, PlanSummary
+from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol, RequestSpec
+from connector.domain.secrets.secret_locator_service import SecretLocatorService
+from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
+from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
+from connector.infra.secrets.sqlite import SqliteVaultRepository, VaultSqliteDb
+from connector.usecases.import_apply_service import ImportApplyService
+
+CATALOG = build_catalog("employees", strict=True)
+
+
+class _DummyExecutor(RequestExecutorProtocol):
+    def __init__(self, *, ok: bool) -> None:
+        self.ok = ok
+        self.calls = 0
+
+    def execute(self, spec: RequestSpec) -> ExecutionResult:
+        _ = spec
+        self.calls += 1
+        if self.ok:
+            return ExecutionResult(ok=True, answer_code=200, response_payload={"_id": "id-1"})
+        return ExecutionResult(ok=False, answer_code=500, error_message="boom")
+
+
+def _paths(tmp_path: Path) -> PathsSettings:
+    return PathsSettings(
+        cache_dir=str(tmp_path / "cache"),
+        log_dir=str(tmp_path / "logs"),
+        report_dir=str(tmp_path / "reports"),
+    )
+
+
+def _base_state() -> dict[str, object]:
+    return {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+1111111",
+        "password": "",
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": "TAB-100",
+    }
+
+
+def _plan(*, lifecycle: dict[str, object] | None) -> Plan:
+    return Plan(
+        meta=PlanMeta(
+            run_id="run-1",
+            generated_at="now",
+            dataset="employees",
+            csv_path=None,
+            plan_path=None,
+            include_deleted=False,
+        ),
+        summary=PlanSummary(
+            rows_total=1,
+            valid_rows=1,
+            failed_rows=0,
+            planned_create=1,
+            planned_update=0,
+            skipped=0,
+        ),
+        items=[
+            PlanItem(
+                row_id="row-1",
+                line_no=1,
+                op=Operation.CREATE,
+                target_id="target-1",
+                desired_state=_base_state(),
+                changes={},
+                source_ref={"match_key": "Doe|John|M|100"},
+                secret_fields=["password"],
+                secret_lifecycle=lifecycle,
+            )
+        ],
+    )
+
+
+def _write_secret(tmp_path: Path) -> None:
+    vault_db = VaultSqliteDb(cache_dir=str(tmp_path / "cache"))
+    try:
+        store = SecretVaultWriteService(
+            repository=SqliteVaultRepository(vault_db),
+            cipher=FernetEnvelopeCipher(),
+            key_provider=EnvVaultKeyProvider(),
+            locator=SecretLocatorService(),
+        )
+        store.put_many(
+            dataset="employees",
+            match_key="Doe|John|M|100",
+            secrets={"password": "TopSecret123"},
+            run_id="run-1",
+        )
+    finally:
+        vault_db.close()
+
+
+def _read_secret_exists(tmp_path: Path) -> bool:
+    vault_db = VaultSqliteDb(cache_dir=str(tmp_path / "cache"))
+    try:
+        repo = SqliteVaultRepository(vault_db)
+        locator_hash = SecretLocatorService().build_locator_hash(
+            dataset="employees",
+            field="password",
+            source_ref={"match_key": "Doe|John|M|100"},
+        )
+        record = repo.get_secret(
+            dataset="employees",
+            field="password",
+            locator_hash=locator_hash,
+            locator_version="v1",
+            run_id="run-1",
+        )
+        return record is not None
+    finally:
+        vault_db.close()
+
+
+def _run_apply(tmp_path: Path, *, lifecycle: dict[str, object] | None, exec_ok: bool):
+    provider = build_secret_provider("vault", paths_settings=_paths(tmp_path), run_id="run-1")
+    retention = build_secret_retention_hook("vault", paths_settings=_paths(tmp_path))
+    try:
+        adapter = make_employees_spec(secrets=provider).get_apply_adapter()
+        result = ImportApplyService(
+            executor=_DummyExecutor(ok=exec_ok),
+            secret_retention=retention,
+        ).apply_plan(
+            plan=_plan(lifecycle=lifecycle),
+            catalog=CATALOG,
+            apply_adapter=adapter,
+            stop_on_first_error=False,
+            max_actions=None,
+            max_item_outcomes=10,
+        )
+        return result
+    finally:
+        close_provider = getattr(provider, "close", None)
+        if callable(close_provider):
+            close_provider()
+        if retention is not None:
+            close_retention = getattr(retention, "close", None)
+            if callable(close_retention):
+                close_retention()
+
+
+def test_apply_retention_persistent_keeps_secret(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ANKEY_VAULT_MASTER_KEYS", f"mk_2026:{Fernet.generate_key().decode('utf-8')}")
+    _write_secret(tmp_path)
+
+    result = _run_apply(tmp_path, lifecycle={"mode": "persistent"}, exec_ok=True)
+
+    assert result.primary_code == SystemErrorCode.OK
+    assert _read_secret_exists(tmp_path) is True
+    assert result.summary.retention_stats.get("kept") == 1
+
+
+def test_apply_retention_ephemeral_deletes_on_success(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ANKEY_VAULT_MASTER_KEYS", f"mk_2026:{Fernet.generate_key().decode('utf-8')}")
+    _write_secret(tmp_path)
+
+    result = _run_apply(
+        tmp_path,
+        lifecycle={"mode": "ephemeral", "delete_on_success": True},
+        exec_ok=True,
+    )
+
+    assert result.primary_code == SystemErrorCode.OK
+    assert _read_secret_exists(tmp_path) is False
+    assert result.summary.retention_stats.get("deleted") == 1
+
+
+def test_apply_retention_ephemeral_keeps_secret_on_failed_apply(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ANKEY_VAULT_MASTER_KEYS", f"mk_2026:{Fernet.generate_key().decode('utf-8')}")
+    _write_secret(tmp_path)
+
+    result = _run_apply(
+        tmp_path,
+        lifecycle={"mode": "ephemeral", "delete_on_success": True},
+        exec_ok=False,
+    )
+
+    assert result.primary_code != SystemErrorCode.OK
+    assert _read_secret_exists(tmp_path) is True
+    assert result.summary.retention_stats == {}

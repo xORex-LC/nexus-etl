@@ -11,6 +11,7 @@ from connector.config.app_settings import (
     PathsSettings,
     PendingSettings,
     RefreshSettings,
+    VaultRolloutSettings,
 )
 
 COMMAND_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
@@ -19,11 +20,19 @@ COMMAND_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
     "cache-clear": (DatasetSettings, ObservabilitySettings, PathsSettings),
     "mapping": (DatasetSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
     "normalize": (DatasetSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
-    "enrich": (DatasetSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
+    "enrich": (DatasetSettings, ExecutionSettings, ObservabilitySettings, PathsSettings, VaultRolloutSettings),
     "match": (DatasetSettings, MatchingRuntimeSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
     "resolve": (DatasetSettings, MatchingRuntimeSettings, PendingSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
-    "import-plan": (DatasetSettings, MatchingRuntimeSettings, PendingSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
-    "import-apply": (DatasetSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
+    "import-plan": (
+        DatasetSettings,
+        MatchingRuntimeSettings,
+        PendingSettings,
+        ExecutionSettings,
+        ObservabilitySettings,
+        PathsSettings,
+        VaultRolloutSettings,
+    ),
+    "import-apply": (DatasetSettings, ExecutionSettings, ObservabilitySettings, PathsSettings, VaultRolloutSettings),
     "check-api": (ApiSettings, ObservabilitySettings, PathsSettings),
 }
 
@@ -33,11 +42,18 @@ USECASE_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
     "CacheClearUseCase": (DatasetSettings, ObservabilitySettings),
     "MappingUseCase": (DatasetSettings, ExecutionSettings, ObservabilitySettings),
     "NormalizeUseCase": (DatasetSettings, ExecutionSettings, ObservabilitySettings),
-    "EnrichUseCase": (DatasetSettings, ExecutionSettings, ObservabilitySettings),
+    "EnrichUseCase": (DatasetSettings, ExecutionSettings, ObservabilitySettings, VaultRolloutSettings),
     "MatchUseCase": (DatasetSettings, MatchingRuntimeSettings, ExecutionSettings, ObservabilitySettings),
     "ResolveUseCase": (DatasetSettings, MatchingRuntimeSettings, PendingSettings, ExecutionSettings, ObservabilitySettings),
-    "ImportPlanService": (DatasetSettings, MatchingRuntimeSettings, PendingSettings, ExecutionSettings, ObservabilitySettings),
-    "ImportApplyService": (DatasetSettings, ExecutionSettings, ObservabilitySettings),
+    "ImportPlanService": (
+        DatasetSettings,
+        MatchingRuntimeSettings,
+        PendingSettings,
+        ExecutionSettings,
+        ObservabilitySettings,
+        VaultRolloutSettings,
+    ),
+    "ImportApplyService": (DatasetSettings, ExecutionSettings, ObservabilitySettings, VaultRolloutSettings),
 }
 
 COMMAND_TO_USECASE: Final[dict[str, str]] = {

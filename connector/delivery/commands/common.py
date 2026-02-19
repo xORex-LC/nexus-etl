@@ -6,6 +6,7 @@ import typer
 
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.logging.setup import logEvent
 
 
@@ -35,6 +36,16 @@ def log_sqlite_cache_error(*, logger, run_id: str, exc: Exception) -> None:
         Единый логгер cache sqlite-ошибки для best-effort сценариев.
     """
     logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
+
+
+def vault_startup_error_result(*, logger, run_id: str, exc: VaultDomainError) -> CommandResult:
+    """
+    Назначение:
+        Единый fail-fast результат для startup guard ошибок (`VAULT_STARTUP_*`).
+    """
+    logEvent(logger, logging.ERROR, run_id, "vault", f"{exc.code}: {exc}")
+    typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
+    return result_with(SystemErrorCode.INTERNAL_ERROR)
 
 
 def ensure_supported_cache_dataset(cache_admin, dataset: str | None) -> CommandResult | None:

@@ -25,7 +25,7 @@ class MissingRequiredSecretError(Exception):
     Назначение:
         Ошибка прикладного уровня, сигнализирующая об отсутствии обязательного секрета.
     Инварианты/гарантии:
-        - code установлен в "SECRET_REQUIRED".
+        - code содержит диагностический `SECRET_*` код для apply boundary.
         - Содержит контекст записи (dataset, field, row_id/line_no, target_id).
     """
 
@@ -34,10 +34,11 @@ class MissingRequiredSecretError(Exception):
     row_id: str | None = None
     line_no: int | None = None
     target_id: str | None = None
+    diag_code: str = "SECRET_REQUIRED"
 
     @property
     def code(self) -> str:
-        return "SECRET_REQUIRED"
+        return self.diag_code
 
     def __str__(self) -> str:
         return (

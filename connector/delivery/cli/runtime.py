@@ -293,8 +293,8 @@ def _validate_requirements(ctx: CommandContext, opts: Any, requirements: Require
         _require_cache(app_settings)
 
     if requirements.requires_secrets:
-        vault_file = _get_opt(opts, ("vault_file", "vault", "secrets_file"))
-        _require_secrets(vault_file)
+        vault_mode = _get_opt(opts, ("vault_mode",))
+        _require_secrets(vault_mode)
 
     if requirements.requires_dataset:
         _require_dataset(dataset)
@@ -352,17 +352,10 @@ def _require_cache(app_settings: AppSettings) -> None:
         raise RuntimeErrorWithCode(f"Cache dir not доступен: {exc}", exit_code=2) from exc
 
 
-def _require_secrets(vault_file: str | None) -> None:
-    if not vault_file:
-        raise RuntimeErrorWithCode("Vault file path is required", exit_code=2)
-    path = Path(vault_file)
-    if path.exists():
-        return
-    if path.parent:
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            raise RuntimeErrorWithCode(f"Vault dir not доступен: {exc}", exit_code=2) from exc
+def _require_secrets(vault_mode: str | None) -> None:
+    normalized = (vault_mode or "auto").strip().lower()
+    if normalized == "off":
+        raise RuntimeErrorWithCode("vault-mode=off is incompatible with command requirements", exit_code=2)
 
 
 def _require_dataset(dataset: str | None) -> None:

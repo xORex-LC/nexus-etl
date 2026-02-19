@@ -76,6 +76,7 @@ class PlanBuilder:
             changes=resolved.changes,
             source_ref=resolved.source_ref,
             secret_fields=resolved.secret_fields,
+            secret_lifecycle=resolved.secret_lifecycle,
         )
         if plan_item.op == Operation.CREATE:
             self.planned_create += 1
@@ -117,4 +118,5 @@ class PlanBuilder:
             "changes": plan_item.changes,
             "source_ref": plan_item.source_ref,
             "secret_fields": list(plan_item.secret_fields or []),
+            "secret_lifecycle": dict(plan_item.secret_lifecycle) if isinstance(plan_item.secret_lifecycle, dict) else None,
         }
