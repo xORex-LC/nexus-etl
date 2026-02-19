@@ -7,8 +7,8 @@ from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.domain.transform.matcher.match_models import MatchedRow, MatchDecision, MatchDecisionStatus
 from connector.domain.transform.resolver.resolve_core import ResolveCore
-from connector.domain.transform.matcher.rules import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
-from connector.domain.dsl.loader import load_sink_spec_for_dataset
+from connector.domain.transform_dsl.compilers.resolve import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
+from connector.domain.transform_dsl import load_sink_spec_for_dataset
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready

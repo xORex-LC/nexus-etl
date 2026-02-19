@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.domain.dsl.build_options import MapDslBuildOptions
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.specs import MappingSpec, SinkSpec
+from connector.domain.transform_dsl.build_options import MapDslBuildOptions
+from connector.domain.transform_dsl.specs import MappingSpec, SinkSpec
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.transform.mapping.mapper_dsl import MapperDsl
+from connector.domain.transform_dsl.compilers.mapping import MapperDsl
 from connector.domain.transform.mapping import MapperEngine
 
 

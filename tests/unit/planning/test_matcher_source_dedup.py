@@ -9,12 +9,12 @@ from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.ids.match_key import MatchKey
 from connector.domain.transform.matcher.match_core import MatchCore
 from connector.domain.transform.matcher.match_models import MatchDecisionStatus
-from connector.domain.transform.matcher.rules import (
+from connector.domain.transform_dsl.compilers.match import (
     IdentityRule,
     MatchingRules,
-    ResolveRules,
     SourceDedupRules,
 )
+from connector.domain.transform_dsl.compilers.resolve import ResolveRules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
