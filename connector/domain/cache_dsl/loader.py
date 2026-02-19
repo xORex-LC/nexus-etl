@@ -8,10 +8,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from connector.domain.dsl.build_options import CacheDslBuildOptions, build_options_from_mapping
+from connector.domain.dsl.build_options import build_options_from_mapping
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.loader._common import _load_registry_or_raise, _read_yaml, _repo_root
-from connector.domain.dsl.specs import CacheDatasetSpec, CacheRegistrySpec
+from connector.domain.cache_dsl.build_options import CacheDslBuildOptions
+from connector.domain.cache_dsl.specs import CacheDatasetSpec, CacheRegistrySpec
 
 
 # ========== SPEC LOADERS ==========

@@ -1,6 +1,6 @@
 # DSL-DEC-003: Per-layer DSL модули и чистый DSL Core
 
-> **Статус**: Принято
+> **Статус**: Принято / реализовано
 > **Дата принятия**: 2026-02-17
 > **Решает проблему**: [DSL-PROBLEM-003](./DSL-PROBLEM-003-dsl-core-mixed-responsibilities.md)
 > **Участники решения**: @xorex-LC

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.dsl.specs import (
+from connector.domain.transform_dsl.specs import (
     EnrichSpec,
     MappingSpec,
     MatchSpec,

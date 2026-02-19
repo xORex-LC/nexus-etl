@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader import (
-    load_cache_build_options_for_runtime,
+from connector.domain.cache_dsl import load_cache_build_options_for_runtime
+from connector.domain.transform_dsl import (
     load_enrich_build_options_for_dataset,
     load_map_build_options_for_dataset,
     load_match_build_options_for_dataset,
@@ -14,8 +14,8 @@ from connector.domain.dsl.loader import (
 
 
 def _patch_registry(monkeypatch, registry: dict) -> None:
-    monkeypatch.setattr("connector.domain.dsl.loader.transform._load_registry_or_raise", lambda: registry)
-    monkeypatch.setattr("connector.domain.dsl.loader.cache._load_registry_or_raise", lambda: registry)
+    monkeypatch.setattr("connector.domain.transform_dsl.loader._load_registry_or_raise", lambda: registry)
+    monkeypatch.setattr("connector.domain.cache_dsl.loader._load_registry_or_raise", lambda: registry)
 
 
 def test_build_options_defaults_without_policy(monkeypatch):

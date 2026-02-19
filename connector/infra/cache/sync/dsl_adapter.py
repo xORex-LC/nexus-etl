@@ -6,7 +6,7 @@ from typing import Any
 
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.dsl.engine import TransformationEngine
-from connector.domain.dsl.specs import (
+from connector.domain.cache_dsl.specs import (
     CacheDatasetSpec,
     CacheProjectionRuleSpec,
     CacheSyncSpec,

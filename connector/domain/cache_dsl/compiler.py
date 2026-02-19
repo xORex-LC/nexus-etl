@@ -1,6 +1,7 @@
 """
 Назначение:
-    Cache DSL compile-слой (Spec -> Runtime).
+    CacheDsl: компиляция Cache DSL Spec в CacheDslRuntime.
+    Compiled models: CacheDslRuntime, CacheDslRuntimePolicy.
 """
 
 from __future__ import annotations
@@ -10,15 +11,18 @@ from hashlib import sha256
 import json
 
 from connector.domain.cache_core.cache_dependency_graph import CacheDependencyGraph
-from connector.domain.dsl.build_options import CacheDslBuildOptions
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.specs import (
+from connector.domain.cache_dsl.build_options import CacheDslBuildOptions
+from connector.domain.cache_dsl.specs import (
     CacheDatasetSpec,
     CacheRegistrySpec,
     CacheSyncSpec,
 )
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.ports.cache.models import CacheSpec, FieldSpec
+
+
+# ========== COMPILED MODELS ==========
 
 
 @dataclass(frozen=True)
@@ -55,6 +59,9 @@ class CacheDslRuntime:
     schema_hashes: dict[str, str]
     sync_hashes: dict[str, str]
     policy: CacheDslRuntimePolicy
+
+
+# ========== COMPILER ==========
 
 
 class CacheDsl:
@@ -174,6 +181,9 @@ def build_sync_hash(sync_spec: CacheSyncSpec) -> str:
     """
     payload = sync_spec.model_dump(mode="json", by_alias=True)
     return _hash_payload(payload)
+
+
+# ========== PRIVATE HELPERS ==========
 
 
 def _hash_payload(payload: dict) -> str:

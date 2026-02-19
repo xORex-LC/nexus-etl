@@ -1,12 +1,17 @@
 """
 Назначение:
-    Сборка EnricherSpec из DSL-спецификаций.
+    EnricherDsl: компиляция EnrichSpec в EnricherSpec (compiled).
+    Compiled models: EnricherSpec, EnrichmentOperation, KeyRegistry.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Callable, Generic, TypeVar
 
+from connector.domain.diagnostics.catalog import ErrorCatalog
+from connector.domain.models import DiagnosticItem
+from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.enrich.models import (
     CandidateValue,
     EnrichOperationType,
@@ -16,16 +21,90 @@ from connector.domain.transform.enrich.models import (
     RunWhenErrors,
     StrictnessPolicy,
 )
-from connector.domain.transform.enrich.spec import EnricherSpec, EnrichmentOperation, KeyRegistry
-from connector.domain.dsl.build_options import EnrichDslBuildOptions
+from connector.domain.transform.enrich.providers import CandidateProvider
+from connector.domain.transform.providers import ProviderGateway
 from connector.domain.dsl.engine import TransformationEngine
+from connector.domain.dsl.helpers import apply_ops
 from connector.domain.dsl.issues import DslLoadError, DslSeverity
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
-from connector.domain.dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, OperationCall, SecretsSpec
-from connector.domain.dsl.helpers import apply_ops
+from connector.domain.dsl.specs import OperationCall
+from connector.domain.transform_dsl.build_options import EnrichDslBuildOptions
+from connector.domain.transform_dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
 from connector.domain.transform.common.values import read_value_path
 from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
-from connector.domain.transform.providers import ProviderGateway
+
+T = TypeVar("T")
+D = TypeVar("D")
+
+KeyBuilder = Callable[[TransformResult[T]], Any]
+
+
+# ========== COMPILED MODELS ==========
+
+
+@dataclass(frozen=True)
+class KeyRegistry(Generic[T]):
+    """
+    Реестр ключей enrich (key_name -> builder).
+    """
+
+    builders: dict[str, KeyBuilder[T]]
+
+    def resolve(self, key: str, result: TransformResult[T]) -> Any | None:
+        builder = self.builders.get(key)
+        if builder is None:
+            if result.row is not None and hasattr(result.row, key):
+                return getattr(result.row, key)
+            if result.meta:
+                return result.meta.get(key)
+            return None
+        return builder(result)
+
+
+@dataclass(frozen=True)
+class EnrichmentOperation(Generic[T, D]):
+    """
+    Декларативная спецификация операции enrich.
+    """
+
+    name: str
+    op_type: EnrichOperationType
+    targets: tuple[str, ...]
+    required_keys: tuple[str, ...] = ()
+    providers: tuple[CandidateProvider[T, D], ...] = ()
+    merge_policy: MergePolicy | None = None
+    strictness: StrictnessPolicy | None = None
+    run_when_errors: RunWhenErrors = RunWhenErrors.NEVER
+    compute: Callable[[TransformResult[T], D], dict[str, Any] | None] | None = None
+    generator: Callable[[TransformResult[T], D], Any] | None = None
+    exists: Callable[[D, Any], Any] | None = None
+    allow_if: Callable[[TransformResult[T], Any], bool] | None = None
+    max_attempts: int = 3
+    postprocess: Callable[[Any], Any] | None = None
+    missing_error_code: str | None = None
+    conflict_error_code: str | None = None
+    error_field: str | None = None
+
+
+@dataclass(frozen=True)
+class EnricherSpec(Generic[T, D]):
+    """
+    Спецификация enrich для датасета (compiled).
+    """
+
+    operations: tuple[EnrichmentOperation[T, D], ...]
+    key_registry: KeyRegistry[T]
+    field_semantics: dict[str, str] = field(default_factory=dict)
+    source_priorities: dict[str, int] = field(default_factory=dict)
+    default_merge_policy: MergePolicy = MergePolicy()
+    default_strictness: StrictnessPolicy = StrictnessPolicy()
+    authoritative_sources: set[str] = field(default_factory=lambda: {"sink_cache"})
+    is_fatal_error: Callable[[DiagnosticItem], bool] | None = None
+    stop_on_failed: bool = False
+
+
+# ========== COMPILER ==========
+
 
 class EnricherDsl:
     """
@@ -88,6 +167,9 @@ class EnricherDsl:
                         message=f"Unknown operation '{rule.allow_if.op}' in enrich rule '{rule.name}' allow_if",
                         details={"op": rule.allow_if.op, "rule": rule.name},
                     )
+
+
+# ========== BUILD HELPERS ==========
 
 
 def build_enricher_spec_from_dsl(
@@ -153,8 +235,8 @@ def _build_match_key_operation(match_key_spec: MatchKeySpec) -> EnrichmentOperat
         if row is None:
             return None
         parts: list[str | None] = []
-        for field in match_key_spec.fields:
-            parts.append(read_value_path(row, field))
+        for field_name in match_key_spec.fields:
+            parts.append(read_value_path(row, field_name))
         try:
             match_key = build_delimited_match_key(parts, strict=match_key_spec.strict)
         except MatchKeyError:

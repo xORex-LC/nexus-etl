@@ -11,13 +11,14 @@ from typing import Any, Callable, Generic, TypeVar
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.dsl.build_options import NormalizeDslBuildOptions
-from connector.domain.dsl.engine import TransformationEngine
-from connector.domain.dsl.issues import DslIssue
 from connector.domain.dsl.diagnostics import append_dsl_issue
+from connector.domain.dsl.engine import TransformationEngine
 from connector.domain.dsl.helpers import apply_ops
+from connector.domain.dsl.issues import DslIssue
 from connector.domain.transform.common.values import to_mapping
-from connector.domain.dsl.specs import NormalizeRule, NormalizeSpec, SinkSpec
+from connector.domain.transform_dsl.build_options import NormalizeDslBuildOptions
+from connector.domain.transform_dsl.specs import NormalizeRule, SinkSpec
+from connector.domain.transform_dsl.compilers.normalize import CompiledNormalizeRules
 from connector.domain.transform.common.sink_schema import validate_sink_fields, validate_sink_row
 
 T = TypeVar("T")
@@ -32,20 +33,19 @@ class NormalizerCore(Generic[T]):
 
     def __init__(
         self,
-        spec: NormalizeSpec,
+        compiled: CompiledNormalizeRules,
         *,
         engine: TransformationEngine,
         catalog: ErrorCatalog,
         sink_spec: SinkSpec | None = None,
         row_builder: RowBuilder[T] | None = None,
-        options: NormalizeDslBuildOptions | None = None,
     ) -> None:
-        self.spec = spec
+        self.compiled = compiled
         self.catalog = catalog
         self.row_builder = row_builder
         self.engine = engine
         self.sink_spec = sink_spec
-        self.options = options or NormalizeDslBuildOptions()
+        self.options = compiled.options
 
     def normalize(self, source: TransformResult[Any]) -> TransformResult[T]:
         """
@@ -82,7 +82,7 @@ class NormalizerCore(Generic[T]):
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
 
-        for rule in self.spec.normalize.rules:
+        for rule in self.compiled.rules:
             value = normalized_values.get(rule.field)
             if not rule.ops:
                 continue
@@ -109,7 +109,7 @@ class NormalizerCore(Generic[T]):
                     rule=None,
                     source=source,
                     issue=issue,
-                    on_error=self.spec.normalize.on_error,
+                    on_error=self.compiled.on_error,
                 )
 
         row: T | None

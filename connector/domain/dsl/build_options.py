@@ -1,6 +1,10 @@
 """
 Назначение:
-    Compile-policy опции DSL для стадий трансформации.
+    Generic compile-policy опции DSL.
+
+    Layer-специфичные build options:
+    - Transform: connector.domain.transform_dsl.build_options
+    - Cache: connector.domain.cache_dsl.build_options
 
 Контракт:
     - Это не бизнес-правила датасета.
@@ -22,72 +26,6 @@ class BaseDslBuildOptions:
 
     strict: bool = False
     fail_on_unknown_ops: bool = True
-
-
-@dataclass(frozen=True)
-class MapDslBuildOptions(BaseDslBuildOptions):
-    """
-    Назначение:
-        Compile-policy опции map-стадии.
-    """
-
-    require_targets_exist_in_sink_spec: bool = False
-
-
-@dataclass(frozen=True)
-class NormalizeDslBuildOptions(BaseDslBuildOptions):
-    """
-    Назначение:
-        Compile-policy опции normalize-стадии.
-    """
-
-    validate_only_touched_fields: bool = False
-
-
-@dataclass(frozen=True)
-class EnrichDslBuildOptions(BaseDslBuildOptions):
-    """
-    Назначение:
-        Compile-policy опции enrich-стадии.
-    """
-
-    require_match_key: bool = False
-
-
-@dataclass(frozen=True)
-class MatchDslBuildOptions(BaseDslBuildOptions):
-    """
-    Назначение:
-        Compile-policy опции match-стадии.
-    """
-
-    require_primary_identity_rule: bool = False
-
-
-@dataclass(frozen=True)
-class ResolveDslBuildOptions(BaseDslBuildOptions):
-    """
-    Назначение:
-        Compile-policy опции resolve-стадии.
-    """
-
-    allow_pending_links: bool = True
-
-
-@dataclass(frozen=True)
-class CacheDslBuildOptions(BaseDslBuildOptions):
-    """
-    Назначение:
-        Compile-policy опции cache DSL компиляции.
-    """
-
-    require_sync_dataset_match: bool = True
-    fail_on_unknown_dependencies: bool = True
-    fail_on_unknown_pk_fields: bool = True
-    fail_on_unknown_index_fields: bool = True
-    fail_on_duplicate_projection_targets: bool = True
-    fail_on_unknown_projection_targets: bool = True
-    forbid_is_deleted_and_soft_delete_together: bool = True
 
 
 TBuildOptions = TypeVar("TBuildOptions", bound=BaseDslBuildOptions)

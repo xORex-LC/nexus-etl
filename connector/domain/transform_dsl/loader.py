@@ -11,20 +11,24 @@ from typing import Any
 
 from connector.domain.dsl.build_options import (
     BaseDslBuildOptions,
+    build_options_from_mapping,
+)
+from connector.domain.dsl.issues import DslLoadError
+from connector.domain.dsl.loader._common import (
+    _load_registry_or_raise,
+    _load_spec_from_path,
+    _read_yaml_or_raise,
+    _repo_root,
+    _validate_spec_or_raise,
+)
+from connector.domain.transform_dsl.build_options import (
     EnrichDslBuildOptions,
     MapDslBuildOptions,
     MatchDslBuildOptions,
     NormalizeDslBuildOptions,
     ResolveDslBuildOptions,
-    build_options_from_mapping,
 )
-from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader._common import (
-    _load_dataset_stage_spec,
-    _load_registry_or_raise,
-    _load_spec_from_path,
-)
-from connector.domain.dsl.specs import (
+from connector.domain.transform_dsl.specs import (
     EnrichSpec,
     MappingSpec,
     MatchSpec,
@@ -201,6 +205,59 @@ def load_resolve_build_options_for_dataset(dataset: str) -> ResolveDslBuildOptio
 
 
 # ========== PRIVATE HELPERS ==========
+
+
+def _resolve_dataset_path(registry: dict[str, Any], dataset: str, stage: str) -> Path:
+    datasets = registry.get("datasets") or {}
+    if dataset not in datasets:
+        raise DslLoadError(
+            code="DSL_REGISTRY_INVALID",
+            message=f"Dataset '{dataset}' not found in registry.yml",
+            details={"dataset": dataset, "stage": stage},
+        )
+    entry = datasets[dataset] or {}
+    filename = entry.get(stage)
+    if not filename:
+        raise DslLoadError(
+            code="DSL_REGISTRY_INVALID",
+            message=f"Dataset '{dataset}' does not define '{stage}' in registry.yml",
+            details={"dataset": dataset, "stage": stage},
+        )
+    return _repo_root() / "datasets" / filename
+
+
+def _load_dataset_stage_spec(
+    *,
+    dataset: str,
+    stage: str,
+    spec_cls: type,
+    code: str,
+    post_load=None,
+):
+    """
+    Назначение:
+        Загрузить spec для датасета/стадии из registry.
+    """
+    registry = _load_registry_or_raise()
+    stage_path = _resolve_dataset_path(registry, dataset, stage)
+    raw = _read_yaml_or_raise(stage_path, code=code, dataset=dataset, stage=stage)
+    if post_load is not None:
+        try:
+            raw = post_load(raw)
+        except DslLoadError:
+            raise
+        except Exception as exc:
+            raise DslLoadError(
+                code=code,
+                message=f"Failed to preprocess DSL stage '{stage}': {exc}",
+                details={"dataset": dataset, "stage": stage, "path": str(stage_path)},
+            ) from exc
+    return _validate_spec_or_raise(
+        raw,
+        spec_cls,
+        code=code,
+        details={"dataset": dataset, "stage": stage, "path": str(stage_path)},
+    )
 
 
 def _expand_enrich_templates(raw: dict[str, Any]) -> dict[str, Any]:

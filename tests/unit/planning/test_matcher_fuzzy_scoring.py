@@ -12,12 +12,12 @@ from connector.domain.transform.matcher.match_models import (
     MatchDecisionReason,
     MatchDecisionStatus,
 )
-from connector.domain.transform.matcher.rules import (
+from connector.domain.transform_dsl.compilers.match import (
     FuzzyScoringRules,
     IdentityRule,
     MatchingRules,
-    ResolveRules,
 )
+from connector.domain.transform_dsl.compilers.resolve import ResolveRules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 

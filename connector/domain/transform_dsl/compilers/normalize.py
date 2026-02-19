@@ -1,23 +1,35 @@
 """
 Назначение:
-    NormalizerDsl: компиляция NormalizeSpec в NormalizerCore.
+    NormalizerDsl: компиляция NormalizeSpec в CompiledNormalizeRules.
 """
 
 from __future__ import annotations
 
-from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.dsl.build_options import NormalizeDslBuildOptions
+from dataclasses import dataclass
+
 from connector.domain.dsl.engine import TransformationEngine
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.registry import OperationRegistry
-from connector.domain.dsl.specs import NormalizeSpec, SinkSpec
-from connector.domain.transform.normalize.normalizer_core import NormalizerCore, RowBuilder
+from connector.domain.transform_dsl.build_options import NormalizeDslBuildOptions
+from connector.domain.transform_dsl.specs import NormalizeRule, NormalizeSpec
+
+
+@dataclass(frozen=True)
+class CompiledNormalizeRules:
+    """
+    Назначение:
+        Скомпилированные normalize-правила (frozen, data-only).
+    """
+
+    rules: tuple[NormalizeRule, ...]
+    on_error: str
+    options: NormalizeDslBuildOptions
 
 
 class NormalizerDsl:
     """
     Назначение/ответственность:
-        Преобразует DSL-спеку нормализации в NormalizerCore.
+        Преобразует DSL-спеку нормализации в CompiledNormalizeRules.
     """
 
     def __init__(
@@ -35,27 +47,17 @@ class NormalizerDsl:
         self.engine = engine
         self.options = options or NormalizeDslBuildOptions()
 
-    def compile(
-        self,
-        spec: NormalizeSpec,
-        *,
-        catalog: ErrorCatalog,
-        sink_spec: SinkSpec | None = None,
-        row_builder: RowBuilder | None = None,
-    ) -> NormalizerCore:
+    def compile(self, spec: NormalizeSpec) -> CompiledNormalizeRules:
         """
         Назначение:
-            Скомпилировать NormalizeSpec в NormalizerCore.
+            Скомпилировать NormalizeSpec в CompiledNormalizeRules.
         """
         if self.options.fail_on_unknown_ops:
             self._validate_ops_known(spec)
         try:
-            return NormalizerCore(
-                spec,
-                engine=self.engine,
-                catalog=catalog,
-                sink_spec=sink_spec,
-                row_builder=row_builder,
+            return CompiledNormalizeRules(
+                rules=tuple(spec.normalize.rules),
+                on_error=spec.normalize.on_error,
                 options=self.options,
             )
         except DslLoadError:
