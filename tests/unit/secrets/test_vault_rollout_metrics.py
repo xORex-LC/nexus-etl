@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from connector.domain.secrets.vault_rollout_metrics import (
+from connector.domain.secrets.policy.rollout_metrics import (
     VaultRolloutThresholds,
     build_vault_operational_metrics,
 )

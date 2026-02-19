@@ -24,7 +24,16 @@ INCLUDE_DELETED = typer.Option(None, "--include-deleted", help="Include soft-del
 
 # Secrets options
 SECRETS_FROM = typer.Option(None, "--secrets-from", help="Secrets provider (none|prompt|vault)")
-VAULT_FILE = typer.Option(None, "--vault-file", help="Vault file path")
+VAULT_MODE = typer.Option(
+    None,
+    "--vault-mode",
+    help="Vault runtime mode (auto|on|off). Default: auto",
+)
+VAULT_FILE = typer.Option(
+    None,
+    "--vault-file",
+    help="Deprecated legacy vault switch. Kept for backward compatibility.",
+)
 
 # Plan/apply options
 MAX_ACTIONS = typer.Option(None, "--max-actions", help="Max number of actions")

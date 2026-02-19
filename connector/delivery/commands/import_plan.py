@@ -23,9 +23,14 @@ from connector.domain.secrets.errors import (
     VaultStartupStorageReadonlyError,
     VaultStartupUninitializedReadonlyError,
 )
-from connector.domain.secrets.vault_rollout_policy import (
+from connector.domain.secrets.policy.rollout_policy import (
     VaultRolloutPolicySettings,
     evaluate_vault_rollout,
+)
+from connector.domain.secrets.policy.runtime_mode_policy import (
+    RUNTIME_REASON_INVALID_MODE,
+    VAULT_RUNTIME_MODE_OFF,
+    resolve_vault_runtime_mode,
 )
 from connector.infra.logging.setup import logEvent
 from connector.usecases.import_plan_service import ImportPlanService
@@ -37,6 +42,7 @@ class Options:
     include_deleted: bool | None = None
     report_items_limit: int | None = None
     dataset: str | None = None
+    vault_mode: str | None = None
     vault_file: str | None = None
 
 
@@ -62,14 +68,29 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
     gateway = None
     try:
         dataset_name, _spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+        runtime_mode_decision = resolve_vault_runtime_mode(
+            mode=opts.vault_mode,
+            requires_vault=_dataset_requires_vault(_spec),
+            legacy_vault_file=opts.vault_file,
+        )
+        if runtime_mode_decision.reason == RUNTIME_REASON_INVALID_MODE:
+            typer.echo("ERROR: unsupported --vault-mode, expected one of: auto|on|off", err=True)
+            return result_with(SystemErrorCode.INTERNAL_ERROR)
+        if runtime_mode_decision.mode == VAULT_RUNTIME_MODE_OFF and runtime_mode_decision.requires_vault:
+            typer.echo(
+                "ERROR: vault-mode=off cannot be used because dataset declares secret fields",
+                err=True,
+            )
+            return result_with(SystemErrorCode.INTERNAL_ERROR)
+
         rollout_decision = evaluate_vault_rollout(
             settings=_rollout_settings(app_settings),
-            requested_vault=bool(opts.vault_file),
+            requested_vault=runtime_mode_decision.requested_vault,
             dataset=dataset_name,
             run_id=run_id,
             command_name="import-plan",
         )
-        if opts.vault_file and not rollout_decision.vault_enabled:
+        if runtime_mode_decision.requested_vault and not rollout_decision.vault_enabled:
             typer.echo(
                 (
                     "ERROR: vault rollout policy blocks import-plan vault path "
@@ -141,6 +162,23 @@ def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:
         canary_datasets=rollout.canary_datasets,
         canary_seed=rollout.canary_seed,
     )
+
+
+def _dataset_requires_vault(dataset_spec) -> bool:
+    """Назначение:
+        Проверить, нужны ли secret-store операции в transform/enrich перед планированием.
+    """
+    enrich_spec = dataset_spec.build_enrich_spec()
+    secrets = enrich_spec.enrich.secrets
+    if secrets is not None:
+        for field in secrets.fields:
+            if isinstance(field, str) and field.strip():
+                return True
+    for rule in (*enrich_spec.enrich.generate, *enrich_spec.enrich.lookup):
+        target = str(rule.target or "").strip()
+        if target.startswith("secret:"):
+            return True
+    return False
 
 
 __all__ = ["handler", "Options"]

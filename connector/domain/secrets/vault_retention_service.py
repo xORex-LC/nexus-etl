@@ -16,10 +16,11 @@ from connector.domain.ports.secrets.locator import SecretLocatorPort
 from connector.domain.ports.secrets.repository import SecretVaultRepositoryPort
 from connector.domain.ports.secrets.retention import SecretApplyRetentionHookProtocol
 from connector.domain.secrets.errors import SecretStoreError
-
-LIFECYCLE_MODE_PERSISTENT = "persistent"
-LIFECYCLE_MODE_EPHEMERAL = "ephemeral"
-DEFAULT_LOCATOR_VERSION = "v1"
+from connector.domain.secrets.policy.retention_policy import (
+    DEFAULT_LOCATOR_VERSION,
+    LIFECYCLE_MODE_EPHEMERAL,
+    normalize_secret_lifecycle,
+)
 
 
 class VaultRetentionService(SecretApplyRetentionHookProtocol):
@@ -71,7 +72,7 @@ class VaultRetentionService(SecretApplyRetentionHookProtocol):
         if not secret_fields:
             return counters
 
-        policy = _normalize_secret_lifecycle(secret_lifecycle)
+        policy = normalize_secret_lifecycle(secret_lifecycle)
         if policy["mode"] != LIFECYCLE_MODE_EPHEMERAL or not policy["delete_on_success"]:
             counters["kept"] += len(secret_fields)
             return counters
@@ -137,35 +138,6 @@ class VaultRetentionService(SecretApplyRetentionHookProtocol):
             Entry point для DEK/key lifecycle maintenance (v1 no-op helper).
         """
         return 0
-
-
-def _normalize_secret_lifecycle(raw: dict[str, Any] | None) -> dict[str, Any]:
-    mode = LIFECYCLE_MODE_PERSISTENT
-    delete_on_success = False
-    ttl_seconds: int | None = None
-    explicit_delete: bool | None = None
-
-    if isinstance(raw, dict):
-        raw_mode = raw.get("mode")
-        if isinstance(raw_mode, str) and raw_mode in {LIFECYCLE_MODE_PERSISTENT, LIFECYCLE_MODE_EPHEMERAL}:
-            mode = raw_mode
-        raw_delete = raw.get("delete_on_success")
-        if isinstance(raw_delete, bool):
-            explicit_delete = raw_delete
-        raw_ttl = raw.get("ttl_seconds")
-        if isinstance(raw_ttl, int) and raw_ttl > 0:
-            ttl_seconds = raw_ttl
-
-    if explicit_delete is not None:
-        delete_on_success = explicit_delete
-    elif mode == LIFECYCLE_MODE_EPHEMERAL:
-        delete_on_success = True
-
-    return {
-        "mode": mode,
-        "delete_on_success": delete_on_success,
-        "ttl_seconds": ttl_seconds,
-    }
 
 
 def _extract_match_key(source_ref: dict[str, Any] | None) -> str | None:

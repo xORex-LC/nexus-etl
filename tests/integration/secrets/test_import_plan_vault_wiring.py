@@ -30,7 +30,7 @@ def _write_minimal_employees_csv(path: Path) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def test_import_plan_command_writes_secrets_to_sqlite_vault(tmp_path: Path):
+def test_import_plan_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     _write_minimal_employees_csv(csv_path)
 
@@ -53,8 +53,6 @@ def test_import_plan_command_writes_secrets_to_sqlite_vault(tmp_path: Path):
             "import",
             "plan",
             "--csv-has-header",
-            "--vault-file",
-            str(tmp_path / "legacy.csv"),
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),
