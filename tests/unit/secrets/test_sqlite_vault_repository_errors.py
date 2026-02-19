@@ -6,30 +6,34 @@ from pathlib import Path
 
 import pytest
 
+from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.domain.secrets.errors import SecretReadError, SecretStoreError
 from connector.domain.secrets.models import VaultProbeRecord
-from connector.infra.secrets.sqlite.db import VaultSqliteDb
 from connector.infra.secrets.sqlite.repository import SqliteVaultRepository
+from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
 
 
-def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, VaultSqliteDb]:
-    db = VaultSqliteDb(db_path=str(tmp_path / "cache" / "ankey_vault.sqlite3"))
-    return SqliteVaultRepository(db), db
+def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, SqliteEngine]:
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+    )
+    return SqliteVaultRepository(engine), engine
 
 
 def test_schema_changed_retry_is_bounded_and_eventually_succeeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
-        original = repo._execute_raw
+        original_execute = engine.execute
         state = {"remaining_failures": 2}
 
-        def flaky(sql: str, params):
+        def flaky(sql: str, params=None):
             if "INSERT INTO vault_probe" in sql and state["remaining_failures"] > 0:
                 state["remaining_failures"] -= 1
                 raise sqlite3.OperationalError("database schema has changed")
-            return original(sql, params)
+            return original_execute(sql, params)
 
-        monkeypatch.setattr(repo, "_execute_raw", flaky)
+        monkeypatch.setattr(engine, "execute", flaky)
 
         repo.upsert_probe(
             VaultProbeRecord(
@@ -44,16 +48,16 @@ def test_schema_changed_retry_is_bounded_and_eventually_succeeds(tmp_path: Path,
         )
         assert state["remaining_failures"] == 0
     finally:
-        db.close()
+        engine.close()
 
 
 def test_schema_changed_retry_exhaustion_maps_to_domain_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
-        def always_schema_changed(sql: str, params):
+        def always_schema_changed(sql: str, params=None):
             raise sqlite3.OperationalError("database schema has changed")
 
-        monkeypatch.setattr(repo, "_execute_raw", always_schema_changed)
+        monkeypatch.setattr(engine, "execute", always_schema_changed)
 
         with pytest.raises(SecretReadError) as exc_info:
             repo.get_probe(probe_name="startup")
@@ -63,16 +67,16 @@ def test_schema_changed_retry_exhaustion_maps_to_domain_error(tmp_path: Path, mo
         assert exc_info.value.details["op"] == "get_probe"
         assert exc_info.value.details["schema_retries"] == 2
     finally:
-        db.close()
+        engine.close()
 
 
 def test_busy_timeout_maps_to_store_error_with_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
-        def always_locked(sql: str, params):
+        def always_locked(sql: str, params=None):
             raise sqlite3.OperationalError("database is locked")
 
-        monkeypatch.setattr(repo, "_execute_raw", always_locked)
+        monkeypatch.setattr(engine, "execute", always_locked)
 
         with pytest.raises(SecretStoreError) as exc_info:
             repo.upsert_probe(
@@ -95,16 +99,16 @@ def test_busy_timeout_maps_to_store_error_with_diagnostics(tmp_path: Path, monke
         assert details["db_path"]
         assert details["lock_holder_pid"] == "unknown"
     finally:
-        db.close()
+        engine.close()
 
 
 def test_busy_timeout_maps_to_read_error_with_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
-        def always_locked(sql: str, params):
+        def always_locked(sql: str, params=None):
             raise sqlite3.OperationalError("database is locked")
 
-        monkeypatch.setattr(repo, "_execute_raw", always_locked)
+        monkeypatch.setattr(engine, "execute", always_locked)
 
         with pytest.raises(SecretReadError) as exc_info:
             repo.get_probe(probe_name="startup")
@@ -117,4 +121,4 @@ def test_busy_timeout_maps_to_read_error_with_diagnostics(tmp_path: Path, monkey
         assert details["db_path"]
         assert details["lock_holder_pid"] == "unknown"
     finally:
-        db.close()
+        engine.close()

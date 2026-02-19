@@ -4,28 +4,32 @@ from pathlib import Path
 
 import pytest
 
+from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.domain.secrets.models import VaultDekRecord, VaultProbeRecord, VaultSecretRecord
-from connector.infra.secrets.sqlite.db import VaultSqliteDb
-from connector.infra.secrets.sqlite.repository import SqliteVaultRepository
+from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import SCHEMA_VERSION
+from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
 
 
-def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, VaultSqliteDb]:
-    db = VaultSqliteDb(db_path=str(tmp_path / "cache" / "ankey_vault.sqlite3"))
-    return SqliteVaultRepository(db), db
+def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, SqliteEngine]:
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+    )
+    return SqliteVaultRepository(engine), engine
 
 
 def test_schema_bootstrap_creates_vault_tables(tmp_path: Path):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
-        table_rows = db.conn.execute(
+        table_rows = engine.fetchall(
             """
             SELECT name
             FROM sqlite_master
             WHERE type='table'
               AND name LIKE 'vault_%'
             """
-        ).fetchall()
+        )
         table_names = {row[0] for row in table_rows}
 
         assert "vault_meta" in table_names
@@ -33,15 +37,15 @@ def test_schema_bootstrap_creates_vault_tables(tmp_path: Path):
         assert "vault_secrets" in table_names
         assert "vault_probe" in table_names
 
-        version_row = db.conn.execute("SELECT value FROM vault_meta WHERE key='schema_version'").fetchone()
+        version_row = engine.fetchone("SELECT value FROM vault_meta WHERE key='schema_version'")
         assert version_row is not None
         assert version_row[0] == str(SCHEMA_VERSION)
     finally:
-        db.close()
+        engine.close()
 
 
 def test_secret_upsert_last_write_wins_and_run_id_precedence(tmp_path: Path):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
         repo.upsert_dek(
             VaultDekRecord(
@@ -171,11 +175,11 @@ def test_secret_upsert_last_write_wins_and_run_id_precedence(tmp_path: Path):
             is None
         )
     finally:
-        db.close()
+        engine.close()
 
 
 def test_dek_upsert_keeps_single_active_dek(tmp_path: Path):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
         repo.upsert_dek(
             VaultDekRecord(
@@ -209,11 +213,11 @@ def test_dek_upsert_keeps_single_active_dek(tmp_path: Path):
         assert new is not None and new.is_active is True
         assert old is not None and old.is_active is False
     finally:
-        db.close()
+        engine.close()
 
 
 def test_probe_roundtrip(tmp_path: Path):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
         probe = VaultProbeRecord(
             probe_name="startup",
@@ -232,15 +236,15 @@ def test_probe_roundtrip(tmp_path: Path):
         assert stored.probe_name == "startup"
         assert stored.ciphertext == b"probe-cipher"
     finally:
-        db.close()
+        engine.close()
 
 
 def test_repository_rejects_nested_transactions(tmp_path: Path):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
         with repo.transaction():
             with pytest.raises(RuntimeError, match="Nested vault transactions"):
                 with repo.transaction():
                     pass
     finally:
-        db.close()
+        engine.close()

@@ -16,7 +16,8 @@ def ensure_base_schema(engine: SqliteEngine) -> int:
     current_version = _get_schema_version(engine) or 0
 
     if current_version == 0:
-        _create_service_tables(engine)
+        # Identity/pending tables are now in identity.sqlite3 (CACHE-DEC-002 Block 2).
+        # Fresh cache.sqlite3 databases no longer include these service tables.
         _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
@@ -140,6 +141,12 @@ def _migrate_to_v6(engine: SqliteEngine) -> None:
 
 
 def _create_service_tables(engine: SqliteEngine) -> None:
+    """
+    Назначение:
+        Применить DDL identity/pending таблиц для миграций v3+ (existing databases).
+        Не вызывается при создании новых cache.sqlite3 (CACHE-DEC-002 Block 2):
+        новые базы данных используют identity.sqlite3 для этих таблиц.
+    """
     engine.execute(
         """
         CREATE TABLE IF NOT EXISTS identity_index (

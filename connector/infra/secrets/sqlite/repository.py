@@ -1,6 +1,11 @@
 """
 Назначение:
-    SQLite-адаптер SecretVaultRepositoryPort.
+    SQLite-адаптер SecretVaultRepositoryPort поверх SqliteEngine.
+
+Граница ответственности:
+    - Реализует SecretVaultRepositoryPort: CRUD для secrets, DEK, probe.
+    - Отображает sqlite3-исключения в доменную таксономию (SecretStoreError / SecretReadError).
+    - Не знает о ключевом материале, шифровании и доменных сервисах.
 """
 
 from __future__ import annotations
@@ -8,13 +13,13 @@ from __future__ import annotations
 import os
 import sqlite3
 from contextlib import contextmanager
-from typing import Any, Callable, ContextManager, Iterator
+from typing import Any, Iterator
 
 from connector.domain.ports.secrets.repository import SecretVaultRepositoryPort
 from connector.domain.secrets.errors import SecretReadError, SecretStoreError
 from connector.domain.secrets.models import VaultDekRecord, VaultProbeRecord, VaultSecretRecord
-from connector.infra.secrets.sqlite.db import VaultSqliteDb
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
+from connector.infra.sqlite.engine import SqliteEngine
 
 SQLITE_SCHEMA_MAX_RETRIES = 2
 
@@ -30,32 +35,33 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
         - lock/schema ошибки маппятся в доменную таксономию без утечки секретов.
     """
 
-    def __init__(self, db: VaultSqliteDb):
-        self._db = db
-        self._conn = db.conn
-        self._transaction_depth = 0
+    def __init__(self, engine: SqliteEngine):
+        self._engine = engine
         self._ensure_schema()
 
     @contextmanager
-    def transaction(self) -> ContextManager[None]:
-        if self._transaction_depth > 0 or self._conn.in_transaction:
-            raise RuntimeError("Nested vault transactions are not supported")
+    def transaction(self) -> Iterator[None]:
+        """
+        Назначение:
+            Открыть явную vault-транзакцию (BEGIN IMMEDIATE).
 
-        self._transaction_depth += 1
+        Raises:
+            RuntimeError: при попытке вложенной транзакции.
+            SecretStoreError: при SQLite-ошибке (включая readonly storage).
+        """
         try:
-            self._execute_write("BEGIN IMMEDIATE", op="transaction_begin")
-        except Exception:
-            self._transaction_depth = 0
+            with self._engine.transaction(mode="immediate"):
+                yield
+        except RuntimeError as exc:
+            # Переформатируем nested-ошибку в vault-специфичное сообщение
+            # для обратной совместимости с кодом, проверяющим "Nested vault transactions".
+            if "Nested" in str(exc):
+                raise RuntimeError("Nested vault transactions are not supported") from exc
             raise
-
-        try:
-            yield
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
-        finally:
-            self._transaction_depth = 0
+        except sqlite3.DatabaseError as exc:
+            # Маппим SQLite-ошибки (включая readonly) в SecretStoreError,
+            # чтобы VaultStartupGuard._is_storage_readonly() мог их распознать.
+            raise self._map_store_error(exc, op="transaction_begin") from exc
 
     def upsert_secret(self, record: VaultSecretRecord) -> None:
         self._execute_write(
@@ -237,7 +243,7 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
         return int(cur.rowcount or 0)
 
     def upsert_dek(self, record: VaultDekRecord) -> None:
-        with self._write_unit():
+        with self._engine.autobegin():
             if record.is_active:
                 self._execute_write(
                     """
@@ -384,21 +390,9 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
 
     def _ensure_schema(self) -> None:
         try:
-            ensure_vault_schema(self._conn)
+            ensure_vault_schema(self._engine)
         except sqlite3.DatabaseError as exc:
             raise self._map_store_error(exc, op="schema_bootstrap", extra_details={"stage": "startup"}) from exc
-
-    @contextmanager
-    def _write_unit(self) -> Iterator[None]:
-        """
-        Назначение:
-            Выполнить группу write-операций атомарно.
-        """
-        if self._transaction_depth > 0 or self._conn.in_transaction:
-            yield
-            return
-        with self.transaction():
-            yield
 
     def _execute_write(
         self,
@@ -408,12 +402,10 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
         op: str,
         details: dict[str, Any] | None = None,
     ) -> sqlite3.Cursor:
-        return self._run_with_schema_retry(
-            lambda: self._execute_raw(sql, params),
-            op=op,
-            read_path=False,
-            details=details,
-        )
+        try:
+            return self._engine.execute_with_retry(sql, params, max_retries=SQLITE_SCHEMA_MAX_RETRIES)
+        except sqlite3.DatabaseError as exc:
+            raise self._map_store_error(exc, op=op, extra_details=details) from exc
 
     def _fetchone_read(
         self,
@@ -423,43 +415,10 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
         op: str,
         details: dict[str, Any] | None = None,
     ) -> sqlite3.Row | None:
-        cursor = self._run_with_schema_retry(
-            lambda: self._execute_raw(sql, params),
-            op=op,
-            read_path=True,
-            details=details,
-        )
-        return cursor.fetchone()
-
-    def _run_with_schema_retry(
-        self,
-        action: Callable[[], sqlite3.Cursor],
-        *,
-        op: str,
-        read_path: bool,
-        details: dict[str, Any] | None = None,
-    ) -> sqlite3.Cursor:
-        for attempt in range(SQLITE_SCHEMA_MAX_RETRIES + 1):
-            try:
-                return action()
-            except sqlite3.OperationalError as exc:
-                if _is_schema_changed(exc) and attempt < SQLITE_SCHEMA_MAX_RETRIES:
-                    continue
-                if read_path:
-                    raise self._map_read_error(exc, op=op, extra_details=details) from exc
-                raise self._map_store_error(exc, op=op, extra_details=details) from exc
-            except sqlite3.DatabaseError as exc:
-                if read_path:
-                    raise self._map_read_error(exc, op=op, extra_details=details) from exc
-                raise self._map_store_error(exc, op=op, extra_details=details) from exc
-
-        # Защитный блок: цикл всегда завершится return/raise выше.
-        raise RuntimeError("Unreachable sqlite retry state")
-
-    def _execute_raw(self, sql: str, params: tuple[Any, ...] | None) -> sqlite3.Cursor:
-        if params is None:
-            return self._conn.execute(sql)
-        return self._conn.execute(sql, params)
+        try:
+            return self._engine.execute_with_retry(sql, params, max_retries=SQLITE_SCHEMA_MAX_RETRIES).fetchone()
+        except sqlite3.DatabaseError as exc:
+            raise self._map_read_error(exc, op=op, extra_details=details) from exc
 
     def _map_store_error(
         self,
@@ -501,7 +460,7 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
         details: dict[str, Any] = {
             "reason": reason,
             "op": op,
-            "db_path": self._resolve_db_path(),
+            "db_path": self._engine.db_path,
             "current_pid": os.getpid(),
             "sqlite_error": str(exc),
         }
@@ -512,18 +471,6 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
         if extra_details:
             details.update(extra_details)
         return details
-
-    def _resolve_db_path(self) -> str:
-        try:
-            rows = self._conn.execute("PRAGMA database_list").fetchall()
-        except Exception:
-            return str(self._db.db_path)
-        for row in rows:
-            name = row[1]
-            file_path = row[2]
-            if name == "main" and file_path:
-                return str(file_path)
-        return str(self._db.db_path)
 
 
 def _row_to_secret_record(row: sqlite3.Row | None) -> VaultSecretRecord | None:

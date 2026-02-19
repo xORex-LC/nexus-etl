@@ -20,7 +20,8 @@ from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
-from connector.infra.cache.repository.identity_repository import SqliteIdentityRepository
+from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
+from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.main import app
 
 
@@ -203,6 +204,8 @@ def _seed_organization_identities(
         engine = SqliteEngine(conn)
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         ensure_cache_ready(engine, cache_specs)
+        # Block 2 shim: identity tables live in cache.sqlite3 until Block 3
+        ensure_identity_schema(engine)
         identity_repo = SqliteIdentityRepository(engine)
         identity_repo.upsert_identity("organizations", format_identity_key("_ouid", value), value)
         identity_repo.upsert_identity("organizations", format_identity_key("name", value), value)

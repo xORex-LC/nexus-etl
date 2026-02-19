@@ -5,13 +5,16 @@
 Граница ответственности:
     - выполняет только startup-проверки и инициализацию probe при разрешённом сценарии;
     - не пишет пользовательские секреты и не участвует в apply/enrich обработке строк;
-    - поднимает только `VAULT_STARTUP_*` ошибки для контролируемого отказа запуска.
+    - поднимает только `VAULT_STARTUP_*` ошибки для контролируемого отказа запуска;
+    - получает результат readonly-проверки через `_StorageReadinessProbe` — domain не
+      знает о sqlite3 или конкретных транспортах.
 """
 
 from __future__ import annotations
 
 import base64
 import os
+from typing import Protocol
 from uuid import uuid4
 
 from connector.common.time import getUtcNowIso
@@ -37,6 +40,21 @@ DEFAULT_CIPHER_ALGO = "FERNET_V1"
 DEFAULT_WRAP_ALGO = "FERNET_V1"
 
 
+class _StorageReadinessProbe(Protocol):
+    """
+    Назначение:
+        Domain-level порт для проверки write-capability хранилища.
+
+    Граница:
+        Инфраструктурный слой (SqliteEngine) реализует этот Protocol через duck-typing.
+        Domain не импортирует ни sqlite3, ни конкретные engine-классы.
+    """
+
+    def is_readonly(self) -> bool:
+        """Вернуть True, если хранилище недоступно для записи."""
+        ...
+
+
 class VaultStartupGuard:
     """
     Назначение:
@@ -45,7 +63,9 @@ class VaultStartupGuard:
     Инварианты:
         - startup policy v1 строгая: readonly storage блокирует запуск всегда;
         - `probe absent + writable` допускает auto-init probe;
-        - plaintext probe и key material не попадают в ошибки/детали.
+        - plaintext probe и key material не попадают в ошибки/детали;
+        - readonly-состояние определяется через `storage_probe.is_readonly()`,
+          а не через попытку открыть транзакцию в репозитории.
     """
 
     def __init__(
@@ -54,6 +74,7 @@ class VaultStartupGuard:
         repository: SecretVaultRepositoryPort,
         cipher: SecretCipherPort,
         key_provider: VaultKeyProviderPort,
+        storage_probe: _StorageReadinessProbe,
         probe_name: str = DEFAULT_PROBE_NAME,
         probe_payload: str = DEFAULT_PROBE_PAYLOAD,
         cipher_algo: str = DEFAULT_CIPHER_ALGO,
@@ -63,6 +84,7 @@ class VaultStartupGuard:
         self._repository = repository
         self._cipher = cipher
         self._key_provider = key_provider
+        self._storage_probe = storage_probe
         self._probe_name = probe_name
         self._probe_payload = probe_payload
         self._cipher_algo = cipher_algo
@@ -76,7 +98,7 @@ class VaultStartupGuard:
 
         Алгоритм:
             1. Проверить keyring и определить активный master key.
-            2. Определить режим storage (writable/readonly) через write-capability probe.
+            2. Определить режим storage (writable/readonly) через storage_probe.is_readonly().
             3. Прочитать probe; при отсутствии:
                - readonly -> `VAULT_STARTUP_UNINITIALIZED_READONLY`;
                - writable -> создать probe и сразу проверить decrypt.
@@ -84,7 +106,7 @@ class VaultStartupGuard:
             5. В strict-policy v1 при readonly бросить `VAULT_STARTUP_STORAGE_READONLY`.
         """
         active_master_key = self._key_provider.get_active_key()
-        readonly_storage = self._is_storage_readonly()
+        readonly_storage = self._storage_probe.is_readonly()
 
         probe = self._load_probe()
         if probe is None:
@@ -101,21 +123,6 @@ class VaultStartupGuard:
             raise VaultStartupStorageReadonlyError(
                 details={"reason": "readonly_storage", "probe_name": self._probe_name, "policy": "strict_v1"},
             )
-
-    def _is_storage_readonly(self) -> bool:
-        """
-        Назначение:
-            Определить write-capability vault storage без изменения бизнес-данных.
-        """
-        try:
-            with self._repository.transaction():
-                return False
-        except SecretStoreError as exc:
-            if _is_readonly_store_error(exc):
-                return True
-            raise VaultStartupProbeCorruptedError(
-                details={"reason": "storage_check_failed", "probe_name": self._probe_name},
-            ) from exc
 
     def _load_probe(self) -> VaultProbeRecord | None:
         try:
@@ -153,10 +160,6 @@ class VaultStartupGuard:
         try:
             self._repository.upsert_probe(probe_record)
         except SecretStoreError as exc:
-            if _is_readonly_store_error(exc):
-                raise VaultStartupUninitializedReadonlyError(
-                    details={"reason": "probe_missing", "probe_name": self._probe_name},
-                ) from exc
             raise VaultStartupProbeCorruptedError(
                 details={"reason": "probe_write_failed", "probe_name": self._probe_name},
             ) from exc
@@ -180,7 +183,7 @@ class VaultStartupGuard:
             dek_plaintext = self._unwrap_dek(active_dek)
             return active_dek, dek_plaintext
 
-        # Для Fernet-совместимого DEK нужен urlsafe base64 от 32 байт случайности.
+        # Non-obvious: urlsafe base64 required because Fernet expects this exact encoding
         dek_plaintext = base64.urlsafe_b64encode(os.urandom(32))
         try:
             wrapped_dek = self._cipher.wrap_dek(
@@ -207,10 +210,6 @@ class VaultStartupGuard:
         try:
             self._repository.upsert_dek(dek_record)
         except SecretStoreError as exc:
-            if _is_readonly_store_error(exc):
-                raise VaultStartupUninitializedReadonlyError(
-                    details={"reason": "probe_missing", "probe_name": self._probe_name},
-                ) from exc
             raise VaultStartupProbeCorruptedError(
                 details={"reason": "dek_write_failed", "probe_name": self._probe_name},
             ) from exc
@@ -326,17 +325,9 @@ class VaultStartupGuard:
             )
 
 
-def _is_readonly_store_error(exc: SecretStoreError) -> bool:
-    details = exc.details if isinstance(exc.details, dict) else {}
-    sqlite_error = str(details.get("sqlite_error", "")).lower()
-    reason = str(details.get("reason", "")).lower()
-    return "readonly" in sqlite_error or "read-only" in sqlite_error or "readonly" in reason
-
-
 def _is_empty_ciphertext(value: bytes | str) -> bool:
     if isinstance(value, bytes):
         return len(value) == 0
     if isinstance(value, str):
         return value == ""
     return True
-

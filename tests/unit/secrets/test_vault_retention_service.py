@@ -7,17 +7,22 @@ from cryptography.fernet import Fernet
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
+from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
-from connector.infra.secrets.sqlite import SqliteVaultRepository, VaultSqliteDb
+from connector.infra.secrets.sqlite import SqliteVaultRepository
+from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
 
 
 def _new_key() -> str:
     return Fernet.generate_key().decode("utf-8")
 
 
-def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, VaultSqliteDb]:
-    db = VaultSqliteDb(db_path=str(tmp_path / "cache" / "ankey_vault.sqlite3"))
-    return SqliteVaultRepository(db), db
+def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, SqliteEngine]:
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+    )
+    return SqliteVaultRepository(engine), engine
 
 
 def _write_secret(repo: SqliteVaultRepository, *, value: str = "TopSecret123", run_id: str = "run-1") -> None:
@@ -37,7 +42,7 @@ def _write_secret(repo: SqliteVaultRepository, *, value: str = "TopSecret123", r
 
 
 def test_retention_persistent_keeps_secret(tmp_path: Path):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     locator = SecretLocatorService()
     try:
         _write_secret(repo, run_id="run-1")
@@ -67,11 +72,11 @@ def test_retention_persistent_keeps_secret(tmp_path: Path):
         assert counters["deleted"] == 0
         assert counters["kept"] == 1
     finally:
-        db.close()
+        engine.close()
 
 
 def test_retention_ephemeral_deletes_secret_on_success(tmp_path: Path):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     locator = SecretLocatorService()
     try:
         _write_secret(repo, run_id="run-1")
@@ -101,11 +106,11 @@ def test_retention_ephemeral_deletes_secret_on_success(tmp_path: Path):
         assert counters["deleted"] == 1
         assert counters["errors"] == 0
     finally:
-        db.close()
+        engine.close()
 
 
 def test_retention_ephemeral_skips_delete_when_source_ref_is_missing(tmp_path: Path):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
         _write_secret(repo, run_id="run-1")
         service = VaultRetentionService(repository=repo, locator=SecretLocatorService())
@@ -122,11 +127,11 @@ def test_retention_ephemeral_skips_delete_when_source_ref_is_missing(tmp_path: P
         assert counters["deleted"] == 0
         assert counters["skipped"] == 1
     finally:
-        db.close()
+        engine.close()
 
 
 def test_retention_maintenance_hooks_are_available(tmp_path: Path):
-    repo, db = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
         service = VaultRetentionService(repository=repo, locator=SecretLocatorService())
         maintenance = service.run_maintenance()
@@ -136,5 +141,5 @@ def test_retention_maintenance_hooks_are_available(tmp_path: Path):
             "rewrap_candidates": 0,
         }
     finally:
-        db.close()
+        engine.close()
 

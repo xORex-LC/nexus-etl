@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from connector.domain.ports.cache.models import PendingLink, PendingRow, PendingStatus
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import SqliteEngine
 
 
 class SqlitePendingLinksRepository:
     """
     Назначение/ответственность:
         SQLite реализация pending_links.
+        Работает с identity.sqlite3 через SqliteEngine.
     """
 
     def __init__(self, engine: SqliteEngine):

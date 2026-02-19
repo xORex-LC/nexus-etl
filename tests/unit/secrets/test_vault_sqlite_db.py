@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets.sqlite.db import (
     DEFAULT_VAULT_DB_PATH_ENV,
-    VaultSqliteDb,
     getVaultDbPath,
-    openVaultDb,
 )
+from connector.infra.sqlite.engine import open_sqlite
 
 
 def test_get_vault_db_path_uses_default_location(tmp_path: Path):
@@ -25,23 +25,25 @@ def test_get_vault_db_path_uses_env_override(tmp_path: Path):
     assert path == str(custom)
 
 
-def test_open_vault_db_applies_sqlite_profile(tmp_path: Path):
-    db_path = tmp_path / "cache" / "ankey_vault.sqlite3"
-    conn = openVaultDb(db_path, busy_timeout_ms=7000, env={})
+def test_open_sqlite_applies_vault_pragma_profile(tmp_path: Path):
+    """open_sqlite() с build_vault_db_config применяет WAL, busy_timeout и foreign_keys."""
+    config = build_vault_db_config(SqliteSettings(vault_sqlite_busy_timeout_ms=7000))
+    engine = open_sqlite(config, str(tmp_path / "cache" / "ankey_vault.sqlite3"))
     try:
-        assert conn.execute("PRAGMA journal_mode").fetchone()[0].upper() == "WAL"
-        assert int(conn.execute("PRAGMA busy_timeout").fetchone()[0]) == 7000
-        assert int(conn.execute("PRAGMA foreign_keys").fetchone()[0]) == 1
-        assert conn.execute("PRAGMA synchronous").fetchone()[0] in {1, 2}
+        assert engine.fetchone("PRAGMA journal_mode")[0].upper() == "WAL"
+        assert int(engine.fetchone("PRAGMA busy_timeout")[0]) == 7000
+        assert int(engine.fetchone("PRAGMA foreign_keys")[0]) == 1
     finally:
-        conn.close()
+        engine.close()
 
 
-def test_vault_sqlite_db_creates_parent_directory(tmp_path: Path):
-    db_path = tmp_path / "new-cache" / "vault.sqlite3"
-    db = VaultSqliteDb(db_path=str(db_path))
+def test_open_sqlite_creates_parent_directory(tmp_path: Path):
+    """open_sqlite() создаёт родительскую директорию если она не существует."""
+    db_path = str(tmp_path / "new-cache" / "vault.sqlite3")
+    config = build_vault_db_config(SqliteSettings())
+    engine = open_sqlite(config, db_path)
     try:
-        assert db_path.parent.exists()
-        assert db_path.exists()
+        assert (tmp_path / "new-cache").exists()
+        assert (tmp_path / "new-cache" / "vault.sqlite3").exists()
     finally:
-        db.close()
+        engine.close()

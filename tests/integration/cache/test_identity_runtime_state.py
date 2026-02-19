@@ -1,26 +1,21 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
-from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.repository.identity_repository import SqliteIdentityRepository
-from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
-from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
+from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
+from connector.infra.identity.sqlite.schema import ensure_identity_schema
+from connector.infra.sqlite.config import SqliteDbConfig
+from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
 
 
-def _build_repo(tmp_path: Path) -> tuple[SqliteIdentityRepository, sqlite3.Connection]:
-    cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
-    engine = SqliteEngine(conn)
-    ensure_cache_ready(engine, list(load_cache_dsl_runtime().cache_specs))
-    return SqliteIdentityRepository(engine), conn
+def _build_repo(tmp_path: Path) -> tuple[SqliteIdentityRepository, SqliteEngine]:
+    engine = open_sqlite(SqliteDbConfig(), str(tmp_path / "cache" / "identity.sqlite3"))
+    ensure_identity_schema(engine)
+    return SqliteIdentityRepository(engine), engine
 
 
 def test_runtime_state_set_get_and_clear_scope(tmp_path: Path):
-    repo, conn = _build_repo(tmp_path)
+    repo, engine = _build_repo(tmp_path)
     try:
         repo.set_runtime_state("run:1", "employees", "dedup:k1", "fp1")
         repo.set_runtime_state("run:2", "employees", "dedup:k1", "fp2")
@@ -35,4 +30,4 @@ def test_runtime_state_set_get_and_clear_scope(tmp_path: Path):
         assert repo.get_runtime_state("run:1", "employees", "dedup:k1") is None
         assert repo.get_runtime_state("run:2", "employees", "dedup:k1") == "fp2"
     finally:
-        conn.close()
+        engine.close()
