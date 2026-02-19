@@ -77,6 +77,13 @@ docs/adr/
 | [DSL-DEC-003](./dsl/DSL-DEC-003-per-layer-dsl-modules.md) | Decision | Per-layer DSL модули и чистый DSL Core | Принято | 2026-02-17 |
 | [DSL-DEC-004](./dsl/DSL-DEC-004-standardized-compile-contract.md) | Decision | Стандартизированный compile-контракт transform стейджей | Принято | 2026-02-17 |
 
+### Transform
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [TRANSFORM-PROBLEM-001](./transform/TRANSFORM-PROBLEM-001-enrich-dictionary-runtime-gap.md) | Problem | Отсутствует runtime-реализация справочников для enrich lookup | Открыта (кандидат решения: TRANSFORM-DEC-001) | 2026-02-19 |
+| [TRANSFORM-DEC-001](./transform/TRANSFORM-DEC-001-columnar-dictionary-runtime-for-enricher.md) | Decision | Справочная подсистема enrich (Polars v1, migration-ready для v2: Polars+DuckDB+Parquet) | Предложено | 2026-02-19 |
+
 ### Target
 
 | ID | Тип | Название | Статус | Дата |

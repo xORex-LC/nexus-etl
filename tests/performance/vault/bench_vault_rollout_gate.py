@@ -12,6 +12,7 @@ import argparse
 import json
 import subprocess
 import tempfile
+import sys
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -29,14 +30,21 @@ from connector.domain.secrets.errors import SecretReadError, SecretStoreError
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
-from connector.infra.secrets.benchmark_gate import (
+# Bench helpers живут рядом со скриптом в tests/performance/vault.
+THIS_DIR = Path(__file__).resolve().parent
+if str(THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(THIS_DIR))
+
+from benchmark_utils import (
     BenchmarkGateThresholds,
     build_markdown_summary,
     compare_baseline,
     flatten_numeric_metrics,
 )
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
-from connector.infra.secrets.sqlite import SqliteVaultRepository, VaultSqliteDb
+from connector.infra.secrets.sqlite import SqliteVaultRepository
+from connector.infra.sqlite.config import SqliteDbConfig
+from connector.infra.sqlite.engine import open_sqlite
 from connector.usecases.import_apply_service import ImportApplyService
 
 
@@ -404,11 +412,19 @@ def _contention_op(
 
 @contextmanager
 def _open_repo(*, db_path: str):
-    db = VaultSqliteDb(db_path=db_path)
+    engine = open_sqlite(
+        SqliteDbConfig(
+            transaction_mode="immediate",
+            busy_timeout_ms=5000,
+            journal_mode="WAL",
+            synchronous="NORMAL",
+        ),
+        db_path,
+    )
     try:
-        yield SqliteVaultRepository(db)
+        yield SqliteVaultRepository(engine)
     finally:
-        db.close()
+        engine.close()
 
 
 def _build_e2e_plan(*, row_count: int, run_id: str, batch_tag: int) -> Plan:
