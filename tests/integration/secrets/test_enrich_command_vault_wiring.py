@@ -30,7 +30,7 @@ def _write_minimal_employees_csv(path: Path) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def test_enrich_command_writes_secrets_to_sqlite_vault(tmp_path: Path):
+def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     _write_minimal_employees_csv(csv_path)
 
@@ -52,8 +52,6 @@ def test_enrich_command_writes_secrets_to_sqlite_vault(tmp_path: Path):
             "vault-write",
             "enrich",
             "--csv-has-header",
-            "--vault-file",
-            str(tmp_path / "legacy.csv"),
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),
@@ -84,3 +82,33 @@ def test_enrich_command_writes_secrets_to_sqlite_vault(tmp_path: Path):
             assert "SECRET1" not in str(ciphertext)
     finally:
         conn.close()
+
+
+def test_enrich_command_fails_when_vault_mode_off_and_dataset_has_secret_fields(tmp_path: Path):
+    csv_path = tmp_path / "employees.csv"
+    _write_minimal_employees_csv(csv_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "--cache-dir",
+            str(tmp_path / "cache"),
+            "--log-dir",
+            str(tmp_path / "logs"),
+            "--report-dir",
+            str(tmp_path / "reports"),
+            "--run-id",
+            "vault-off",
+            "enrich",
+            "--csv-has-header",
+            "--vault-mode",
+            "off",
+        ],
+        env={
+            "EMPLOYEES_SOURCE_PATH": str(csv_path),
+            "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
+        },
+    )
+
+    assert result.exit_code == 2
+    assert "vault-mode=off cannot be used" in result.output

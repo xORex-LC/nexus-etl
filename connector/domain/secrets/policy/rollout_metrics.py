@@ -23,6 +23,7 @@ class ApplySummaryLike(Protocol):
     items_total: int
     error_stats: Mapping[str, int]
 
+
 _SECRET_ERROR_CODES = frozenset(
     {
         "SECRET_REQUIRED",

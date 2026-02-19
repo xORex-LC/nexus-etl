@@ -74,8 +74,6 @@ def _run_import_plan(
             "import",
             "plan",
             "--csv-has-header",
-            "--vault-file",
-            str(tmp_path / "legacy-vault.csv"),
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),

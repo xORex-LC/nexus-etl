@@ -33,13 +33,18 @@ from connector.domain.secrets.errors import (
     VaultStartupStorageReadonlyError,
     VaultStartupUninitializedReadonlyError,
 )
-from connector.domain.secrets.vault_rollout_metrics import (
+from connector.domain.secrets.policy.rollout_metrics import (
     VaultRolloutThresholds,
     build_vault_operational_metrics,
 )
-from connector.domain.secrets.vault_rollout_policy import (
+from connector.domain.secrets.policy.rollout_policy import (
     VaultRolloutPolicySettings,
     evaluate_vault_rollout,
+)
+from connector.domain.secrets.policy.runtime_mode_policy import (
+    RUNTIME_REASON_INVALID_MODE,
+    VAULT_RUNTIME_MODE_OFF,
+    resolve_vault_runtime_mode,
 )
 from connector.datasets.registry import build_identity_index_plan, get_spec
 from connector.infra.artifacts.plan_reader import readPlanFile
@@ -56,6 +61,7 @@ class Options:
     dry_run: bool | None = None
     report_items_limit: int | None = None
     secrets_from: str | None = None
+    vault_mode: str | None = None
     vault_file: str | None = None
 
 
@@ -106,15 +112,30 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         typer.echo(f"ERROR: import apply failed: {exc}", err=True)
         return result_with(SystemErrorCode.IO_ERROR)
 
-    requested_vault = opts.secrets_from == "vault"
+    runtime_mode_decision = resolve_vault_runtime_mode(
+        mode=opts.vault_mode,
+        requires_vault=_plan_requires_vault(plan),
+        legacy_vault_file=opts.vault_file,
+        legacy_force_on=opts.secrets_from == "vault",
+    )
+    if runtime_mode_decision.reason == RUNTIME_REASON_INVALID_MODE:
+        typer.echo("ERROR: unsupported --vault-mode, expected one of: auto|on|off", err=True)
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
+    if runtime_mode_decision.mode == VAULT_RUNTIME_MODE_OFF and runtime_mode_decision.requires_vault:
+        typer.echo(
+            "ERROR: vault-mode=off cannot be used because plan contains secret_fields",
+            err=True,
+        )
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
+
     rollout_decision = evaluate_vault_rollout(
         settings=_rollout_settings(app_settings),
-        requested_vault=requested_vault,
+        requested_vault=runtime_mode_decision.requested_vault,
         dataset=plan.meta.dataset,
         run_id=plan.meta.run_id or run_id,
         command_name="import-apply",
     )
-    if requested_vault and not rollout_decision.vault_enabled:
+    if runtime_mode_decision.requested_vault and not rollout_decision.vault_enabled:
         typer.echo(
             (
                 "ERROR: vault rollout policy blocks import-apply vault path "
@@ -133,7 +154,11 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             startup_guard_passed = False
             return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
 
-    effective_secrets_from = "vault" if rollout_decision.vault_enabled else opts.secrets_from
+    effective_secrets_from = opts.secrets_from
+    if rollout_decision.vault_enabled:
+        effective_secrets_from = "vault"
+    elif effective_secrets_from == "vault":
+        effective_secrets_from = "none"
     dry_run = configured_dry_run or rollout_decision.force_dry_run
 
     dataset_name = plan.meta.dataset
@@ -178,7 +203,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 "configured_dry_run": configured_dry_run,
                 "retries": app_settings.api.retries,
                 "retry_backoff_seconds": app_settings.api.retry_backoff_seconds,
-                "vault_rollout": rollout_decision.to_context(),
+                "vault_rollout": {
+                    "vault_runtime": runtime_mode_decision.to_context(),
+                    **rollout_decision.to_context(),
+                },
             },
         )
         report.set_context(
@@ -246,7 +274,10 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             "target_runtime_mode": build_result.effective_mode,
             "target_runtime_requested_mode": build_result.requested_mode,
             "vault_maintenance": dict(maintenance_stats),
-            "vault_rollout": rollout_decision.to_context(),
+            "vault_rollout": {
+                "vault_runtime": runtime_mode_decision.to_context(),
+                **rollout_decision.to_context(),
+            },
             "vault_operational": operational_metrics,
         }
 
@@ -284,6 +315,16 @@ def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:
         canary_datasets=rollout.canary_datasets,
         canary_seed=rollout.canary_seed,
     )
+
+
+def _plan_requires_vault(plan) -> bool:
+    """Назначение:
+        Определить необходимость vault-path для apply по содержимому import plan.
+    """
+    for item in plan.items:
+        if item.secret_fields:
+            return True
+    return False
 
 
 def _rollout_thresholds(app_settings) -> VaultRolloutThresholds:

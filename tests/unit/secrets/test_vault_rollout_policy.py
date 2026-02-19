@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.domain.secrets.vault_rollout_policy import (
+from connector.domain.secrets.policy.rollout_policy import (
     ROLLOUT_REASON_CANARY_DATASET_FILTERED,
     ROLLOUT_REASON_CANARY_PERCENT_ZERO,
     ROLLOUT_REASON_MODE_OFF,
