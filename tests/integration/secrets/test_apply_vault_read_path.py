@@ -138,7 +138,6 @@ def _run_apply(
 ) -> tuple[ApplyResult, _DummyExecutor]:
     provider = build_secret_provider(
         "vault",
-        None,
         paths_settings=_paths(tmp_path),
         run_id=plan.meta.run_id,
     )
