@@ -52,6 +52,8 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [CACHE-PROBLEM-001](./cache/CACHE-PROBLEM-001-circular-refresh-deadlock.md) | Problem | Circular refresh deadlock | Решена в CACHE-DEC-001 | 2026-02-11 |
 | [CACHE-DEC-001](./cache/CACHE-DEC-001-topological-sort-for-dependencies.md) | Decision | Топологическая сортировка для зависимостей | Принято | 2026-02-11 |
+| [CACHE-PROBLEM-002](./cache/CACHE-PROBLEM-002-sqlite-infra-divergence.md) | Problem | Расхождение SQLite-инфраструктуры между Cache и Vault | Решена в CACHE-DEC-002 | 2026-02-19 |
+| [CACHE-DEC-002](./cache/CACHE-DEC-002-unified-sqlite-infra-layer.md) | Decision | Единый SQLite-инфраструктурный слой (connector/infra/sqlite/) | Принято | 2026-02-19 |
 
 ### Config
 
@@ -59,6 +61,8 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [CONFIG-PROBLEM-001](./config/CONFIG-PROBLEM-001-settings-layer-complexity.md) | Problem | Перегруженный Settings-слой и неявные ошибки мерджа | Закрыта (решена) | 2026-02-12 |
 | [CONFIG-DEC-001](./config/CONFIG-DEC-001-modular-settings-and-slice-wiring.md) | Decision | Модульный Settings и slice-based wiring | Принято / реализовано | 2026-02-12 |
+| [CONFIG-PROBLEM-002](./config/CONFIG-PROBLEM-002-manual-settings-validation.md) | Problem | Ручная валидация Settings и отсутствие Pydantic в конфиг-слое | Решена в CONFIG-DEC-002 | 2026-02-19 |
+| [CONFIG-DEC-002](./config/CONFIG-DEC-002-pydantic-settings-migration.md) | Decision | Миграция Settings на Pydantic BaseSettings | Принято (реализация отложена) | 2026-02-19 |
 
 ### DSL
 
@@ -92,6 +96,13 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [VAULT-PROBLEM-001](./vault/VAULT-PROBLEM-001-plaintext-dev-vault-and-missing-crypto-lifecycle.md) | Problem | Plaintext dev-vault и отсутствующий production-контур секретов | Решена в VAULT-DEC-001 | 2026-02-18 |
 | [VAULT-DEC-001](./vault/VAULT-DEC-001-envelope-encrypted-vault-with-hexagonal-ports.md) | Decision | Envelope-encrypted vault с hexagonal разделением crypto/storage | Принято | 2026-02-18 |
+
+### Observability
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [OBSERVABILITY-PROBLEM-001](./observability/OBSERVABILITY-PROBLEM-001-inconsistent-logging.md) | Problem | Непоследовательное использование logging и structlog | Решена в OBSERVABILITY-DEC-001 | 2026-02-19 |
+| [OBSERVABILITY-DEC-001](./observability/OBSERVABILITY-DEC-001-structlog-as-standard.md) | Decision | structlog как единственный стандарт логирования | Принято (миграция постепенная) | 2026-02-19 |
 
 _(Список поддерживается как актуальный реестр ADR по слоям.)_
 
