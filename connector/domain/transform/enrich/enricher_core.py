@@ -16,7 +16,7 @@ from connector.domain.transform.common.sink_schema import validate_sink_fields
 from connector.domain.transform.core.result import TransformResult, TransformResultBuilder
 from connector.domain.dsl.issues import DslIssue
 from connector.domain.transform.ids.match_key import MatchKey
-from connector.domain.dsl.specs import SinkSpec
+from connector.domain.transform_dsl.specs import SinkSpec
 from connector.domain.transform.enrich.models import (
     CandidateValue,
     EnrichContext,
@@ -31,7 +31,7 @@ from connector.domain.transform.enrich.models import (
 )
 from connector.domain.transform.enrich.report import EnricherReport
 from connector.domain.transform.enrich.resolver import ConflictResolver, MergeEngine, _FieldMutationTracker
-from connector.domain.transform.enrich.spec import EnricherSpec, EnrichmentOperation
+from connector.domain.transform_dsl.compilers.enrich import EnricherSpec, EnrichmentOperation
 
 T = TypeVar("T")
 D = TypeVar("D")

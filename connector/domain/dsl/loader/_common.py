@@ -60,29 +60,6 @@ def _load_registry_or_raise() -> dict[str, Any]:
         ) from exc
 
 
-def _resolve_dataset_path(registry: dict[str, Any], dataset: str, stage: str) -> Path:
-    """
-    Назначение:
-        Разрешить путь к stage-файлу датасета из registry.
-    """
-    datasets = registry.get("datasets") or {}
-    if dataset not in datasets:
-        raise DslLoadError(
-            code="DSL_REGISTRY_INVALID",
-            message=f"Dataset '{dataset}' not found in registry.yml",
-            details={"dataset": dataset, "stage": stage},
-        )
-    entry = datasets[dataset] or {}
-    filename = entry.get(stage)
-    if not filename:
-        raise DslLoadError(
-            code="DSL_REGISTRY_INVALID",
-            message=f"Dataset '{dataset}' does not define '{stage}' in registry.yml",
-            details={"dataset": dataset, "stage": stage},
-        )
-    return _repo_root() / "datasets" / filename
-
-
 def _read_yaml_or_raise(
     path: str | Path,
     *,
@@ -140,35 +117,3 @@ def _load_spec_from_path(path: str | Path, spec_cls: type[TSpec], *, code: str) 
     return _validate_spec_or_raise(raw, spec_cls, code=code, details={"path": str(path_obj)})
 
 
-def _load_dataset_stage_spec(
-    *,
-    dataset: str,
-    stage: str,
-    spec_cls: type[TSpec],
-    code: str,
-    post_load=None,
-) -> TSpec:
-    """
-    Назначение:
-        Загрузить spec для датасета/стадии из registry.
-    """
-    registry = _load_registry_or_raise()
-    stage_path = _resolve_dataset_path(registry, dataset, stage)
-    raw = _read_yaml_or_raise(stage_path, code=code, dataset=dataset, stage=stage)
-    if post_load is not None:
-        try:
-            raw = post_load(raw)
-        except DslLoadError:
-            raise
-        except Exception as exc:
-            raise DslLoadError(
-                code=code,
-                message=f"Failed to preprocess DSL stage '{stage}': {exc}",
-                details={"dataset": dataset, "stage": stage, "path": str(stage_path)},
-            ) from exc
-    return _validate_spec_or_raise(
-        raw,
-        spec_cls,
-        code=code,
-        details={"dataset": dataset, "stage": stage, "path": str(stage_path)},
-    )

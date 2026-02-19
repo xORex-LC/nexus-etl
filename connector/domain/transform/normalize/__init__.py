@@ -4,7 +4,7 @@
 """
 
 from connector.domain.transform.normalize.normalizer_core import NormalizerCore
-from connector.domain.transform.normalize.normalizer_dsl import NormalizerDsl
+from connector.domain.transform_dsl.compilers.normalize import NormalizerDsl
 from connector.domain.transform.normalize.normalizer_engine import NormalizerEngine
 
 __all__ = ["NormalizerCore", "NormalizerDsl", "NormalizerEngine"]
