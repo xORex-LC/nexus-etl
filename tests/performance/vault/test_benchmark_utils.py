@@ -1,11 +1,23 @@
 from __future__ import annotations
 
-from connector.infra.secrets.benchmark_gate import (
+import sys
+from pathlib import Path
+
+import pytest
+
+THIS_DIR = Path(__file__).resolve().parent
+if str(THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(THIS_DIR))
+
+from benchmark_utils import (
     BenchmarkGateThresholds,
     build_markdown_summary,
     compare_baseline,
     flatten_numeric_metrics,
 )
+
+
+pytestmark = pytest.mark.performance
 
 
 def test_flatten_numeric_metrics_ignores_bool_values() -> None:

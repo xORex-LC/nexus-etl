@@ -1,8 +1,9 @@
 """Назначение:
-    Утилиты Stage-09 для benchmark-артефактов vault и baseline gate comparison.
+    Утилиты benchmark-артефактов vault и baseline gate comparison.
 
 Граница ответственности:
-    Чистый utility-модуль: не запускает benchmark и не выполняет операции с filesystem.
+    Тестовый performance-модуль (не production runtime).
+    Не запускает benchmark и не выполняет операции с filesystem.
 """
 
 from __future__ import annotations
@@ -13,9 +14,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class BenchmarkGateThresholds:
-    """Назначение:
-        Пороговая политика для baseline comparison gate.
-    """
+    """Пороговая политика для baseline comparison gate."""
 
     regression_threshold_pct: float = 15.0
     busy_timeout_rate_threshold_pct: float = 0.0
@@ -23,9 +22,7 @@ class BenchmarkGateThresholds:
 
 
 def flatten_numeric_metrics(payload: dict[str, Any], *, prefix: str = "") -> dict[str, float]:
-    """Назначение:
-        Развернуть вложенный `dict` в dotted metric-path, содержащий числовые скаляры.
-    """
+    """Развернуть вложенный `dict` в dotted metric-path с числовыми скалярами."""
     flat: dict[str, float] = {}
     for key, value in payload.items():
         dotted = f"{prefix}.{key}" if prefix else key
@@ -45,14 +42,7 @@ def compare_baseline(
     baseline_metrics: dict[str, float],
     thresholds: BenchmarkGateThresholds,
 ) -> dict[str, Any]:
-    """Назначение:
-        Сравнить текущие метрики с baseline и вернуть детали решения по gate.
-
-    Контракт:
-        - `regression_threshold_pct` применяется к деградации latency и throughput.
-        - для contention-rate используются отдельные пороги.
-        - отсутствующие baseline-метрики игнорируются и не валят gate.
-    """
+    """Сравнить текущие метрики с baseline и вернуть детали решения по gate."""
     comparisons: list[dict[str, Any]] = []
     failed = False
 
@@ -69,7 +59,7 @@ def compare_baseline(
             threshold = thresholds.schema_changed_rate_threshold_pct
 
         # Micro-latency метрики чувствительны к jitter планировщика.
-        # Для очень малых абсолютных дельт считаем сравнение стабильным (без регрессии).
+        # Для очень малых абсолютных дельт считаем сравнение стабильным.
         if metric.endswith("_ms") and abs(current - baseline) < 0.5:
             regression_pct = 0.0
         else:
@@ -99,9 +89,7 @@ def compare_baseline(
 
 
 def build_markdown_summary(payload: dict[str, Any]) -> str:
-    """Назначение:
-        Построить компактный markdown summary для публикации benchmark-артефакта.
-    """
+    """Построить компактный markdown summary для benchmark-артефакта."""
     meta = payload.get("meta", {})
     metrics = payload.get("metrics", {})
     gate = payload.get("baseline_compare", {})
