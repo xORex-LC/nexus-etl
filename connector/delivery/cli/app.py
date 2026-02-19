@@ -368,7 +368,6 @@ def importApply(
     maxActions: int | None = cli_options.MAX_ACTIONS,
     dryRun: bool | None = cli_options.DRY_RUN,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
-    secretsFrom: str | None = cli_options.SECRETS_FROM,
     vaultMode: str | None = cli_options.VAULT_MODE,
 ):
     opts = import_apply_command.Options(
@@ -377,7 +376,6 @@ def importApply(
         max_actions=maxActions,
         dry_run=dryRun,
         report_items_limit=reportItemsLimit,
-        secrets_from=secretsFrom,
         vault_mode=vaultMode,
     )
     command_ctx = _build_ctx(ctx, command_key="import-apply")

@@ -167,7 +167,7 @@ def test_import_apply_handler_runs_startup_guard_in_vault_mode(monkeypatch: pyte
 
     result = import_apply_command.handler(
         _ctx(tmp_path),
-        import_apply_command.Options(plan_path="dummy-plan.json", secrets_from="vault"),
+        import_apply_command.Options(plan_path="dummy-plan.json", vault_mode="on"),
         _DummyReport(),
     )
 

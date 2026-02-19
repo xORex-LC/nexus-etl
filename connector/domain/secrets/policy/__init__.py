@@ -32,7 +32,6 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
     VAULT_RUNTIME_MODE_OFF,
     VAULT_RUNTIME_MODE_ON,
     VALID_VAULT_RUNTIME_MODES,
-    RUNTIME_REASON_LEGACY_FORCE_ON,
     VaultRuntimeModeDecision,
     resolve_vault_runtime_mode,
 )
@@ -50,7 +49,6 @@ __all__ = [
     "VAULT_RUNTIME_MODE_AUTO",
     "VAULT_RUNTIME_MODE_OFF",
     "VAULT_RUNTIME_MODE_ON",
-    "RUNTIME_REASON_LEGACY_FORCE_ON",
     "VaultRolloutDecision",
     "VaultRolloutPolicySettings",
     "VaultRolloutThresholds",

@@ -43,11 +43,10 @@
 - `connector/domain/secrets/` (target: `secret_vault_write_service.py`, `secret_vault_read_service.py`, `vault_startup_guard.py`, `secret_locator_service.py`)
 - `connector/domain/transform/enrich/enricher_dsl.py`
 - `connector/domain/transform/enrich/enricher_core.py`
-- `connector/domain/transform/resolver/resolve_dsl.py`
+- `connector/domain/transform_dsl/compilers/resolve.py`
 - `connector/domain/transform/resolver/resolve_core.py`
 - `connector/domain/planning/plan_builder.py`
 - `connector/datasets/apply_adapter.py`
-- `connector/infra/secrets/file_vault_provider.py` (legacy/dev path)
 - `connector/infra/secrets/` (target: `fernet_envelope_cipher.py`, `sqlite/db.py`, `sqlite/repository.py`, `sqlite/schema.py`, `env_key_provider.py`)
 - `connector/delivery/cli/bootstrap.py` (startup wiring + vault readiness guard)
 
@@ -71,14 +70,13 @@ connector/
 │   ├── secrets/vault_startup_guard.py            # target: fail-fast startup key check
 │   ├── transform/enrich/enricher_dsl.py          # DSL: перевод target -> secret:<field>
 │   ├── transform/enrich/enricher_core.py         # _store_secrets + очистка row
-│   ├── transform/resolver/resolve_dsl.py         # compile secrets.by_op policy
+│   ├── transform_dsl/compilers/resolve.py        # compile secrets.by_op policy
 │   ├── transform/resolver/resolve_core.py        # перенос secret_fields в ResolvedRow
 │   └── planning/plan_builder.py                  # перенос secret_fields в PlanItem
 ├── datasets/
 │   └── apply_adapter.py                          # hydration секретов перед payload_builder
 └── infra/
-    ├── secrets/file_vault_provider.py            # текущая dev-реализация store/provider (CSV, legacy)
-    ├── secrets/fernet_envelope_cipher.py         # target: crypto adapter
+    ├── secrets/fernet_envelope_cipher.py         # crypto adapter
     ├── secrets/sqlite/db.py                      # target: vault sqlite connection/path policy
     ├── secrets/sqlite/repository.py              # target: sqlite vault repository adapter
     ├── secrets/sqlite/schema.py                  # target: vault-only migrations/schema lifecycle
@@ -109,7 +107,7 @@ connector/
 **Реализация в коде**:
 - **Read port**: `SecretProviderProtocol` в `connector/domain/ports/secrets/provider.py`
 - **Write port**: `SecretStoreProtocol` в `connector/domain/ports/secrets/provider.py`
-- **Current adapters**: `FileVaultSecretProvider`, `FileVaultSecretStore` в `connector/infra/secrets/file_vault_provider.py`
+- **Current adapters**: `SecretVaultReadService`/`SecretVaultWriteService` (domain orchestration) + `SqliteVaultRepository` (infra storage)
 
 **Пример использования**:
 ```python
@@ -124,7 +122,7 @@ class SecretStoreProtocol(Protocol):
     ) -> None: ...
 ```
 
-**Зачем**: Enricher/Apply работают только по контракту, не знают про CSV/SQLite/KMS.
+**Зачем**: Enricher/Apply работают только по контракту и не зависят от конкретного backend хранения/чтения секретов.
 
 #### Паттерн 1.1: Separate bounded context for Vault storage
 
@@ -213,7 +211,7 @@ class SecretStoreProtocol(Protocol):
 | `SecretVaultReadService` (target) | Найти запись по locator, проверить metadata, расшифровать | `get_secret()` |
 | `SecretLocatorService` (target) | Канонизировать `source_ref` и вычислить hash | `build_locator_hash()` |
 | `VaultStartupGuard` (target) | Fail-fast startup readiness check по ключам/probe | `ensure_ready()` |
-| `FileVaultSecretStore/Provider` | Текущая dev-реализация store/read поверх CSV | `put_many()`, `get_secret()` |
+| `SqliteVaultRepository` | Хранение ciphertext/DEK/probe в отдельном vault SQLite | `upsert_secret()`, `get_secret()`, `upsert_dek()`, `get_probe()` |
 
 ---
 
@@ -332,18 +330,19 @@ class VaultDekRecord:
 - не содержит пользовательских секретов;
 - используется только для readiness/fail-fast.
 
-### Запись в текущем dev vault (CSV)
+### Профиль хранения в Vault SQLite
 
-**Назначение**: Временное хранение секретов в текущей реализации.
+**Назначение**: production-ready хранение ciphertext/метаданных в отдельной SQLite БД.
 
-**Структура строки**:
+**Ключевые таблицы**:
 ```text
-dataset,field,match_key,value,run_id,updated_at
+vault_secrets, vault_dek, vault_probe, vault_meta
 ```
 
 **Инварианты**:
-- Ключ поиска в `FileVaultSecretProvider` = `dataset + field + source_ref.match_key (+/- run_id)`.
-- Хранилище plaintext, без шифрования (текущий technical debt до реализации production vault).
+- lookup выполняется по `dataset + field + locator_version + locator_hash (+/- run_id)`;
+- plaintext секретов не хранится в storage;
+- read-path соблюдает run precedence `exact run_id -> global (NULL)`.
 
 ---
 
@@ -874,7 +873,7 @@ CREATE TABLE IF NOT EXISTS vault_meta (
 
 ### ⏱️ Performance заметки
 
-1. Текущий `FileVaultSecretProvider` читает CSV линейно; lookup O(n) по числу записей файла.
+1. `SqliteVaultRepository` использует lookup-индексы по locator/run scope; типичный read-path близок к O(log n).
 2. `_hydrate_payload_source()` вызывает provider по каждому secret field; при удалённом backend важно batch/кеширование.
 3. `_store_secrets()` записывает секреты по одному проходу `for field, value in secrets.items()`, что линейно по количеству secret fields.
 

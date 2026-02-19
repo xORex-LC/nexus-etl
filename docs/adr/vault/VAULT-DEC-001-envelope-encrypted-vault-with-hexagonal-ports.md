@@ -219,9 +219,9 @@ payload hydration
 | `connector/domain/ports/secrets/provider.py` | Сохраняется внешний контракт pipeline/apply |
 | `connector/domain/ports/secrets/` | Добавляются crypto/storage/key-provider порты |
 | `connector/domain/secrets/` | Добавляются `SecretVaultWriteService`, `SecretVaultReadService`, `SecretLocatorService`, `VaultStartupGuard` |
-| `connector/infra/secrets/file_vault_provider.py` | Выводится из production runtime (legacy migration only) |
+| `connector/infra/secrets/file_vault_provider.py` | Удалён после завершения миграции на SQLite envelope vault |
 | `connector/infra/secrets/` | Добавляются `fernet_envelope_cipher.py`, `sqlite/db.py`, `sqlite/repository.py`, `sqlite/schema.py`, `env_key_provider.py` |
-| `connector/delivery/cli/bootstrap.py` | `--secrets-from vault` -> vault-only provider + startup guard |
+| `connector/delivery/cli/bootstrap.py` | `--vault-mode on/auto` -> vault provider + startup guard |
 | `connector/datasets/apply_adapter.py` | Учитывает политику omit secret field when not configured |
 
 ### Ключевые методы
