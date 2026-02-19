@@ -1,7 +1,7 @@
 import logging
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.mapping import MapperEngine
-from connector.domain.dsl.loader import load_mapping_spec_for_dataset
+from connector.domain.transform_dsl import load_mapping_spec_for_dataset
 from connector.infra.artifacts.report_writer import createEmptyReport
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.domain.diagnostics.catalog import build_catalog

@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from connector.domain.models import RowRef
 from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.transform.matcher.match_core import MatchCore
-from connector.domain.transform.matcher.match_dsl import MatchDsl
+from connector.domain.transform_dsl.compilers.match import MatchDsl
 from connector.domain.transform.matcher.match_models import MatchDecisionStatus
-from connector.domain.transform.matcher.rules import ResolveRules
-from connector.domain.dsl.loader import load_match_spec_for_dataset
+from connector.domain.transform_dsl.compilers.resolve import ResolveRules
+from connector.domain.transform_dsl import load_match_spec_for_dataset
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.ids.match_key import MatchKey

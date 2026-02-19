@@ -4,12 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from connector.domain.dsl.loader import load_match_spec_for_dataset
-from connector.domain.dsl.specs import MatchSpec
+from connector.domain.transform_dsl import load_match_spec_for_dataset
+from connector.domain.transform_dsl.specs import MatchSpec
 from connector.domain.transform.matcher.context import MatchContext
-from connector.domain.transform.matcher.match_dsl import MatchDsl
+from connector.domain.transform_dsl.compilers.match import MatchDsl
 from connector.domain.transform.matcher.match_engine import MatchEngine
-from connector.domain.transform.matcher.rules import ResolveRules
+from connector.domain.transform_dsl.compilers.resolve import ResolveRules
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.diagnostics.catalog import build_catalog
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from connector.domain.dsl.specs import CacheDatasetSpec
+from connector.domain.cache_dsl.specs import CacheDatasetSpec
 from connector.infra.cache.sync.dsl_adapter import build_dsl_cache_sync_adapter
 
 
