@@ -9,12 +9,12 @@ from typing import Any
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.roles import ResolveRuntimePort
-from connector.domain.dsl.build_options import ResolveDslBuildOptions
-from connector.domain.dsl.specs import ResolveSpec, SinkSpec
+from connector.domain.transform_dsl.build_options import ResolveDslBuildOptions
+from connector.domain.transform_dsl.specs import ResolveSpec, SinkSpec
 from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.domain.transform.matcher.match_models import MatchedRow
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
-from connector.domain.transform.resolver.resolve_dsl import ResolveDsl
+from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
 
 
 class ResolveEngine:

@@ -1,9 +1,10 @@
 """
 Enrich package: core enrich logic and DSL wiring.
+
+DSL compiler (EnricherDsl, EnricherSpec, EnrichmentOperation, KeyRegistry, build_enricher_spec_from_dsl)
+живёт в connector.domain.transform_dsl.compilers.enrich.
 """
 
-from connector.domain.dsl.build_options import EnrichDslBuildOptions
-from .enricher_dsl import EnricherDsl, build_enricher_spec_from_dsl
 from .enricher_engine import EnricherEngine
 from .enricher_core import EnricherCore
 from .models import (
@@ -23,7 +24,6 @@ from .models import (
 from .providers import CandidateProvider
 from .report import EnricherReport
 from .resolver import ConflictResolver, MergeEngine
-from .spec import EnricherSpec, EnrichmentOperation, KeyRegistry
 
 __all__ = [
     "CandidateDecision",
@@ -36,9 +36,6 @@ __all__ = [
     "EnrichOutcome",
     "EnricherEngine",
     "EnricherCore",
-    "EnricherSpec",
-    "EnrichmentOperation",
-    "KeyRegistry",
     "MergeEngine",
     "MergeMode",
     "MergePolicy",
@@ -47,7 +44,4 @@ __all__ = [
     "RunWhenErrors",
     "StrictnessPolicy",
     "EnricherReport",
-    "build_enricher_spec_from_dsl",
-    "EnrichDslBuildOptions",
-    "EnricherDsl",
 ]

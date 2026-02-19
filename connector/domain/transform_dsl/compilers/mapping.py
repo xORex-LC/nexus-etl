@@ -1,22 +1,43 @@
 """
 Назначение:
-    MapperDsl: компиляция MappingSpec в MapperCore.
+    MapperDsl: компиляция MappingSpec в CompiledMapRules.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from connector.domain.dsl.engine import TransformationEngine
-from connector.domain.dsl.build_options import MapDslBuildOptions
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.registry import OperationRegistry
-from connector.domain.dsl.specs import MappingSpec, SinkSpec
-from connector.domain.transform.mapping.mapper_core import MapperCore
+from connector.domain.transform_dsl.build_options import MapDslBuildOptions
+from connector.domain.transform_dsl.specs import (
+    MappingRule,
+    MappingSchema,
+    MappingSpec,
+    MetaRule,
+    SinkSpec,
+)
+
+
+@dataclass(frozen=True)
+class CompiledMapRules:
+    """
+    Назначение:
+        Скомпилированные mapping-правила (frozen, data-only).
+    """
+
+    rules: tuple[MappingRule, ...]
+    meta: tuple[MetaRule, ...]
+    schema_: MappingSchema | None
+    source_columns: tuple[str, ...] | None
+    options: MapDslBuildOptions
 
 
 class MapperDsl:
     """
     Назначение/ответственность:
-        Преобразует DSL-спеку маппинга в MapperCore.
+        Преобразует DSL-спеку маппинга в CompiledMapRules.
     """
 
     def __init__(
@@ -34,10 +55,10 @@ class MapperDsl:
         self.engine = engine
         self.options = options or MapDslBuildOptions()
 
-    def compile(self, spec: MappingSpec, *, sink_spec: SinkSpec | None = None) -> MapperCore:
+    def compile(self, spec: MappingSpec, *, sink_spec: SinkSpec | None = None) -> CompiledMapRules:
         """
         Назначение:
-            Скомпилировать MappingSpec в MapperCore.
+            Скомпилировать MappingSpec в CompiledMapRules.
         """
         if self.options.require_targets_exist_in_sink_spec and sink_spec is None:
             raise DslLoadError(
@@ -50,7 +71,13 @@ class MapperDsl:
         if self.options.fail_on_unknown_ops:
             self._validate_ops_known(spec)
         try:
-            return MapperCore(spec, self.engine, sink_spec=sink_spec, options=self.options)
+            return CompiledMapRules(
+                rules=tuple(spec.mapping.rules),
+                meta=tuple(spec.mapping.meta),
+                schema_=spec.mapping.schema_,
+                source_columns=tuple(spec.source_columns) if spec.source_columns else None,
+                options=self.options,
+            )
         except DslLoadError:
             raise
         except Exception as exc:

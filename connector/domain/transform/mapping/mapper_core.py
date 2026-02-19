@@ -12,13 +12,14 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.models import DiagnosticItem, DiagnosticStage, RowRef
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.dsl.engine import TransformationEngine
-from connector.domain.dsl.build_options import MapDslBuildOptions
-from connector.domain.dsl.issues import DslIssue, DslSeverity
 from connector.domain.dsl.diagnostics import append_dsl_issues
+from connector.domain.dsl.engine import TransformationEngine
 from connector.domain.dsl.helpers import apply_ops
+from connector.domain.dsl.issues import DslIssue, DslSeverity
 from connector.domain.transform.common.values import read_value
-from connector.domain.dsl.specs import MappingRule, MetaRule, MappingSpec, SinkSpec
+from connector.domain.transform_dsl.build_options import MapDslBuildOptions
+from connector.domain.transform_dsl.specs import MappingRule, MetaRule, SinkSpec
+from connector.domain.transform_dsl.compilers.mapping import CompiledMapRules
 from connector.domain.transform.common.sink_schema import validate_sink_row
 
 
@@ -43,17 +44,16 @@ class MapperCore:
 
     def __init__(
         self,
-        spec: MappingSpec,
+        compiled: CompiledMapRules,
         engine: TransformationEngine,
         *,
         sink_spec: SinkSpec | None = None,
-        options: MapDslBuildOptions | None = None,
     ) -> None:
-        self.spec = spec
+        self.compiled = compiled
         self.engine = engine
-        self._source_index = {name: idx for idx, name in enumerate(spec.source_columns or [])}
+        self._source_index = {name: idx for idx, name in enumerate(compiled.source_columns or [])}
         self.sink_spec = sink_spec
-        self.options = options or MapDslBuildOptions()
+        self.options = compiled.options
 
     def map_record(self, record: SourceRecord, *, catalog: ErrorCatalog) -> TransformResult[Mapping[str, Any]]:
         """
@@ -78,7 +78,7 @@ class MapperCore:
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
 
-        for rule in self.spec.mapping.rules:
+        for rule in self.compiled.rules:
             value, issues = self._resolve_rule_value(record, row, rule)
             self._append_issues(issues, errors, warnings, rule, catalog, record)
             if issues and any(issue.severity == DslSeverity.ERROR for issue in issues):
@@ -92,7 +92,7 @@ class MapperCore:
 
         # meta rules
         if not errors:
-            for meta_rule in self.spec.mapping.meta:
+            for meta_rule in self.compiled.meta:
                 meta_value, issues = self._resolve_meta_value(record, row, meta_rule)
                 self._append_meta_issues(issues, errors, warnings, meta_rule, catalog, record)
                 if issues and any(issue.severity == DslSeverity.ERROR for issue in issues):
@@ -232,7 +232,7 @@ class MapperCore:
         catalog: ErrorCatalog,
         record: SourceRecord,
     ) -> None:
-        schema = self.spec.mapping.schema_
+        schema = self.compiled.schema_
         if schema is None:
             return
         for field in schema.required:

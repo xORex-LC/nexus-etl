@@ -10,11 +10,11 @@ from typing import Generic, TypeVar
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretStoreProtocol
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.dsl.build_options import EnrichDslBuildOptions
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
-from connector.domain.dsl.specs import EnrichSpec, SinkSpec
+from connector.domain.transform_dsl.build_options import EnrichDslBuildOptions
+from connector.domain.transform_dsl.specs import EnrichSpec, SinkSpec
 from connector.domain.transform.enrich.enricher_core import EnricherCore
-from connector.domain.transform.enrich.enricher_dsl import EnricherDsl
+from connector.domain.transform_dsl.compilers.enrich import EnricherDsl
 from connector.domain.transform.providers import ProviderGateway
 
 T = TypeVar("T")

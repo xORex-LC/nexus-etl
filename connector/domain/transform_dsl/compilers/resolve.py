@@ -1,17 +1,20 @@
 """
 Назначение:
-    Компиляция ResolveSpec (DSL) в runtime-контракты resolver/link-rules.
+    ResolveDsl: компиляция ResolveSpec в CompiledResolveRules.
+    Compiled models: ResolveRules, LinkRules, LinkFieldRule, LinkKeyRule.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
+from connector.domain.models import Identity
+from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.transform.common import normalize_text
-from connector.domain.dsl.build_options import ResolveDslBuildOptions
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.specs import (
+from connector.domain.transform_dsl.build_options import ResolveDslBuildOptions
+from connector.domain.transform_dsl.specs import (
     ResolveDiffFieldSpec,
     ResolveDiffSpec,
     ResolveLinkSpec,
@@ -21,18 +24,84 @@ from connector.domain.dsl.specs import (
     ResolveSpec,
     SinkSpec,
 )
-from connector.domain.transform.matcher.rules import (
-    BuildDesiredState,
-    BuildSourceRef,
-    DiffPolicy,
-    LinkFieldRule,
-    LinkKeyRule,
-    LinkRules,
-    MergePolicy,
-    ResolveRules,
-    SecretFieldsPolicy,
-    SecretLifecyclePolicy,
-)
+
+BuildDesiredState = Callable[[Any, MatchContext], dict[str, Any]]
+BuildSourceRef = Callable[[Identity], dict[str, Any]]
+DiffPolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
+SecretFieldsPolicy = Callable[[str, dict[str, Any], dict[str, Any] | None], list[str]]
+MergePolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
+
+
+# ========== COMPILED MODELS ==========
+
+
+@dataclass(frozen=True)
+class ResolveRules:
+    """
+    Назначение:
+        Набор правил разрешения для resolver (dataset‑специфика).
+    """
+
+    build_desired_state: BuildDesiredState
+    build_source_ref: BuildSourceRef | None = None
+    diff_policy: DiffPolicy | None = None
+    secret_fields_for_op: SecretFieldsPolicy | None = None
+    secret_lifecycle: "SecretLifecyclePolicy" | None = None
+    merge_policy: MergePolicy | None = None
+
+
+@dataclass(frozen=True)
+class SecretLifecyclePolicy:
+    """
+    Назначение:
+        Runtime-конфигурация retention policy для apply cleanup.
+
+    Поля:
+        mode: persistent/ephemeral.
+        delete_on_success: удалять ли секреты после успешного apply-op.
+        ttl_seconds: опциональный TTL для maintenance hooks.
+    """
+
+    mode: str = "persistent"
+    delete_on_success: bool = False
+    ttl_seconds: int | None = None
+
+
+@dataclass(frozen=True)
+class LinkKeyRule:
+    """
+    Назначение:
+        Правило извлечения ключа для link-resolve.
+    """
+
+    name: str
+    field: str
+
+
+@dataclass(frozen=True)
+class LinkFieldRule:
+    """
+    Назначение:
+        Правило resolve для одного link-поля.
+    """
+
+    field: str
+    target_dataset: str
+    resolve_keys: tuple[LinkKeyRule, ...]
+    dedup_rules: tuple[tuple[str, ...], ...] = ()
+    target_id_field: str = "_id"
+    coerce: str | None = None
+    on_unresolved: str = "pending"
+
+
+@dataclass(frozen=True)
+class LinkRules:
+    """
+    Назначение:
+        Набор link-правил для resolver (dataset-специфика).
+    """
+
+    fields: tuple[LinkFieldRule, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -44,6 +113,9 @@ class CompiledResolveRules:
 
     resolve_rules: ResolveRules
     link_rules: LinkRules
+
+
+# ========== COMPILER ==========
 
 
 class ResolveDsl:
@@ -263,6 +335,10 @@ class ResolveDsl:
             on_unresolved=spec.on_unresolved,
         )
 
+
+# ========== PRIVATE HELPERS ==========
+
+
 def _extract_value(payload: Any, field_name: str) -> Any:
     if isinstance(payload, dict):
         return payload.get(field_name)
@@ -338,6 +414,3 @@ def _build_diff_rules(
             rules[idx] = override
 
     return rules
-
-
-__all__ = ["ResolveDsl", "CompiledResolveRules"]

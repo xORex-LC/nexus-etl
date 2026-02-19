@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from connector.domain.dsl.build_options import CacheDslBuildOptions
-from connector.domain.cache_core.cache_dsl import compile_cache_runtime
+from connector.domain.cache_dsl.compiler import compile_cache_runtime
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.specs import CacheDatasetSpec, CacheRegistrySpec
+from connector.domain.cache_dsl.build_options import CacheDslBuildOptions
+from connector.domain.cache_dsl.specs import CacheDatasetSpec, CacheRegistrySpec
 
 
 def _registry_with_employees(*, depends_on: list[str] | None = None) -> CacheRegistrySpec:

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from connector.domain.dsl import (
+from connector.domain.cache_dsl import (
     CacheDatasetSpec,
     CacheRegistrySpec,
     load_cache_build_options_for_runtime,
     load_cache_dataset_spec_for_dataset,
     load_cache_registry_spec_for_runtime,
 )
-from connector.domain.cache_core import CacheDsl, CacheDslRuntime
+from connector.domain.cache_dsl.compiler import CacheDsl, CacheDslRuntime
 from connector.infra.cache.sync import build_dsl_cache_sync_adapter
 
 

@@ -7,20 +7,22 @@ from connector.domain.transform.enrich import (
     ConflictResolver,
     EnricherCore,
     EnricherEngine,
-    EnrichDslBuildOptions,
-    EnricherSpec,
-    EnrichmentOperation,
     EnrichOperationType,
-    KeyRegistry,
     MergePolicy,
     RunWhenErrors,
     StrictnessPolicy,
     EnrichOutcome,
 )
+from connector.domain.transform_dsl.build_options import EnrichDslBuildOptions
+from connector.domain.transform_dsl.compilers.enrich import (
+    EnricherSpec,
+    EnrichmentOperation,
+    KeyRegistry,
+)
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.dsl.loader import load_enrich_spec_for_dataset
-from connector.domain.dsl.loader import load_sink_spec_for_dataset
+from connector.domain.transform_dsl import load_enrich_spec_for_dataset
+from connector.domain.transform_dsl import load_sink_spec_for_dataset
 from connector.datasets.employees.spec import make_employees_spec
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.models import DiagnosticStage, DiagnosticItem
