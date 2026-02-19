@@ -23,7 +23,6 @@ CACHE_DIR = typer.Option(None, "--cache-dir", help="Cache directory")
 INCLUDE_DELETED = typer.Option(None, "--include-deleted", help="Include soft-deleted records")
 
 # Secrets options
-SECRETS_FROM = typer.Option(None, "--secrets-from", help="Secrets provider (none|prompt|vault)")
 VAULT_MODE = typer.Option(
     None,
     "--vault-mode",

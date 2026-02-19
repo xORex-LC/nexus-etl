@@ -60,7 +60,6 @@ class Options:
     max_actions: int | None = None
     dry_run: bool | None = None
     report_items_limit: int | None = None
-    secrets_from: str | None = None
     vault_mode: str | None = None
 
 
@@ -114,7 +113,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     runtime_mode_decision = resolve_vault_runtime_mode(
         mode=opts.vault_mode,
         requires_vault=_plan_requires_vault(plan),
-        legacy_force_on=opts.secrets_from == "vault",
     )
     if runtime_mode_decision.reason == RUNTIME_REASON_INVALID_MODE:
         typer.echo("ERROR: unsupported --vault-mode, expected one of: auto|on|off", err=True)
@@ -152,11 +150,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             startup_guard_passed = False
             return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
 
-    effective_secrets_from = opts.secrets_from
-    if rollout_decision.vault_enabled:
-        effective_secrets_from = "vault"
-    elif effective_secrets_from == "vault":
-        effective_secrets_from = "none"
+    secret_source = "vault" if rollout_decision.vault_enabled else None
     dry_run = configured_dry_run or rollout_decision.force_dry_run
 
     dataset_name = plan.meta.dataset
@@ -218,7 +212,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         report.set_context("target_runtime", _runtime_context(build_result))
 
         secrets_provider = build_secret_provider(
-            effective_secrets_from,
+            secret_source,
             paths_settings=app_settings.paths,
             run_id=plan.meta.run_id,
         )
@@ -227,7 +221,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             None
             if dry_run
             else build_secret_retention_hook(
-                effective_secrets_from,
+                secret_source,
                 paths_settings=app_settings.paths,
             )
         )

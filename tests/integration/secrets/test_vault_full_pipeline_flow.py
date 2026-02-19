@@ -117,8 +117,8 @@ def _run_import_apply(
             "--plan",
             str(plan_path),
             "--dry-run",
-            "--secrets-from",
-            "vault",
+            "--vault-mode",
+            "on",
         ],
         env={"ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}"},
     )

@@ -26,7 +26,6 @@ RUNTIME_REASON_MODE_ON = "runtime_mode_on"
 RUNTIME_REASON_MODE_OFF = "runtime_mode_off"
 RUNTIME_REASON_AUTO_WITH_SECRETS = "runtime_auto_secret_fields_detected"
 RUNTIME_REASON_AUTO_WITHOUT_SECRETS = "runtime_auto_secret_fields_absent"
-RUNTIME_REASON_LEGACY_FORCE_ON = "runtime_legacy_force_on"
 RUNTIME_REASON_INVALID_MODE = "runtime_mode_invalid"
 
 
@@ -64,7 +63,6 @@ def resolve_vault_runtime_mode(
     *,
     mode: str | None,
     requires_vault: bool,
-    legacy_force_on: bool = False,
 ) -> VaultRuntimeModeDecision:
     """Назначение:
         Определить, запрашивается ли vault-path на уровне runtime intent.
@@ -73,17 +71,8 @@ def resolve_vault_runtime_mode(
         - `mode=on`  -> vault path обязателен;
         - `mode=off` -> vault path запрещён;
         - `mode=auto` -> включать vault только если `requires_vault=True`;
-        - `legacy_force_on=True` может принудительно включить vault для обратной совместимости вызова.
     """
     explicit_mode = mode is not None
-    if mode is None and legacy_force_on:
-        return _build_runtime_decision(
-            mode=VAULT_RUNTIME_MODE_ON,
-            requested_vault=True,
-            requires_vault=requires_vault,
-            explicit_mode=False,
-            reason=RUNTIME_REASON_LEGACY_FORCE_ON,
-        )
 
     normalized_mode, is_valid = _normalize_mode(mode)
     if not is_valid:
@@ -152,7 +141,6 @@ __all__ = [
     "RUNTIME_REASON_AUTO_WITHOUT_SECRETS",
     "RUNTIME_REASON_AUTO_WITH_SECRETS",
     "RUNTIME_REASON_INVALID_MODE",
-    "RUNTIME_REASON_LEGACY_FORCE_ON",
     "RUNTIME_REASON_MODE_OFF",
     "RUNTIME_REASON_MODE_ON",
     "VALID_VAULT_RUNTIME_MODES",

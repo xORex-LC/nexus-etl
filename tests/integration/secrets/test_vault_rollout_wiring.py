@@ -165,8 +165,8 @@ def test_import_apply_staging_rollout_forces_dry_run(tmp_path: Path) -> None:
             "apply",
             "--plan",
             str(plan_path),
-            "--secrets-from",
-            "vault",
+            "--vault-mode",
+            "on",
         ],
         env={
             "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
@@ -217,8 +217,8 @@ def test_import_apply_explicit_dry_run_keeps_ephemeral_secret(tmp_path: Path, mo
             "--plan",
             str(plan_path),
             "--dry-run",
-            "--secrets-from",
-            "vault",
+            "--vault-mode",
+            "on",
         ],
         env={"ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}"},
     )
@@ -264,8 +264,8 @@ def test_import_apply_staging_dry_run_keeps_ephemeral_secret(tmp_path: Path, mon
             "apply",
             "--plan",
             str(plan_path),
-            "--secrets-from",
-            "vault",
+            "--vault-mode",
+            "on",
         ],
         env={
             "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}",
@@ -313,8 +313,8 @@ def test_import_apply_canary_percent_zero_blocks_requested_vault(tmp_path: Path)
             "apply",
             "--plan",
             str(plan_path),
-            "--secrets-from",
-            "vault",
+            "--vault-mode",
+            "on",
         ],
         env={
             "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",

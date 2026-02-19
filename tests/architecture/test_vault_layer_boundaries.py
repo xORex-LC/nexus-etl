@@ -118,11 +118,40 @@ def test_cli_does_not_reintroduce_legacy_vault_flag() -> None:
     legacy_option = "--vault" + "-file"
     legacy_field = "vault" + "_file"
     legacy_const = "VAULT" + "_FILE"
+    legacy_secrets_option = "--secrets" + "-from"
+    legacy_secrets_field = "secrets" + "_from"
 
     options_content = options_path.read_text(encoding="utf-8")
     assert legacy_option not in options_content
     assert legacy_const not in options_content
+    assert legacy_secrets_option not in options_content
 
     for path in _py_files(command_root):
         content = path.read_text(encoding="utf-8")
         assert legacy_field not in content, f"legacy vault marker found in {_rel(path)}"
+        assert legacy_secrets_field not in content, f"legacy secrets marker found in {_rel(path)}"
+
+
+def test_legacy_file_vault_module_is_removed_and_not_reintroduced() -> None:
+    legacy_module = REPO_ROOT / "connector" / "infra" / "secrets" / ("file" + "_vault_provider.py")
+    legacy_module_name = "file" + "_vault_provider"
+    legacy_provider = "FileVault" + "SecretProvider"
+    legacy_store = "FileVault" + "SecretStore"
+
+    assert not legacy_module.exists(), "Legacy CSV vault module must remain removed"
+
+    violations: list[str] = []
+    current_test_file = Path(__file__).resolve()
+    for root in (REPO_ROOT / "connector", REPO_ROOT / "tests"):
+        for path in _py_files(root):
+            if path.resolve() == current_test_file:
+                continue
+            content = path.read_text(encoding="utf-8")
+            if legacy_module_name in content:
+                violations.append(f"{_rel(path)}: {legacy_module_name}")
+            if legacy_provider in content:
+                violations.append(f"{_rel(path)}: {legacy_provider}")
+            if legacy_store in content:
+                violations.append(f"{_rel(path)}: {legacy_store}")
+
+    assert violations == [], "Legacy CSV vault artifacts must not be reintroduced:\n" + "\n".join(violations)
