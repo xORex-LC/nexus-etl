@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
 
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.config import SqliteDbConfig
+from connector.infra.sqlite.engine import open_sqlite
 
 
 def test_nested_transactions_are_rejected() -> None:
-    conn = sqlite3.connect(":memory:")
-    try:
-        engine = SqliteEngine(conn)
-        with engine.transaction():
-            with pytest.raises(RuntimeError, match="Nested cache transactions"):
-                with engine.transaction():
-                    pass
-    finally:
-        conn.close()
+    engine = open_sqlite(SqliteDbConfig(), ":memory:")
+    with engine.transaction():
+        with pytest.raises(RuntimeError, match="Nested transactions are not supported"):
+            with engine.transaction():
+                pass

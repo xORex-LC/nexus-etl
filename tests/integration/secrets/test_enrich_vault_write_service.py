@@ -15,8 +15,10 @@ from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.enrich import EnricherEngine
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.diagnostics.catalog import build_catalog
+from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
-from connector.infra.secrets.sqlite import SqliteVaultRepository, VaultSqliteDb
+from connector.infra.secrets.sqlite import SqliteVaultRepository
+from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
 
 
 @dataclass
@@ -54,15 +56,18 @@ def _build_store(tmp_path: Path):
     key_provider = EnvVaultKeyProvider(env={"ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}"})
     cipher = FernetEnvelopeCipher()
     locator = SecretLocatorService()
-    vault_db = VaultSqliteDb(db_path=str(tmp_path / "cache" / "ankey_vault.sqlite3"))
-    repository = SqliteVaultRepository(vault_db)
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+    )
+    repository = SqliteVaultRepository(engine)
     store = SecretVaultWriteService(
         repository=repository,
         cipher=cipher,
         key_provider=key_provider,
         locator=locator,
     )
-    return store, repository, locator, key_provider, cipher, vault_db
+    return store, repository, locator, key_provider, cipher, engine
 
 
 def _build_enricher(secret_store: SecretVaultWriteService) -> EnricherEngine:
@@ -112,7 +117,7 @@ def _build_result() -> TransformResult[NormalizedEmployeesRow]:
 
 
 def test_enricher_writes_encrypted_secret_to_vault(tmp_path: Path):
-    store, repository, locator, key_provider, cipher, vault_db = _build_store(tmp_path)
+    store, repository, locator, key_provider, cipher, engine = _build_store(tmp_path)
     try:
         enricher = _build_enricher(store)
         result = enricher.enrich(_build_result())
@@ -153,4 +158,4 @@ def test_enricher_writes_encrypted_secret_to_vault(tmp_path: Path):
         )
         assert restored == "TopSecret123"
     finally:
-        vault_db.close()
+        engine.close()

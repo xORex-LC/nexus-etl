@@ -13,8 +13,10 @@ from connector.domain.planning.plan_models import Operation, Plan, PlanItem, Pla
 from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol, RequestSpec
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
+from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
-from connector.infra.secrets.sqlite import SqliteVaultRepository, VaultSqliteDb
+from connector.infra.secrets.sqlite import SqliteVaultRepository
+from connector.infra.sqlite.engine import open_sqlite
 from connector.usecases.import_apply_service import ImportApplyService
 
 CATALOG = build_catalog("employees", strict=True)
@@ -95,10 +97,13 @@ def _plan(*, lifecycle: dict[str, object] | None) -> Plan:
 
 
 def _write_secret(tmp_path: Path) -> None:
-    vault_db = VaultSqliteDb(cache_dir=str(tmp_path / "cache"))
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+    )
     try:
         store = SecretVaultWriteService(
-            repository=SqliteVaultRepository(vault_db),
+            repository=SqliteVaultRepository(engine),
             cipher=FernetEnvelopeCipher(),
             key_provider=EnvVaultKeyProvider(),
             locator=SecretLocatorService(),
@@ -110,13 +115,16 @@ def _write_secret(tmp_path: Path) -> None:
             run_id="run-1",
         )
     finally:
-        vault_db.close()
+        engine.close()
 
 
 def _read_secret_exists(tmp_path: Path) -> bool:
-    vault_db = VaultSqliteDb(cache_dir=str(tmp_path / "cache"))
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+    )
     try:
-        repo = SqliteVaultRepository(vault_db)
+        repo = SqliteVaultRepository(engine)
         locator_hash = SecretLocatorService().build_locator_hash(
             dataset="employees",
             field="password",
@@ -131,7 +139,7 @@ def _read_secret_exists(tmp_path: Path) -> bool:
         )
         return record is not None
     finally:
-        vault_db.close()
+        engine.close()
 
 
 def _run_apply(tmp_path: Path, *, lifecycle: dict[str, object] | None, exec_ok: bool):

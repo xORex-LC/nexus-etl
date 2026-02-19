@@ -9,7 +9,7 @@ from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
-from connector.infra.cache.repository.identity_repository import SqliteIdentityRepository
+from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.main import app
 

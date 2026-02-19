@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import SqliteEngine
 
 
 class SqliteIdentityRepository:
     """
     Назначение/ответственность:
-        SQLite реализация identity_index.
+        SQLite реализация identity_index и identity_runtime_state.
+        Работает с identity.sqlite3 через SqliteEngine.
     """
 
     def __init__(self, engine: SqliteEngine):

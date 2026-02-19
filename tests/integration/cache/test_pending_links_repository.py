@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import sqlite3
-
-from connector.infra.cache.repository.pending_links_repository import SqlitePendingLinksRepository
-from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.identity.sqlite.pending_links_repository import SqlitePendingLinksRepository
+from connector.infra.identity.sqlite.schema import ensure_identity_schema
+from connector.infra.sqlite.config import SqliteDbConfig
+from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
 
 
 def _make_engine() -> SqliteEngine:
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    engine = SqliteEngine(conn)
-    ensure_cache_ready(engine, [])
+    engine = open_sqlite(SqliteDbConfig(), ":memory:")
+    ensure_identity_schema(engine)
     return engine
+
 
 
 def test_purge_stale_removes_only_processed_statuses():

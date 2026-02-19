@@ -15,8 +15,10 @@ from connector.domain.planning.plan_models import Operation, Plan, PlanItem, Pla
 from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol, RequestSpec
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
+from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
-from connector.infra.secrets.sqlite import SqliteVaultRepository, VaultSqliteDb
+from connector.infra.secrets.sqlite import SqliteVaultRepository
+from connector.infra.sqlite.engine import open_sqlite
 from connector.usecases.apply.models import ApplyResult
 from connector.usecases.import_apply_service import ImportApplyService
 
@@ -113,10 +115,13 @@ def _write_vault_secret(
     secret_value: str = "TopSecret123",
 ) -> None:
     _set_master_key(monkeypatch)
-    vault_db = VaultSqliteDb(cache_dir=str(tmp_path / "cache"))
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+    )
     try:
         store = SecretVaultWriteService(
-            repository=SqliteVaultRepository(vault_db),
+            repository=SqliteVaultRepository(engine),
             cipher=FernetEnvelopeCipher(),
             key_provider=EnvVaultKeyProvider(),
             locator=SecretLocatorService(),
@@ -128,7 +133,7 @@ def _write_vault_secret(
             run_id=run_id,
         )
     finally:
-        vault_db.close()
+        engine.close()
 
 
 def _run_apply(

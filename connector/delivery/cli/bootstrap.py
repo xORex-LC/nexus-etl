@@ -9,6 +9,8 @@ from connector.config.app_settings import (
     ObservabilitySettings,
     PathsSettings,
     PendingSettings,
+    SqliteSettings,
+    build_vault_db_config,
 )
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
@@ -32,11 +34,19 @@ from connector.infra.secrets import (
     NullSecretProvider,
     PromptSecretProvider,
 )
-from connector.infra.secrets.sqlite import SqliteVaultRepository, VaultSqliteDb
+from connector.infra.secrets.sqlite import SqliteVaultRepository, getVaultDbPath
+from connector.infra.sqlite.engine import open_sqlite
 from connector.infra.target.core.factory import (
     build_target_runtime,  # noqa: F401 — re-export
     build_target_runtime_with_info,  # noqa: F401 — re-export
 )
+
+
+def _open_vault_engine(paths_settings: PathsSettings):
+    """Открыть SqliteEngine для vault DB с политикой из SqliteSettings."""
+    config = build_vault_db_config(SqliteSettings())
+    path = getVaultDbPath(paths_settings.cache_dir)
+    return open_sqlite(config, path)
 
 
 def build_diagnostics_catalog(dataset: str | None, *, strict: bool):
@@ -113,18 +123,17 @@ def open_secret_store(
         yield None
         return
 
-    vault_db = VaultSqliteDb(cache_dir=paths_settings.cache_dir)
+    engine = _open_vault_engine(paths_settings)
     try:
-        repository = SqliteVaultRepository(vault_db)
         store = SecretVaultWriteService(
-            repository=repository,
+            repository=SqliteVaultRepository(engine),
             cipher=FernetEnvelopeCipher(),
             key_provider=EnvVaultKeyProvider(),
             locator=SecretLocatorService(),
         )
         yield store
     finally:
-        vault_db.close()
+        engine.close()
 
 
 def ensure_vault_startup_ready(*, paths_settings: PathsSettings) -> None:
@@ -137,16 +146,17 @@ def ensure_vault_startup_ready(*, paths_settings: PathsSettings) -> None:
         - валидирует keyring/probe/storage через `VaultStartupGuard`;
         - всегда закрывает соединение в конце проверки.
     """
-    vault_db = VaultSqliteDb(cache_dir=paths_settings.cache_dir)
+    engine = _open_vault_engine(paths_settings)
     try:
         guard = VaultStartupGuard(
-            repository=SqliteVaultRepository(vault_db),
+            repository=SqliteVaultRepository(engine),
             cipher=FernetEnvelopeCipher(),
             key_provider=EnvVaultKeyProvider(),
+            storage_probe=engine,
         )
         guard.ensure_ready()
     finally:
-        vault_db.close()
+        engine.close()
 
 
 class _VaultReadProviderRuntime(SecretProviderProtocol):
@@ -159,9 +169,9 @@ class _VaultReadProviderRuntime(SecretProviderProtocol):
     """
 
     def __init__(self, *, paths_settings: PathsSettings, run_id: str | None) -> None:
-        self._vault_db = VaultSqliteDb(cache_dir=paths_settings.cache_dir)
+        self._engine = _open_vault_engine(paths_settings)
         self._provider = SecretVaultReadService(
-            repository=SqliteVaultRepository(self._vault_db),
+            repository=SqliteVaultRepository(self._engine),
             cipher=FernetEnvelopeCipher(),
             key_provider=EnvVaultKeyProvider(),
             locator=SecretLocatorService(),
@@ -190,7 +200,7 @@ class _VaultReadProviderRuntime(SecretProviderProtocol):
         )
 
     def close(self) -> None:
-        self._vault_db.close()
+        self._engine.close()
 
 
 class _VaultRetentionRuntime(SecretApplyRetentionHookProtocol):
@@ -200,9 +210,9 @@ class _VaultRetentionRuntime(SecretApplyRetentionHookProtocol):
     """
 
     def __init__(self, *, paths_settings: PathsSettings) -> None:
-        self._vault_db = VaultSqliteDb(cache_dir=paths_settings.cache_dir)
+        self._engine = _open_vault_engine(paths_settings)
         self._service = VaultRetentionService(
-            repository=SqliteVaultRepository(self._vault_db),
+            repository=SqliteVaultRepository(self._engine),
             locator=SecretLocatorService(),
         )
 
@@ -231,7 +241,7 @@ class _VaultRetentionRuntime(SecretApplyRetentionHookProtocol):
         return dict(self._service.run_maintenance())
 
     def close(self) -> None:
-        self._vault_db.close()
+        self._engine.close()
 
 
 def build_secret_provider(

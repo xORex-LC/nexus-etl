@@ -7,32 +7,34 @@ from __future__ import annotations
 
 import sqlite3
 
+from connector.infra.sqlite.engine import SqliteEngine
+
 SCHEMA_VERSION = 1
 
 
-def ensure_vault_schema(conn: sqlite3.Connection) -> int:
+def ensure_vault_schema(engine: SqliteEngine) -> int:
     """
     Назначение:
         Создать vault schema и зафиксировать версию в `vault_meta`.
     """
-    _create_meta(conn)
-    current_version = _get_schema_version(conn) or 0
+    _create_meta(engine)
+    current_version = _get_schema_version(engine) or 0
 
     if current_version == 0:
-        _create_vault_tables(conn)
-        _set_schema_version(conn, SCHEMA_VERSION)
+        _create_vault_tables(engine)
+        _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
     if current_version < SCHEMA_VERSION:
-        _migrate_to_latest(conn, current_version)
-        _set_schema_version(conn, SCHEMA_VERSION)
+        _migrate_to_latest(engine, current_version)
+        _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
     return current_version
 
 
-def _create_meta(conn: sqlite3.Connection) -> None:
-    conn.execute(
+def _create_meta(engine: SqliteEngine) -> None:
+    engine.execute(
         """
         CREATE TABLE IF NOT EXISTS vault_meta (
             key TEXT PRIMARY KEY,
@@ -42,8 +44,8 @@ def _create_meta(conn: sqlite3.Connection) -> None:
     )
 
 
-def _get_schema_version(conn: sqlite3.Connection) -> int | None:
-    row = conn.execute("SELECT value FROM vault_meta WHERE key='schema_version'").fetchone()
+def _get_schema_version(engine: SqliteEngine) -> int | None:
+    row = engine.fetchone("SELECT value FROM vault_meta WHERE key='schema_version'")
     if row is None:
         return None
     try:
@@ -52,8 +54,8 @@ def _get_schema_version(conn: sqlite3.Connection) -> int | None:
         return None
 
 
-def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
-    conn.execute(
+def _set_schema_version(engine: SqliteEngine, version: int) -> None:
+    engine.execute(
         """
         INSERT INTO vault_meta(key, value)
         VALUES (?, ?)
@@ -63,7 +65,7 @@ def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
     )
 
 
-def _migrate_to_latest(conn: sqlite3.Connection, current_version: int) -> None:
+def _migrate_to_latest(engine: SqliteEngine, current_version: int) -> None:
     """
     Назначение:
         Применить миграции до SCHEMA_VERSION.
@@ -72,11 +74,11 @@ def _migrate_to_latest(conn: sqlite3.Connection, current_version: int) -> None:
         На текущем этапе поддерживается только bootstrap до v1.
     """
     if current_version < 1:
-        _create_vault_tables(conn)
+        _create_vault_tables(engine)
 
 
-def _create_vault_tables(conn: sqlite3.Connection) -> None:
-    conn.execute(
+def _create_vault_tables(engine: SqliteEngine) -> None:
+    engine.execute(
         """
         CREATE TABLE IF NOT EXISTS vault_dek (
             dek_version TEXT PRIMARY KEY,
@@ -89,7 +91,7 @@ def _create_vault_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
+    engine.execute(
         """
         CREATE TABLE IF NOT EXISTS vault_secrets (
             secret_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,25 +110,25 @@ def _create_vault_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
+    engine.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_secret_unique_scope
         ON vault_secrets(dataset, field, locator_version, locator_hash, COALESCE(run_id, ''))
         """
     )
-    conn.execute(
+    engine.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_vault_secret_lookup
         ON vault_secrets(dataset, field, locator_version, locator_hash, run_id)
         """
     )
-    conn.execute(
+    engine.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_vault_dek_active
         ON vault_dek(is_active, updated_at)
         """
     )
-    conn.execute(
+    engine.execute(
         """
         CREATE TABLE IF NOT EXISTS vault_probe (
             probe_name TEXT PRIMARY KEY,

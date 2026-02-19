@@ -14,8 +14,8 @@ from connector.domain.transform.stages.stages import (
 from connector.domain.transform.providers import TransformProviderDeps
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
-from connector.infra.cache.repository.identity_repository import SqliteIdentityRepository
-from connector.infra.cache.repository.pending_links_repository import SqlitePendingLinksRepository
+from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
+from connector.infra.identity.sqlite.pending_links_repository import SqlitePendingLinksRepository
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.roles import build_sqlite_cache_role_ports
 from connector.infra.cache.backends.sqlite.engine import SqliteEngine

@@ -4,10 +4,11 @@ from typing import Iterable
 
 from connector.infra.cache.cache_spec import CacheSpec
 from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.repository.identity_repository import SqliteIdentityRepository
-from connector.infra.cache.repository.pending_links_repository import SqlitePendingLinksRepository
+from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
+from connector.infra.identity.sqlite.pending_links_repository import SqlitePendingLinksRepository
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
+from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 
 
@@ -80,6 +81,9 @@ class SqliteCacheGateway:
     ) -> "SqliteCacheGateway":
         specs = list(cache_specs)
         ensure_cache_ready(engine, specs)
+        # Block 2 shim: identity tables co-located in cache.sqlite3 until Block 3
+        # separates them onto identity.sqlite3 via DI-container.
+        ensure_identity_schema(engine)
         cache_repo = SqliteCacheRepository(engine, specs)
         identity_repo = SqliteIdentityRepository(engine)
         pending_repo = SqlitePendingLinksRepository(engine)

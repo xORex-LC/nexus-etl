@@ -8,8 +8,10 @@ from typer.testing import CliRunner
 
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
+from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
-from connector.infra.secrets.sqlite import SqliteVaultRepository, VaultSqliteDb
+from connector.infra.secrets.sqlite import SqliteVaultRepository
+from connector.infra.sqlite.engine import open_sqlite
 from connector.main import app
 
 runner = CliRunner()
@@ -98,10 +100,13 @@ def _write_ephemeral_plan(path: Path, *, run_id: str) -> None:
 
 
 def _seed_vault_secret(*, tmp_path: Path, run_id: str) -> None:
-    vault_db = VaultSqliteDb(cache_dir=str(tmp_path / "cache"))
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+    )
     try:
         store = SecretVaultWriteService(
-            repository=SqliteVaultRepository(vault_db),
+            repository=SqliteVaultRepository(engine),
             cipher=FernetEnvelopeCipher(),
             key_provider=EnvVaultKeyProvider(),
             locator=SecretLocatorService(),
@@ -113,13 +118,16 @@ def _seed_vault_secret(*, tmp_path: Path, run_id: str) -> None:
             run_id=run_id,
         )
     finally:
-        vault_db.close()
+        engine.close()
 
 
 def _vault_secret_exists(*, tmp_path: Path, run_id: str) -> bool:
-    vault_db = VaultSqliteDb(cache_dir=str(tmp_path / "cache"))
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+    )
     try:
-        repo = SqliteVaultRepository(vault_db)
+        repo = SqliteVaultRepository(engine)
         locator_hash = SecretLocatorService().build_locator_hash(
             dataset="employees",
             field="password",
@@ -134,7 +142,7 @@ def _vault_secret_exists(*, tmp_path: Path, run_id: str) -> bool:
         )
         return record is not None
     finally:
-        vault_db.close()
+        engine.close()
 
 
 def test_import_apply_staging_rollout_forces_dry_run(tmp_path: Path) -> None:
