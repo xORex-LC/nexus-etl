@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from connector.config.config import SettingsIssue, load_settings_model
+from connector.infra.sqlite.config import SqliteDbConfig
 
 
 @dataclass(frozen=True)
@@ -223,6 +226,86 @@ def _build_vault_rollout_settings(settings: Any) -> VaultRolloutSettings:
         latency_regression_threshold_pct=settings.vault_latency_regression_threshold_pct,
         busy_timeout_rate_threshold_pct=settings.vault_busy_timeout_rate_threshold_pct,
         schema_changed_rate_threshold_pct=settings.vault_schema_changed_rate_threshold_pct,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SQLite configuration (Pydantic BaseSettings — независимо от плоского Settings)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class SqliteSettings(BaseSettings):
+    """
+    Назначение:
+        Конфигурация всех SQLite-соединений проекта (cache, vault, identity).
+        Читается из env vars с префиксом ANKEY_.
+
+    Граница ответственности:
+        - Самостоятельная Pydantic BaseSettings; поля в плоский Settings (config.py) не добавляются.
+        - Хранит глобальные дефолты и per-DB overrides (None = взять global).
+        - CLI-overrides прокидываются при инстанциировании:
+          SqliteSettings(vault_sqlite_busy_timeout_ms=cli_value).
+
+    Инварианты:
+        - env_ignore_empty=True: пустая строка не перетирает дефолт.
+        - Все int | None поля: None означает «использовать глобальный дефолт».
+    """
+
+    model_config = SettingsConfigDict(env_prefix="ANKEY_", env_ignore_empty=True)
+
+    # Глобальные дефолты (применяются ко всем DB при отсутствии per-DB override)
+    sqlite_journal_mode: str = "WAL"
+    sqlite_synchronous: str = "NORMAL"
+    sqlite_busy_timeout_ms: int = 5000
+    sqlite_wal_autocheckpoint: int = 1000
+
+    # Vault overrides (None = использовать global)
+    vault_db_path: str | None = None
+    vault_sqlite_transaction_mode: str = "immediate"
+    vault_sqlite_journal_mode: str | None = None
+    vault_sqlite_busy_timeout_ms: int | None = None
+    vault_sqlite_schema_retry_count: int = 2
+
+    # Cache overrides (None = использовать global)
+    cache_sqlite_transaction_mode: str = "deferred"
+    cache_sqlite_journal_mode: str | None = None
+    cache_sqlite_busy_timeout_ms: int | None = None
+
+    # Identity
+    identity_db_path: str | None = None  # None → {cache_dir}/identity.sqlite3
+
+
+def build_vault_db_config(s: SqliteSettings) -> SqliteDbConfig:
+    """Собрать SqliteDbConfig для vault DB из SqliteSettings с override chain."""
+    return SqliteDbConfig(
+        transaction_mode=s.vault_sqlite_transaction_mode,  # type: ignore[arg-type]
+        busy_timeout_ms=s.vault_sqlite_busy_timeout_ms or s.sqlite_busy_timeout_ms,
+        journal_mode=s.vault_sqlite_journal_mode or s.sqlite_journal_mode,
+        synchronous=s.sqlite_synchronous,
+        wal_autocheckpoint=s.sqlite_wal_autocheckpoint,
+        schema_retry_count=s.vault_sqlite_schema_retry_count,
+    )
+
+
+def build_cache_db_config(s: SqliteSettings) -> SqliteDbConfig:
+    """Собрать SqliteDbConfig для cache DB из SqliteSettings с override chain."""
+    return SqliteDbConfig(
+        transaction_mode=s.cache_sqlite_transaction_mode,  # type: ignore[arg-type]
+        busy_timeout_ms=s.cache_sqlite_busy_timeout_ms or s.sqlite_busy_timeout_ms,
+        journal_mode=s.cache_sqlite_journal_mode or s.sqlite_journal_mode,
+        synchronous=s.sqlite_synchronous,
+        wal_autocheckpoint=s.sqlite_wal_autocheckpoint,
+    )
+
+
+def build_identity_db_config(s: SqliteSettings) -> SqliteDbConfig:
+    """Собрать SqliteDbConfig для identity DB из SqliteSettings (только global дефолты)."""
+    return SqliteDbConfig(
+        transaction_mode="deferred",
+        busy_timeout_ms=s.sqlite_busy_timeout_ms,
+        journal_mode=s.sqlite_journal_mode,
+        synchronous=s.sqlite_synchronous,
+        wal_autocheckpoint=s.sqlite_wal_autocheckpoint,
     )
 
 
