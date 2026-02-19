@@ -43,7 +43,6 @@ class Options:
     report_items_limit: int | None = None
     dataset: str | None = None
     vault_mode: str | None = None
-    vault_file: str | None = None
 
 
 _STARTUP_ERRORS = (
@@ -71,7 +70,6 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
         runtime_mode_decision = resolve_vault_runtime_mode(
             mode=opts.vault_mode,
             requires_vault=_dataset_requires_vault(_spec),
-            legacy_vault_file=opts.vault_file,
         )
         if runtime_mode_decision.reason == RUNTIME_REASON_INVALID_MODE:
             typer.echo("ERROR: unsupported --vault-mode, expected one of: auto|on|off", err=True)

@@ -236,7 +236,6 @@ class _VaultRetentionRuntime(SecretApplyRetentionHookProtocol):
 
 def build_secret_provider(
     source: str | None,
-    vault_file: str | None,
     *,
     paths_settings: PathsSettings | None = None,
     run_id: str | None = None,
@@ -251,8 +250,6 @@ def build_secret_provider(
         - source "vault" -> vault-only `SecretVaultReadService` (без prompt/CSV fallback)
         - любое другое значение -> NullSecretProvider
     """
-    _ = vault_file  # legacy compatibility: runtime больше не читает CSV vault в режиме source=vault.
-
     if not source or source == "none":
         return NullSecretProvider()
     if source == "prompt":

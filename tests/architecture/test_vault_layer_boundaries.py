@@ -111,3 +111,18 @@ def test_import_apply_service_uses_retention_port_contract() -> None:
         "ImportApplyService must depend on retention port contract"
     )
 
+
+def test_cli_does_not_reintroduce_legacy_vault_flag() -> None:
+    options_path = REPO_ROOT / "connector" / "delivery" / "cli" / "options.py"
+    command_root = REPO_ROOT / "connector" / "delivery" / "commands"
+    legacy_option = "--vault" + "-file"
+    legacy_field = "vault" + "_file"
+    legacy_const = "VAULT" + "_FILE"
+
+    options_content = options_path.read_text(encoding="utf-8")
+    assert legacy_option not in options_content
+    assert legacy_const not in options_content
+
+    for path in _py_files(command_root):
+        content = path.read_text(encoding="utf-8")
+        assert legacy_field not in content, f"legacy vault marker found in {_rel(path)}"

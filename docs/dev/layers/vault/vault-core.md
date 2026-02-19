@@ -678,11 +678,11 @@ source row
 2. `PlanItem.secret_fields` пустой, apply не делает secret lookup.
 3. Если payload-builder требует `password` как обязательное поле, он выбросит ошибку missing fields.
 
-### Сценарий 3: План построен без `vault_file`
+### Сценарий 3: План построен при отключённом vault-mode
 
-1. Enrich всё равно может собрать `secret_candidates`.
-2. Если `secret_store=None`, значение не персистится, но `secret_fields` в meta остаются.
-3. На apply при требуемом поле вероятен `SECRET_REQUIRED` (секрет нечем прочитать).
+1. Enrich может собрать `secret_candidates`.
+2. Если запуск выполнен с `--vault-mode off`, запись в vault запрещена и команда должна завершиться fail-fast при наличии секретных полей.
+3. `import apply` при `--vault-mode off` и `secret_fields` в плане также завершается fail-fast до чтения секрета.
 
 ### Сценарий 4 (target): Startup с неверным ключом
 

@@ -26,7 +26,6 @@ RUNTIME_REASON_MODE_ON = "runtime_mode_on"
 RUNTIME_REASON_MODE_OFF = "runtime_mode_off"
 RUNTIME_REASON_AUTO_WITH_SECRETS = "runtime_auto_secret_fields_detected"
 RUNTIME_REASON_AUTO_WITHOUT_SECRETS = "runtime_auto_secret_fields_absent"
-RUNTIME_REASON_LEGACY_VAULT_FILE = "runtime_legacy_vault_file"
 RUNTIME_REASON_LEGACY_FORCE_ON = "runtime_legacy_force_on"
 RUNTIME_REASON_INVALID_MODE = "runtime_mode_invalid"
 
@@ -65,7 +64,6 @@ def resolve_vault_runtime_mode(
     *,
     mode: str | None,
     requires_vault: bool,
-    legacy_vault_file: str | None = None,
     legacy_force_on: bool = False,
 ) -> VaultRuntimeModeDecision:
     """Назначение:
@@ -75,18 +73,11 @@ def resolve_vault_runtime_mode(
         - `mode=on`  -> vault path обязателен;
         - `mode=off` -> vault path запрещён;
         - `mode=auto` -> включать vault только если `requires_vault=True`;
-        - legacy `--vault-file` (без `--vault-mode`) принудительно включает vault.
+        - `legacy_force_on=True` может принудительно включить vault для обратной совместимости вызова.
     """
-    if mode is None and legacy_vault_file:
-        return VaultRuntimeModeDecision(
-            mode=VAULT_RUNTIME_MODE_ON,
-            requested_vault=True,
-            requires_vault=requires_vault,
-            explicit_mode=False,
-            reason=RUNTIME_REASON_LEGACY_VAULT_FILE,
-        )
+    explicit_mode = mode is not None
     if mode is None and legacy_force_on:
-        return VaultRuntimeModeDecision(
+        return _build_runtime_decision(
             mode=VAULT_RUNTIME_MODE_ON,
             requested_vault=True,
             requires_vault=requires_vault,
@@ -96,37 +87,37 @@ def resolve_vault_runtime_mode(
 
     normalized_mode, is_valid = _normalize_mode(mode)
     if not is_valid:
-        return VaultRuntimeModeDecision(
+        return _build_runtime_decision(
             mode=normalized_mode,
             requested_vault=False,
             requires_vault=requires_vault,
-            explicit_mode=mode is not None,
+            explicit_mode=explicit_mode,
             reason=RUNTIME_REASON_INVALID_MODE,
         )
 
     if normalized_mode == VAULT_RUNTIME_MODE_ON:
-        return VaultRuntimeModeDecision(
+        return _build_runtime_decision(
             mode=normalized_mode,
             requested_vault=True,
             requires_vault=requires_vault,
-            explicit_mode=mode is not None,
+            explicit_mode=explicit_mode,
             reason=RUNTIME_REASON_MODE_ON,
         )
 
     if normalized_mode == VAULT_RUNTIME_MODE_OFF:
-        return VaultRuntimeModeDecision(
+        return _build_runtime_decision(
             mode=normalized_mode,
             requested_vault=False,
             requires_vault=requires_vault,
-            explicit_mode=mode is not None,
+            explicit_mode=explicit_mode,
             reason=RUNTIME_REASON_MODE_OFF,
         )
 
-    return VaultRuntimeModeDecision(
+    return _build_runtime_decision(
         mode=normalized_mode,
         requested_vault=requires_vault,
         requires_vault=requires_vault,
-        explicit_mode=mode is not None,
+        explicit_mode=explicit_mode,
         reason=RUNTIME_REASON_AUTO_WITH_SECRETS if requires_vault else RUNTIME_REASON_AUTO_WITHOUT_SECRETS,
     )
 
@@ -140,12 +131,28 @@ def _normalize_mode(mode: str | None) -> tuple[str, bool]:
     return VAULT_RUNTIME_MODE_AUTO, False
 
 
+def _build_runtime_decision(
+    *,
+    mode: str,
+    requested_vault: bool,
+    requires_vault: bool,
+    explicit_mode: bool,
+    reason: str,
+) -> VaultRuntimeModeDecision:
+    return VaultRuntimeModeDecision(
+        mode=mode,
+        requested_vault=requested_vault,
+        requires_vault=requires_vault,
+        explicit_mode=explicit_mode,
+        reason=reason,
+    )
+
+
 __all__ = [
     "RUNTIME_REASON_AUTO_WITHOUT_SECRETS",
     "RUNTIME_REASON_AUTO_WITH_SECRETS",
     "RUNTIME_REASON_INVALID_MODE",
     "RUNTIME_REASON_LEGACY_FORCE_ON",
-    "RUNTIME_REASON_LEGACY_VAULT_FILE",
     "RUNTIME_REASON_MODE_OFF",
     "RUNTIME_REASON_MODE_ON",
     "VALID_VAULT_RUNTIME_MODES",

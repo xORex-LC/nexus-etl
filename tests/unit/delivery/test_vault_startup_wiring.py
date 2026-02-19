@@ -141,7 +141,7 @@ def test_enrich_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.Mon
 
     result = enrich_command.handler(
         _ctx(tmp_path),
-        enrich_command.Options(vault_file="legacy.csv"),
+        enrich_command.Options(vault_mode="on"),
         _DummyReport(),
     )
 
@@ -154,7 +154,7 @@ def test_import_plan_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytes
 
     result = import_plan_command.handler(
         _ctx(tmp_path),
-        import_plan_command.Options(vault_file="legacy.csv"),
+        import_plan_command.Options(vault_mode="on"),
     )
 
     assert result.system_codes == {SystemErrorCode.INTERNAL_ERROR}
@@ -173,4 +173,3 @@ def test_import_apply_handler_runs_startup_guard_in_vault_mode(monkeypatch: pyte
 
     assert result.system_codes == {SystemErrorCode.INTERNAL_ERROR}
     assert "VAULT_STARTUP_KEY_VALIDATION_ERROR" in capsys.readouterr().err
-

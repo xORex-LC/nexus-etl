@@ -62,7 +62,6 @@ class Options:
     report_items_limit: int | None = None
     secrets_from: str | None = None
     vault_mode: str | None = None
-    vault_file: str | None = None
 
 
 _STARTUP_ERRORS = (
@@ -115,7 +114,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     runtime_mode_decision = resolve_vault_runtime_mode(
         mode=opts.vault_mode,
         requires_vault=_plan_requires_vault(plan),
-        legacy_vault_file=opts.vault_file,
         legacy_force_on=opts.secrets_from == "vault",
     )
     if runtime_mode_decision.reason == RUNTIME_REASON_INVALID_MODE:
@@ -221,7 +219,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 
         secrets_provider = build_secret_provider(
             effective_secrets_from,
-            opts.vault_file,
             paths_settings=app_settings.paths,
             run_id=plan.meta.run_id,
         )

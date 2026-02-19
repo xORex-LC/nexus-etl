@@ -135,7 +135,7 @@ def _read_secret_exists(tmp_path: Path) -> bool:
 
 
 def _run_apply(tmp_path: Path, *, lifecycle: dict[str, object] | None, exec_ok: bool):
-    provider = build_secret_provider("vault", None, paths_settings=_paths(tmp_path), run_id="run-1")
+    provider = build_secret_provider("vault", paths_settings=_paths(tmp_path), run_id="run-1")
     retention = build_secret_retention_hook("vault", paths_settings=_paths(tmp_path))
     try:
         adapter = make_employees_spec(secrets=provider).get_apply_adapter()
