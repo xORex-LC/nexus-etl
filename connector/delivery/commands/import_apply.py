@@ -344,4 +344,5 @@ def _rollout_thresholds(app_settings) -> VaultRolloutThresholds:
         schema_changed_rate_threshold_pct=rollout.schema_changed_rate_threshold_pct,
     )
 
+
 __all__ = ["handler", "Options"]

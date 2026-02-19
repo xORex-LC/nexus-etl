@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
@@ -115,7 +116,14 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
         "import",
         "plan",
     ]
-    result = runner.invoke(app, args, env={"EMPLOYEES_SOURCE_PATH": str(csv_path)})
+    result = runner.invoke(
+        app,
+        args,
+        env={
+            "EMPLOYEES_SOURCE_PATH": str(csv_path),
+            "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
+        },
+    )
     plan_path = report_dir / f"plan_import_{run_id}.json"
     return result.exit_code, plan_path
 

@@ -118,6 +118,18 @@ class ResolveSecretsSpec(DslBaseModel):
     mode: Literal["none", "by_op"] = "none"
     create: list[str] = Field(default_factory=list)
     update: list[str] = Field(default_factory=list)
+    lifecycle: "ResolveSecretLifecycleSpec | None" = None
+
+
+class ResolveSecretLifecycleSpec(DslBaseModel):
+    """
+    Назначение:
+        Декларативная lifecycle-политика retention для секретов.
+    """
+
+    mode: Literal["persistent", "ephemeral"] = "persistent"
+    delete_on_success: bool | None = None
+    ttl_seconds: int | None = None
 
 
 class ResolveLinkKeySpec(DslBaseModel):
