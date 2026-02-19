@@ -23,7 +23,7 @@ ALLOWED_INFRA_SECRETS_IMPORT_PATHS = {
 }
 FLOW_LAYER_FILES = (
     REPO_ROOT / "connector" / "domain" / "transform" / "resolver" / "resolve_core.py",
-    REPO_ROOT / "connector" / "domain" / "transform" / "resolver" / "resolve_dsl.py",
+    REPO_ROOT / "connector" / "domain" / "transform_dsl" / "compilers" / "resolve.py",
     REPO_ROOT / "connector" / "domain" / "planning" / "plan_builder.py",
     REPO_ROOT / "connector" / "usecases" / "import_apply_service.py",
 )

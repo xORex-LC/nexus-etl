@@ -5,8 +5,8 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet
 
-from connector.domain.dsl.build_options import EnrichDslBuildOptions
-from connector.domain.dsl.loader import load_enrich_spec_for_dataset, load_sink_spec_for_dataset
+from connector.domain.transform_dsl.build_options import EnrichDslBuildOptions
+from connector.domain.transform_dsl.loader import load_enrich_spec_for_dataset, load_sink_spec_for_dataset
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService

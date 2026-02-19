@@ -7,10 +7,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from connector.domain.models import Identity
-from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.transform.common import normalize_text
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.transform_dsl.build_options import ResolveDslBuildOptions
@@ -25,7 +24,11 @@ from connector.domain.transform_dsl.specs import (
     SinkSpec,
 )
 
-BuildDesiredState = Callable[[Any, MatchContext], dict[str, Any]]
+if TYPE_CHECKING:
+    from connector.domain.transform.matcher.context import MatchContext
+
+
+BuildDesiredState = Callable[[Any, "MatchContext"], dict[str, Any]]
 BuildSourceRef = Callable[[Identity], dict[str, Any]]
 DiffPolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
 SecretFieldsPolicy = Callable[[str, dict[str, Any], dict[str, Any] | None], list[str]]

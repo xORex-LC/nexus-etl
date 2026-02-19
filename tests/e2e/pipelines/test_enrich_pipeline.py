@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
@@ -29,7 +30,10 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
-    merged_env = {"EMPLOYEES_SOURCE_PATH": str(csv_path)}
+    merged_env = {
+        "EMPLOYEES_SOURCE_PATH": str(csv_path),
+        "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
+    }
     if env:
         merged_env.update(env)
     result = runner.invoke(
