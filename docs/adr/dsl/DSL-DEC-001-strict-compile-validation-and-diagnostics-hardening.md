@@ -1,6 +1,6 @@
 # DSL-DEC-001: Ужесточение compile/load контракта и диагностик DSL Core
 
-> **Статус**: Принято ✅
+> **Статус**: Принято / реализовано
 > **Дата принятия**: 2026-02-12
 > **Решает проблему**: [DSL-PROBLEM-001](./DSL-PROBLEM-001-dsl-core-fail-late-and-weak-compile-contract.md)
 > **Участники решения**: @xorex
