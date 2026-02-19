@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from connector.config.config import SettingsIssue, load_settings_model
@@ -76,6 +76,37 @@ class PendingSettings:
 
 
 @dataclass(frozen=True)
+class VaultRolloutSettings:
+    """Назначение:
+        Runtime feature-flag политика для staged rollout vault-контура.
+    """
+
+    mode: str
+    canary_percent: int
+    canary_datasets: tuple[str, ...]
+    canary_seed: str
+    row_failure_rate_threshold_pct: float
+    vault_error_rate_threshold_pct: float
+    latency_regression_threshold_pct: float
+    busy_timeout_rate_threshold_pct: float
+    schema_changed_rate_threshold_pct: float
+
+
+def _default_vault_rollout_settings() -> VaultRolloutSettings:
+    return VaultRolloutSettings(
+        mode="full",
+        canary_percent=100,
+        canary_datasets=(),
+        canary_seed="vault-rollout-v1",
+        row_failure_rate_threshold_pct=5.0,
+        vault_error_rate_threshold_pct=5.0,
+        latency_regression_threshold_pct=15.0,
+        busy_timeout_rate_threshold_pct=0.0,
+        schema_changed_rate_threshold_pct=0.0,
+    )
+
+
+@dataclass(frozen=True)
 class AppSettings:
     api: ApiSettings
     paths: PathsSettings
@@ -85,6 +116,7 @@ class AppSettings:
     refresh: RefreshSettings
     matching_runtime: MatchingRuntimeSettings
     pending: PendingSettings
+    vault_rollout: VaultRolloutSettings = field(default_factory=_default_vault_rollout_settings)
 
 @dataclass(frozen=True)
 class LoadedAppSettings:
@@ -150,11 +182,48 @@ _SLICE_FIELD_MAP: dict[type, dict[str, str]] = {
         "pending_allow_partial": "pending_allow_partial",
         "pending_retention_days": "pending_retention_days",
     },
+    VaultRolloutSettings: {
+        "vault_rollout_mode": "mode",
+        "vault_canary_percent": "canary_percent",
+        "vault_canary_datasets": "canary_datasets",
+        "vault_canary_seed": "canary_seed",
+        "vault_row_failure_rate_threshold_pct": "row_failure_rate_threshold_pct",
+        "vault_error_rate_threshold_pct": "vault_error_rate_threshold_pct",
+        "vault_latency_regression_threshold_pct": "latency_regression_threshold_pct",
+        "vault_busy_timeout_rate_threshold_pct": "busy_timeout_rate_threshold_pct",
+        "vault_schema_changed_rate_threshold_pct": "schema_changed_rate_threshold_pct",
+    },
 }
 
 
 def _build_slice(cls: type, settings: Any, field_map: dict[str, str]) -> Any:
     return cls(**{slice_f: getattr(settings, settings_f) for settings_f, slice_f in field_map.items()})
+
+
+def _parse_canary_datasets(raw: str | None) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    items: list[str] = []
+    for chunk in raw.split(","):
+        value = chunk.strip()
+        if not value:
+            continue
+        items.append(value)
+    return tuple(items)
+
+
+def _build_vault_rollout_settings(settings: Any) -> VaultRolloutSettings:
+    return VaultRolloutSettings(
+        mode=settings.vault_rollout_mode,
+        canary_percent=settings.vault_canary_percent,
+        canary_datasets=_parse_canary_datasets(settings.vault_canary_datasets),
+        canary_seed=settings.vault_canary_seed,
+        row_failure_rate_threshold_pct=settings.vault_row_failure_rate_threshold_pct,
+        vault_error_rate_threshold_pct=settings.vault_error_rate_threshold_pct,
+        latency_regression_threshold_pct=settings.vault_latency_regression_threshold_pct,
+        busy_timeout_rate_threshold_pct=settings.vault_busy_timeout_rate_threshold_pct,
+        schema_changed_rate_threshold_pct=settings.vault_schema_changed_rate_threshold_pct,
+    )
 
 
 def load_app_settings(config_path: str | None, cli_overrides: dict[str, Any]) -> LoadedAppSettings:
@@ -173,6 +242,7 @@ def load_app_settings(config_path: str | None, cli_overrides: dict[str, Any]) ->
         refresh=_build_slice(RefreshSettings, settings, _SLICE_FIELD_MAP[RefreshSettings]),
         matching_runtime=_build_slice(MatchingRuntimeSettings, settings, _SLICE_FIELD_MAP[MatchingRuntimeSettings]),
         pending=_build_slice(PendingSettings, settings, _SLICE_FIELD_MAP[PendingSettings]),
+        vault_rollout=_build_vault_rollout_settings(settings),
     )
     return LoadedAppSettings(
         app_settings=app_settings,

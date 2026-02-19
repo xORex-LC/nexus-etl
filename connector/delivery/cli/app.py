@@ -309,14 +309,14 @@ def enrich(
         help="Include enriched rows in report items",
         show_default=True,
     ),
-    vaultFile: str | None = cli_options.VAULT_FILE,
+    vaultMode: str | None = cli_options.VAULT_MODE,
 ):
     opts = enrich_command.Options(
         csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_enriched_items=includeEnrichedItems,
-        vault_file=vaultFile,
+        vault_mode=vaultMode,
     )
     command_ctx = _build_ctx(ctx, dataset, command_key="enrich")
     run_with_report(
@@ -341,14 +341,14 @@ def importPlan(
         show_default=True,
     ),
     dataset: str | None = cli_options.DATASET,
-    vaultFile: str | None = cli_options.VAULT_FILE,
+    vaultMode: str | None = cli_options.VAULT_MODE,
 ):
     opts = import_plan_command.Options(
         csv_has_header=csvHasHeader,
         include_deleted=includeDeleted,
         report_items_limit=reportItemsLimit,
         dataset=dataset,
-        vault_file=vaultFile,
+        vault_mode=vaultMode,
     )
     command_ctx = _build_ctx(ctx, dataset, command_key="import-plan")
     run_with_report(
@@ -369,7 +369,7 @@ def importApply(
     dryRun: bool | None = cli_options.DRY_RUN,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     secretsFrom: str | None = cli_options.SECRETS_FROM,
-    vaultFile: str | None = cli_options.VAULT_FILE,
+    vaultMode: str | None = cli_options.VAULT_MODE,
 ):
     opts = import_apply_command.Options(
         plan_path=plan,
@@ -378,7 +378,7 @@ def importApply(
         dry_run=dryRun,
         report_items_limit=reportItemsLimit,
         secrets_from=secretsFrom,
-        vault_file=vaultFile,
+        vault_mode=vaultMode,
     )
     command_ctx = _build_ctx(ctx, command_key="import-apply")
     run_with_report(

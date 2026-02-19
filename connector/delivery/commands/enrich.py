@@ -3,16 +3,36 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+import typer
+
 from connector.delivery.cli.context import CommandContext
-from connector.delivery.commands.common import sqlite_cache_error_result
+from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
 from connector.delivery.cli.bootstrap import (
     build_cache,
     build_dataset_spec,
     build_diagnostics_catalog,
+    ensure_vault_startup_ready,
+    open_secret_store,
     build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.infra.secrets.file_vault_provider import FileVaultSecretStore
+from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.secrets.errors import (
+    SecretKeyConfigError,
+    VaultStartupKeyValidationError,
+    VaultStartupProbeCorruptedError,
+    VaultStartupStorageReadonlyError,
+    VaultStartupUninitializedReadonlyError,
+)
+from connector.domain.secrets.policy.rollout_policy import (
+    VaultRolloutPolicySettings,
+    evaluate_vault_rollout,
+)
+from connector.domain.secrets.policy.runtime_mode_policy import (
+    RUNTIME_REASON_INVALID_MODE,
+    VAULT_RUNTIME_MODE_OFF,
+    resolve_vault_runtime_mode,
+)
 from connector.usecases.enrich_usecase import EnrichUseCase
 
 
@@ -22,7 +42,16 @@ class Options:
     dataset: str | None = None
     report_items_limit: int | None = None
     include_enriched_items: bool | None = None
-    vault_file: str | None = None
+    vault_mode: str | None = None
+
+
+_STARTUP_ERRORS = (
+    SecretKeyConfigError,
+    VaultStartupKeyValidationError,
+    VaultStartupProbeCorruptedError,
+    VaultStartupStorageReadonlyError,
+    VaultStartupUninitializedReadonlyError,
+)
 
 
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
@@ -42,46 +71,125 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     include_enriched_items_value = opts.include_enriched_items if opts.include_enriched_items is not None else True
 
     dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+    runtime_mode_decision = resolve_vault_runtime_mode(
+        mode=opts.vault_mode,
+        requires_vault=_dataset_requires_vault(dataset_spec),
+    )
+    if runtime_mode_decision.reason == RUNTIME_REASON_INVALID_MODE:
+        typer.echo("ERROR: unsupported --vault-mode, expected one of: auto|on|off", err=True)
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
+    if runtime_mode_decision.mode == VAULT_RUNTIME_MODE_OFF and runtime_mode_decision.requires_vault:
+        typer.echo(
+            "ERROR: vault-mode=off cannot be used because dataset declares secret fields",
+            err=True,
+        )
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
+
+    rollout_decision = evaluate_vault_rollout(
+        settings=_rollout_settings(app_settings),
+        requested_vault=runtime_mode_decision.requested_vault,
+        dataset=dataset_name,
+        run_id=run_id,
+        command_name="enrich",
+    )
+    if runtime_mode_decision.requested_vault and not rollout_decision.vault_enabled:
+        typer.echo(
+            (
+                "ERROR: vault rollout policy blocks enrich vault path "
+                f"(mode={rollout_decision.mode}, reason={rollout_decision.reason})"
+            ),
+            err=True,
+        )
+        return result_with(SystemErrorCode.INTERNAL_ERROR)
+
+    if rollout_decision.startup_guard_required:
+        try:
+            ensure_vault_startup_ready(paths_settings=app_settings.paths)
+        except _STARTUP_ERRORS as exc:
+            return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
+
     catalog = ctx.catalog or build_diagnostics_catalog(
         dataset_name,
         strict=app_settings.observability.diagnostics_strict,
     )
     report.set_meta(dataset=dataset_name, items_limit=report_items_limit_value)
+    report.set_context(
+        "vault_rollout",
+        {
+            "vault_runtime": runtime_mode_decision.to_context(),
+            **rollout_decision.to_context(),
+            "command": "enrich",
+        },
+    )
 
     gateway = None
     try:
         gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
-        secret_store = FileVaultSecretStore(opts.vault_file) if opts.vault_file else None
-        pipeline_ctx = build_pipeline_context(
-            dataset_spec=dataset_spec,
-            dataset_name=dataset_name,
-            cache_roles=cache_roles,
-            pending_settings=app_settings.pending,
-            observability_settings=app_settings.observability,
-            catalog=catalog,
-            csv_has_header=csv_has_header_value,
-            secret_store=secret_store,
-        )
-        usecase = EnrichUseCase(
-            report_items_limit=report_items_limit_value,
-            include_enriched_items=include_enriched_items_value,
-        )
-        return usecase.run(
-            row_source=pipeline_ctx.row_source,
-            map_stage=pipeline_ctx.map_stage,
-            normalize_stage=pipeline_ctx.normalize_stage,
-            enrich_stage=pipeline_ctx.enrich_stage,
-            dataset=dataset_name,
-            logger=ctx.logger,
-            run_id=run_id,
-            report=report,
-            catalog=catalog,
-        )
+        with open_secret_store(
+            paths_settings=app_settings.paths,
+            enabled=rollout_decision.vault_enabled,
+        ) as secret_store:
+            pipeline_ctx = build_pipeline_context(
+                dataset_spec=dataset_spec,
+                dataset_name=dataset_name,
+                cache_roles=cache_roles,
+                pending_settings=app_settings.pending,
+                observability_settings=app_settings.observability,
+                catalog=catalog,
+                csv_has_header=csv_has_header_value,
+                secret_store=secret_store,
+            )
+            usecase = EnrichUseCase(
+                report_items_limit=report_items_limit_value,
+                include_enriched_items=include_enriched_items_value,
+            )
+            return usecase.run(
+                row_source=pipeline_ctx.row_source,
+                map_stage=pipeline_ctx.map_stage,
+                normalize_stage=pipeline_ctx.normalize_stage,
+                enrich_stage=pipeline_ctx.enrich_stage,
+                dataset=dataset_name,
+                logger=ctx.logger,
+                run_id=run_id,
+                report=report,
+                catalog=catalog,
+            )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="enrich", exc=exc)
     finally:
         if gateway is not None:
             gateway.close()
+
+
+def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:
+    rollout = app_settings.vault_rollout
+    return VaultRolloutPolicySettings(
+        mode=rollout.mode,
+        canary_percent=rollout.canary_percent,
+        canary_datasets=rollout.canary_datasets,
+        canary_seed=rollout.canary_seed,
+    )
+
+
+def _dataset_requires_vault(dataset_spec) -> bool:
+    """Назначение:
+        Определить, содержит ли enrich DSL секретные назначения.
+
+    Контракт:
+        - учитывает декларативный `enrich.secrets.fields`;
+        - учитывает явные `target: secret:<field>` в generate/lookup.
+    """
+    enrich_spec = dataset_spec.build_enrich_spec()
+    secrets = enrich_spec.enrich.secrets
+    if secrets is not None:
+        for field in secrets.fields:
+            if isinstance(field, str) and field.strip():
+                return True
+    for rule in (*enrich_spec.enrich.generate, *enrich_spec.enrich.lookup):
+        target = str(rule.target or "").strip()
+        if target.startswith("secret:"):
+            return True
+    return False
 
 
 __all__ = ["handler", "Options"]

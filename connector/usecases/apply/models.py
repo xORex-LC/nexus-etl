@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Tuple
 
 from connector.domain.models import DiagnosticItem
@@ -24,6 +24,7 @@ class ApplySummary:
     rows_with_warnings: int
 
     error_stats: Mapping[str, int]
+    retention_stats: Mapping[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

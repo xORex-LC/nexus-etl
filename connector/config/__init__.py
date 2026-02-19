@@ -16,6 +16,7 @@ from connector.config.app_settings import (
     PathsSettings,
     PendingSettings,
     RefreshSettings,
+    VaultRolloutSettings,
     load_app_settings,
 )
 from connector.config.config import (
@@ -45,6 +46,7 @@ __all__ = [
     "PathsSettings",
     "PendingSettings",
     "RefreshSettings",
+    "VaultRolloutSettings",
     # Loader
     "load_app_settings",
     # Core model & errors

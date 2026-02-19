@@ -20,5 +20,5 @@ def test_import_requires_subcommand():
     assert "Usage: root import" in result.stdout
 
 def test_mapping_requires_configured_source():
-    result = runner.invoke(app, ["mapping"])
+    result = runner.invoke(app, ["mapping"], env={"EMPLOYEES_SOURCE_PATH": ""})
     assert result.exit_code == 2

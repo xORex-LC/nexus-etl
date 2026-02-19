@@ -127,6 +127,7 @@ class ResolvedRow:
     target_id: str | None = None
     source_ref: dict[str, Any] | None = None
     secret_fields: list[str] = field(default_factory=list)
+    secret_lifecycle: dict[str, Any] | None = None
 
 
 def build_fingerprint(

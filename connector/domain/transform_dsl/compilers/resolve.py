@@ -7,10 +7,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from connector.domain.models import Identity
-from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.transform.common import normalize_text
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.transform_dsl.build_options import ResolveDslBuildOptions
@@ -25,7 +24,11 @@ from connector.domain.transform_dsl.specs import (
     SinkSpec,
 )
 
-BuildDesiredState = Callable[[Any, MatchContext], dict[str, Any]]
+if TYPE_CHECKING:
+    from connector.domain.transform.matcher.context import MatchContext
+
+
+BuildDesiredState = Callable[[Any, "MatchContext"], dict[str, Any]]
 BuildSourceRef = Callable[[Identity], dict[str, Any]]
 DiffPolicy = Callable[[dict[str, Any] | None, dict[str, Any]], dict[str, Any]]
 SecretFieldsPolicy = Callable[[str, dict[str, Any], dict[str, Any] | None], list[str]]
@@ -46,7 +49,25 @@ class ResolveRules:
     build_source_ref: BuildSourceRef | None = None
     diff_policy: DiffPolicy | None = None
     secret_fields_for_op: SecretFieldsPolicy | None = None
+    secret_lifecycle: "SecretLifecyclePolicy" | None = None
     merge_policy: MergePolicy | None = None
+
+
+@dataclass(frozen=True)
+class SecretLifecyclePolicy:
+    """
+    Назначение:
+        Runtime-конфигурация retention policy для apply cleanup.
+
+    Поля:
+        mode: persistent/ephemeral.
+        delete_on_success: удалять ли секреты после успешного apply-op.
+        ttl_seconds: опциональный TTL для maintenance hooks.
+    """
+
+    mode: str = "persistent"
+    delete_on_success: bool = False
+    ttl_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -163,7 +184,8 @@ class ResolveDsl:
             build_source_ref=self._compile_source_ref(block.source_ref),
             diff_policy=self._compile_diff(diff_spec, sink_spec=sink_spec),
             merge_policy=self._compile_merge(block.merge),
-            secret_fields_for_op=self._compile_secrets(block.secrets),
+            secret_fields_for_op=self._compile_secret_fields(block.secrets),
+            secret_lifecycle=self._compile_secret_lifecycle(block.secrets),
         )
 
     @staticmethod
@@ -262,7 +284,7 @@ class ResolveDsl:
         return _merge
 
     @staticmethod
-    def _compile_secrets(spec: ResolveSecretsSpec | None) -> SecretFieldsPolicy | None:
+    def _compile_secret_fields(spec: ResolveSecretsSpec | None) -> SecretFieldsPolicy | None:
         if spec is None or spec.mode == "none":
             return None
         create_fields = tuple(spec.create)
@@ -277,6 +299,32 @@ class ResolveDsl:
             return []
 
         return _policy
+
+    @staticmethod
+    def _compile_secret_lifecycle(spec: ResolveSecretsSpec | None) -> SecretLifecyclePolicy:
+        """
+        Назначение:
+            Скомпилировать lifecycle policy для retention в apply-runtime.
+
+        Контракт:
+            - default: `persistent` + no delete-on-success;
+            - `ephemeral` по умолчанию включает delete-on-success.
+        """
+        if spec is None or spec.lifecycle is None:
+            return SecretLifecyclePolicy(mode="persistent", delete_on_success=False, ttl_seconds=None)
+
+        lifecycle = spec.lifecycle
+        mode = lifecycle.mode
+        delete_on_success = (
+            bool(lifecycle.delete_on_success)
+            if lifecycle.delete_on_success is not None
+            else mode == "ephemeral"
+        )
+        return SecretLifecyclePolicy(
+            mode=mode,
+            delete_on_success=delete_on_success,
+            ttl_seconds=lifecycle.ttl_seconds,
+        )
 
     @staticmethod
     def _compile_link_rule(spec: ResolveLinkSpec) -> LinkFieldRule:

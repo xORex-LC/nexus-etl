@@ -27,7 +27,6 @@ from connector.domain.transform.enrich.models import (
     OperationReport,
     ResolveHint,
     RunWhenErrors,
-    StrictnessPolicy,
 )
 from connector.domain.transform.enrich.report import EnricherReport
 from connector.domain.transform.enrich.resolver import ConflictResolver, MergeEngine, _FieldMutationTracker
@@ -539,7 +538,7 @@ class EnricherCore(Generic[T, D]):
             builder.add_error_item(
                 self._make_error(
                     builder,
-                    code="MATCH_KEY_MISSING",
+                    code="SECRET_MATCH_KEY_MISSING",
                     message="match_key is required to store secrets",
                     field="matchKey",
                 )
@@ -554,11 +553,12 @@ class EnricherCore(Generic[T, D]):
                     run_id=self.run_id,
                 )
             except Exception as exc:  # noqa: BLE001
+                _ = exc
                 builder.add_error_item(
                     self._make_error(
                         builder,
                         code="SECRET_STORE_ERROR",
-                        message=str(exc),
+                        message="failed to store secrets",
                     )
                 )
 
