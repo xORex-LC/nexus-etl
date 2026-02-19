@@ -24,11 +24,11 @@ from connector.domain.transform.matcher.match_models import (
     MatchedRow,
     build_fingerprint,
 )
-from connector.domain.transform.matcher.rules import (
+from connector.domain.transform_dsl.compilers.match import (
     FuzzyScoringRules,
     MatchingRules,
-    ResolveRules,
 )
+from connector.domain.transform_dsl.compilers.resolve import ResolveRules
 from connector.domain.transform.matcher.scoring import is_tie, rank_candidates
 from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.core.result import TransformResult

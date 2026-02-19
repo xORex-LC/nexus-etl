@@ -23,7 +23,7 @@ from connector.domain.reporting.collector import ReportCollector
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.datasets.registry import get_spec, resolve_dataset_name
-from connector.domain.dsl.loader import load_source_spec_for_dataset, resolve_source_location
+from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve_source_location
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.result import CommandResult as CliCommandResult

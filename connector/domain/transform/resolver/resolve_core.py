@@ -15,7 +15,7 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.transform.common.sink_schema import validate_sink_fields
 from connector.domain.dsl.diagnostics import append_dsl_issues
-from connector.domain.dsl.specs import SinkSpec
+from connector.domain.transform_dsl.specs import SinkSpec
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.domain.transform.matcher.match_models import (
@@ -26,7 +26,7 @@ from connector.domain.transform.matcher.match_models import (
     build_fingerprint_for_keys,
     resolve_decision_status,
 )
-from connector.domain.transform.matcher.rules import LinkFieldRule, LinkRules, ResolveRules
+from connector.domain.transform_dsl.compilers.resolve import LinkFieldRule, LinkRules, ResolveRules
 from connector.domain.ports.cache.models import PendingLink
 from connector.domain.ports.cache.roles import ResolveRuntimePort
 

@@ -9,15 +9,15 @@ from typing import Any
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.dsl.build_options import NormalizeDslBuildOptions
 from connector.domain.dsl.engine import TransformationEngine
-from connector.domain.dsl.loader import (
+from connector.domain.transform_dsl import (
     load_normalize_build_options_for_dataset,
     load_normalize_spec_for_dataset,
     load_sink_spec_for_dataset,
 )
-from connector.domain.dsl.specs import NormalizeSpec, SinkSpec
-from connector.domain.transform.normalize.normalizer_dsl import NormalizerDsl
+from connector.domain.transform_dsl.build_options import NormalizeDslBuildOptions
+from connector.domain.transform_dsl.specs import NormalizeSpec, SinkSpec
+from connector.domain.transform_dsl.compilers.normalize import NormalizerDsl
 from connector.domain.transform.normalize.normalizer_core import NormalizerCore, RowBuilder
 
 
@@ -39,8 +39,10 @@ class NormalizerEngine:
     ) -> None:
         self.catalog = catalog
         self.dsl = dsl or NormalizerDsl(options=options)
-        self.core: NormalizerCore = self.dsl.compile(
-            spec,
+        compiled = self.dsl.compile(spec)
+        self.core: NormalizerCore = NormalizerCore(
+            compiled,
+            engine=self.dsl.engine,
             catalog=catalog,
             sink_spec=sink_spec,
             row_builder=row_builder,

@@ -1,102 +1,31 @@
 """
 Назначение:
-    DSL ядро трансформаций (правила, операции, движок).
+    DSL ядро: движок, операции, реестр, issues, base models.
+
+    Transform-специфичные спеки, загрузчики и build options — connector.domain.transform_dsl.
+    Cache-специфичные спеки, загрузчики и build options — connector.domain.cache_dsl.
 """
 
 from connector.domain.dsl.engine import EngineResult, TransformationEngine
 from connector.domain.dsl.issues import DslIssue, DslSeverity, DslLoadError
-from connector.domain.dsl.specs._base import DslBaseModel
-from connector.domain.dsl.loader import (
-    load_source_spec_for_dataset,
-    load_mapping_spec,
-    load_mapping_spec_for_dataset,
-    load_normalize_spec_for_dataset,
-    load_enrich_spec_for_dataset,
-    load_validate_spec_for_dataset,
-    load_match_spec_for_dataset,
-    load_resolve_spec_for_dataset,
-    load_sink_spec_for_dataset,
-    load_map_build_options_for_dataset,
-    load_normalize_build_options_for_dataset,
-    load_enrich_build_options_for_dataset,
-    load_match_build_options_for_dataset,
-    load_resolve_build_options_for_dataset,
-    load_cache_build_options_for_runtime,
-    load_cache_registry_spec,
-    load_cache_registry_spec_for_runtime,
-    load_cache_dataset_spec,
-    load_cache_dataset_spec_for_dataset,
-)
-from connector.domain.dsl.build_options import (
-    BaseDslBuildOptions,
-    CacheDslBuildOptions,
-    MapDslBuildOptions,
-    NormalizeDslBuildOptions,
-    EnrichDslBuildOptions,
-    MatchDslBuildOptions,
-    ResolveDslBuildOptions,
-)
+from connector.domain.dsl.specs._base import DslBaseModel, OperationCall
+from connector.domain.dsl.build_options import BaseDslBuildOptions
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
-from connector.domain.dsl.specs import (
-    MappingSpec,
-    MappingRule,
-    OperationCall,
-    ProviderRef,
-    ExistsRef,
-    NormalizeSpec,
-    EnrichSpec,
-    ValidationSpec,
-    MatchSpec,
-    ResolveSpec,
-    CacheRegistrySpec,
-    CacheDatasetSpec,
-)
 
 __all__ = [
+    # Core engine
     "EngineResult",
     "TransformationEngine",
+    # Base models
     "DslBaseModel",
+    "OperationCall",
+    # Issues
     "DslIssue",
     "DslSeverity",
     "DslLoadError",
-    "load_mapping_spec",
-    "load_mapping_spec_for_dataset",
-    "load_source_spec_for_dataset",
-    "load_normalize_spec_for_dataset",
-    "load_enrich_spec_for_dataset",
-    "load_validate_spec_for_dataset",
-    "load_match_spec_for_dataset",
-    "load_resolve_spec_for_dataset",
-    "load_sink_spec_for_dataset",
-    "load_map_build_options_for_dataset",
-    "load_normalize_build_options_for_dataset",
-    "load_enrich_build_options_for_dataset",
-    "load_match_build_options_for_dataset",
-    "load_resolve_build_options_for_dataset",
-    "load_cache_build_options_for_runtime",
-    "load_cache_registry_spec",
-    "load_cache_registry_spec_for_runtime",
-    "load_cache_dataset_spec",
-    "load_cache_dataset_spec_for_dataset",
+    # Build options (generic base only)
     "BaseDslBuildOptions",
-    "CacheDslBuildOptions",
-    "MapDslBuildOptions",
-    "NormalizeDslBuildOptions",
-    "EnrichDslBuildOptions",
-    "MatchDslBuildOptions",
-    "ResolveDslBuildOptions",
+    # Registry
     "OperationRegistry",
     "register_core_ops",
-    "MappingSpec",
-    "MappingRule",
-    "OperationCall",
-    "ProviderRef",
-    "ExistsRef",
-    "NormalizeSpec",
-    "EnrichSpec",
-    "ValidationSpec",
-    "MatchSpec",
-    "ResolveSpec",
-    "CacheRegistrySpec",
-    "CacheDatasetSpec",
 ]

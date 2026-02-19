@@ -5,14 +5,6 @@
 
 from connector.domain.cache_core.cache_clear_planner import CacheClearPlan, CacheClearPlanner
 from connector.domain.cache_core.cache_lifecycle_engine import CacheLifecycleEngine
-from connector.domain.cache_core.cache_dsl import (
-    CacheDsl,
-    CacheDslRuntime,
-    CacheDslRuntimePolicy,
-    build_schema_hash,
-    build_sync_hash,
-    compile_cache_runtime,
-)
 from connector.domain.cache_core.cache_dependency_graph import CacheDependencyGraph
 from connector.domain.cache_core.cache_drift_service import CacheDriftResult, CacheDriftService
 from connector.domain.cache_core.cache_refresh_planner import CacheRefreshPlan, CacheRefreshPlanner
@@ -29,10 +21,4 @@ __all__ = [
     "CacheClearPlanner",
     "CacheClearPlan",
     "CacheLifecycleEngine",
-    "CacheDsl",
-    "CacheDslRuntime",
-    "CacheDslRuntimePolicy",
-    "compile_cache_runtime",
-    "build_schema_hash",
-    "build_sync_hash",
 ]

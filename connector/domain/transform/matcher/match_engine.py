@@ -8,12 +8,12 @@ from __future__ import annotations
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.dsl.build_options import MatchDslBuildOptions
-from connector.domain.dsl.specs import MatchSpec
+from connector.domain.transform_dsl.build_options import MatchDslBuildOptions
+from connector.domain.transform_dsl.specs import MatchSpec
 from connector.domain.transform.matcher.match_core import MatchCore
-from connector.domain.transform.matcher.match_dsl import MatchDsl
+from connector.domain.transform_dsl.compilers.match import MatchDsl
 from connector.domain.transform.matcher.match_models import MatchedRow
-from connector.domain.transform.matcher.rules import ResolveRules
+from connector.domain.transform_dsl.compilers.resolve import ResolveRules
 
 
 class MatchEngine:

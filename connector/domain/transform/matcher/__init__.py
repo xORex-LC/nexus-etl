@@ -3,7 +3,7 @@
 from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.domain.transform.matcher.match_core import MatchCore
-from connector.domain.transform.matcher.match_dsl import MatchDsl
+from connector.domain.transform_dsl.compilers.match import MatchDsl
 from connector.domain.transform.matcher.match_engine import MatchEngine
 from connector.domain.transform.matcher.match_models import (
     MatchCandidate,
@@ -17,15 +17,17 @@ from connector.domain.transform.matcher.match_models import (
     build_fingerprint_for_keys,
     resolve_decision_status,
 )
-from connector.domain.transform.matcher.rules import (
+from connector.domain.transform_dsl.compilers.match import (
     FuzzyScoringRules,
     IdentityRule,
+    MatchingRules,
+    SourceDedupRules,
+)
+from connector.domain.transform_dsl.compilers.resolve import (
     LinkFieldRule,
     LinkKeyRule,
     LinkRules,
-    MatchingRules,
     ResolveRules,
-    SourceDedupRules,
 )
 
 __all__ = [

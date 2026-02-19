@@ -7,27 +7,19 @@ from connector.datasets.spec import (
     DatasetSpec,
     ReportAdapter,
 )
-from connector.domain.dsl.specs import (
-    EnrichSpec,
-    MappingSpec,
-    MatchSpec,
-    NormalizeSpec,
-    ResolveSpec,
-    SinkSpec,
-)
 from connector.domain.ports.cache.roles import EnrichLookupPort, PlanningRuntimePort
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies, ResolverSettings
 from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.planning.plan_models import PlanItem
 from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.matcher.match_engine import MatchEngine
-from connector.domain.dsl.loader import (
+from connector.domain.transform_dsl import (
     load_enrich_build_options_for_dataset,
-    load_mapping_spec_for_dataset,
-    load_map_build_options_for_dataset,
     load_enrich_spec_for_dataset,
-    load_match_spec_for_dataset,
+    load_map_build_options_for_dataset,
+    load_mapping_spec_for_dataset,
     load_match_build_options_for_dataset,
+    load_match_spec_for_dataset,
     load_normalize_build_options_for_dataset,
     load_normalize_spec_for_dataset,
     load_resolve_build_options_for_dataset,
@@ -36,9 +28,17 @@ from connector.domain.dsl.loader import (
     load_source_spec_for_dataset,
     resolve_source_location,
 )
+from connector.domain.transform_dsl.specs import (
+    EnrichSpec,
+    MappingSpec,
+    MatchSpec,
+    NormalizeSpec,
+    ResolveSpec,
+    SinkSpec,
+)
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.transform.enrich import EnricherEngine
-from connector.domain.transform.resolver.resolve_dsl import ResolveDsl
+from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
 from connector.domain.transform.resolver.resolve_engine import ResolveEngine
 from connector.domain.transform.normalize import NormalizerEngine
 from connector.domain.transform.stages.stages import (
