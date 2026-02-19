@@ -40,6 +40,7 @@ class _ItemProcessContext:
     system_codes: set[SystemErrorCode]
     add_outcome: Callable[[ApplyItemOutcome], None]
     plan_run_id: str | None
+    allow_post_success_side_effects: bool
     retention_hook: SecretApplyRetentionHookProtocol | None = None
 
     def register_error(self, *, ref: RecordRef, action: str, diag: DiagnosticItem) -> SystemErrorCode:
@@ -91,6 +92,10 @@ class ImportApplyService:
     Назначение/ответственность:
         Выполняет plan-item через adapter+executor, применяет stop-политику и
         возвращает агрегированный ApplyResult.
+
+    Контракт:
+        - при `allow_post_success_side_effects=False` success-path не выполняет
+          post-write side effects (identity sync + secret retention hooks).
     """
 
     def __init__(
@@ -98,10 +103,13 @@ class ImportApplyService:
         executor: RequestExecutorProtocol,
         identity_syncer: IdentityIndexSyncer | None = None,
         secret_retention: SecretApplyRetentionHookProtocol | None = None,
+        *,
+        allow_post_success_side_effects: bool = True,
     ) -> None:
         self.executor = executor
         self.identity_syncer = identity_syncer
         self.secret_retention = secret_retention
+        self.allow_post_success_side_effects = allow_post_success_side_effects
 
     def apply_plan(
         self,
@@ -157,6 +165,7 @@ class ImportApplyService:
             system_codes=system_codes,
             add_outcome=_add_outcome,
             plan_run_id=getattr(plan.meta, "run_id", None),
+            allow_post_success_side_effects=self.allow_post_success_side_effects,
             retention_hook=self.secret_retention,
         )
 
@@ -357,22 +366,23 @@ class ImportApplyService:
         created_inc = 1 if action == Operation.CREATE else 0
         updated_inc = 1 if action == Operation.UPDATE else 0
         context.sink.on_item_ok(record_ref=item.record_ref, op=action, target_id=item.target_id)
-        self._sync_identity_index(
-            dataset=dataset_name,
-            desired_state=item.desired_state,
-            response_payload=response_payload,
-            source_ref=item.source_ref,
-        )
-        if context.retention_hook is not None:
-            retention_counters = context.retention_hook.on_apply_success(
+        if context.allow_post_success_side_effects:
+            self._sync_identity_index(
                 dataset=dataset_name,
-                op=action,
+                desired_state=item.desired_state,
+                response_payload=response_payload,
                 source_ref=item.source_ref,
-                secret_fields=list(item.secret_fields or []),
-                secret_lifecycle=item.secret_lifecycle,
-                run_id=context.plan_run_id,
             )
-            context.register_retention(dict(retention_counters))
+            if context.retention_hook is not None:
+                retention_counters = context.retention_hook.on_apply_success(
+                    dataset=dataset_name,
+                    op=action,
+                    source_ref=item.source_ref,
+                    secret_fields=list(item.secret_fields or []),
+                    secret_lifecycle=item.secret_lifecycle,
+                    run_id=context.plan_run_id,
+                )
+                context.register_retention(dict(retention_counters))
         return _ItemProcessResult(created_inc=created_inc, updated_inc=updated_inc)
 
     def _handle_single_failure_diag(

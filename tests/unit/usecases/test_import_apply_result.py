@@ -203,6 +203,44 @@ class TestApplyDryRun:
         assert result.summary.created == 1
         assert result.summary.failed == 0
 
+    def test_success_side_effects_can_be_disabled(self):
+        class SpyIdentitySyncer:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def id_field_for(self, dataset: str) -> str:
+                _ = dataset
+                return "_id"
+
+            def sync(self, dataset: str, resolved_id, key_values) -> None:
+                _ = (dataset, resolved_id, key_values)
+                self.calls += 1
+
+        class SpyRetention:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def on_apply_success(self, **kwargs):
+                _ = kwargs
+                self.calls += 1
+                return {"deleted": 1}
+
+        identity_syncer = SpyIdentitySyncer()
+        retention = SpyRetention()
+        service = ImportApplyService(
+            executor=DryRunExecutor(),
+            identity_syncer=identity_syncer,
+            secret_retention=retention,
+            allow_post_success_side_effects=False,
+        )
+
+        result = _apply(service, _make_plan([_make_item()]))
+
+        assert result.primary_code == SystemErrorCode.OK
+        assert identity_syncer.calls == 0
+        assert retention.calls == 0
+        assert result.summary.retention_stats == {}
+
 
 class TestApplyStopOnFirstError:
     def test_stops_after_first_failure(self):

@@ -222,9 +222,14 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             paths_settings=app_settings.paths,
             run_id=plan.meta.run_id,
         )
-        secret_retention = build_secret_retention_hook(
-            effective_secrets_from,
-            paths_settings=app_settings.paths,
+        # Dry-run должен оставаться чистым: retention hooks отключены полностью.
+        secret_retention = (
+            None
+            if dry_run
+            else build_secret_retention_hook(
+                effective_secrets_from,
+                paths_settings=app_settings.paths,
+            )
         )
         dataset_spec = get_spec(dataset_name, secrets=secrets_provider)
         apply_adapter = dataset_spec.get_apply_adapter()
@@ -249,6 +254,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             executor,
             identity_syncer=identity_syncer,
             secret_retention=secret_retention,
+            allow_post_success_side_effects=not dry_run,
         )
         apply_result = service.apply_plan(
             plan=plan,
@@ -260,7 +266,11 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             telemetry=telemetry_sink,
         )
 
-        maintenance_stats = secret_retention.run_maintenance() if secret_retention is not None else {}
+        maintenance_stats = (
+            {}
+            if dry_run or secret_retention is None
+            else secret_retention.run_maintenance()
+        )
         operational_metrics = build_vault_operational_metrics(
             summary=apply_result.summary,
             startup_guard_passed=startup_guard_passed,
