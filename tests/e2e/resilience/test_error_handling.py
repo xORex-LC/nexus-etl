@@ -26,7 +26,7 @@ def make_transport(responder):
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.delivery.commands.cache_refresh as cache_refresh_command
-    from connector.delivery.cli.bootstrap import (
+    from connector.delivery.cli.containers import (
         build_target_runtime_with_info as _build_real_runtime_with_info,
     )
 

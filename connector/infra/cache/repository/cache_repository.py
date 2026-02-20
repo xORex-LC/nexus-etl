@@ -5,7 +5,7 @@ from typing import Any
 from connector.domain.ports.cache.models import CacheMeta, UpsertResult
 from connector.infra.cache.cache_spec import CacheSpec
 from connector.infra.cache.backends.sqlite.handlers.generic_handler import GenericCacheHandler
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import SqliteEngine
 
 
 class SqliteCacheRepository:

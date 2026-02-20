@@ -29,7 +29,7 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
     captured: dict[str, object] = {}
 
     def factory(*args, **kwargs):
-        from connector.delivery.cli.bootstrap import (
+        from connector.delivery.cli.containers import (
             build_target_runtime_with_info as _build_real_runtime_with_info,
         )
 

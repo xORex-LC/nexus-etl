@@ -13,7 +13,7 @@ import typer
 
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import log_sqlite_cache_error, result_with, vault_startup_error_result
-from connector.delivery.cli.bootstrap import (
+from connector.delivery.cli.containers import (
     build_cache,
     build_secret_retention_hook,
     build_target_runtime_with_info,

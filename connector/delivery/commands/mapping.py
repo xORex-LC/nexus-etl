@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import sqlite_cache_error_result
-from connector.delivery.cli.bootstrap import (
+from connector.delivery.cli.containers import (
     build_cache,
     build_dataset_spec,
     build_diagnostics_catalog,
