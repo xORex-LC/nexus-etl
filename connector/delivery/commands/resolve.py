@@ -66,7 +66,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             dataset_spec=dataset_spec,
             dataset_name=dataset_name,
             cache_roles=cache_roles,
-            pending_settings=app_settings.pending,
+            resolver_settings=app_settings.resolver,
             observability_settings=app_settings.observability,
             catalog=catalog,
             csv_has_header=csv_has_header_value,
@@ -80,7 +80,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             planning_deps=planning_deps,
             catalog=catalog,
             include_deleted=include_deleted_value,
-            settings=app_settings.pending,
+            settings=app_settings.resolver,
         )
         planning_runtime = planning_deps.cache_gateway
         if planning_runtime is None:

@@ -7,8 +7,8 @@ from itertools import chain
 from connector.config.app_settings import (
     MatchingRuntimeSettings,
     ObservabilitySettings,
-    PendingSettings,
 )
+from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.common.time import getNowIso
@@ -50,7 +50,7 @@ class ImportPlanService:
         csv_has_header: bool,
         include_deleted: bool,
         observability_settings: ObservabilitySettings,
-        pending_settings: PendingSettings,
+        resolver_settings: ResolverSettings | None,
         matching_runtime_settings: MatchingRuntimeSettings,
         dataset: str,
         logger,
@@ -72,7 +72,7 @@ class ImportPlanService:
             dictionaries=dictionaries,
         )
         planning_deps = dataset_spec.build_planning_deps(
-            pending_settings,
+            resolver_settings,
             planning_runtime=planning_runtime,
         )
         row_source = dataset_spec.build_record_source(
@@ -98,7 +98,7 @@ class ImportPlanService:
             planning_deps=planning_deps,
             catalog=catalog,
             include_deleted=include_deleted,
-            settings=pending_settings,
+            settings=resolver_settings,
         )
         planning_runtime_dep = planning_deps.cache_gateway
         if planning_runtime_dep is None:

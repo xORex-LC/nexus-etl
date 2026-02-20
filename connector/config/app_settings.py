@@ -6,6 +6,7 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from connector.config.config import SettingsIssue, load_settings_model
+from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.infra.sqlite.config import SqliteDbConfig
 
 
@@ -69,16 +70,6 @@ class MatchingRuntimeSettings:
 
 
 @dataclass(frozen=True)
-class PendingSettings:
-    pending_ttl_seconds: int
-    pending_max_attempts: int
-    pending_sweep_interval_seconds: int
-    pending_on_expire: str
-    pending_allow_partial: bool
-    pending_retention_days: int
-
-
-@dataclass(frozen=True)
 class VaultRolloutSettings:
     """Назначение:
         Runtime feature-flag политика для staged rollout vault-контура.
@@ -118,7 +109,7 @@ class AppSettings:
     execution: ExecutionSettings
     refresh: RefreshSettings
     matching_runtime: MatchingRuntimeSettings
-    pending: PendingSettings
+    resolver: ResolverSettings
     vault_rollout: VaultRolloutSettings = field(default_factory=_default_vault_rollout_settings)
 
 @dataclass(frozen=True)
@@ -177,7 +168,7 @@ _SLICE_FIELD_MAP: dict[type, dict[str, str]] = {
         "resolve_batch_size": "resolve_batch_size",
         "resolve_flush_interval_ms": "resolve_flush_interval_ms",
     },
-    PendingSettings: {
+    ResolverSettings: {
         "pending_ttl_seconds": "pending_ttl_seconds",
         "pending_max_attempts": "pending_max_attempts",
         "pending_sweep_interval_seconds": "pending_sweep_interval_seconds",
@@ -324,7 +315,7 @@ def load_app_settings(config_path: str | None, cli_overrides: dict[str, Any]) ->
         execution=_build_slice(ExecutionSettings, settings, _SLICE_FIELD_MAP[ExecutionSettings]),
         refresh=_build_slice(RefreshSettings, settings, _SLICE_FIELD_MAP[RefreshSettings]),
         matching_runtime=_build_slice(MatchingRuntimeSettings, settings, _SLICE_FIELD_MAP[MatchingRuntimeSettings]),
-        pending=_build_slice(PendingSettings, settings, _SLICE_FIELD_MAP[PendingSettings]),
+        resolver=_build_slice(ResolverSettings, settings, _SLICE_FIELD_MAP[ResolverSettings]),
         vault_rollout=_build_vault_rollout_settings(settings),
     )
     return LoadedAppSettings(

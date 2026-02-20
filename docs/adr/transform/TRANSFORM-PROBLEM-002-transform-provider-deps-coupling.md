@@ -1,6 +1,6 @@
 # TRANSFORM-PROBLEM-002: TransformProviderDeps coupling — обязательный cache_gateway нарушает pay-for-what-you-use
 
-> **Статус**: Открыта — митигация применена (Вариант A), целевое решение зафиксировано в [TRANSFORM-DEC-002](./TRANSFORM-DEC-002-transform-context-capability-registry.md)
+> **Статус**: Открыта — митигация применена (Вариант A), целевое решение зафиксировано в [TRANSFORM-DEC-002](./TRANSFORM-DEC-002-transform-context-capability-registry.md); блокер для TRANSFORM-DEC-002 устранён: `PendingSettings` удалён, `AppSettings.resolver: ResolverSettings` — прямой слайс
 > **Дата создания**: 2026-02-20
 > **Затронутые компоненты**: `TransformProviderDeps`, `connector/domain/transform/providers/deps.py`
 
@@ -106,3 +106,4 @@ class TransformProviderDeps:
 | 2026-02-20 | Проблема обнаружена при добавлении Dictionary Layer |
 | 2026-02-20 | Митигация Вариант A применена: `cache_gateway: EnrichLookupPort \| None = None` |
 | 2026-02-20 | Целевое решение зафиксировано в TRANSFORM-DEC-002 (Вариант C — TransformContext) |
+| 2026-02-20 | `PendingSettings` удалён, `AppSettings.resolver: ResolverSettings` — домен-тип напрямую как app-settings слайс; `_build_resolver_settings()` удалён; блокер для TRANSFORM-DEC-002 устранён |
