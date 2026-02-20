@@ -9,10 +9,10 @@ from connector.config.app_settings import (
     MatchingRuntimeSettings,
     ObservabilitySettings,
     PathsSettings,
-    PendingSettings,
     RefreshSettings,
     VaultRolloutSettings,
 )
+from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 
 COMMAND_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
     "cache-refresh": (RefreshSettings, ApiSettings, DatasetSettings, ObservabilitySettings, PathsSettings),
@@ -22,11 +22,11 @@ COMMAND_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
     "normalize": (DatasetSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
     "enrich": (DatasetSettings, ExecutionSettings, ObservabilitySettings, PathsSettings, VaultRolloutSettings),
     "match": (DatasetSettings, MatchingRuntimeSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
-    "resolve": (DatasetSettings, MatchingRuntimeSettings, PendingSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
+    "resolve": (DatasetSettings, MatchingRuntimeSettings, ResolverSettings, ExecutionSettings, ObservabilitySettings, PathsSettings),
     "import-plan": (
         DatasetSettings,
         MatchingRuntimeSettings,
-        PendingSettings,
+        ResolverSettings,
         ExecutionSettings,
         ObservabilitySettings,
         PathsSettings,
@@ -44,11 +44,11 @@ USECASE_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
     "NormalizeUseCase": (DatasetSettings, ExecutionSettings, ObservabilitySettings),
     "EnrichUseCase": (DatasetSettings, ExecutionSettings, ObservabilitySettings, VaultRolloutSettings),
     "MatchUseCase": (DatasetSettings, MatchingRuntimeSettings, ExecutionSettings, ObservabilitySettings),
-    "ResolveUseCase": (DatasetSettings, MatchingRuntimeSettings, PendingSettings, ExecutionSettings, ObservabilitySettings),
+    "ResolveUseCase": (DatasetSettings, MatchingRuntimeSettings, ResolverSettings, ExecutionSettings, ObservabilitySettings),
     "ImportPlanService": (
         DatasetSettings,
         MatchingRuntimeSettings,
-        PendingSettings,
+        ResolverSettings,
         ExecutionSettings,
         ObservabilitySettings,
         VaultRolloutSettings,

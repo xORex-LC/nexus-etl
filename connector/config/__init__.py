@@ -14,11 +14,11 @@ from connector.config.app_settings import (
     MatchingRuntimeSettings,
     ObservabilitySettings,
     PathsSettings,
-    PendingSettings,
     RefreshSettings,
     VaultRolloutSettings,
     load_app_settings,
 )
+from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.config.config import (
     Settings,
     SettingsConflictError,
@@ -44,8 +44,8 @@ __all__ = [
     "MatchingRuntimeSettings",
     "ObservabilitySettings",
     "PathsSettings",
-    "PendingSettings",
     "RefreshSettings",
+    "ResolverSettings",
     "VaultRolloutSettings",
     # Loader
     "load_app_settings",

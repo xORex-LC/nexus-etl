@@ -133,7 +133,7 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 dataset_spec=dataset_spec,
                 dataset_name=dataset_name,
                 cache_roles=cache_roles,
-                pending_settings=app_settings.pending,
+                resolver_settings=app_settings.resolver,
                 observability_settings=app_settings.observability,
                 catalog=catalog,
                 csv_has_header=csv_has_header_value,

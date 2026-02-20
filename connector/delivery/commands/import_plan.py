@@ -127,7 +127,7 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
                 csv_has_header=csv_has_header_value,
                 include_deleted=include_deleted_value,
                 observability_settings=app_settings.observability,
-                pending_settings=app_settings.pending,
+                resolver_settings=app_settings.resolver,
                 matching_runtime_settings=app_settings.matching_runtime,
                 dataset=dataset_name,
                 logger=ctx.logger,

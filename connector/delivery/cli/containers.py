@@ -26,12 +26,12 @@ from connector.config.app_settings import (
     DatasetSettings,
     ObservabilitySettings,
     PathsSettings,
-    PendingSettings,
     SqliteSettings,
     build_cache_db_config,
     build_identity_db_config,
     build_vault_db_config,
 )
+from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
@@ -529,7 +529,7 @@ def build_pipeline_context(
     dataset_spec: DatasetSpec,
     dataset_name: str,
     cache_roles: SqliteCacheRolePorts,
-    pending_settings: PendingSettings,
+    resolver_settings: ResolverSettings | None,
     observability_settings: ObservabilitySettings,
     catalog: ErrorCatalog,
     csv_has_header: bool,
@@ -547,7 +547,7 @@ def build_pipeline_context(
         dictionaries=dictionaries,
     )
     planning_deps = dataset_spec.build_planning_deps(
-        pending_settings,
+        resolver_settings,
         planning_runtime=cache_roles.planning_runtime,
     )
 
