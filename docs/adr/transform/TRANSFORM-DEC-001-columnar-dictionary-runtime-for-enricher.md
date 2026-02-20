@@ -139,9 +139,20 @@ class DictionaryProviderPort(Protocol):
 ```
 
 ```python
+class DictionaryRegistryItemSpec(DslBaseModel):
+    spec: str
+    enabled: bool = True
+
+
+class DictionaryRegistrySpec(DslBaseModel):
+    version: Literal[1]
+    items: dict[str, DictionaryRegistryItemSpec]
+
+
 class DictionarySourceCsvSpec(DslBaseModel):
     delimiter: str = ","
     has_header: bool = True
+    encoding: str = "utf-8"
 
 
 class DictionarySourceSpec(DslBaseModel):
@@ -186,6 +197,69 @@ class DictionarySpec(DslBaseModel):
 - unknown args отклоняются на compile/load этапе (`DslLoadError`);
 - `limit <= 0` отклоняется на compile/load этапе (`DslLoadError`);
 - runtime provider не расширяет контракт ad-hoc аргументами.
+
+### Контракт `exists`/`canonicalize` провайдеров (v1)
+
+`provider: dictionary.exists_by_key` (exists-channel) поддерживает:
+- обязательный `dict_name: str`;
+- опциональный `at: Any`;
+- опциональный `fields: list[str] | tuple[str, ...]`.
+
+Семантика `dictionary.exists_by_key`:
+- реализуется через `lookup(..., limit=1)`;
+- возвращает `row | None` (не `bool`), чтобы быть совместимым с enrich exists flow.
+- backend может применять hot-path оптимизацию через in-memory key-set индекс
+  (`contains` за `O(1)`) и выполнять `lookup(..., limit=1)` только при hit.
+
+`provider: dictionary.canonicalize` (lookup-channel) поддерживает:
+- обязательный `dict_name: str`;
+- опциональный `at: Any`;
+- опциональный `limit: int` (`> 0`).
+
+Важно:
+- `DictionaryProviderPort.contains()` не маппится напрямую в enrich DSL `exists`,
+  потому что exists-path enrich ожидает `row | None`, а не `bool`.
+- реализация backend для `contains`/`exists` в v1 может использовать set-based индекс по
+  normalized key вместо линейного `DataFrame.filter(...).height > 0` скана.
+
+### Контракт `normalized_key.ops` (v1)
+
+Источник операций:
+- используется тот же общий DSL registry, что и в transform DSL
+  (`connector/domain/dsl/registry.py`, `register_core_ops`);
+- отдельный registry для dictionary runtime в v1 не вводится.
+
+Разрешённое подмножество для `normalized_key.ops` (v1):
+- `trim`
+- `lower`
+- `upper`
+- `to_string`
+- `regex_replace`
+
+Правила применения:
+- нормализация применяется к `schema.key_column` при загрузке CSV (формирование normalized key индекса);
+- та же цепочка ops применяется к входному lookup key при `lookup`/`canonicalize`/`contains`;
+- при отсутствии `normalized_key` используется raw-ключ на обеих сторонах.
+
+Это обязательная симметрия: одинаковые ops на load-path и lookup-path, иначе поиск считается
+некорректной конфигурацией runtime.
+
+### CSV edge cases (v1)
+
+Encoding/BOM:
+- `source.csv.encoding` default: `utf-8`;
+- loader обязан поддерживать BOM stripping (`utf-8-sig` поведение) без изменения полезных данных.
+
+Пустой CSV:
+- CSV с header и 0 data rows считается валидным словарём;
+- runtime продолжает запуск, словарь имеет `row_count=0`;
+- фиксируется предупреждение (`DICT_SOURCE_EMPTY`, severity `WARNING`) в diagnostics/report context.
+
+Дубли ключей:
+- при `lookup.allow_duplicates=false` любые дубли по `key_column` в CSV — fail-fast:
+  `DslLoadError(code=\"DICT_SCHEMA_INVALID\")`;
+- при `lookup.allow_duplicates=true` дубли допустимы, lookup возвращает все совпадения
+  (с учётом `fields`/`limit`).
 
 ### Поток данных v1
 
@@ -243,6 +317,7 @@ source:
   csv:
     delimiter: ","
     has_header: true
+    encoding: utf-8
 schema:
   key_column: code
   value_columns: [ouid, name]
@@ -259,14 +334,19 @@ lookup:
 Pydantic обязателен на входных границах Dictionary DSL:
 - `DictionaryRegistrySpec` (секция `dictionaries` в `registry.yml`);
 - `DictionarySpec` (файл `*.dictionary.yaml`);
+- `DictionaryManifestSpec` (файл `datasets/dictionaries/manifest.yml`);
 - вложенные модели `source/schema/lookup`.
 
 Инварианты, которые покрывает Pydantic:
-1. `dictionary` не пустой и уникальный в рамках registry.
-2. `source.format=csv` в v1, `source.location` обязателен.
-3. `key_column` не входит в конфликт с `value_columns`.
-4. `value_columns` не пустой.
-5. `normalized_key.ops` валидируется как список `OperationCall`.
+1. `DictionaryRegistrySpec.version` фиксирован как `1`.
+2. `DictionaryRegistrySpec.items` содержит `dict_name -> DictionaryRegistryItemSpec`.
+3. `dictionary` не пустой и уникальный в рамках registry.
+4. `source.format=csv` в v1, `source.location` обязателен.
+5. `key_column` не входит в конфликт с `value_columns`.
+6. `value_columns` не пустой.
+7. `normalized_key.ops` валидируется как список `OperationCall`.
+8. `normalized_key.ops[].op` ограничивается whitelist-подмножеством для dictionary runtime.
+9. `source.csv.encoding` задан и по умолчанию равен `utf-8`.
 
 Все ошибки загрузки/валидации оборачиваются в `DslLoadError` с кодами `DICT_DSL_*`.
 В runtime lookup-path повторная ручная валидация не выполняется.
@@ -305,12 +385,36 @@ Pydantic обязателен на входных границах Dictionary DS
 2. Провалидировать как `DictionaryRegistrySpec` (Pydantic).
 3. Для каждого enabled словаря загрузить `*.dictionary.yaml`.
 4. Провалидировать как `DictionarySpec` (Pydantic).
-5. Построить runtime bundle (`DictionaryDslRuntimeBundle`: `dict_name -> compiled config`).
-6. Загрузить CSV snapshots в Polars backend.
-7. Собрать `DictionaryProviderPort` адаптер.
-8. Передать через `dictionaries=` в `build_pipeline_context()` (`containers.py`);
+5. Прочитать `datasets/dictionaries/manifest.yml` и провалидировать как `DictionaryManifestSpec`.
+6. Построить runtime bundle (`DictionaryDslRuntimeBundle`: `dict_name -> compiled config`).
+7. Загрузить CSV snapshots в Polars backend и сверить `content_sha256` + `schema_hash` по manifest
+   (eager default; optional lazy per dictionary).
+8. Собрать `DictionaryProviderPort` адаптер.
+9. Передать через `dictionaries=` в `build_pipeline_context()` (`containers.py`);
    функция пробрасывает его в `dataset_spec.build_enrich_deps(dictionaries=...)`.
-9. Enrich `dictionary.by_key` использует только порт.
+10. Enrich `dictionary.by_key` использует только порт.
+
+### Порядок инициализации container'ов (v1)
+
+1. Инициализировать runtime settings (включая `DictionaryRuntimeSettings`).
+2. Прочитать `datasets/registry.yml` и определить наличие секции `dictionaries`.
+3. Если секция отсутствует: не создавать dictionary container, передать
+   `dictionaries=None` в `build_pipeline_context()`.
+4. Если секция присутствует: инициализировать `dictionaries_container.py` и собрать
+   `DictionaryProviderPort` **до** вызова `build_pipeline_context()`.
+5. Любая ошибка инициализации dictionary runtime (DSL/spec/manifest/CSV/backend wiring)
+   приводит к fail-fast завершению всего run (без silent fallback).
+
+### Graceful degradation при отсутствии словарей (v1)
+
+- если секция `dictionaries` отсутствует в `datasets/registry.yml`, dictionary runtime не
+  собирается и в `TransformProviderDeps` передается `dictionaries=None`;
+- в таком режиме любые вызовы `dictionary.*` провайдеров считаются provider misconfiguration
+  и маппятся в `ENRICH_PROVIDER_ERROR`;
+- если секция `dictionaries` присутствует, но `items: {}` (пустой набор словарей), это валидная
+  конфигурация runtime с `0` словарей;
+- для пустого runtime lookup/canonicalize трактуются как miss и маппятся в
+  `ENRICH_NO_CANDIDATES`.
 
 ### Observability и Diagnostics для Dictionary слоя
 
@@ -319,7 +423,8 @@ Dictionary слой использует существующие контуры
 
 1. **Report**:
    - row-level item'ы не добавляются из dictionary runtime;
-   - агрегированные метрики пишутся в `report.context["dictionary"]`.
+   - агрегированные метрики пишутся в `report.context["dictionary"]`;
+   - per-dictionary breakdown пишется в `report.context["dictionary"]["dictionaries_detail"]`.
 2. **Diagnostics catalog**:
    - загрузка/инициализация dictionary DSL и runtime регистрируется новыми `DICT_*` кодами;
    - row-level lookup ошибки остаются в `ENRICH_*` (через текущий enrich flow).
@@ -331,6 +436,9 @@ Dictionary слой использует существующие контуры
 - `DICT_DSL_REGISTRY_INVALID` -> `SystemErrorCode.DATA_INVALID`
 - `DICT_DSL_SPEC_INVALID` -> `SystemErrorCode.DATA_INVALID`
 - `DICT_SOURCE_READ_FAILED` -> `SystemErrorCode.IO_ERROR`
+- `DICT_SOURCE_MANIFEST_MISSING` -> `SystemErrorCode.DATA_INVALID`
+- `DICT_SOURCE_MANIFEST_INVALID` -> `SystemErrorCode.DATA_INVALID`
+- `DICT_SOURCE_EMPTY` -> `SystemErrorCode.DATA_INVALID` (severity `WARNING`)
 - `DICT_SOURCE_FINGERPRINT_MISMATCH` -> `SystemErrorCode.DATA_INVALID`
 - `DICT_SCHEMA_INVALID` -> `SystemErrorCode.DATA_INVALID`
 - `DICT_RUNTIME_INIT_FAILED` -> `SystemErrorCode.INTERNAL_ERROR`
@@ -340,6 +448,18 @@ Dictionary слой использует существующие контуры
 - отдельный dictionary-catalog модуль не вводится в v1;
 - выделение в отдельный модуль допускается только при росте таксономии (например, >20
   dictionary-специфичных кодов) или при plugin-доставке layer-catalog.
+
+Row-level mapping для dictionary provider в enrich (`ENRICH_*`):
+- lookup miss (ключ не найден) -> `ENRICH_NO_CANDIDATES`;
+- lookup error (исключение backend/provider) -> `ENRICH_PROVIDER_ERROR`;
+- `deps.dictionaries is None` (секция `dictionaries` отсутствует в `registry.yml`) ->
+  `ENRICH_PROVIDER_ERROR`;
+- `dict_name` не зарегистрирован в непустом runtime -> `ENRICH_PROVIDER_ERROR`;
+- для runtime с `items: {}` (0 словарей) любой `dict_name` трактуется как miss ->
+  `ENRICH_NO_CANDIDATES`.
+
+Это правило одинаково для `dictionary.by_key`, `dictionary.canonicalize` и
+`dictionary.exists_by_key` в контексте enrich-операций.
 
 Маленький пример: агрегаты dictionary runtime в report context
 
@@ -354,6 +474,10 @@ report.set_context(
         "lookup_hit": 398,
         "lookup_miss": 20,
         "lookup_error": 2,
+        "dictionaries_detail": {
+            "organizations": {"rows": 128, "lookup_hit": 300, "lookup_miss": 10, "lookup_error": 1},
+            "departments": {"rows": 45, "lookup_hit": 98, "lookup_miss": 10, "lookup_error": 1},
+        },
         "load_duration_ms": 34,
     },
 )
@@ -399,9 +523,28 @@ log.info(
 2. **Reload strategy**:
    - v1: `startup-only` (словари загружаются один раз на запуск команды);
    - обновления CSV подхватываются только в следующем run.
-3. **Versioning contract (v1/v2 единый)**:
+3. **Load strategy (v1)**:
+   - default: eager startup-load всех enabled словарей;
+   - опция: lazy-load per dictionary (загрузка CSV при первом lookup/canonicalize к конкретному словарю);
+   - в lazy-mode словари, к которым не было обращения, не грузятся и не валидируются в рамках run;
+   - ошибки загрузки/manifest/fingerprint в lazy-mode поднимаются в момент первого обращения к словарю;
+   - lazy-load режим не отменяет startup-only reload policy.
+4. **Versioning contract (v1/v2 единый)**:
    - единый контракт версии сохраняется в report/log/diagnostics;
    - меняется только стратегия вычисления fingerprint по формату источника.
+
+### Concurrency model
+
+v1:
+- модель исполнения — single-threaded runtime для dictionary layer;
+- `Polars`-таблицы словарей используются как read-only;
+- telemetry counters в v1 не декларируются как thread-safe;
+- Singleton lifecycle не является гарантией безопасного конкурентного доступа.
+
+v2:
+- при переходе к конкурентному выполнению (параллельные pipelines / workers) требуется явная
+  стратегия thread-safety для telemetry counters (`threading.Lock`/atomic counters) и
+  документированная модель доступа к runtime/backend.
 
 Единый контракт `DictionaryVersionInfo`:
 - `dict_name`
@@ -445,6 +588,14 @@ ctx = build_pipeline_context(
 # в пределах одного run provider неизменяем; новые данные — следующий run
 ```
 
+Маленький пример: lazy-load per dictionary (опция v1)
+
+```python
+# provider.get_dictionary("organizations") загружает CSV только при первом обращении
+rows = provider.lookup("organizations", "org-001")
+# повторные обращения к "organizations" идут из in-memory backend
+```
+
 Маленький пример: единый version contract
 
 ```python
@@ -478,6 +629,7 @@ class BatchLookupCapable(Protocol):
 2. **Каноническая форма `datasets/registry.yml` для dictionaries**:
    - используем единую секцию `dictionaries.version + dictionaries.items`;
    - каждый item содержит минимум `spec` и `enabled`;
+   - `items: {}` допустим и означает runtime с 0 словарей;
    - любые runtime/storage детали запрещены в registry (только control plane).
 
 ```yaml
@@ -491,13 +643,16 @@ dictionaries:
 
 3. **Обязательные/опциональные поля `DictionarySpec` (Pydantic boundary)**:
    - обязательные: `dictionary`, `source.format`, `source.location`, `schema.key_column`, `schema.value_columns`;
-   - опциональные: `source.csv.*`, `schema.normalized_key`, `lookup.allow_duplicates`;
+   - опциональные: `source.csv.*` (`delimiter`, `has_header`, `encoding`), `schema.normalized_key`, `lookup.allow_duplicates`;
    - в v1 `source.format` ограничен `csv`.
 
 4. **Точка wiring локального DI-container (Dictionary runtime)**:
    - контейнер создается только в `connector/delivery/cli/dictionaries_container.py`;
    - контейнер не передается в domain/use-case;
    - наружу выходит только `DictionaryProviderPort`;
+   - порядок инициализации: `settings -> dictionaries_container (если секция присутствует) -> build_pipeline_context()`;
+   - если `dictionaries_container` не смог инициализироваться, run завершается fail-fast
+     (без silent fallback к `dictionaries=None`);
    - интеграция с существующим composition root: `build_pipeline_context()` в
      `connector/delivery/cli/containers.py` принимает параметр `dictionaries: DictionaryProviderPort | None`;
    - `build_enrich_deps()` в `DatasetSpec` и `EmployeesSpec` также расширяются этим параметром.
@@ -508,7 +663,9 @@ dictionaries:
    - исключаем смешение DICT и ENRICH кодов в одной и той же ответственности.
 
 6. **Каноническая схема `report.context["dictionary"]`**:
-   - обязательные поля: `backend`, `dictionaries_loaded`, `rows_loaded_total`, `lookup_total`, `lookup_hit`, `lookup_miss`, `lookup_error`;
+   - обязательные поля: `backend`, `dictionaries_loaded`, `rows_loaded_total`, `lookup_total`, `lookup_hit`, `lookup_miss`, `lookup_error`, `dictionaries_detail`;
+   - `dictionaries_detail`: `dict[str, {"rows": int, "lookup_hit": int, "lookup_miss": int, "lookup_error": int}]`;
+   - для run без загруженных словарей `dictionaries_detail` фиксируется как пустой объект `{}`.
    - опциональные: `load_duration_ms`, `version_info` (list), `sampling_policy`.
 
 ```python
@@ -520,6 +677,10 @@ report.context["dictionary"] = {
     "lookup_hit": 398,
     "lookup_miss": 20,
     "lookup_error": 2,
+    "dictionaries_detail": {
+        "organizations": {"rows": 128, "lookup_hit": 300, "lookup_miss": 10, "lookup_error": 1},
+        "departments": {"rows": 45, "lookup_hit": 98, "lookup_miss": 10, "lookup_error": 1},
+    },
 }
 ```
 
@@ -583,11 +744,22 @@ version_id = f"{dict_name}:{schema_hash[:12]}:{content_sha256[:12]}"
    - runtime startup: повторная валидация файла (exists/readable/columns/fingerprint);
    - при несовпадении fingerprint runtime падает fail-fast строго с `DICT_SOURCE_FINGERPRINT_MISMATCH` (без fallback).
 
-5. **Manifest для CSV snapshots (предложение к утверждению)**:
+5. **Manifest для CSV snapshots (обязательный компонент v1)**:
    - путь: `datasets/dictionaries/manifest.yml` (единая точка входа);
    - ключ верхнего уровня: `version: 1`, далее `items.<dict_name>`;
    - для каждого словаря: `csv_path`, `content_sha256`, `schema_hash`, `row_count`, `updated_at_utc`, `owner`;
    - runtime сверяет `content_sha256` + `schema_hash` с фактом перед загрузкой.
+   - manifest обязателен для всех `enabled` словарей в v1.
+
+Генерация/владение manifest:
+- source of truth и owner: dataset owners;
+- manifest генерируется preflight-утилитой (CI и локально) вместе с пересчетом hash/row_count;
+- обновление `manifest.yml` коммитится в одном change-set с обновлением CSV/spec.
+
+Поведение runtime без manifest:
+- файл отсутствует -> fail-fast с `DICT_SOURCE_MANIFEST_MISSING`;
+- структура невалидна или отсутствует entry для enabled-словаря -> fail-fast с `DICT_SOURCE_MANIFEST_INVALID`;
+- hash mismatch -> fail-fast с `DICT_SOURCE_FINGERPRINT_MISMATCH`.
 
 ```yaml
 version: 1
@@ -702,6 +874,7 @@ tests/
 3. Backend не содержит бизнес-решений enrich.
 4. В v1 запись в словари в runtime запрещена (read-only snapshots).
 5. DI-container не утекает за пределы composition root.
+6. Hot path `contains/exists` в Polars backend допускает set-based key index (amortized `O(1)`).
 
 ---
 
@@ -712,11 +885,26 @@ tests/
 - Pydantic-валидация `DictionaryRegistrySpec`/`DictionarySpec` и nested-моделей `source/schema/lookup`.
 - Валидация provider args для `dictionary.by_key` (`dict_name`, `at`, `fields`, `limit`) и reject unknown args.
 - `lookup/contains/canonicalize` для Polars backend, включая `fields` projection и `limit`.
+- `contains/exists` hot path: проверка использования set-based key index и отсутствие полного
+  DataFrame-скана на каждый запрос.
 - CSV loader: missing file, missing columns, delimiter/header режимы, key normalization.
+- CSV loader: encoding/BOM handling (`utf-8`/`utf-8-sig`), empty CSV -> warning path.
+- CSV loader: duplicate key policy (`allow_duplicates=false` -> `DICT_SCHEMA_INVALID`,
+  `allow_duplicates=true` -> multi-row lookup).
+- Normalization parity: одинаковый результат `normalized_key.ops` на load-path и lookup-path.
+- Normalization whitelist: reject неподдерживаемых ops в `normalized_key.ops`.
+- Lazy-load policy: first-touch load одного словаря, отсутствие повторного IO на последующих lookup.
 - Versioning: `schema_hash`, `content_sha256`, `version_id`, `fingerprint_kind` сериализация.
 - Telemetry: `key_fingerprint` mask, deterministic sampling (`hit=1%`, `miss=10%`), отсутствие plaintext key.
 - Diagnostics: mapping `DICT_*` -> `SystemErrorCode`, корректный `DslLoadError` wrapping.
-- Report context: обязательные поля секции `dictionary`, корректные счетчики hit/miss/error.
+- Diagnostics: mapping row-level dictionary outcomes:
+  - miss -> `ENRICH_NO_CANDIDATES`,
+  - backend/runtime error -> `ENRICH_PROVIDER_ERROR`,
+  - `deps.dictionaries is None` -> `ENRICH_PROVIDER_ERROR`,
+  - unknown `dict_name` in non-empty runtime -> `ENRICH_PROVIDER_ERROR`,
+  - unknown `dict_name` при `items: {}` -> `ENRICH_NO_CANDIDATES`.
+- Report context: обязательные поля секции `dictionary`, корректные агрегированные и per-dictionary
+  счетчики (`dictionaries_detail`).
 
 ### Integration
 
@@ -725,6 +913,7 @@ tests/
 - Enrich provider registry: `dictionary.by_key` вызывает порт с контрактными args.
 - Совместимость контракта: одинаковое поведение порта для v1 backend и mock v2 backend.
 - Startup fail-fast при broken spec/CSV/fingerprint mismatch.
+- Lazy-mode: ошибка неиспользованного словаря не валит run до первого обращения к нему.
 
 ### E2E
 
@@ -738,6 +927,9 @@ tests/
 - `pytest-benchmark` профиль `v1_small` (100-200 строк): startup load + lookup hit/miss.
 - `pytest-benchmark` профиль `v1_upper` (10k строк): projection/limit нагрузка и hit/miss ratio.
 - `pytest-benchmark` профиль `migration_signal` (100k строк): не-блокирующий, для отслеживания v2 trigger.
+- `pytest-benchmark` профиль `v1_lazy_cold_start`: latency первого обращения к словарю в lazy-mode.
+- `pytest-benchmark` профиль `v1_lazy_warm_hit`: latency повторного hit после lazy-load.
+- `pytest-benchmark` профиль `v1_exists_hot_path`: latency `contains/exists` hit/miss с key-set индексом.
 - Gating правило CI: regression медианы > 30% от baseline для `v1_small`/`v1_upper` — fail.
 - Trend правило: 3 последовательных деградации или hard trigger по объему инициируют ADR update на v2 rollout.
 
@@ -803,4 +995,16 @@ tests/
 | 2026-02-19 | Добавлены: общее дерево модулей v1 target, полный тестовый контур (unit/integration/e2e/benchmark), hard+soft v2 migration policy |
 | 2026-02-19 | Уточнено: fingerprint mismatch только через `DICT_SOURCE_FINGERPRINT_MISMATCH` (без fallback), предложен единый `datasets/dictionaries/manifest.yml` |
 | 2026-02-19 | Зафиксирована политика diagnostics placement: `DICT_*` в v1 только в `core_catalog.py`, без отдельного dictionary-catalog модуля |
+| 2026-02-20 | Добавлены provider-контракты `dictionary.exists_by_key` и `dictionary.canonicalize`; зафиксировано, что `contains` не используется в enrich exists-path |
 | 2026-02-20 | Актуализирован DI-контракт: `bootstrap.py` удалён, composition root — `containers.py`; `DictionaryDslRuntime` → `DictionaryDslRuntimeBundle`; зафиксирована точка интеграции `build_pipeline_context()` и цепочка `DatasetSpec` / `EmployeesSpec.build_enrich_deps()` |
+| 2026-02-20 | Уточнен manifest-контракт v1: `datasets/dictionaries/manifest.yml` обязателен, добавлены правила генерации/валидации и fail-fast поведение при отсутствии/невалидности |
+| 2026-02-20 | Добавлена опция lazy-load для v1 (default остаётся eager startup-load), уточнены тестовые и benchmark сценарии для cold/warm path |
+| 2026-02-20 | Зафиксирован row-level mapping `ENRICH_*` для dictionary provider: miss -> `ENRICH_NO_CANDIDATES`, backend/unknown dict -> `ENRICH_PROVIDER_ERROR` |
+| 2026-02-20 | Уточнен контракт `normalized_key.ops`: reuse общего DSL registry, whitelist операций и симметричное применение на load-path и lookup-path |
+| 2026-02-20 | Добавлена секция concurrency model: v1 single-threaded, telemetry counters без thread-safety guarantees; требования к v2 для конкурентного исполнения |
+| 2026-02-20 | Уточнены CSV edge cases: encoding/BOM, пустой CSV как valid dictionary (warning), политика дублей ключей через `allow_duplicates` |
+| 2026-02-20 | Добавлен явный Pydantic-контракт `DictionaryRegistrySpec`/`DictionaryRegistryItemSpec` и инварианты `version/items` для `datasets/registry.yml` |
+| 2026-02-20 | Зафиксирован graceful degradation контракт: без секции `dictionaries` -> `dictionaries=None` и `ENRICH_PROVIDER_ERROR`; при `items: {}` -> runtime с 0 словарей и miss->`ENRICH_NO_CANDIDATES` |
+| 2026-02-20 | Зафиксирована v1 оптимизация hot path `contains/exists`: допускается set-based key index (`O(1)`), benchmark-профиль `v1_exists_hot_path` добавлен в требования |
+| 2026-02-20 | Зафиксирован lifecycle-контракт инициализации: dictionary container поднимается после settings и до `build_pipeline_context()`, ошибки инициализации dictionary runtime завершают run fail-fast |
+| 2026-02-20 | Расширен контракт `report.context[\"dictionary\"]`: добавлен обязательный per-dictionary breakdown `dictionaries_detail` с метриками rows/hit/miss/error |

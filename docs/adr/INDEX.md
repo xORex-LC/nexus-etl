@@ -83,6 +83,8 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [TRANSFORM-PROBLEM-001](./transform/TRANSFORM-PROBLEM-001-enrich-dictionary-runtime-gap.md) | Problem | Отсутствует runtime-реализация справочников для enrich lookup | Открыта (кандидат решения: TRANSFORM-DEC-001) | 2026-02-19 |
 | [TRANSFORM-DEC-001](./transform/TRANSFORM-DEC-001-columnar-dictionary-runtime-for-enricher.md) | Decision | Справочная подсистема enrich (Polars v1, migration-ready для v2: Polars+DuckDB+Parquet) | Предложено | 2026-02-19 |
+| [TRANSFORM-PROBLEM-002](./transform/TRANSFORM-PROBLEM-002-transform-provider-deps-coupling.md) | Problem | TransformProviderDeps coupling: обязательный cache_gateway нарушает pay-for-what-you-use | Открыта (митигация применена, цель: TRANSFORM-DEC-002) | 2026-02-20 |
+| [TRANSFORM-DEC-002](./transform/TRANSFORM-DEC-002-transform-context-capability-registry.md) | Decision | TransformContext — typed capability registry как целевая архитектура для transform-зависимостей | Предложено (реализация отложена до trigger-критериев) | 2026-02-20 |
 
 ### Target
 
