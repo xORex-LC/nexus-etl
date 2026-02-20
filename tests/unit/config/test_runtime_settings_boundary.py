@@ -14,9 +14,9 @@ from connector.config.app_settings import (
     MatchingRuntimeSettings,
     ObservabilitySettings,
     PathsSettings,
-    PendingSettings,
     RefreshSettings,
 )
+from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.config.config import SettingsIssue, SettingsParseError
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.cli.requirements import Requirements
@@ -71,7 +71,7 @@ def test_run_without_report_handles_settings_load_error(tmp_path) -> None:
             resolve_batch_size=500,
             resolve_flush_interval_ms=500,
         ),
-        pending=PendingSettings(
+        resolver=ResolverSettings(
             pending_ttl_seconds=120,
             pending_max_attempts=5,
             pending_sweep_interval_seconds=60,
