@@ -59,14 +59,15 @@
 composition root.
 
 Границы:
-1. DI-контейнер создается и используется только на уровне wiring (delivery/bootstrapping).
+1. DI-контейнер создается и используется только на уровне wiring (`connector/delivery/cli/`).
 2. Domain/use-case/stage-код не получает container как зависимость.
 3. Внедрение зависимостей остается constructor-based через контракты (`DictionaryProviderPort`).
-4. Legacy контур bootstrap не мигрируется массово; DI добавляется только вокруг нового
-   dictionary-модуля.
+4. Legacy composition root `connector/delivery/cli/containers.py` не мигрируется; словарный
+   DI-контейнер создаётся в отдельном `connector/delivery/cli/dictionaries_container.py`
+   и интегрируется через параметр `dictionaries=` в `build_pipeline_context()`.
 
 Lifecycle провайдеров (v1):
-- `DictionaryDslRuntime` — `Singleton`.
+- `DictionaryDslRuntimeBundle` — `Singleton`.
 - `CsvDictionaryLoader` — `Singleton`.
 - `PolarsDictionaryBackend` — `Singleton`.
 - `DictionaryProviderPort` адаптер — `Singleton`.
@@ -291,9 +292,10 @@ Pydantic обязателен на входных границах Dictionary DS
   - `connector/infra/dictionaries/versioning.py`.
 - локальный DI в composition root:
   - `connector/delivery/cli/dictionaries_container.py` (новый локальный container);
-  - загрузка dictionary DSL runtime;
-  - сборка `DictionaryProviderPort` реализации;
-  - передача в `TransformProviderDeps.dictionaries`.
+  - загрузка dictionary DSL runtime (`DictionaryDslRuntimeBundle`, Singleton);
+  - сборка `DictionaryProviderPort` реализации (Singleton);
+  - наружу выходит только `DictionaryProviderPort` — передаётся в
+    `build_pipeline_context()` (`containers.py`) через параметр `dictionaries=`.
 - runtime settings для dictionary telemetry:
   - `connector/config/app_settings.py` (`DictionaryRuntimeSettings` как отдельная `BaseSettings`).
 
@@ -303,10 +305,11 @@ Pydantic обязателен на входных границах Dictionary DS
 2. Провалидировать как `DictionaryRegistrySpec` (Pydantic).
 3. Для каждого enabled словаря загрузить `*.dictionary.yaml`.
 4. Провалидировать как `DictionarySpec` (Pydantic).
-5. Построить runtime bundle (`dict_name -> compiled config`).
+5. Построить runtime bundle (`DictionaryDslRuntimeBundle`: `dict_name -> compiled config`).
 6. Загрузить CSV snapshots в Polars backend.
 7. Собрать `DictionaryProviderPort` адаптер.
-8. Передать в `TransformProviderDeps`.
+8. Передать через `dictionaries=` в `build_pipeline_context()` (`containers.py`);
+   функция пробрасывает его в `dataset_spec.build_enrich_deps(dictionaries=...)`.
 9. Enrich `dictionary.by_key` использует только порт.
 
 ### Observability и Diagnostics для Dictionary слоя
@@ -427,12 +430,19 @@ def should_log_debug(event: str, dict_name: str, key_fingerprint: str) -> bool:
     return True
 ```
 
-Маленький пример: startup-only reload
+Маленький пример: startup-only reload и интеграция с composition root
 
 ```python
-runtime = container.dictionary_runtime()
-provider = container.dictionary_provider(runtime=runtime)
-# в пределах одного run runtime/provider неизменяемы
+# dictionaries_container.py — строит провайдер один раз
+bundle = load_dictionary_dsl_runtime()           # -> DictionaryDslRuntimeBundle
+provider = build_dictionary_provider(bundle)     # -> DictionaryProviderPort адаптер
+
+# containers.py — build_pipeline_context() принимает провайдер снаружи
+ctx = build_pipeline_context(
+    ...,
+    dictionaries=provider,   # Singleton, неизменяем в пределах run
+)
+# в пределах одного run provider неизменяем; новые данные — следующий run
 ```
 
 Маленький пример: единый version contract
@@ -485,9 +495,12 @@ dictionaries:
    - в v1 `source.format` ограничен `csv`.
 
 4. **Точка wiring локального DI-container (Dictionary runtime)**:
-   - контейнер создается только в delivery composition root (`connector/delivery/cli/...`);
+   - контейнер создается только в `connector/delivery/cli/dictionaries_container.py`;
    - контейнер не передается в domain/use-case;
-   - наружу выходит только `DictionaryProviderPort`, передаваемый в `TransformProviderDeps`.
+   - наружу выходит только `DictionaryProviderPort`;
+   - интеграция с существующим composition root: `build_pipeline_context()` в
+     `connector/delivery/cli/containers.py` принимает параметр `dictionaries: DictionaryProviderPort | None`;
+   - `build_enrich_deps()` в `DatasetSpec` и `EmployeesSpec` также расширяются этим параметром.
 
 5. **Taxonomy diagnostics кодов и зоны применения**:
    - `DICT_*` используется только для DSL/load/runtime init слоя словарей;
@@ -675,9 +688,11 @@ tests/
 | `connector/infra/dictionaries/provider.py` | Адаптер порта поверх Polars backend |
 | `connector/infra/dictionaries/telemetry.py` | Structlog logging + runtime counters/report context |
 | `connector/infra/dictionaries/versioning.py` | Version contract + fingerprint strategies (v1/v2) |
-| `connector/delivery/cli/dictionaries_container.py` | Локальный DI-container для dictionary runtime |
+| `connector/delivery/cli/dictionaries_container.py` | Новый локальный DI-container: `load_dictionary_dsl_runtime` + `build_dictionary_provider` (Singleton) |
+| `connector/delivery/cli/containers.py` | Обновить: `build_pipeline_context()` — добавить параметр `dictionaries: DictionaryProviderPort \| None = None` |
 | `connector/domain/diagnostics/core_catalog.py` | Регистрация `DICT_*` кодов |
-| `connector/datasets/employees/spec.py` | Wiring зависимостей словарного провайдера |
+| `connector/datasets/spec.py` | Обновить: `build_enrich_deps()` базового `DatasetSpec` — добавить параметр `dictionaries` |
+| `connector/datasets/employees/spec.py` | Обновить: `EmployeesSpec.build_enrich_deps()` — принять и пробросить `dictionaries` в `TransformProviderDeps` |
 | `datasets/registry.yml` | Добавить секцию `dictionaries` |
 
 ### Инварианты
@@ -788,3 +803,4 @@ tests/
 | 2026-02-19 | Добавлены: общее дерево модулей v1 target, полный тестовый контур (unit/integration/e2e/benchmark), hard+soft v2 migration policy |
 | 2026-02-19 | Уточнено: fingerprint mismatch только через `DICT_SOURCE_FINGERPRINT_MISMATCH` (без fallback), предложен единый `datasets/dictionaries/manifest.yml` |
 | 2026-02-19 | Зафиксирована политика diagnostics placement: `DICT_*` в v1 только в `core_catalog.py`, без отдельного dictionary-catalog модуля |
+| 2026-02-20 | Актуализирован DI-контракт: `bootstrap.py` удалён, composition root — `containers.py`; `DictionaryDslRuntime` → `DictionaryDslRuntimeBundle`; зафиксирована точка интеграции `build_pipeline_context()` и цепочка `DatasetSpec` / `EmployeesSpec.build_enrich_deps()` |
