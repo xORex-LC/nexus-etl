@@ -8,7 +8,7 @@ from connector.datasets.spec import (
     ReportAdapter,
 )
 from connector.domain.ports.cache.roles import EnrichLookupPort, PlanningRuntimePort
-from connector.domain.transform.resolver.resolve_deps import PlanningDependencies, ResolverSettings
+from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.planning.plan_models import PlanItem
@@ -88,10 +88,9 @@ class EmployeesSpec(DatasetSpec):
         *,
         planning_runtime: PlanningRuntimePort,
     ) -> PlanningDependencies:
-        resolver_settings = _build_resolver_settings(settings)
         return PlanningDependencies(
             cache_gateway=planning_runtime,
-            resolver_settings=resolver_settings,
+            resolver_settings=settings,
         )
 
     def build_enrich_deps(
@@ -278,25 +277,6 @@ class EmployeesSpec(DatasetSpec):
 def make_employees_spec(secrets: SecretProviderProtocol | None = None) -> EmployeesSpec:
     return EmployeesSpec(secrets=secrets, dataset_name="employees")
 
-
-def _build_resolver_settings(settings) -> ResolverSettings:
-    if settings is None:
-        return ResolverSettings(
-            pending_ttl_seconds=120,
-            pending_max_attempts=5,
-            pending_sweep_interval_seconds=60,
-            pending_on_expire="error",
-            pending_allow_partial=False,
-            pending_retention_days=14,
-        )
-    return ResolverSettings(
-        pending_ttl_seconds=settings.pending_ttl_seconds,
-        pending_max_attempts=settings.pending_max_attempts,
-        pending_sweep_interval_seconds=settings.pending_sweep_interval_seconds,
-        pending_on_expire=settings.pending_on_expire,
-        pending_allow_partial=settings.pending_allow_partial,
-        pending_retention_days=settings.pending_retention_days,
-    )
 
 
 def _build_employees_operation_params(item: PlanItem) -> dict[str, Any]:
