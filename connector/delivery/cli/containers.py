@@ -36,6 +36,7 @@ from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 from connector.domain.ports.secrets.retention import SecretApplyRetentionHookProtocol
+from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
@@ -533,6 +534,7 @@ def build_pipeline_context(
     catalog: ErrorCatalog,
     csv_has_header: bool,
     secret_store: Any | None = None,
+    dictionaries: DictionaryProviderPort | None = None,
 ) -> PipelineContext:
     """
     Назначение:
@@ -542,6 +544,7 @@ def build_pipeline_context(
         None,
         enrich_lookup=cache_roles.enrich_lookup,
         secret_store=secret_store,
+        dictionaries=dictionaries,
     )
     planning_deps = dataset_spec.build_planning_deps(
         pending_settings,
