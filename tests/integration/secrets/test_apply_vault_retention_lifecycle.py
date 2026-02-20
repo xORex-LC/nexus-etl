@@ -6,7 +6,7 @@ from cryptography.fernet import Fernet
 
 from connector.config.app_settings import PathsSettings
 from connector.datasets.employees.spec import make_employees_spec
-from connector.delivery.cli.bootstrap import build_secret_provider, build_secret_retention_hook
+from connector.delivery.cli.containers import build_secret_provider, build_secret_retention_hook
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_models import Operation, Plan, PlanItem, PlanMeta, PlanSummary

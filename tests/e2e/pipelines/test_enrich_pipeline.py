@@ -4,8 +4,8 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
-from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import open_sqlite
+from connector.config.app_settings import SqliteSettings, build_cache_db_config
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
@@ -56,8 +56,8 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
     return result, report_path
 
 
-def _build_repo(conn) -> SqliteCacheRepository:
-    engine = SqliteEngine(conn)
+def _build_repo(db_path: str) -> SqliteCacheRepository:
+    engine = open_sqlite(build_cache_db_config(SqliteSettings()), db_path)
     cache_specs = list(load_cache_dsl_runtime().cache_specs)
     ensure_cache_ready(engine, cache_specs)
     return SqliteCacheRepository(engine, cache_specs)
@@ -65,17 +65,13 @@ def _build_repo(conn) -> SqliteCacheRepository:
 
 def _seed_org(tmp_path: Path, org_ouid: int) -> None:
     cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
-    try:
-        repo = _build_repo(conn)
-        with repo.engine.transaction():
-            repo.upsert(
-                "organizations",
-                {"_ouid": org_ouid, "code": f"ORG-{org_ouid}", "name": f"Org {org_ouid}", "parent_id": None, "updated_at": None},
-            )
-    finally:
-        conn.close()
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    repo = _build_repo(db_path)
+    with repo.engine.transaction():
+        repo.upsert(
+            "organizations",
+            {"_ouid": org_ouid, "code": f"ORG-{org_ouid}", "name": f"Org {org_ouid}", "parent_id": None, "updated_at": None},
+        )
 
 
 def make_row(

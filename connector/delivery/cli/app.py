@@ -13,7 +13,7 @@ from connector.delivery.cli.context import CommandContext, CommandPaths
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.runtime import run_with_report
 from connector.delivery.cli import options as cli_options
-from connector.delivery.cli.bootstrap import build_diagnostics_catalog
+from connector.delivery.cli.containers import build_diagnostics_catalog
 from connector.delivery.cli.settings_slice_map import (
     COMMAND_SETTINGS_SLICE_MAP,
     COMMAND_TO_USECASE,

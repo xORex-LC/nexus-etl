@@ -12,7 +12,7 @@ import typer
 
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import ensure_supported_cache_dataset, result_with
-from connector.delivery.cli.bootstrap import (
+from connector.delivery.cli.containers import (
     build_target_runtime_with_info,
     open_cache,
 )

@@ -9,7 +9,7 @@ from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import result_with
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.delivery.cli.bootstrap import build_target_runtime_with_info
+from connector.delivery.cli.containers import build_target_runtime_with_info
 from connector.infra.logging.setup import logEvent
 
 

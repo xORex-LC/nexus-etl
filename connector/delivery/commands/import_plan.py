@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.bootstrap import (
+from connector.delivery.cli.containers import (
     build_cache,
     build_dataset_spec,
     ensure_vault_startup_ready,

@@ -4,10 +4,11 @@ from contextlib import contextmanager
 
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.infra.cache.backends.sqlite.db import openCacheDb
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import open_sqlite
+from connector.infra.sqlite.config import SqliteDbConfig
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.roles import build_sqlite_cache_role_ports
+from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.usecases.resolve_usecase import ResolveUseCase
 
 
@@ -120,10 +121,15 @@ def test_iter_resolved_without_runtime_transaction():
 
 
 def test_iter_resolved_persists_pending_links_per_batch(tmp_path):
-    db_path = tmp_path / "cache.sqlite3"
-    conn = openCacheDb(str(db_path))
-    engine = SqliteEngine(conn)
-    gateway = SqliteCacheGateway.from_engine(engine=engine, cache_specs=[])
+    db_path = str(tmp_path / "cache.sqlite3")
+    config = SqliteDbConfig(transaction_mode="deferred")
+    engine = open_sqlite(config, db_path)
+    ensure_identity_schema(engine)
+    gateway = SqliteCacheGateway.from_engine(
+        cache_engine=engine,
+        identity_engine=engine,
+        cache_specs=[],
+    )
     cache_roles = build_sqlite_cache_role_ports(gateway)
 
     usecase = ResolveUseCase(
@@ -136,10 +142,12 @@ def test_iter_resolved_persists_pending_links_per_batch(tmp_path):
     source = [_result(1), _result(2), _result(3)]
 
     _ = list(usecase.iter_resolved(source, stage, dataset="employees"))
-    conn.close()
+    engine.close()
 
-    conn_check = openCacheDb(str(db_path))
-    count = conn_check.execute("SELECT COUNT(*) FROM pending_links WHERE dataset = 'employees'").fetchone()[0]
-    conn_check.close()
+    engine_check = open_sqlite(config, db_path)
+    count = engine_check.fetchone(
+        "SELECT COUNT(*) FROM pending_links WHERE dataset = 'employees'"
+    )[0]
+    engine_check.close()
 
     assert count == 3
