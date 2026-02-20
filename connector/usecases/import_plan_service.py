@@ -33,6 +33,7 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.ports.cache.roles import EnrichLookupPort, PendingReplayPort, PlanningRuntimePort
 from connector.domain.ports.secrets.provider import SecretStoreProtocol
+from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 
 
 class ImportPlanService:
@@ -57,6 +58,7 @@ class ImportPlanService:
         report_items_limit: int,
         report_dir: str,
         secret_store: SecretStoreProtocol | None = None,
+        dictionaries: DictionaryProviderPort | None = None,
     ) -> CommandResult:
         generated_at = getNowIso()
 
@@ -67,6 +69,7 @@ class ImportPlanService:
             None,
             enrich_lookup=enrich_lookup,
             secret_store=secret_store,
+            dictionaries=dictionaries,
         )
         planning_deps = dataset_spec.build_planning_deps(
             pending_settings,

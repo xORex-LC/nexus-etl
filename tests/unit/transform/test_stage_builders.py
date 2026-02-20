@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
 from connector.datasets.employees.spec import make_employees_spec
 from connector.domain.diagnostics.catalog import build_catalog
+from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.transform.stages.stages import (
     EnrichStage,
     MapStage,
@@ -17,6 +20,33 @@ from connector.infra.sqlite.config import SqliteDbConfig
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
+
+
+class _DummyDictionaryProvider(DictionaryProviderPort):
+    def lookup(
+        self,
+        dict_name: str,
+        key: str,
+        at: Any | None = None,
+        fields: tuple[str, ...] | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        _ = (dict_name, key, at, fields, limit)
+        return []
+
+    def contains(self, dict_name: str, value: str, at: Any | None = None) -> bool:
+        _ = (dict_name, value, at)
+        return False
+
+    def canonicalize(
+        self,
+        dict_name: str,
+        value: str,
+        at: Any | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        _ = (dict_name, value, at, limit)
+        return []
 
 
 def _make_engine() -> SqliteEngine:
@@ -66,3 +96,19 @@ def test_employees_build_planning_stages_contract():
     )
     assert isinstance(match_stage, MatchStage)
     assert isinstance(resolve_stage, ResolveStage)
+
+
+def test_employees_build_enrich_deps_includes_dictionary_provider():
+    spec = make_employees_spec()
+    gateway = _build_gateway()
+    roles = build_sqlite_cache_role_ports(gateway)
+    dictionaries = _DummyDictionaryProvider()
+
+    deps = spec.build_enrich_deps(
+        settings=None,
+        enrich_lookup=roles.enrich_lookup,
+        secret_store=None,
+        dictionaries=dictionaries,
+    )
+
+    assert deps.dictionaries is dictionaries

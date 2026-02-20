@@ -19,6 +19,6 @@ class TransformProviderDeps:
         Общие зависимости, которые могут использовать lookup/exists провайдеры.
     """
 
-    cache_gateway: EnrichLookupPort
+    cache_gateway: EnrichLookupPort | None = None
     secret_store: SecretStoreProtocol | None = None
     dictionaries: DictionaryProviderPort | None = None

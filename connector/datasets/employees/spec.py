@@ -9,7 +9,8 @@ from connector.datasets.spec import (
 )
 from connector.domain.ports.cache.roles import EnrichLookupPort, PlanningRuntimePort
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies, ResolverSettings
-from connector.domain.ports.secrets.provider import SecretProviderProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
+from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.planning.plan_models import PlanItem
 from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.matcher.match_engine import MatchEngine
@@ -98,12 +99,14 @@ class EmployeesSpec(DatasetSpec):
         settings,
         *,
         enrich_lookup: EnrichLookupPort,
-        secret_store=None,
+        secret_store: SecretStoreProtocol | None = None,
+        dictionaries: DictionaryProviderPort | None = None,
     ) -> TransformProviderDeps:
         _ = settings
         return TransformProviderDeps(
             cache_gateway=enrich_lookup,
             secret_store=secret_store,
+            dictionaries=dictionaries,
         )
 
     def build_map_spec(self, settings=None) -> MappingSpec:
