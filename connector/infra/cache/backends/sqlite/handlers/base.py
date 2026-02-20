@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 from connector.domain.ports.cache.models import UpsertResult
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import SqliteEngine
 
 
 class CacheDatasetHandler:

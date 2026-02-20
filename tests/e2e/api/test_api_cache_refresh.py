@@ -5,9 +5,9 @@ from typing import Callable
 import httpx
 from typer.testing import CliRunner
 
-from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
+from connector.infra.sqlite.engine import open_sqlite
+from connector.config.app_settings import SqliteSettings, build_cache_db_config
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.main import app
 
@@ -21,7 +21,7 @@ def make_transport(responder: Callable[[httpx.Request], httpx.Response]) -> http
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.delivery.commands.check_api as check_api_command
     import connector.delivery.commands.cache_refresh as cache_refresh_command
-    from connector.delivery.cli.bootstrap import (
+    from connector.delivery.cli.containers import (
         build_target_runtime_with_info as _build_real_runtime_with_info,
     )
 
@@ -197,16 +197,15 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
     )
 
     assert result.exit_code == 0
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    engine = open_sqlite(build_cache_db_config(SqliteSettings()), db_path)
     try:
-        engine = SqliteEngine(conn)
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         repo = SqliteCacheRepository(engine, cache_specs)
         users_count = repo.count("employees")
         org_count = repo.count("organizations")
     finally:
-        conn.close()
+        engine.close()
     assert users_count == 2
     assert org_count == 2
 

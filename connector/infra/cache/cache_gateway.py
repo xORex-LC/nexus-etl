@@ -3,32 +3,37 @@ from __future__ import annotations
 from typing import Iterable
 
 from connector.infra.cache.cache_spec import CacheSpec
-from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
 from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
 from connector.infra.identity.sqlite.pending_links_repository import SqlitePendingLinksRepository
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
-from connector.infra.identity.sqlite.schema import ensure_identity_schema
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import SqliteEngine
 
 
 class SqliteCacheGateway:
     """
     Назначение:
         Единый SQLite фасад для cache/identity/pending операций.
+
+    После Block 3:
+        - cache_engine (cache.sqlite3) хранит dataset-таблицы (users, organizations…).
+        - identity_engine (identity.sqlite3) хранит identity_index, pending_links, identity_runtime_state.
+        - Оба движка — унифицированный SqliteEngine из connector.infra.sqlite.
     """
 
     def __init__(
         self,
         *,
-        engine: SqliteEngine,
+        cache_engine: SqliteEngine,
+        identity_engine: SqliteEngine,
         cache_repo: SqliteCacheRepository,
         identity_repo: SqliteIdentityRepository,
         pending_repo: SqlitePendingLinksRepository,
         owns_connection: bool = False,
     ) -> None:
-        _ensure_same_engine(engine, cache_repo, identity_repo, pending_repo)
-        self._engine = engine
+        _ensure_repos_use_correct_engines(cache_engine, identity_engine, cache_repo, identity_repo, pending_repo)
+        self._cache_engine = cache_engine
+        self._identity_engine = identity_engine
         self._cache_repo = cache_repo
         self._identity_repo = identity_repo
         self._pending_repo = pending_repo
@@ -37,11 +42,8 @@ class SqliteCacheGateway:
 
     @property
     def engine(self) -> SqliteEngine:
-        return self._engine
-
-    @property
-    def connection(self):
-        return self._engine.conn
+        """Возвращает cache_engine (для совместимости с ролями, которые ожидают engine)."""
+        return self._cache_engine
 
     @property
     def cache(self) -> SqliteCacheRepository:
@@ -56,39 +58,30 @@ class SqliteCacheGateway:
         return self._pending_repo
 
     @classmethod
-    def open(
-        cls,
-        *,
-        cache_dir: str,
-        cache_specs: Iterable[CacheSpec],
-    ) -> "SqliteCacheGateway":
-        db_path = getCacheDbPath(cache_dir)
-        conn = openCacheDb(db_path)
-        engine = SqliteEngine(conn)
-        return cls.from_engine(
-            engine=engine,
-            cache_specs=cache_specs,
-            owns_connection=True,
-        )
-
-    @classmethod
     def from_engine(
         cls,
         *,
-        engine: SqliteEngine,
+        cache_engine: SqliteEngine,
+        identity_engine: SqliteEngine,
         cache_specs: Iterable[CacheSpec],
         owns_connection: bool = False,
     ) -> "SqliteCacheGateway":
+        """
+        Назначение:
+            Создать шлюз из готовых SqliteEngine.
+
+        Контракт:
+            - ensure_cache_ready применяется к cache_engine (dataset-схема).
+            - identity_engine уже инициализирован контейнером до вызова (ensure_identity_schema).
+        """
         specs = list(cache_specs)
-        ensure_cache_ready(engine, specs)
-        # Block 2 shim: identity tables co-located in cache.sqlite3 until Block 3
-        # separates them onto identity.sqlite3 via DI-container.
-        ensure_identity_schema(engine)
-        cache_repo = SqliteCacheRepository(engine, specs)
-        identity_repo = SqliteIdentityRepository(engine)
-        pending_repo = SqlitePendingLinksRepository(engine)
+        ensure_cache_ready(cache_engine, specs)
+        cache_repo = SqliteCacheRepository(cache_engine, specs)
+        identity_repo = SqliteIdentityRepository(identity_engine)
+        pending_repo = SqlitePendingLinksRepository(identity_engine)
         return cls(
-            engine=engine,
+            cache_engine=cache_engine,
+            identity_engine=identity_engine,
             cache_repo=cache_repo,
             identity_repo=identity_repo,
             pending_repo=pending_repo,
@@ -96,13 +89,14 @@ class SqliteCacheGateway:
         )
 
     def transaction(self):
-        return self._engine.transaction()
+        return self._cache_engine.transaction()
 
     def close(self) -> None:
         if self._closed:
             return
         if self._owns_connection:
-            self._engine.conn.close()
+            self._cache_engine.close()
+            self._identity_engine.close()
         self._closed = True
 
     def __enter__(self) -> "SqliteCacheGateway":
@@ -112,15 +106,16 @@ class SqliteCacheGateway:
         self.close()
 
 
-def _ensure_same_engine(
-    engine: SqliteEngine,
+def _ensure_repos_use_correct_engines(
+    cache_engine: SqliteEngine,
+    identity_engine: SqliteEngine,
     cache_repo: SqliteCacheRepository,
     identity_repo: SqliteIdentityRepository,
     pending_repo: SqlitePendingLinksRepository,
 ) -> None:
-    if cache_repo.engine is not engine:
+    if cache_repo.engine is not cache_engine:
         raise ValueError("cache_repo uses a different engine instance")
-    if identity_repo.engine is not engine:
+    if identity_repo.engine is not identity_engine:
         raise ValueError("identity_repo uses a different engine instance")
-    if pending_repo.engine is not engine:
+    if pending_repo.engine is not identity_engine:
         raise ValueError("pending_repo uses a different engine instance")

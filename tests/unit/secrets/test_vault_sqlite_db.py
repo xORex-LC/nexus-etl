@@ -2,26 +2,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from connector.config.app_settings import SqliteSettings, build_vault_db_config
-from connector.infra.secrets.sqlite.db import (
-    DEFAULT_VAULT_DB_PATH_ENV,
-    getVaultDbPath,
-)
+from connector.delivery.cli.containers import _vault_db_path
 from connector.infra.sqlite.engine import open_sqlite
 
 
 def test_get_vault_db_path_uses_default_location(tmp_path: Path):
-    path = getVaultDbPath(cacheDir=tmp_path / "cache", env={})
+    settings = SqliteSettings()
+    path = _vault_db_path(str(tmp_path / "cache"), settings)
     assert path.endswith("ankey_vault.sqlite3")
     assert str(tmp_path / "cache") in path
 
 
-def test_get_vault_db_path_uses_env_override(tmp_path: Path):
+def test_get_vault_db_path_uses_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     custom = tmp_path / "custom" / "vault.db"
-    path = getVaultDbPath(
-        cacheDir=tmp_path / "cache",
-        env={DEFAULT_VAULT_DB_PATH_ENV: str(custom)},
-    )
+    monkeypatch.setenv("ANKEY_VAULT_DB_PATH", str(custom))
+    settings = SqliteSettings()
+    path = _vault_db_path(str(tmp_path / "cache"), settings)
     assert path == str(custom)
 
 
