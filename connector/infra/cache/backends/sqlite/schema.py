@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from connector.infra.cache.cache_spec import CacheSpec
 from connector.infra.cache.backends.sqlite.handlers.generic_handler import GenericCacheHandler
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import SqliteEngine
 
 SCHEMA_VERSION = 6
 

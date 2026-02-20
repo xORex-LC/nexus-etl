@@ -65,7 +65,7 @@ def _is_allowed_gateway_import_path(path: Path) -> bool:
     rel = _rel(path)
     return (
         rel.startswith("connector/infra/cache/")
-        or rel == "connector/delivery/cli/bootstrap.py"
+        or rel == "connector/delivery/cli/containers.py"
         or rel.startswith("tests/")
     )
 

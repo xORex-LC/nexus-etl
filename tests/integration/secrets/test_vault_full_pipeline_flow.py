@@ -15,8 +15,8 @@ from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from connector.domain.transform.matcher.identity_keys import format_identity_key
-from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import open_sqlite
+from connector.config.app_settings import SqliteSettings, build_cache_db_config, build_identity_db_config
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
@@ -153,40 +153,39 @@ def _seed_existing_user_for_update(
     Записать existing user в cache, чтобы resolve классифицировал строку как update.
     """
     personnel_number = match_key.split("|")[-1]
-    db_path = Path(getCacheDbPath(str(cache_dir)))
-    conn = openCacheDb(str(db_path))
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    engine = open_sqlite(build_cache_db_config(SqliteSettings()), db_path)
     try:
-        engine = SqliteEngine(conn)
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         ensure_cache_ready(engine, cache_specs)
         repo = SqliteCacheRepository(engine, cache_specs)
-        repo.upsert(
-            "employees",
-            {
-                "_id": "existing-user-1001",
-                "_ouid": 1001,
-                "personnel_number": personnel_number,
-                "last_name": "Doe",
-                "first_name": "John",
-                "middle_name": "M",
-                "match_key": match_key,
-                "mail": "john.doe@example.com",
-                "user_name": "jdoe",
-                "phone": phone,
-                "usr_org_tab_num": "TAB-5001",
-                "organization_id": 10,
-                "account_status": "active",
-                "deletion_date": None,
-                "_rev": None,
-                "manager_ouid": None,
-                "is_logon_disabled": False,
-                "position": "Engineer",
-                "updated_at": "2026-02-18T10:00:00Z",
-            },
-        )
-        conn.commit()
+        with engine.transaction():
+            repo.upsert(
+                "employees",
+                {
+                    "_id": "existing-user-1001",
+                    "_ouid": 1001,
+                    "personnel_number": personnel_number,
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "middle_name": "M",
+                    "match_key": match_key,
+                    "mail": "john.doe@example.com",
+                    "user_name": "jdoe",
+                    "phone": phone,
+                    "usr_org_tab_num": "TAB-5001",
+                    "organization_id": 10,
+                    "account_status": "active",
+                    "deletion_date": None,
+                    "_rev": None,
+                    "manager_ouid": None,
+                    "is_logon_disabled": False,
+                    "position": "Engineer",
+                    "updated_at": "2026-02-18T10:00:00Z",
+                },
+            )
     finally:
-        conn.close()
+        engine.close()
 
 
 def _seed_organization_identities(
@@ -198,20 +197,16 @@ def _seed_organization_identities(
     Добавить identity-index записи для organization link-resolve в employees resolve flow.
     """
     value = str(resolved_org_id)
-    db_path = Path(getCacheDbPath(str(cache_dir)))
-    conn = openCacheDb(str(db_path))
+    identity_db_path = str(Path(cache_dir) / "identity.sqlite3")
+    engine = open_sqlite(build_identity_db_config(SqliteSettings()), identity_db_path)
     try:
-        engine = SqliteEngine(conn)
-        cache_specs = list(load_cache_dsl_runtime().cache_specs)
-        ensure_cache_ready(engine, cache_specs)
-        # Block 2 shim: identity tables live in cache.sqlite3 until Block 3
         ensure_identity_schema(engine)
         identity_repo = SqliteIdentityRepository(engine)
-        identity_repo.upsert_identity("organizations", format_identity_key("_ouid", value), value)
-        identity_repo.upsert_identity("organizations", format_identity_key("name", value), value)
-        conn.commit()
+        with engine.transaction():
+            identity_repo.upsert_identity("organizations", format_identity_key("_ouid", value), value)
+            identity_repo.upsert_identity("organizations", format_identity_key("name", value), value)
     finally:
-        conn.close()
+        engine.close()
 
 
 def test_vault_full_pipeline_create_flow(tmp_path: Path):

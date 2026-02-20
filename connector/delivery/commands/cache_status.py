@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.context import CommandContext
-from connector.delivery.cli.bootstrap import open_cache
+from connector.delivery.cli.containers import open_cache
 from connector.delivery.commands.common import (
     ensure_supported_cache_dataset,
     sqlite_cache_error_result,

@@ -4,12 +4,13 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
-from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
+from connector.config.app_settings import SqliteSettings, build_cache_db_config, build_identity_db_config
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
+from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.main import app
 
@@ -51,54 +52,71 @@ def make_row(
         extra,
     ]
 
-def _build_repo(conn) -> SqliteCacheRepository:
-    engine = SqliteEngine(conn)
+def _build_repo(db_path: str) -> SqliteCacheRepository:
+    engine = open_sqlite(build_cache_db_config(SqliteSettings()), db_path)
     cache_specs = list(load_cache_dsl_runtime().cache_specs)
     ensure_cache_ready(engine, cache_specs)
     return SqliteCacheRepository(engine, cache_specs)
 
 
+def _open_identity_engine(cache_db_path: str) -> SqliteEngine:
+    identity_db_path = str(Path(cache_db_path).parent / "identity.sqlite3")
+    engine = open_sqlite(build_identity_db_config(SqliteSettings()), identity_db_path)
+    ensure_identity_schema(engine)
+    return engine
+
+
 def _seed_org(repo: SqliteCacheRepository, ouid: int) -> None:
-    identity_repo = SqliteIdentityRepository(repo.engine)
-    with repo.engine.transaction():
-        repo.upsert(
-            "organizations",
-            {"_ouid": ouid, "code": f"ORG-{ouid}", "name": f"Org {ouid}", "parent_id": None, "updated_at": None},
-        )
-        identity_repo.upsert_identity("organizations", format_identity_key("_ouid", str(ouid)), str(ouid))
-        identity_repo.upsert_identity("organizations", format_identity_key("name", f"Org {ouid}"), str(ouid))
-        identity_repo.upsert_identity("organizations", format_identity_key("code", f"ORG-{ouid}"), str(ouid))
+    identity_engine = _open_identity_engine(repo.engine.db_path)
+    try:
+        identity_repo = SqliteIdentityRepository(identity_engine)
+        with repo.engine.transaction():
+            repo.upsert(
+                "organizations",
+                {"_ouid": ouid, "code": f"ORG-{ouid}", "name": f"Org {ouid}", "parent_id": None, "updated_at": None},
+            )
+        with identity_engine.transaction():
+            identity_repo.upsert_identity("organizations", format_identity_key("_ouid", str(ouid)), str(ouid))
+            identity_repo.upsert_identity("organizations", format_identity_key("name", f"Org {ouid}"), str(ouid))
+            identity_repo.upsert_identity("organizations", format_identity_key("code", f"ORG-{ouid}"), str(ouid))
+    finally:
+        identity_engine.close()
 
 def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: str, organization_id: int) -> None:
-    identity_repo = SqliteIdentityRepository(repo.engine)
-    ouid = int(_id.replace("u", "")) if _id.startswith("u") else 1
-    with repo.engine.transaction():
-        repo.upsert(
-            "employees",
-            {
-                "_id": _id,
-                "_ouid": ouid,
-                "personnel_number": "100",
-                "last_name": "Doe",
-                "first_name": "John",
-                "middle_name": "M",
-                "match_key": match_key,
-                "mail": "john@example.com",
-                "user_name": "jdoe",
-                "phone": phone,
-                "usr_org_tab_num": "TAB-100",
-                "organization_id": organization_id,
-                "account_status": "active",
-                "deletion_date": None,
-                "_rev": None,
-                "manager_ouid": None,
-                "is_logon_disabled": False,
-                "position": "Engineer",
-                "updated_at": None,
-            },
-        )
-        identity_repo.upsert_identity("employees", format_identity_key("match_key", match_key), str(ouid))
-        identity_repo.upsert_identity("employees", format_identity_key("organization_id", str(organization_id)), str(ouid))
+    identity_engine = _open_identity_engine(repo.engine.db_path)
+    try:
+        identity_repo = SqliteIdentityRepository(identity_engine)
+        ouid = int(_id.replace("u", "")) if _id.startswith("u") else 1
+        with repo.engine.transaction():
+            repo.upsert(
+                "employees",
+                {
+                    "_id": _id,
+                    "_ouid": ouid,
+                    "personnel_number": "100",
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "middle_name": "M",
+                    "match_key": match_key,
+                    "mail": "john@example.com",
+                    "user_name": "jdoe",
+                    "phone": phone,
+                    "usr_org_tab_num": "TAB-100",
+                    "organization_id": organization_id,
+                    "account_status": "active",
+                    "deletion_date": None,
+                    "_rev": None,
+                    "manager_ouid": None,
+                    "is_logon_disabled": False,
+                    "position": "Engineer",
+                    "updated_at": None,
+                },
+            )
+        with identity_engine.transaction():
+            identity_repo.upsert_identity("employees", format_identity_key("match_key", match_key), str(ouid))
+            identity_repo.upsert_identity("employees", format_identity_key("organization_id", str(organization_id)), str(ouid))
+    finally:
+        identity_engine.close()
 
 def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
     log_dir = tmp_path / "logs"
@@ -129,13 +147,9 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
 
 def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
     cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
-    try:
-        repo = _build_repo(conn)
-        _seed_org(repo, ouid=10)
-    finally:
-        conn.close()
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    repo = _build_repo(db_path)
+    _seed_org(repo, ouid=10)
 
     csv_path = tmp_path / "input.csv"
     # personnelNumber missing -> match_key_missing
@@ -167,13 +181,9 @@ def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
 
 def test_plan_create_when_not_found(tmp_path: Path):
     cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
-    try:
-        repo = _build_repo(conn)
-        _seed_org(repo, ouid=20)
-    finally:
-        conn.close()
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    repo = _build_repo(db_path)
+    _seed_org(repo, ouid=20)
 
     csv_path = tmp_path / "create.csv"
     _write_csv(
@@ -204,14 +214,10 @@ def test_plan_create_when_not_found(tmp_path: Path):
 
 def test_plan_update_when_found_and_diff(tmp_path: Path):
     cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
-    try:
-        repo = _build_repo(conn)
-        _seed_org(repo, ouid=30)
-        _seed_user(repo, _id="u1", match_key="Doe|John|M|100", phone="+111111", organization_id=30)
-    finally:
-        conn.close()
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    repo = _build_repo(db_path)
+    _seed_org(repo, ouid=30)
+    _seed_user(repo, _id="u1", match_key="Doe|John|M|100", phone="+111111", organization_id=30)
 
     csv_path = tmp_path / "update.csv"
     _write_csv(
@@ -242,14 +248,10 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
 
 def test_plan_skip_when_no_diff(tmp_path: Path):
     cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
-    try:
-        repo = _build_repo(conn)
-        _seed_org(repo, ouid=40)
-        _seed_user(repo, _id="u2", match_key="Doe|John|M|100", phone="+111111", organization_id=40)
-    finally:
-        conn.close()
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    repo = _build_repo(db_path)
+    _seed_org(repo, ouid=40)
+    _seed_user(repo, _id="u2", match_key="Doe|John|M|100", phone="+111111", organization_id=40)
 
     csv_path = tmp_path / "skip.csv"
     _write_csv(
@@ -279,13 +281,9 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
 
 def test_plan_conflict_when_multiple_same_match_key(tmp_path: Path):
     cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
-    try:
-        repo = _build_repo(conn)
-        _seed_org(repo, ouid=50)
-    finally:
-        conn.close()
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    repo = _build_repo(db_path)
+    _seed_org(repo, ouid=50)
 
     csv_path = tmp_path / "conflict.csv"
     _write_csv(
@@ -326,13 +324,9 @@ def test_plan_conflict_when_multiple_same_match_key(tmp_path: Path):
 
 def test_plan_error_when_org_missing(tmp_path: Path):
     cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
-    try:
-        _build_repo(conn)
-        # org intentionally not seeded
-    finally:
-        conn.close()
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    _build_repo(db_path)
+    # org intentionally not seeded
 
     csv_path = tmp_path / "org-missing.csv"
     _write_csv(

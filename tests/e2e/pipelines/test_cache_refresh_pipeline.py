@@ -4,8 +4,8 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import httpx
-from connector.infra.cache.backends.sqlite.db import getCacheDbPath, openCacheDb
-from connector.infra.cache.backends.sqlite.engine import SqliteEngine
+from connector.infra.sqlite.engine import open_sqlite
+from connector.config.app_settings import SqliteSettings, build_cache_db_config
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
@@ -55,7 +55,7 @@ def make_transport(responder):
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
     import connector.delivery.commands.cache_refresh as cache_refresh_command
-    from connector.delivery.cli.bootstrap import (
+    from connector.delivery.cli.containers import (
         build_target_runtime_with_info as _build_real_runtime_with_info,
     )
 
@@ -74,28 +74,26 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
 
 def test_cache_schema_created(tmp_path: Path):
     cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
+    db_path = Path(cache_dir) / "ankey_cache.sqlite3"
+    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
     try:
-        engine = SqliteEngine(conn)
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         ensure_cache_ready(engine, cache_specs)
-        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        tables = {row[0] for row in engine.fetchall("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"meta", "users", "organizations"}.issubset(tables)
         repo = SqliteCacheRepository(engine, cache_specs)
         schema_version = repo.get_meta(None).values.get("schema_version")
         assert schema_version == "6"
     finally:
-        conn.close()
+        engine.close()
 
     assert db_path.exists()
 
 def test_cache_upsert_user(tmp_path: Path):
     cache_dir = tmp_path / "cache"
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
+    db_path = Path(cache_dir) / "ankey_cache.sqlite3"
+    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
     try:
-        engine = SqliteEngine(conn)
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         ensure_cache_ready(engine, cache_specs)
         repo = SqliteCacheRepository(engine, cache_specs)
@@ -123,12 +121,12 @@ def test_cache_upsert_user(tmp_path: Path):
         status1 = repo.upsert("employees", user)
         user["phone"] = "+222"
         status2 = repo.upsert("employees", user)
-        fetched_row = conn.execute(
+        fetched_row = engine.fetchone(
             "SELECT * FROM users WHERE match_key = ?",
             (user["match_key"],),
-        ).fetchone()
+        )
     finally:
-        conn.close()
+        engine.close()
 
     assert status1 == UpsertResult.INSERTED
     assert status2 == UpsertResult.UPDATED
@@ -186,18 +184,17 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
     assert result.exit_code == 0
     assert report_path.exists()
 
-    db_path = Path(getCacheDbPath(cache_dir))
+    db_path = Path(cache_dir) / "ankey_cache.sqlite3"
     assert db_path.exists()
 
-    conn = openCacheDb(str(db_path))
+    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
     try:
-        engine = SqliteEngine(conn)
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         repo = SqliteCacheRepository(engine, cache_specs)
         users_count = repo.count("employees")
         org_count = repo.count("organizations")
     finally:
-        conn.close()
+        engine.close()
 
     assert users_count == 1
     assert org_count == 1
@@ -259,16 +256,15 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
     )
     assert result.exit_code == 0
 
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
+    db_path = Path(cache_dir) / "ankey_cache.sqlite3"
+    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
     try:
-        engine = SqliteEngine(conn)
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         repo = SqliteCacheRepository(engine, cache_specs)
         users_count = repo.count("employees")
         org_count = repo.count("organizations")
     finally:
-        conn.close()
+        engine.close()
 
     assert users_count == 0
     assert org_count == 0
@@ -279,12 +275,12 @@ def test_cache_does_not_store_passwords(monkeypatch, tmp_path: Path):
     result, cache_dir, report_path, log_dir = run_cache_refresh(tmp_path, run_id=run_id, monkeypatch=monkeypatch)
     assert result.exit_code == 0
 
-    db_path = Path(getCacheDbPath(cache_dir))
-    conn = openCacheDb(str(db_path))
+    db_path = Path(cache_dir) / "ankey_cache.sqlite3"
+    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
     try:
-        columns = [row[1] for row in conn.execute("PRAGMA table_info(users)")]
+        columns = [row[1] for row in engine.fetchall("PRAGMA table_info(users)")]
     finally:
-        conn.close()
+        engine.close()
 
     assert "password" not in columns
     assert secret not in report_path.read_text(encoding="utf-8")

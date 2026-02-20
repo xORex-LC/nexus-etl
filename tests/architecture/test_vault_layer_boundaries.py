@@ -3,7 +3,7 @@
 
 Цели:
 1. Зафиксировать, что domain/usecases не зависят от concrete vault infra/delivery.
-2. Оставить wiring concrete vault-адаптеров в composition root (`delivery/cli/bootstrap.py`).
+2. Оставить wiring concrete vault-адаптеров в composition root (`delivery/cli/containers.py`).
 3. Защитить resolve/planning/apply слои от прямых импортов concrete vault-реализаций.
 """
 
@@ -19,7 +19,7 @@ DOMAIN_ROOT = REPO_ROOT / "connector" / "domain"
 USECASES_ROOT = REPO_ROOT / "connector" / "usecases"
 
 ALLOWED_INFRA_SECRETS_IMPORT_PATHS = {
-    "connector/delivery/cli/bootstrap.py",
+    "connector/delivery/cli/containers.py",
 }
 FLOW_LAYER_FILES = (
     REPO_ROOT / "connector" / "domain" / "transform" / "resolver" / "resolve_core.py",
