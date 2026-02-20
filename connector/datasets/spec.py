@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
+from typing import Any
 from dataclasses import dataclass
 from typing import Iterable, Protocol
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
+from connector.domain.ports.secrets.provider import SecretStoreProtocol
 from connector.domain.transform_dsl.specs import (
     EnrichSpec,
     MappingSpec,
@@ -18,6 +20,8 @@ from connector.domain.transform_dsl.specs import (
     SinkSpec,
 )
 from connector.domain.ports.cache.roles import EnrichLookupPort, PlanningRuntimePort
+from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
+from connector.domain.transform.providers.deps import TransformProviderDeps
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.domain.transform.stages.stages import (
     EnrichStage,
@@ -50,7 +54,14 @@ class DatasetSpec(Protocol):
     dataset_name: str
 
     def build_planning_deps(self, settings, *, planning_runtime: PlanningRuntimePort) -> PlanningDependencies: ...
-    def build_enrich_deps(self, settings, *, enrich_lookup: EnrichLookupPort, secret_store=None): ...
+    def build_enrich_deps(
+        self,
+        settings: Any,
+        *,
+        enrich_lookup: EnrichLookupPort,
+        secret_store: SecretStoreProtocol | None = None,
+        dictionaries: DictionaryProviderPort | None = None,
+    ) -> TransformProviderDeps: ...
     def build_map_spec(self, settings=None) -> MappingSpec: ...
     def build_normalize_spec(self, settings=None) -> NormalizeSpec: ...
     def build_enrich_spec(self, settings=None) -> EnrichSpec: ...
