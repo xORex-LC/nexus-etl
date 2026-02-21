@@ -1,9 +1,9 @@
 # VAULT-DEC-001: Envelope-encrypted vault с hexagonal разделением crypto/storage
 
-> **Статус**: Принято
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-18
 > **Решает проблему**: [VAULT-PROBLEM-001](./VAULT-PROBLEM-001-plaintext-dev-vault-and-missing-crypto-lifecycle.md)
-> **Участники решения**: @adminkii, @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 

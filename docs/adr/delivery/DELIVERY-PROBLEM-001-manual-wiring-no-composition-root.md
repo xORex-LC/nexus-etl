@@ -1,6 +1,6 @@
 # DELIVERY-PROBLEM-001: Ручной wiring без Composition Root — разрозненное управление lifecycle
 
-> **Статус**: Открыта — решение зафиксировано в [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md)
+> **Статус**: Закрыта
 > **Дата создания**: 2026-02-21
 > **Затронутые компоненты**: `connector/delivery/cli/containers.py`, `connector/delivery/cli/runtime.py`, `connector/delivery/commands/*.py`
 

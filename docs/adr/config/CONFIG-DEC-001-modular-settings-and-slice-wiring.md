@@ -1,9 +1,9 @@
 # CONFIG-DEC-001: Модульный Settings и slice-based wiring
 
-> **Статус**: Принято ✅
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-12
 > **Решает проблему**: [CONFIG-PROBLEM-001](./CONFIG-PROBLEM-001-settings-layer-complexity.md)
-> **Участники решения**: @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 

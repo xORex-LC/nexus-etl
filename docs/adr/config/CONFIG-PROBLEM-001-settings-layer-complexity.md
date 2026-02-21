@@ -2,6 +2,7 @@
 
 > **Статус**: Закрыта (решена в [CONFIG-DEC-001](./CONFIG-DEC-001-modular-settings-and-slice-wiring.md))  
 > **Дата фиксации**: 2026-02-12
+> **Затронутые компоненты**: `connector/config/config.py`
 
 ## Суть проблемы
 
