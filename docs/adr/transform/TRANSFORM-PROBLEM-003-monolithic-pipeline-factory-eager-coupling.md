@@ -1,6 +1,6 @@
 # TRANSFORM-PROBLEM-003: Монолитная `build_pipeline_context()` — сквозная утечка зависимостей между CLI-командами
 
-> **Статус**: Открыта — решение зафиксировано в [TRANSFORM-DEC-003](./TRANSFORM-DEC-003-pipeline-container-lazy-stage-assembly.md)
+> **Статус**: Открыта — подпроблема корневой [TRANSFORM-PROBLEM-004](./TRANSFORM-PROBLEM-004-missing-modular-pipeline-architecture.md); целевое решение: [TRANSFORM-DEC-004](./TRANSFORM-DEC-004-modular-pipeline-scoped-execution-context.md) (поглотило DEC-003)
 > **Дата создания**: 2026-02-21
 > **Затронутые компоненты**: `build_pipeline_context()`, `PipelineContext`, `connector/delivery/cli/containers.py`, `connector/delivery/commands/*.py`
 
@@ -160,3 +160,4 @@ class PipelineContext:
 |------|---------|
 | 2026-02-21 | Проблема обнаружена при анализе утечки `resolver_settings` в `normalize.py` и дублирования в `match.py` |
 | 2026-02-21 | Решение зафиксировано в TRANSFORM-DEC-003 (PipelineContainer) |
+| 2026-02-22 | Идентифицирована как подпроблема корневой TRANSFORM-PROBLEM-004; целевое решение DEC-003 поглощено DEC-004 |
