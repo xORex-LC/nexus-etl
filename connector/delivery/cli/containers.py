@@ -1,6 +1,6 @@
 """
 Назначение:
-    Composition root для CLI: DI-контейнер (SqliteContainer) +
+    Composition root для CLI: DI-контейнеры (SqliteContainer, VaultContainer) +
     utility-функции для сборки pipeline-компонентов.
 
     Заменяет bootstrap.py — единственный модуль outside infra/,
@@ -8,9 +8,11 @@
 
 Граница ответственности:
     - SqliteContainer управляет lifecycle SqliteEngine (Singleton + Resource teardown).
+    - VaultContainer предоставляет vault-сервисы (cipher, read/write/retention)
+      поверх vault_engine из SqliteContainer.
     - Utility-функции (build_cache, open_cache, ensure_vault_startup_ready…)
-      остаются здесь как composition-root wiring: они создают движки на лету
-      и пробрасывают их в инфраструктурные репозитории.
+      остаются как transitional wiring — будут удалены по мере миграции
+      команд на AppContainer (DELIVERY-DEC-006/007).
     - Никакой доменной логики — только сборка графа зависимостей.
 """
 from __future__ import annotations
@@ -204,13 +206,69 @@ class SqliteContainer(containers.DeclarativeContainer):
     )
 
 
+class VaultContainer(containers.DeclarativeContainer):
+    """
+    Назначение:
+        DI-контейнер для vault-сервисов: cipher, key provider, locator,
+        repository и per-invocation сервисы (read/write/retention).
+
+    Граница ответственности:
+        - vault_engine приходит извне (от SqliteContainer через AppContainer).
+        - Stateless объекты (cipher, key_provider, locator, repository) — Singleton.
+        - Сервисы с per-invocation state — Factory (новый экземпляр при каждом вызове).
+        - read_service принимает default_run_id при вызове: vault.read_service(default_run_id=run_id).
+
+    Контракт:
+        - vault_engine должен быть проинициализирован ДО использования сервисов
+          (через SqliteContainer.vault_ready.init()).
+        - Сервисы не владеют engine — его lifecycle управляется SqliteContainer.
+    """
+
+    vault_engine = providers.Dependency(instance_of=SqliteEngine)
+
+    cipher = providers.Singleton(FernetEnvelopeCipher)
+    key_provider = providers.Singleton(EnvVaultKeyProvider)
+    locator = providers.Singleton(SecretLocatorService)
+    repository = providers.Singleton(
+        SqliteVaultRepository,
+        engine=vault_engine,
+    )
+
+    read_service = providers.Factory(
+        SecretVaultReadService,
+        repository=repository,
+        cipher=cipher,
+        key_provider=key_provider,
+        locator=locator,
+    )
+
+    write_service = providers.Factory(
+        SecretVaultWriteService,
+        repository=repository,
+        cipher=cipher,
+        key_provider=key_provider,
+        locator=locator,
+    )
+
+    retention_service = providers.Factory(
+        VaultRetentionService,
+        repository=repository,
+        locator=locator,
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Vault engine helper (used by wiring functions below)
+# Vault engine helper (used by legacy wiring functions below)
+# Deprecated: будет удалено в DELIVERY-DEC-007 (Шаг 6)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def _open_vault_engine(paths_settings: PathsSettings) -> SqliteEngine:
-    """Открыть SqliteEngine для vault DB с политикой из SqliteSettings."""
+    """Открыть SqliteEngine для vault DB с политикой из SqliteSettings.
+
+    Deprecated: используется legacy wiring (open_secret_store, build_secret_provider,
+    build_secret_retention_hook). Будет удалено в DELIVERY-DEC-007 (Шаг 6).
+    """
     settings = SqliteSettings()
     config = build_vault_db_config(settings)
     path = _vault_db_path(paths_settings.cache_dir, settings)
@@ -259,30 +317,48 @@ def build_cache(
     Назначение:
         Сконфигурировать cache-хранилище (sqlite) и репозиторий.
 
-    Открывает cache_engine и identity_engine, инициализирует схемы,
-    создаёт шлюз с owns_connection=True.
+    Lifecycle (DELIVERY-DEC-002):
+        Engines создаются и управляются SqliteContainer (Singleton + Resource teardown).
+        gateway.close() вызывает container.shutdown_resources() для корректного
+        закрытия engines. Vault engine НЕ инициализируется.
+
+    Transitional:
+        Будет заменено CacheContainer в DELIVERY-DEC-004 (Шаг 3).
     """
     sqlite_settings = SqliteSettings()
     cache_dsl_bundle = load_cache_dsl_runtime()
 
-    cache_engine = open_sqlite(
-        build_cache_db_config(sqlite_settings),
-        _cache_db_path(paths_settings.cache_dir),
-    )
-    identity_engine = open_sqlite(
-        build_identity_db_config(sqlite_settings),
-        _identity_db_path(paths_settings.cache_dir, sqlite_settings),
-    )
+    container = SqliteContainer()
+    container.settings.override(sqlite_settings)
+    container.cache_dir.override(paths_settings.cache_dir)
+    container.cache_specs.override(list(cache_dsl_bundle.cache_specs))
 
-    ensure_identity_schema(identity_engine)
+    container.cache_ready.init()
+    container.identity_ready.init()
+
+    cache_engine = container.cache_engine()
+    identity_engine = container.identity_engine()
 
     gateway = SqliteCacheGateway.from_engine(
         cache_engine=cache_engine,
         identity_engine=identity_engine,
         cache_specs=cache_dsl_bundle.cache_specs,
-        owns_connection=True,
+        owns_connection=False,
     )
     roles = build_sqlite_cache_role_ports(gateway)
+
+    _original_close = gateway.close
+    _shutdown_done = False
+
+    def _close_with_container_shutdown() -> None:
+        nonlocal _shutdown_done
+        _original_close()
+        if not _shutdown_done:
+            container.shutdown_resources()
+            _shutdown_done = True
+
+    gateway.close = _close_with_container_shutdown  # type: ignore[method-assign]
+
     return gateway, roles, cache_dsl_bundle
 
 
@@ -303,6 +379,8 @@ def open_cache(
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Vault startup guard
+# Deprecated: логика поглощена vault_startup_resource() в SqliteContainer.
+# Будет удалено в DELIVERY-DEC-007 (Шаг 6) после миграции handlers.
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -310,6 +388,10 @@ def ensure_vault_startup_ready(*, paths_settings: PathsSettings) -> None:
     """
     Назначение:
         Выполнить startup fail-fast проверку vault перед запуском use-case в vault-mode.
+
+    Deprecated:
+        Логика поглощена vault_startup_resource() (VaultStartupGuard включён).
+        Будет удалено после миграции handlers на AppContainer (DELIVERY-DEC-007).
 
     Контракт:
         - открывает отдельное vault DB соединение;
@@ -367,6 +449,9 @@ def open_secret_store(
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Vault read/retention runtimes
+# Deprecated: заменяются VaultContainer (Factory providers для read/write/retention).
+# Engine lifecycle управляется SqliteContainer.vault_engine Singleton.
+# Будут удалены в DELIVERY-DEC-007 (Шаг 6) после миграции handlers.
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -374,6 +459,11 @@ class _VaultReadProviderRuntime(SecretProviderProtocol):
     """
     Назначение:
         Runtime-обёртка vault read provider c управлением lifecycle SQLite connection.
+
+    Deprecated:
+        Заменяется VaultContainer.read_service (Factory). Engine lifecycle
+        управляется SqliteContainer.vault_engine Singleton.
+        Будет удалено в DELIVERY-DEC-007 (Шаг 6).
 
     Граница:
         Наружу публикуется только `SecretProviderProtocol` + `close()` для composition-root.
@@ -418,6 +508,10 @@ class _VaultRetentionRuntime(SecretApplyRetentionHookProtocol):
     """
     Назначение:
         Runtime-обёртка retention/maintenance hooks с lifecycle SQLite connection.
+
+    Deprecated:
+        Заменяется VaultContainer.retention_service (Factory).
+        Будет удалено в DELIVERY-DEC-007 (Шаг 6).
     """
 
     def __init__(self, *, paths_settings: PathsSettings) -> None:
@@ -581,6 +675,7 @@ def build_pipeline_context(
 
 __all__ = [
     "SqliteContainer",
+    "VaultContainer",
     "build_diagnostics_catalog",
     "build_dataset_spec",
     "build_cache",

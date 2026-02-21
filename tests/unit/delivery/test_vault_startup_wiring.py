@@ -12,9 +12,9 @@ from connector.config.app_settings import (
     MatchingRuntimeSettings,
     ObservabilitySettings,
     PathsSettings,
-    PendingSettings,
     RefreshSettings,
 )
+from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands import enrich as enrich_command
 from connector.delivery.commands import import_apply as import_apply_command
@@ -77,7 +77,7 @@ def _app_settings(tmp_path) -> AppSettings:
             resolve_batch_size=100,
             resolve_flush_interval_ms=100,
         ),
-        pending=PendingSettings(
+        resolver=ResolverSettings(
             pending_ttl_seconds=120,
             pending_max_attempts=5,
             pending_sweep_interval_seconds=60,

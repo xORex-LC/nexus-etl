@@ -1,10 +1,10 @@
 # DELIVERY-DEC-002: Шаг 1 — SqliteContainer как реальный владелец SQLite engines
 
-> **Статус**: Принято — реализация запланирована
+> **Статус**: ✅ Реализовано
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [DELIVERY-PROBLEM-001](./DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md)
 > **Часть плана**: [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) — Шаг 1 из 6
-> **Участники решения**: @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 
@@ -64,11 +64,15 @@ def build_cache(paths_settings: PathsSettings):
     return gateway, cache_roles, cache_specs
 ```
 
-### Что меняется внутри SqliteContainer
+### Нюансы реализации
 
-Текущий `vault_ready` Resource уже содержит `VaultStartupGuard`? — Нет. На Шаге 1 `vault_ready` остаётся как есть (только `ensure_vault_schema()`). `VaultStartupGuard` интегрируется в Шаге 2 (DELIVERY-DEC-003).
+**`vault_startup_resource()` уже включает VaultStartupGuard**: Вопреки ожиданию, `vault_ready` Resource уже содержит полную проверку (`ensure_vault_schema` + `VaultStartupGuard.ensure_ready()`). Это было реализовано ранее. На Шаге 1 vault_ready НЕ вызывается — только `cache_ready` и `identity_ready`.
 
-На Шаге 1 `build_cache()` инициализирует только `cache_ready` и `identity_ready` — vault engine **не открывается**.
+**Gateway с `owns_connection=False`**: SqliteContainer управляет engine lifecycle через Resource teardown. Gateway создаётся с `owns_connection=False` — при `gateway.close()` engines не закрываются (это делает контейнер).
+
+**Transitional closure для gateway.close()**: `gateway.close()` оборачивается closure, которая после оригинального `close()` вызывает `container.shutdown_resources()`. Флаг `_shutdown_done` предотвращает двойной shutdown. Эта обёртка — transitional: будет убрана в Шаге 3 (CacheContainer).
+
+**Двойной вызов `ensure_cache_ready`**: `cache_startup_resource` вызывает `ensure_cache_ready(engine, specs)`, а `SqliteCacheGateway.from_engine()` вызывает его повторно. Операция идемпотентна (CREATE TABLE IF NOT EXISTS), поэтому двойной вызов безопасен.
 
 ### Граф провайдеров SqliteContainer (без изменений)
 
@@ -136,8 +140,7 @@ def build_cache(paths_settings: PathsSettings):
 - `build_cache()` остаётся как обёртка — до Шага 3 (DELIVERY-DEC-004), когда `CacheContainer` делает её ненужной
 
 **Риски**:
-- ⚠️ `SqliteContainer` в текущем виде может требовать доработки `Dependency` providers для правильного получения `settings` и `cache_dir`
-  - **Митигация**: Прочитать текущую реализацию `SqliteContainer` перед реализацией; адаптировать override-вызовы
+- ~~⚠️ `SqliteContainer` в текущем виде может требовать доработки `Dependency` providers~~ — **Resolved**: SqliteContainer уже имел корректные Dependency providers; `override()` работает без изменений
 
 ---
 
@@ -155,3 +158,4 @@ def build_cache(paths_settings: PathsSettings):
 | Дата | Событие |
 |------|---------|
 | 2026-02-21 | Решение предложено и принято как Шаг 1 DI-миграции |
+| 2026-02-21 | Реализовано: build_cache() делегирует SqliteContainer; gateway.close() → container.shutdown_resources(); 391 unit test pass |
