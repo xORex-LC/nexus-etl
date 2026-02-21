@@ -24,6 +24,7 @@ from connector.infra.artifacts.report_writer import createEmptyReport, finalizeR
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve_source_location
+from connector.delivery.cli.containers import AppContainer, _init_container_for_requirements
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.result import CommandResult as CliCommandResult
@@ -103,11 +104,20 @@ def run_with_report(
     sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
 
     exit_result: int | DomainCommandResult | CliCommandResult | None = None
+    container: AppContainer | None = None
 
     try:
         logEvent(logger, logging.INFO, run_id, "core", "Command started")
 
         _validate_requirements(ctx, opts, requirements)
+
+        container = AppContainer()
+        container.app_settings.override(app_settings)
+        api_transport = _get_opt(opts, ("api_transport",))
+        if api_transport is not None:
+            container.target.transport.override(api_transport)
+        _init_container_for_requirements(container, requirements)
+        ctx = replace(ctx, container=container)
 
         exit_result = _call_handler(handler, ctx, opts, report)
 
@@ -166,6 +176,8 @@ def run_with_report(
         typer.echo("ERROR: command failed (see logs/report)", err=True)
         exit_result = _exit_code_from_result(_result_with(SystemErrorCode.INTERNAL_ERROR))
     finally:
+        if container is not None:
+            container.shutdown_resources()
         duration_ms = getDurationMs(start_monotonic, time.monotonic())
         finalizeReport(
             report=report,
@@ -221,11 +233,20 @@ def run_without_report(
     sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
 
     exit_result: int | DomainCommandResult | CliCommandResult | None = None
+    container: AppContainer | None = None
 
     try:
         logEvent(logger, logging.INFO, run_id, "core", "Command started")
 
         _validate_requirements(ctx, opts, requirements)
+
+        container = AppContainer()
+        container.app_settings.override(app_settings)
+        api_transport = _get_opt(opts, ("api_transport",))
+        if api_transport is not None:
+            container.target.transport.override(api_transport)
+        _init_container_for_requirements(container, requirements)
+        ctx = replace(ctx, container=container)
 
         exit_result = _call_handler(handler, ctx, opts, None)
 
@@ -264,6 +285,8 @@ def run_without_report(
         typer.echo("ERROR: command failed (see logs)", err=True)
         exit_result = _exit_code_from_result(_result_with(SystemErrorCode.INTERNAL_ERROR))
     finally:
+        if container is not None:
+            container.shutdown_resources()
         _ = getDurationMs(start_monotonic, time.monotonic())
         logEvent(logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}")
 

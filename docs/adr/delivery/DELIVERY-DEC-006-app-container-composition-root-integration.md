@@ -1,6 +1,6 @@
 # DELIVERY-DEC-006: Шаг 5 — AppContainer как единый Composition Root
 
-> **Статус**: Принято — реализация запланирована
+> **Статус**: Реализовано
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [DELIVERY-PROBLEM-001](./DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md)
 > **Часть плана**: [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) — Шаг 5 из 6
@@ -116,7 +116,7 @@ def _init_container_for_requirements(container: AppContainer, req: Requirements)
         container.target.runtime.init()
 ```
 
-`requires_vault_init` — **статический флаг**: vault-команды (enrich, import-plan, import-apply) устанавливают `requires_vault_init=True` при регистрации. `_init_container_for_requirements()` **всегда** инициализирует vault engine для таких команд. Handler решает, использовать vault-сервисы или `NullSecretProvider`, но engine уже открыт.
+`requires_vault_init` — **зарезервирован, но не используется статически**. Vault-команды (enrich, import-plan, import-apply) **не** устанавливают `requires_vault_init=True` при регистрации, потому что vault init — **условная** операция: зависит от `vault_rollout_policy` и `vault_mode`. Handler сам вызывает `ctx.container.sqlite.vault_ready.init()` внутри `if rollout_decision.vault_enabled:` блока, обрабатывая `_STARTUP_ERRORS` локально.
 
 ### Профили команд
 
@@ -128,11 +128,13 @@ def _init_container_for_requirements(container: AppContainer, req: Requirements)
 | `resolve` | ✅ | | |
 | `cache-clear` | ✅ | | |
 | `cache-status` | ✅ | | |
-| `enrich` | ✅ | ✅ | |
-| `import-plan` | ✅ | ✅ | |
-| `import-apply` | ✅ | ✅ | ✅ |
+| `enrich` | ✅ | | |
+| `import-plan` | ✅ | | |
+| `import-apply` | ✅ | | ✅ |
 | `cache-refresh` | ✅ | | ✅ |
 | `check-api` | | | ✅ |
+
+> **Примечание**: `enrich`, `import-plan`, `import-apply` инициализируют vault **условно** в handler через `ctx.container.sqlite.vault_ready.init()` — не через Requirements.
 
 ### Порядок миграции команд (от простого к сложному)
 
@@ -155,13 +157,14 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     # ... build_pipeline_context, usecase.run() — без изменений ...
     # Никакого try/finally, никакого gateway.close()
 
-# import-apply.py — после миграции (requires_cache=True, requires_vault_init=True, requires_api=True)
+# import-apply.py — после миграции (requires_cache=True, requires_api=True)
 def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     cache_roles = ctx.container.cache.roles()
     target_result = ctx.container.target.runtime()    # TargetRuntimeBuildResult
     runtime = target_result.runtime
-    # vault_ready.init() уже выполнен в _init_container_for_requirements()
+    # vault init — условный, зависит от rollout policy
     if rollout_decision.vault_enabled:
+        ctx.container.sqlite.vault_ready.init()       # VaultStartupGuard внутри
         read_svc      = ctx.container.vault.read_service(default_run_id=run_id)
         retention_svc = ctx.container.vault.retention_service()
     else:
@@ -269,3 +272,4 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
 | Дата | Событие |
 |------|---------|
 | 2026-02-21 | Решение предложено и принято как Шаг 5 DI-миграции |
+| 2026-02-21 | Реализовано: AppContainer + run_with_report() + миграция всех 11 command handlers. Отклонение от плана: vault init условный в handlers (не через requires_vault_init=True), т.к. зависит от vault rollout policy |
