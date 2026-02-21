@@ -1,6 +1,6 @@
 # DELIVERY-DEC-005: Шаг 4 — TargetContainer: lifecycle DefaultTargetRuntime
 
-> **Статус**: Принято — реализация запланирована
+> **Статус**: ✅ Реализовано
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [DELIVERY-PROBLEM-001](./DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md)
 > **Часть плана**: [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) — Шаг 4 из 6
@@ -122,13 +122,13 @@ cache_roles = ctx.container.cache.roles()
 
 ### Ключевые файлы
 
-| Файл | Изменение |
-|------|-----------|
-| `connector/delivery/cli/containers.py` | Добавить `TargetContainer`, `target_runtime_resource`; `build_target_runtime_with_info()` помечается deprecated |
-| `connector/infra/target/core/factory.py` | `build_target_runtime_with_info()` используется внутри `target_runtime_resource`; без изменений |
-| `connector/delivery/commands/import_apply.py` | Убрать `try/finally runtime.close()`; получать `runtime` из контейнера |
-| `connector/delivery/commands/cache_refresh.py` | Аналогично |
-| `connector/delivery/commands/check_api.py` | Аналогично |
+| Файл | Изменение | Статус |
+|------|-----------|--------|
+| `connector/delivery/cli/containers.py` | `TargetContainer`, `target_runtime_resource`; re-export `build_target_runtime`/`build_target_runtime_with_info` помечены deprecated | ✅ |
+| `connector/infra/target/core/factory.py` | Используется внутри `target_runtime_resource`; без изменений | ✅ подтверждено |
+| `connector/delivery/commands/import_apply.py` | Убрать `try/finally runtime.close()` | Шаг 5 |
+| `connector/delivery/commands/cache_refresh.py` | Аналогично | Шаг 5 |
+| `connector/delivery/commands/check_api.py` | Аналогично | Шаг 5 |
 
 ### Инварианты
 
@@ -136,6 +136,12 @@ cache_roles = ctx.container.cache.roles()
 2. **`TargetKernel` не выносится**: создаётся внутри provider chain; `factory.py` не меняется
 3. **`transport=None` в production**: реальный HTTP; `transport=MockTransport(...)` в тестах
 4. **`target.runtime.init()` только при `requires_api=True`**: `check-api` не открывает SQLite; `import-apply` инициализирует и cache, и vault, и target
+
+### Нюансы реализации
+
+- **`transport` как `Dependency()` без `instance_of`**: transport может быть `None` (production HTTP) или mock-объект (тесты) — строгая типизация не применима.
+- **Re-export `build_target_runtime`/`build_target_runtime_with_info` оставлены**: используются command handlers напрямую; удаление отложено до Шага 6 (DELIVERY-DEC-007).
+- **`TargetRuntimeBuildResult` импортирован**: resource возвращает полный `TargetRuntimeBuildResult` (runtime + target_type + requested_mode + effective_mode), чтобы handlers имели доступ к метаданным сборки.
 
 ---
 
@@ -152,10 +158,10 @@ cache_roles = ctx.container.cache.roles()
 ## ⚠️ Риски и ограничения
 
 **Риски**:
-- ⚠️ `build_target_runtime()` может иметь сложную сигнатуру несовместимую с `providers.Resource` параметрами
-  - **Митигация**: Написать `target_runtime_resource` как обёртку с явным `build_target_runtime(...)` внутри
-- ⚠️ `target_info` (возвращается `build_target_runtime_with_info()`) используется в некоторых командах — нужно сохранить доступ
-  - **Митигация**: `target_info` можно получить из `runtime` после инициализации; или добавить отдельный `info` Singleton
+- ~~⚠️ `build_target_runtime()` может иметь сложную сигнатуру несовместимую с `providers.Resource` параметрами~~
+  - ✅ **Подтверждено**: `target_runtime_resource` принимает `api_settings` и `transport`, передаёт в `build_target_runtime_with_info()` — сигнатура совместима
+- ~~⚠️ `target_info` (возвращается `build_target_runtime_with_info()`) используется в некоторых командах — нужно сохранить доступ~~
+  - ✅ **Решено**: Resource возвращает целый `TargetRuntimeBuildResult` — handlers получают `result.runtime`, `result.target_type` и т.д. через один вызов `container.target.runtime()`
 
 ---
 
@@ -186,3 +192,4 @@ cache_roles = ctx.container.cache.roles()
 |------|---------|
 | 2026-02-21 | Решение предложено и принято как Шаг 4 DI-миграции |
 | 2026-02-21 | Обновлено: убран TargetKernel Singleton; TargetContainer оборачивает build_target_runtime_with_info() целиком как один Resource |
+| 2026-02-21 | Реализовано: TargetContainer + target_runtime_resource; re-exports deprecated |
