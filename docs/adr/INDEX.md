@@ -85,6 +85,21 @@ docs/adr/
 | [TRANSFORM-DEC-001](./transform/TRANSFORM-DEC-001-columnar-dictionary-runtime-for-enricher.md) | Decision | Справочная подсистема enrich (Polars v1, migration-ready для v2: Polars+DuckDB+Parquet) | Предложено | 2026-02-19 |
 | [TRANSFORM-PROBLEM-002](./transform/TRANSFORM-PROBLEM-002-transform-provider-deps-coupling.md) | Problem | TransformProviderDeps coupling: обязательный cache_gateway нарушает pay-for-what-you-use | Открыта (митигация применена, цель: TRANSFORM-DEC-002) | 2026-02-20 |
 | [TRANSFORM-DEC-002](./transform/TRANSFORM-DEC-002-transform-context-capability-registry.md) | Decision | TransformContext — typed capability registry как целевая архитектура для transform-зависимостей | Предложено (реализация отложена до trigger-критериев) | 2026-02-20 |
+| [TRANSFORM-PROBLEM-003](./transform/TRANSFORM-PROBLEM-003-monolithic-pipeline-factory-eager-coupling.md) | Problem | Монолитная `build_pipeline_context()` — сквозная утечка зависимостей между CLI-командами | Открыта (решение: TRANSFORM-DEC-003) | 2026-02-21 |
+| [TRANSFORM-DEC-003](./transform/TRANSFORM-DEC-003-pipeline-container-lazy-stage-assembly.md) | Decision | PipelineContainer — lazy per-stage сборка зависимостей через DI | Принято (реализация запланирована) | 2026-02-21 |
+
+### Delivery
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [DELIVERY-PROBLEM-001](./delivery/DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md) | Problem | Ручной wiring без Composition Root — разрозненное управление lifecycle | Открыта (решение: DELIVERY-DEC-001…007) | 2026-02-21 |
+| [DELIVERY-DEC-001](./delivery/DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) | Decision | Иерархия DI-контейнеров и стратегия поэтапной миграции CLI | Принято (реализация по шагам) | 2026-02-21 |
+| [DELIVERY-DEC-002](./delivery/DELIVERY-DEC-002-sqlitecontainer-as-engine-lifecycle-owner.md) | Decision | Шаг 1: SqliteContainer как реальный владелец SQLite engines | Принято (реализация запланирована) | 2026-02-21 |
+| [DELIVERY-DEC-003](./delivery/DELIVERY-DEC-003-vault-container-single-vault-engine.md) | Decision | Шаг 2: VaultContainer и устранение 3× открытия vault engine | Принято (реализация запланирована) | 2026-02-21 |
+| [DELIVERY-DEC-004](./delivery/DELIVERY-DEC-004-cache-container-gateway-roles.md) | Decision | Шаг 3: CacheContainer — gateway и roles под управлением контейнера | Принято (реализация запланирована) | 2026-02-21 |
+| [DELIVERY-DEC-005](./delivery/DELIVERY-DEC-005-target-container-runtime-lifecycle.md) | Decision | Шаг 4: TargetContainer — lifecycle DefaultTargetRuntime | Принято (реализация запланирована) | 2026-02-21 |
+| [DELIVERY-DEC-006](./delivery/DELIVERY-DEC-006-app-container-composition-root-integration.md) | Decision | Шаг 5: AppContainer как единый Composition Root | Принято (реализация запланирована) | 2026-02-21 |
+| [DELIVERY-DEC-007](./delivery/DELIVERY-DEC-007-remove-manual-wiring-utilities.md) | Decision | Шаг 6: удаление utility wiring функций | Принято (trigger: все 11 handlers мигрированы) | 2026-02-21 |
 
 ### Target
 
