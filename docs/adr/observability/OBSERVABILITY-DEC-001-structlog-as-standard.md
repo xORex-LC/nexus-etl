@@ -3,6 +3,7 @@
 > **Статус**: Принято (миграция постепенная)
 > **Дата принятия**: 2026-02-19
 > **Решает проблему**: [OBSERVABILITY-PROBLEM-001](./OBSERVABILITY-PROBLEM-001-inconsistent-logging.md)
+> **Участники решения**: @xorex-LC
 
 ---
 

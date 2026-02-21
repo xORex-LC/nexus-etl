@@ -1,10 +1,10 @@
 # DELIVERY-DEC-004: Шаг 3 — CacheContainer: gateway и roles под управлением контейнера
 
-> **Статус**: ✅ Реализовано
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [DELIVERY-PROBLEM-001](./DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md)
 > **Часть плана**: [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) — Шаг 3 из 6
-> **Участники решения**: @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 

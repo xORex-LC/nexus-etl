@@ -1,10 +1,10 @@
 # DELIVERY-DEC-007: Шаг 6 — Удаление utility wiring функций
 
-> **Статус**: Реализовано (частично: PipelineContext + build_pipeline_context остаются до TRANSFORM-DEC-003)
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [DELIVERY-PROBLEM-001](./DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md)
 > **Часть плана**: [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) — Шаг 6 из 6
-> **Участники решения**: @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 

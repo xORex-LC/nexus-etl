@@ -1,6 +1,6 @@
 # DELIVERY-DEC-003: Шаг 2 — VaultContainer и устранение 3× открытия vault engine
 
-> **Статус**: ✅ Реализовано (VaultContainer создан; legacy wiring помечен deprecated)
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [DELIVERY-PROBLEM-001](./DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md)
 > **Часть плана**: [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) — Шаг 2 из 6

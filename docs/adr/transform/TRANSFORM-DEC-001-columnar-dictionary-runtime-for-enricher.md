@@ -1,9 +1,9 @@
 # TRANSFORM-DEC-001: Справочная подсистема enrich (Polars v1, migration-ready для v2: Polars+DuckDB+Parquet)
 
-> **Статус**: Предложено
+> **Статус**: Предложено / Отложена
 > **Дата принятия**: 2026-02-19
 > **Решает проблему**: [TRANSFORM-PROBLEM-001](./TRANSFORM-PROBLEM-001-enrich-dictionary-runtime-gap.md)
-> **Участники решения**: @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 

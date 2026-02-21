@@ -1,10 +1,10 @@
 # DELIVERY-DEC-006: Шаг 5 — AppContainer как единый Composition Root
 
-> **Статус**: Реализовано
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [DELIVERY-PROBLEM-001](./DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md)
 > **Часть плана**: [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) — Шаг 5 из 6
-> **Участники решения**: @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 
