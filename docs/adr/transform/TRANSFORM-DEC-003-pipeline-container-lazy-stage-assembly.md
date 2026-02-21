@@ -3,7 +3,7 @@
 > **Статус**: Принято — реализация запланирована
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [TRANSFORM-PROBLEM-003](./TRANSFORM-PROBLEM-003-monolithic-pipeline-factory-eager-coupling.md)
-> **Участники решения**: @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 

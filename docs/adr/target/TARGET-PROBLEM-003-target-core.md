@@ -1,6 +1,6 @@
 # TARGET-PROBLEM-003: “Коммодити”-механики Target слоя
 
-> **Статус**: Закрыта решением [TARGET-DEC-003](./TARGET-DEC-003-target-core.md)
+> **Статус**: Решена в [TARGET-DEC-003](./TARGET-DEC-003-target-core.md)
 > **Дата создания**: 2026-02-16  
 > **Затронутые компоненты**: `TargetRuntime`, `TargetSpec`, Target drivers (REST/DB/File/ES), retry/backoff, safe logging/redaction, spec validation, provider registration
 

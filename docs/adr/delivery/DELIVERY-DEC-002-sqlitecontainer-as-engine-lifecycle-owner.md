@@ -1,6 +1,6 @@
 # DELIVERY-DEC-002: Шаг 1 — SqliteContainer как реальный владелец SQLite engines
 
-> **Статус**: ✅ Реализовано
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [DELIVERY-PROBLEM-001](./DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md)
 > **Часть плана**: [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) — Шаг 1 из 6

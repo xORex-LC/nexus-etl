@@ -1,6 +1,6 @@
 # TARGET-DEC-003: TargetCore как plugin-core (core механики + provider-правила)
 
-> **Статус**: Принято / реализовано (каноничное решение для target-core)
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-16
 > **Решает проблему**: [TARGET-PROBLEM-003](./TARGET-PROBLEM-003-target-core.md)
 > **Частично supersede**: [TARGET-DEC-001](./TARGET-DEC-001-target-runtime-target-spec-slice.md)
