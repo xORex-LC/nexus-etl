@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import result_with
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -24,7 +24,7 @@ def _runtime_context(build_result) -> dict[str, str]:
     }
 
 
-def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     app_settings = ctx.app_settings
     if app_settings is None:
         raise ValueError("App settings are not initialized")

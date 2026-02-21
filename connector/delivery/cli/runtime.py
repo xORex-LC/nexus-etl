@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import sqlite3
 import sys
 import time
 from dataclasses import replace
@@ -20,12 +21,13 @@ from connector.domain.dsl.diagnostics import translate_dsl_load_error
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.reporting.collector import ReportCollector
+from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve_source_location
 from connector.delivery.cli.containers import AppContainer, _init_container_for_requirements
-from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.context import BoundCommandContext, CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.result import CommandResult as CliCommandResult
 from connector.domain.models import DiagnosticStage
@@ -47,7 +49,7 @@ class RuntimeErrorWithCode(RuntimeError):
 
 def run_with_report(
     *,
-    ctx: CommandContext,
+    ctx: UnboundCommandContext,
     command_name: str,
     opts: Any,
     handler: ReportHandler,
@@ -116,12 +118,18 @@ def run_with_report(
         api_transport = _get_opt(opts, ("api_transport",))
         if api_transport is not None:
             container.target.transport.override(api_transport)
-        _init_container_for_requirements(container, requirements)
-        ctx = replace(ctx, container=container)
-
-        exit_result = _call_handler(handler, ctx, opts, report)
-
-        _apply_cli_result_to_report(report, exit_result)
+        init_result = _initialize_container_resources(
+            container=container,
+            requirements=requirements,
+            logger=logger,
+            run_id=run_id,
+        )
+        if init_result is not None:
+            exit_result = init_result
+        else:
+            bound_ctx = _bind_context_with_container(ctx, container=container)
+            exit_result = _call_handler(handler, bound_ctx, opts, report)
+            _apply_cli_result_to_report(report, exit_result)
 
     except SettingsLoadError as exc:
         stage = _stage_for_command(command_name)
@@ -176,21 +184,31 @@ def run_with_report(
         typer.echo("ERROR: command failed (see logs/report)", err=True)
         exit_result = _exit_code_from_result(_result_with(SystemErrorCode.INTERNAL_ERROR))
     finally:
-        if container is not None:
-            container.shutdown_resources()
-        duration_ms = getDurationMs(start_monotonic, time.monotonic())
-        finalizeReport(
-            report=report,
-            durationMs=duration_ms,
-            logFile=log_file_path,
-            cacheDir=paths.cache_dir,
-            reportDir=paths.report_dir,
-        )
-        report_path = writeReportJson(report, paths.report_dir, f"report_{command_name}_{run_id}")
-        logEvent(logger, logging.INFO, run_id, "report", f"Report written: {report_path}")
+        try:
+            shutdown_result = _shutdown_container_resources(
+                container=container,
+                logger=logger,
+                run_id=run_id,
+                emit_user_error=exit_result is None,
+            )
+            if exit_result is None and shutdown_result is not None:
+                exit_result = shutdown_result
 
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
+            finalize_result = _finalize_report_artifacts(
+                report=report,
+                start_monotonic=start_monotonic,
+                paths=paths,
+                log_file_path=log_file_path,
+                command_name=command_name,
+                run_id=run_id,
+                logger=logger,
+                emit_user_error=exit_result is None,
+            )
+            if exit_result is None and finalize_result is not None:
+                exit_result = finalize_result
+        finally:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
 
         if exit_result is not None:
             raise typer.Exit(code=_exit_code_from_result(exit_result))
@@ -198,7 +216,7 @@ def run_with_report(
 
 def run_without_report(
     *,
-    ctx: CommandContext,
+    ctx: UnboundCommandContext,
     command_name: str,
     opts: Any,
     handler: ReportHandler,
@@ -245,10 +263,17 @@ def run_without_report(
         api_transport = _get_opt(opts, ("api_transport",))
         if api_transport is not None:
             container.target.transport.override(api_transport)
-        _init_container_for_requirements(container, requirements)
-        ctx = replace(ctx, container=container)
-
-        exit_result = _call_handler(handler, ctx, opts, None)
+        init_result = _initialize_container_resources(
+            container=container,
+            requirements=requirements,
+            logger=logger,
+            run_id=run_id,
+        )
+        if init_result is not None:
+            exit_result = init_result
+        else:
+            bound_ctx = _bind_context_with_container(ctx, container=container)
+            exit_result = _call_handler(handler, bound_ctx, opts, None)
 
     except SettingsLoadError as exc:
         stage = _stage_for_command(command_name)
@@ -285,19 +310,113 @@ def run_without_report(
         typer.echo("ERROR: command failed (see logs)", err=True)
         exit_result = _exit_code_from_result(_result_with(SystemErrorCode.INTERNAL_ERROR))
     finally:
-        if container is not None:
-            container.shutdown_resources()
-        _ = getDurationMs(start_monotonic, time.monotonic())
-        logEvent(logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}")
+        try:
+            shutdown_result = _shutdown_container_resources(
+                container=container,
+                logger=logger,
+                run_id=run_id,
+                emit_user_error=exit_result is None,
+            )
+            if exit_result is None and shutdown_result is not None:
+                exit_result = shutdown_result
 
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
+            _ = getDurationMs(start_monotonic, time.monotonic())
+            logEvent(logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}")
+        finally:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
 
         if exit_result is not None:
             raise typer.Exit(code=_exit_code_from_result(exit_result))
 
 
-def _validate_requirements(ctx: CommandContext, opts: Any, requirements: Requirements) -> None:
+def _bind_context_with_container(ctx: UnboundCommandContext, *, container: AppContainer) -> BoundCommandContext:
+    return CommandContext(
+        logger=ctx.logger,
+        run_id=ctx.run_id,
+        catalog=ctx.catalog,
+        strict=ctx.strict,
+        app_settings=ctx.app_settings,
+        container=container,
+        paths=ctx.paths,
+        extra=ctx.extra,
+    )
+
+
+def _initialize_container_resources(
+    *,
+    container: AppContainer,
+    requirements: Requirements,
+    logger: logging.Logger,
+    run_id: str,
+) -> int | DomainCommandResult | CliCommandResult | None:
+    try:
+        _init_container_for_requirements(container, requirements)
+    except sqlite3.Error as exc:
+        logEvent(logger, logging.ERROR, run_id, "cache", f"Container cache init failed: {exc}")
+        typer.echo("ERROR: failed to initialize cache resources (see logs/report)", err=True)
+        return _result_with(SystemErrorCode.CACHE_ERROR)
+    except VaultDomainError as exc:
+        logEvent(logger, logging.ERROR, run_id, "vault", f"{exc.code}: {exc}")
+        typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
+        return _result_with(SystemErrorCode.INTERNAL_ERROR)
+    except Exception as exc:
+        logEvent(logger, logging.ERROR, run_id, "core", f"Container resource init failed: {exc}")
+        typer.echo("ERROR: failed to initialize runtime resources (see logs/report)", err=True)
+        return _result_with(SystemErrorCode.INTERNAL_ERROR)
+    return None
+
+
+def _shutdown_container_resources(
+    *,
+    container: AppContainer | None,
+    logger: logging.Logger,
+    run_id: str,
+    emit_user_error: bool,
+) -> int | DomainCommandResult | CliCommandResult | None:
+    if container is None:
+        return None
+    try:
+        container.shutdown_resources()
+    except Exception as exc:
+        logEvent(logger, logging.ERROR, run_id, "core", f"Container shutdown failed: {exc}")
+        if emit_user_error:
+            typer.echo("ERROR: runtime teardown failed (see logs/report)", err=True)
+        return _result_with(SystemErrorCode.INTERNAL_ERROR)
+    return None
+
+
+def _finalize_report_artifacts(
+    *,
+    report: ReportCollector,
+    start_monotonic: float,
+    paths,
+    log_file_path: str,
+    command_name: str,
+    run_id: str,
+    logger: logging.Logger,
+    emit_user_error: bool,
+) -> int | DomainCommandResult | CliCommandResult | None:
+    try:
+        duration_ms = getDurationMs(start_monotonic, time.monotonic())
+        finalizeReport(
+            report=report,
+            durationMs=duration_ms,
+            logFile=log_file_path,
+            cacheDir=paths.cache_dir,
+            reportDir=paths.report_dir,
+        )
+        report_path = writeReportJson(report, paths.report_dir, f"report_{command_name}_{run_id}")
+        logEvent(logger, logging.INFO, run_id, "report", f"Report written: {report_path}")
+    except Exception as exc:
+        logEvent(logger, logging.ERROR, run_id, "report", f"Report finalization failed: {exc}")
+        if emit_user_error:
+            typer.echo("ERROR: failed to finalize report (see logs)", err=True)
+        return _result_with(SystemErrorCode.INTERNAL_ERROR)
+    return None
+
+
+def _validate_requirements(ctx: CommandContext[Any], opts: Any, requirements: Requirements) -> None:
     """
     Назначение:
         Быстрые и предсказуемые проверки требований команды.
@@ -390,7 +509,12 @@ def _require_dataset(dataset: str | None) -> None:
         raise RuntimeErrorWithCode(str(exc), exit_code=2) from exc
 
 
-def _call_handler(handler: ReportHandler, ctx: CommandContext, opts: Any, report: ReportCollector | None) -> Any:
+def _call_handler(
+    handler: ReportHandler,
+    ctx: BoundCommandContext,
+    opts: Any,
+    report: ReportCollector | None,
+) -> Any:
     """
     Назначение:
         Вызов handler с поддержкой двух контрактов:
@@ -474,13 +598,13 @@ def _get_opt(opts: Any, names: tuple[str, ...]) -> Any:
     return None
 
 
-def _config_sources(ctx: CommandContext) -> list[str]:
+def _config_sources(ctx: CommandContext[Any]) -> list[str]:
     extra = ctx.extra or {}
     sources = extra.get("sources") or extra.get("config_sources")
     return list(sources) if sources else []
 
 
-def _require_app_settings(ctx: CommandContext) -> AppSettings:
+def _require_app_settings(ctx: CommandContext[Any]) -> AppSettings:
     return ctx.app_settings
 
 

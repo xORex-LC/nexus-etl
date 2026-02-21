@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.containers import build_dataset_spec
-from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -49,7 +49,7 @@ _STARTUP_ERRORS = (
 )
 
 
-def handler(ctx: CommandContext, opts: Options) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options) -> CommandResult:
     """
     Назначение:
         Запустить сценарий import-plan через CLI handler.

@@ -17,8 +17,8 @@ from connector.config.app_settings import (
     RefreshSettings,
 )
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
-from connector.config.config import SettingsIssue, SettingsParseError
 from connector.delivery.cli.context import CommandContext
+from connector.config.config import SettingsIssue, SettingsParseError
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.runtime import run_without_report
 from connector.domain.diagnostics import build_catalog
@@ -86,6 +86,7 @@ def test_run_without_report_handles_settings_load_error(tmp_path) -> None:
         catalog=build_catalog(None, strict=True),
         strict=True,
         app_settings=app_settings,
+        container=None,
     )
 
     def handler(_ctx, _opts):
