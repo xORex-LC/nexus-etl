@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -137,10 +139,14 @@ def _plan() -> Plan:
 
 
 def test_enrich_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.MonkeyPatch, tmp_path, capsys):
-    monkeypatch.setattr(enrich_command, "ensure_vault_startup_ready", _startup_error)
+    container = MagicMock()
+    container.sqlite.vault_ready.init.side_effect = VaultStartupKeyValidationError(
+        details={"reason": "probe_decrypt_failed"},
+    )
+    ctx = replace(_ctx(tmp_path), container=container)
 
     result = enrich_command.handler(
-        _ctx(tmp_path),
+        ctx,
         enrich_command.Options(vault_mode="on"),
         _DummyReport(),
     )
@@ -150,10 +156,14 @@ def test_enrich_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.Mon
 
 
 def test_import_plan_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.MonkeyPatch, tmp_path, capsys):
-    monkeypatch.setattr(import_plan_command, "ensure_vault_startup_ready", _startup_error)
+    container = MagicMock()
+    container.sqlite.vault_ready.init.side_effect = VaultStartupKeyValidationError(
+        details={"reason": "probe_decrypt_failed"},
+    )
+    ctx = replace(_ctx(tmp_path), container=container)
 
     result = import_plan_command.handler(
-        _ctx(tmp_path),
+        ctx,
         import_plan_command.Options(vault_mode="on"),
     )
 
@@ -163,10 +173,14 @@ def test_import_plan_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytes
 
 def test_import_apply_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.MonkeyPatch, tmp_path, capsys):
     monkeypatch.setattr(import_apply_command, "readPlanFile", lambda _path: _plan())
-    monkeypatch.setattr(import_apply_command, "ensure_vault_startup_ready", _startup_error)
+    container = MagicMock()
+    container.sqlite.vault_ready.init.side_effect = VaultStartupKeyValidationError(
+        details={"reason": "probe_decrypt_failed"},
+    )
+    ctx = replace(_ctx(tmp_path), container=container)
 
     result = import_apply_command.handler(
-        _ctx(tmp_path),
+        ctx,
         import_apply_command.Options(plan_path="dummy-plan.json", vault_mode="on"),
         _DummyReport(),
     )

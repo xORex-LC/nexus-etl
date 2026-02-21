@@ -29,6 +29,7 @@ from dependency_injector import containers, providers
 
 from connector.config.app_settings import (
     ApiSettings,
+    AppSettings,
     DatasetSettings,
     ObservabilitySettings,
     PathsSettings,
@@ -379,6 +380,88 @@ class TargetContainer(containers.DeclarativeContainer):
         api_settings=api_settings,
         transport=transport,
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DI-контейнер: AppContainer — единый Composition Root
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class AppContainer(containers.DeclarativeContainer):
+    """
+    Назначение:
+        Единый Composition Root: монтирует все sub-containers и предоставляет
+        точку входа для CLI-команд.
+
+    Граница ответственности:
+        - Создаётся ТОЛЬКО в run_with_report() / run_without_report().
+        - shutdown_resources() вызывается в finally — закрывает все ресурсы.
+        - Один экземпляр на invocation CLI-команды.
+        - Не содержит бизнес-логики — только сборка графа зависимостей.
+
+    Контракт:
+        - app_settings должен быть проброшен через override() до init.
+        - _init_container_for_requirements() инициализирует нужные ресурсы
+          на основе Requirements команды.
+    """
+
+    app_settings = providers.Dependency(instance_of=AppSettings)
+
+    _sqlite_cfg = providers.Singleton(SqliteSettings)
+    _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_settings)
+    _api_settings = providers.Callable(lambda s: s.api, s=app_settings)
+
+    cache_dsl = providers.Singleton(load_cache_dsl_runtime)
+    _cache_specs = providers.Callable(lambda b: list(b.cache_specs), b=cache_dsl)
+
+    sqlite = providers.Container(
+        SqliteContainer,
+        settings=_sqlite_cfg,
+        cache_dir=_cache_dir,
+        cache_specs=_cache_specs,
+    )
+
+    cache = providers.Container(
+        CacheContainer,
+        cache_engine=sqlite.cache_engine,
+        identity_engine=sqlite.identity_engine,
+        cache_specs=_cache_specs,
+    )
+
+    vault = providers.Container(
+        VaultContainer,
+        vault_engine=sqlite.vault_engine,
+    )
+
+    target = providers.Container(
+        TargetContainer,
+        api_settings=_api_settings,
+        transport=providers.Object(None),
+    )
+
+
+def _init_container_for_requirements(
+    container: AppContainer,
+    req: "Requirements",
+) -> None:
+    """
+    Назначение:
+        Инициализировать ресурсы контейнера согласно декларативным требованиям команды.
+
+    Контракт:
+        - requires_cache: открывает cache/identity engines + schema + gateway.
+        - requires_vault_init: открывает vault engine + schema + VaultStartupGuard.
+        - requires_api: создаёт target runtime (HTTP-клиент + gateway).
+        - Вызывается ОДИН раз перед handler_fn() в run_with_report().
+    """
+    if req.requires_cache:
+        container.sqlite.cache_ready.init()
+        container.sqlite.identity_ready.init()
+        container.cache.gateway.init()
+    if req.requires_vault_init:
+        container.sqlite.vault_ready.init()
+    if req.requires_api:
+        container.target.runtime.init()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -809,6 +892,8 @@ __all__ = [
     "VaultContainer",
     "CacheContainer",
     "TargetContainer",
+    "AppContainer",
+    "_init_container_for_requirements",
     "build_diagnostics_catalog",
     "build_dataset_spec",
     "build_cache",
