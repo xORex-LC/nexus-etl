@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import (
     ensure_supported_cache_dataset,
     sqlite_cache_error_result,
@@ -19,7 +19,7 @@ class Options:
     dataset: str | None = None
 
 
-def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     app_settings = ctx.app_settings
     if app_settings is None:
         raise ValueError("App settings are not initialized")

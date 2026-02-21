@@ -97,6 +97,7 @@ def _ctx(tmp_path) -> CommandContext:
         catalog=build_catalog(None, strict=True),
         strict=True,
         app_settings=_app_settings(tmp_path),
+        container=None,
     )
 
 

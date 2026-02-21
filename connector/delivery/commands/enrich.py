@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
 from connector.delivery.cli.containers import (
     build_dataset_spec,
@@ -51,7 +51,7 @@ _STARTUP_ERRORS = (
 )
 
 
-def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
     app_settings = ctx.app_settings
     if app_settings is None:

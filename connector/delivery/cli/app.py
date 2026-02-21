@@ -9,7 +9,7 @@ from connector.config.app_settings import load_app_settings
 from connector.config.config import SettingsLoadError
 from connector.config.diagnostics import translate_settings_load_error
 from connector.common.run_id import generate_run_id
-from connector.delivery.cli.context import CommandContext, CommandPaths
+from connector.delivery.cli.context import CommandPaths, CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.runtime import run_with_report
 from connector.delivery.cli import options as cli_options
@@ -49,7 +49,7 @@ def _build_ctx(
     dataset: str | None = None,
     *,
     command_key: str | None = None,
-) -> CommandContext:
+) -> UnboundCommandContext:
     app_settings = ctx.obj.get("app_settings")
     if app_settings is None:
         raise RuntimeError("App settings are not initialized")
@@ -69,6 +69,7 @@ def _build_ctx(
         catalog=catalog,
         strict=app_settings.observability.diagnostics_strict,
         app_settings=app_settings,
+        container=None,
         paths=CommandPaths(report_dir=app_settings.paths.report_dir, work_dir=None),
         extra=extra,
     )
