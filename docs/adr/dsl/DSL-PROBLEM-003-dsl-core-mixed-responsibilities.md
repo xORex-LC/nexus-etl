@@ -1,6 +1,6 @@
 # DSL-PROBLEM-003: DSL Core смешивает generic инфраструктуру с layer-специфичным кодом
 
-> **Статус**: Решена в DSL-DEC-003
+> **Статус**: Решена в [DSL-DEC-003](./DSL-DEC-003-per-layer-dsl-modules.md)
 > **Дата создания**: 2026-02-17
 > **Затронутые компоненты**: `connector/domain/dsl/specs/*`, `connector/domain/dsl/loader/*`, `connector/domain/dsl/build_options.py`, `connector/domain/dsl/__init__.py`
 > **Созависимая проблема**: [DSL-PROBLEM-004](./DSL-PROBLEM-004-inconsistent-transform-compile-architecture.md)
