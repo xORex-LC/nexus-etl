@@ -33,3 +33,4 @@ class CommandContext:
     app_settings: AppSettings
     paths: CommandPaths | None = None
     extra: dict[str, Any] | None = None
+    container: Any | None = None

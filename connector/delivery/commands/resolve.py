@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
-    build_cache,
     build_dataset_spec,
     build_diagnostics_catalog,
     build_pipeline_context,
@@ -58,9 +57,8 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         opts.include_resolved_items if opts.include_resolved_items is not None else False
     )
 
-    gateway = None
     try:
-        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
+        cache_roles = ctx.container.cache.roles()
 
         pipeline_ctx = build_pipeline_context(
             dataset_spec=dataset_spec,
@@ -114,9 +112,6 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
             )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="resolve", exc=exc)
-    finally:
-        if gateway is not None:
-            gateway.close()
 
 
 __all__ = ["handler", "Options"]

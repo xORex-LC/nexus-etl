@@ -15,3 +15,4 @@ class Requirements:
     requires_cache: bool = False
     requires_secrets: bool = False
     requires_dataset: bool = False
+    requires_vault_init: bool = False
