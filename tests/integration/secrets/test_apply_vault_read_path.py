@@ -6,14 +6,13 @@ from pathlib import Path
 import pytest
 from cryptography.fernet import Fernet
 
-from connector.config.app_settings import PathsSettings
 from connector.datasets.employees.spec import make_employees_spec
-from connector.delivery.cli.containers import build_secret_provider
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_models import Operation, Plan, PlanItem, PlanMeta, PlanSummary
 from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol, RequestSpec
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
+from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
 from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
@@ -36,12 +35,8 @@ class _DummyExecutor(RequestExecutorProtocol):
         return ExecutionResult(ok=True, answer_code=200, response_payload={"ok": True})
 
 
-def _paths(tmp_path: Path) -> PathsSettings:
-    return PathsSettings(
-        cache_dir=str(tmp_path / "cache"),
-        log_dir=str(tmp_path / "logs"),
-        report_dir=str(tmp_path / "reports"),
-    )
+def _vault_db_path(tmp_path: Path) -> str:
+    return str(tmp_path / "cache" / "ankey_vault.sqlite3")
 
 
 def _base_desired_state(*, password: str = "") -> dict[str, object]:
@@ -117,7 +112,7 @@ def _write_vault_secret(
     _set_master_key(monkeypatch)
     engine = open_sqlite(
         build_vault_db_config(SqliteSettings()),
-        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+        _vault_db_path(tmp_path),
     )
     try:
         store = SecretVaultWriteService(
@@ -141,13 +136,19 @@ def _run_apply(
     tmp_path: Path,
     plan: Plan,
 ) -> tuple[ApplyResult, _DummyExecutor]:
-    provider = build_secret_provider(
-        "vault",
-        paths_settings=_paths(tmp_path),
-        run_id=plan.meta.run_id,
+    engine = open_sqlite(
+        build_vault_db_config(SqliteSettings()),
+        _vault_db_path(tmp_path),
     )
-    executor = _DummyExecutor()
     try:
+        provider = SecretVaultReadService(
+            repository=SqliteVaultRepository(engine),
+            cipher=FernetEnvelopeCipher(),
+            key_provider=EnvVaultKeyProvider(),
+            locator=SecretLocatorService(),
+            default_run_id=plan.meta.run_id,
+        )
+        executor = _DummyExecutor()
         adapter = make_employees_spec(secrets=provider).get_apply_adapter()
         service = ImportApplyService(executor=executor)
         result = service.apply_plan(
@@ -160,9 +161,7 @@ def _run_apply(
         )
         return result, executor
     finally:
-        close = getattr(provider, "close", None)
-        if callable(close):
-            close()
+        engine.close()
 
 
 def test_apply_vault_hydrates_secret_and_executes_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -1,27 +1,34 @@
 """
 Назначение:
-    Composition root для CLI: DI-контейнеры (SqliteContainer, VaultContainer,
-    CacheContainer, TargetContainer) + utility-функции для сборки pipeline-компонентов.
+    Composition Root для CLI-приложения: DI-контейнеры и AppContainer.
 
-    Заменяет bootstrap.py — единственный модуль outside infra/,
-    которому разрешено импортировать connector.infra.secrets.*.
+    Модуль содержит иерархию DI-контейнеров для управления lifecycle
+    инфраструктурных ресурсов (SQLite engines, vault services, cache gateway,
+    HTTP target runtime).
+
+    AppContainer — единый CR, создаётся в run_with_report() / run_without_report().
+    Command handlers получают зависимости через ctx.container.*.
 
 Граница ответственности:
-    - SqliteContainer управляет lifecycle SqliteEngine (Singleton + Resource teardown).
-    - VaultContainer предоставляет vault-сервисы (cipher, read/write/retention)
-      поверх vault_engine из SqliteContainer.
-    - CacheContainer предоставляет cache gateway (Resource) и role-based порты
-      (Singleton) поверх engines из SqliteContainer.
-    - TargetContainer управляет lifecycle DefaultTargetRuntime (Resource).
-    - Utility-функции (build_cache, open_cache, ensure_vault_startup_ready…)
-      остаются как transitional wiring — будут удалены по мере миграции
-      команд на AppContainer (DELIVERY-DEC-006/007).
+    - SqliteContainer: lifecycle трёх SQLite engines (cache, vault, identity).
+    - VaultContainer: vault-сервисы (cipher, read/write/retention) поверх vault_engine.
+    - CacheContainer: cache gateway (Resource) + role-based порты (Singleton).
+    - TargetContainer: lifecycle DefaultTargetRuntime (HTTP-клиент + gateway).
+    - AppContainer: монтирует все sub-containers; единственный CR.
+    - _init_container_for_requirements(): условная инициализация ресурсов по Requirements.
+    - build_diagnostics_catalog(), build_dataset_spec(): stateless утилиты.
+    - PipelineContext, build_pipeline_context(): сборка transform pipeline
+      (будет вынесена в PipelineContainer, TRANSFORM-DEC-003).
     - Никакой доменной логики — только сборка графа зависимостей.
+
+Зависимости:
+    Единственный модуль вне infra/, которому разрешено импортировать
+    connector.infra.secrets.*, connector.infra.cache.*, connector.infra.sqlite.*
+    для сборки DI-графа.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
@@ -32,7 +39,6 @@ from connector.config.app_settings import (
     AppSettings,
     DatasetSettings,
     ObservabilitySettings,
-    PathsSettings,
     SqliteSettings,
     build_cache_db_config,
     build_identity_db_config,
@@ -41,8 +47,7 @@ from connector.config.app_settings import (
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
-from connector.domain.ports.secrets.retention import SecretApplyRetentionHookProtocol
+from connector.domain.ports.secrets.provider import SecretProviderProtocol
 from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
@@ -54,23 +59,20 @@ from connector.datasets.spec import DatasetSpec
 from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
-from connector.infra.cache.dsl_runtime import CacheDslRuntimeBundle, load_cache_dsl_runtime
+from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.infra.secrets import (
     EnvVaultKeyProvider,
     FernetEnvelopeCipher,
-    NullSecretProvider,
-    PromptSecretProvider,
 )
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
 from connector.infra.target.core.factory import (
     TargetRuntimeBuildResult,
-    build_target_runtime,  # noqa: F401 — re-export (deprecated, DELIVERY-DEC-007)
-    build_target_runtime_with_info,  # noqa: F401 — re-export (deprecated, DELIVERY-DEC-007)
+    build_target_runtime_with_info,
 )
 
 
@@ -465,24 +467,6 @@ def _init_container_for_requirements(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Vault engine helper (used by legacy wiring functions below)
-# Deprecated: будет удалено в DELIVERY-DEC-007 (Шаг 6)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def _open_vault_engine(paths_settings: PathsSettings) -> SqliteEngine:
-    """Открыть SqliteEngine для vault DB с политикой из SqliteSettings.
-
-    Deprecated: используется legacy wiring (open_secret_store, build_secret_provider,
-    build_secret_retention_hook). Будет удалено в DELIVERY-DEC-007 (Шаг 6).
-    """
-    settings = SqliteSettings()
-    config = build_vault_db_config(settings)
-    path = _vault_db_path(paths_settings.cache_dir, settings)
-    return open_sqlite(config, path)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 # Диагностика / датасеты
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -513,301 +497,7 @@ def build_dataset_spec(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Cache gateway wiring
-# Deprecated: заменяется CacheContainer (gateway + roles под Resource/Singleton).
-# Будет удалено в DELIVERY-DEC-007 (Шаг 6) после миграции handlers.
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def build_cache(
-    paths_settings: PathsSettings,
-) -> tuple[SqliteCacheGateway, SqliteCacheRolePorts, CacheDslRuntimeBundle]:
-    """
-    Назначение:
-        Сконфигурировать cache-хранилище (sqlite) и репозиторий.
-
-    Deprecated:
-        Заменяется CacheContainer.gateway + CacheContainer.roles.
-        Будет удалено в DELIVERY-DEC-007 (Шаг 6) после миграции handlers.
-
-    Lifecycle (DELIVERY-DEC-002):
-        Engines создаются и управляются SqliteContainer (Singleton + Resource teardown).
-        gateway.close() вызывает container.shutdown_resources() для корректного
-        закрытия engines. Vault engine НЕ инициализируется.
-    """
-    sqlite_settings = SqliteSettings()
-    cache_dsl_bundle = load_cache_dsl_runtime()
-
-    container = SqliteContainer()
-    container.settings.override(sqlite_settings)
-    container.cache_dir.override(paths_settings.cache_dir)
-    container.cache_specs.override(list(cache_dsl_bundle.cache_specs))
-
-    container.cache_ready.init()
-    container.identity_ready.init()
-
-    cache_engine = container.cache_engine()
-    identity_engine = container.identity_engine()
-
-    gateway = SqliteCacheGateway.from_engine(
-        cache_engine=cache_engine,
-        identity_engine=identity_engine,
-        cache_specs=cache_dsl_bundle.cache_specs,
-        owns_connection=False,
-    )
-    roles = build_sqlite_cache_role_ports(gateway)
-
-    _original_close = gateway.close
-    _shutdown_done = False
-
-    def _close_with_container_shutdown() -> None:
-        nonlocal _shutdown_done
-        _original_close()
-        if not _shutdown_done:
-            container.shutdown_resources()
-            _shutdown_done = True
-
-    gateway.close = _close_with_container_shutdown  # type: ignore[method-assign]
-
-    return gateway, roles, cache_dsl_bundle
-
-
-@contextmanager
-def open_cache(
-    paths_settings: PathsSettings,
-) -> Iterator[tuple[SqliteCacheGateway, SqliteCacheRolePorts, CacheDslRuntimeBundle]]:
-    """
-    Назначение:
-        Единая lifecycle-обертка для cache gateway в CLI runtime.
-
-    Deprecated:
-        Заменяется CacheContainer.gateway (Resource с teardown).
-        Будет удалено в DELIVERY-DEC-007 (Шаг 6).
-    """
-    gateway, roles, cache_dsl_bundle = build_cache(paths_settings)
-    try:
-        yield gateway, roles, cache_dsl_bundle
-    finally:
-        gateway.close()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Vault startup guard
-# Deprecated: логика поглощена vault_startup_resource() в SqliteContainer.
-# Будет удалено в DELIVERY-DEC-007 (Шаг 6) после миграции handlers.
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def ensure_vault_startup_ready(*, paths_settings: PathsSettings) -> None:
-    """
-    Назначение:
-        Выполнить startup fail-fast проверку vault перед запуском use-case в vault-mode.
-
-    Deprecated:
-        Логика поглощена vault_startup_resource() (VaultStartupGuard включён).
-        Будет удалено после миграции handlers на AppContainer (DELIVERY-DEC-007).
-
-    Контракт:
-        - открывает отдельное vault DB соединение;
-        - валидирует keyring/probe/storage через VaultStartupGuard;
-        - всегда закрывает соединение в конце проверки.
-    """
-    engine = _open_vault_engine(paths_settings)
-    try:
-        guard = VaultStartupGuard(
-            repository=SqliteVaultRepository(engine),
-            cipher=FernetEnvelopeCipher(),
-            key_provider=EnvVaultKeyProvider(),
-            storage_probe=engine,
-        )
-        guard.ensure_ready()
-    finally:
-        engine.close()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Vault secret store (write) lifecycle
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-@contextmanager
-def open_secret_store(
-    *,
-    paths_settings: PathsSettings,
-    enabled: bool,
-) -> Iterator[SecretStoreProtocol | None]:
-    """
-    Назначение:
-        Собрать lifecycle write-store для секрета в vault backend.
-
-    Контракт:
-        - при `enabled=False` возвращает `None` без инициализации vault-зависимостей;
-        - при `enabled=True` открывает отдельный vault DB и закрывает его по завершении.
-    """
-    if not enabled:
-        yield None
-        return
-
-    engine = _open_vault_engine(paths_settings)
-    try:
-        store = SecretVaultWriteService(
-            repository=SqliteVaultRepository(engine),
-            cipher=FernetEnvelopeCipher(),
-            key_provider=EnvVaultKeyProvider(),
-            locator=SecretLocatorService(),
-        )
-        yield store
-    finally:
-        engine.close()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Vault read/retention runtimes
-# Deprecated: заменяются VaultContainer (Factory providers для read/write/retention).
-# Engine lifecycle управляется SqliteContainer.vault_engine Singleton.
-# Будут удалены в DELIVERY-DEC-007 (Шаг 6) после миграции handlers.
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-class _VaultReadProviderRuntime(SecretProviderProtocol):
-    """
-    Назначение:
-        Runtime-обёртка vault read provider c управлением lifecycle SQLite connection.
-
-    Deprecated:
-        Заменяется VaultContainer.read_service (Factory). Engine lifecycle
-        управляется SqliteContainer.vault_engine Singleton.
-        Будет удалено в DELIVERY-DEC-007 (Шаг 6).
-
-    Граница:
-        Наружу публикуется только `SecretProviderProtocol` + `close()` для composition-root.
-    """
-
-    def __init__(self, *, paths_settings: PathsSettings, run_id: str | None) -> None:
-        self._engine = _open_vault_engine(paths_settings)
-        self._provider = SecretVaultReadService(
-            repository=SqliteVaultRepository(self._engine),
-            cipher=FernetEnvelopeCipher(),
-            key_provider=EnvVaultKeyProvider(),
-            locator=SecretLocatorService(),
-            default_run_id=run_id,
-        )
-
-    def get_secret(
-        self,
-        *,
-        dataset: str,
-        field: str,
-        row_id: str | None = None,
-        line_no: int | None = None,
-        source_ref: dict | None = None,
-        target_id: str | None = None,
-        run_id: str | None = None,
-    ) -> str | None:
-        return self._provider.get_secret(
-            dataset=dataset,
-            field=field,
-            row_id=row_id,
-            line_no=line_no,
-            source_ref=source_ref,
-            target_id=target_id,
-            run_id=run_id,
-        )
-
-    def close(self) -> None:
-        self._engine.close()
-
-
-class _VaultRetentionRuntime(SecretApplyRetentionHookProtocol):
-    """
-    Назначение:
-        Runtime-обёртка retention/maintenance hooks с lifecycle SQLite connection.
-
-    Deprecated:
-        Заменяется VaultContainer.retention_service (Factory).
-        Будет удалено в DELIVERY-DEC-007 (Шаг 6).
-    """
-
-    def __init__(self, *, paths_settings: PathsSettings) -> None:
-        self._engine = _open_vault_engine(paths_settings)
-        self._service = VaultRetentionService(
-            repository=SqliteVaultRepository(self._engine),
-            locator=SecretLocatorService(),
-        )
-
-    def on_apply_success(
-        self,
-        *,
-        dataset: str,
-        op: str,
-        source_ref: dict[str, Any] | None,
-        secret_fields: list[str],
-        secret_lifecycle: dict[str, Any] | None,
-        run_id: str | None,
-    ) -> dict[str, int]:
-        return dict(
-            self._service.on_apply_success(
-                dataset=dataset,
-                op=op,
-                source_ref=source_ref,
-                secret_fields=secret_fields,
-                secret_lifecycle=secret_lifecycle,
-                run_id=run_id,
-            )
-        )
-
-    def run_maintenance(self) -> dict[str, int]:
-        return dict(self._service.run_maintenance())
-
-    def close(self) -> None:
-        self._engine.close()
-
-
-def build_secret_provider(
-    source: str | None,
-    *,
-    paths_settings: PathsSettings | None = None,
-    run_id: str | None = None,
-) -> SecretProviderProtocol:
-    """
-    Назначение:
-        Фабрика провайдера секретов для apply.
-
-    Контракт:
-        - source None/"none" -> NullSecretProvider
-        - source "prompt" -> PromptSecretProvider
-        - source "vault" -> vault-only SecretVaultReadService (без prompt/CSV fallback)
-        - любое другое значение -> NullSecretProvider
-    """
-    if not source or source == "none":
-        return NullSecretProvider()
-    if source == "prompt":
-        return PromptSecretProvider()
-    if source == "vault":
-        if paths_settings is None:
-            raise ValueError("paths_settings is required for source='vault'")
-        return _VaultReadProviderRuntime(paths_settings=paths_settings, run_id=run_id)
-    return NullSecretProvider()
-
-
-def build_secret_retention_hook(
-    source: str | None,
-    *,
-    paths_settings: PathsSettings | None = None,
-) -> SecretApplyRetentionHookProtocol | None:
-    """
-    Назначение:
-        Собрать retention hook для apply-runtime в vault-mode.
-    """
-    if source != "vault":
-        return None
-    if paths_settings is None:
-        raise ValueError("paths_settings is required for source='vault'")
-    return _VaultRetentionRuntime(paths_settings=paths_settings)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Pipeline context
+# Pipeline context (TRANSFORM-DEC-003 — будет вынесен в отдельный контейнер)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -896,14 +586,6 @@ __all__ = [
     "_init_container_for_requirements",
     "build_diagnostics_catalog",
     "build_dataset_spec",
-    "build_cache",
-    "open_cache",
-    "open_secret_store",
-    "ensure_vault_startup_ready",
-    "build_target_runtime",
-    "build_target_runtime_with_info",
-    "build_secret_provider",
-    "build_secret_retention_hook",
     "PipelineContext",
     "build_pipeline_context",
 ]

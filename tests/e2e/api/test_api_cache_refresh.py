@@ -19,9 +19,8 @@ def make_transport(responder: Callable[[httpx.Request], httpx.Response]) -> http
 
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
-    import connector.delivery.commands.check_api as check_api_command
-    import connector.delivery.commands.cache_refresh as cache_refresh_command
-    from connector.delivery.cli.containers import (
+    import connector.delivery.cli.containers as containers_mod
+    from connector.infra.target.core.factory import (
         build_target_runtime_with_info as _build_real_runtime_with_info,
     )
 
@@ -36,8 +35,7 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
             runtime_mode=runtime_mode,
         )
 
-    monkeypatch.setattr(check_api_command, "build_target_runtime_with_info", factory)
-    monkeypatch.setattr(cache_refresh_command, "build_target_runtime_with_info", factory)
+    monkeypatch.setattr(containers_mod, "build_target_runtime_with_info", factory)
 
 
 def test_check_api_ok(monkeypatch, tmp_path: Path):
