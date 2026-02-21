@@ -1,7 +1,7 @@
 """
 Назначение:
-    Composition root для CLI: DI-контейнеры (SqliteContainer, VaultContainer) +
-    utility-функции для сборки pipeline-компонентов.
+    Composition root для CLI: DI-контейнеры (SqliteContainer, VaultContainer,
+    CacheContainer, TargetContainer) + utility-функции для сборки pipeline-компонентов.
 
     Заменяет bootstrap.py — единственный модуль outside infra/,
     которому разрешено импортировать connector.infra.secrets.*.
@@ -10,6 +10,9 @@
     - SqliteContainer управляет lifecycle SqliteEngine (Singleton + Resource teardown).
     - VaultContainer предоставляет vault-сервисы (cipher, read/write/retention)
       поверх vault_engine из SqliteContainer.
+    - CacheContainer предоставляет cache gateway (Resource) и role-based порты
+      (Singleton) поверх engines из SqliteContainer.
+    - TargetContainer управляет lifecycle DefaultTargetRuntime (Resource).
     - Utility-функции (build_cache, open_cache, ensure_vault_startup_ready…)
       остаются как transitional wiring — будут удалены по мере миграции
       команд на AppContainer (DELIVERY-DEC-006/007).
@@ -25,6 +28,7 @@ from typing import Any, Iterable, Iterator
 from dependency_injector import containers, providers
 
 from connector.config.app_settings import (
+    ApiSettings,
     DatasetSettings,
     ObservabilitySettings,
     PathsSettings,
@@ -63,8 +67,9 @@ from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
 from connector.infra.target.core.factory import (
-    build_target_runtime,  # noqa: F401 — re-export
-    build_target_runtime_with_info,  # noqa: F401 — re-export
+    TargetRuntimeBuildResult,
+    build_target_runtime,  # noqa: F401 — re-export (deprecated, DELIVERY-DEC-007)
+    build_target_runtime_with_info,  # noqa: F401 — re-export (deprecated, DELIVERY-DEC-007)
 )
 
 
@@ -206,6 +211,11 @@ class SqliteContainer(containers.DeclarativeContainer):
     )
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# DI-контейнер: VaultContainer — vault-сервисы
+# ──────────────────────────────────────────────────────────────────────────────
+
+
 class VaultContainer(containers.DeclarativeContainer):
     """
     Назначение:
@@ -254,6 +264,120 @@ class VaultContainer(containers.DeclarativeContainer):
         VaultRetentionService,
         repository=repository,
         locator=locator,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DI-контейнер: CacheContainer — gateway и role-based порты
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def cache_gateway_resource(
+    cache_engine: SqliteEngine,
+    identity_engine: SqliteEngine,
+    cache_specs: list,
+) -> Iterator[SqliteCacheGateway]:
+    """
+    Назначение:
+        Resource-генератор для SqliteCacheGateway: создание → yield → close.
+
+    Контракт:
+        - owns_connection=False: engines не закрываются gateway, их lifecycle у SqliteContainer.
+        - gateway.close() только сбрасывает внутренний флаг _closed; engines остаются живыми.
+        - ensure_cache_ready вызывается внутри from_engine (идемпотентно).
+    """
+    gateway = SqliteCacheGateway.from_engine(
+        cache_engine=cache_engine,
+        identity_engine=identity_engine,
+        cache_specs=cache_specs,
+        owns_connection=False,
+    )
+    yield gateway
+    gateway.close()
+
+
+class CacheContainer(containers.DeclarativeContainer):
+    """
+    Назначение:
+        DI-контейнер для cache gateway и role-based портов поверх SQLite engines.
+
+    Граница ответственности:
+        - cache_engine и identity_engine приходят извне (от SqliteContainer через AppContainer).
+        - gateway — Resource: SqliteCacheGateway с owns_connection=False, teardown через close().
+        - roles — Singleton: frozen dataclass SqliteCacheRolePorts, без lifecycle.
+        - Engines не закрываются gateway: их lifecycle управляется SqliteContainer.
+
+    Контракт:
+        - gateway.init() должен быть вызван ДО обращения к roles().
+        - cache_specs передаются от вызывающего кода (содержат спецификации cache-таблиц).
+    """
+
+    cache_engine = providers.Dependency(instance_of=SqliteEngine)
+    identity_engine = providers.Dependency(instance_of=SqliteEngine)
+    cache_specs = providers.Dependency(instance_of=list)
+
+    gateway = providers.Resource(
+        cache_gateway_resource,
+        cache_engine=cache_engine,
+        identity_engine=identity_engine,
+        cache_specs=cache_specs,
+    )
+
+    roles = providers.Singleton(
+        build_sqlite_cache_role_ports,
+        gateway=gateway,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DI-контейнер: TargetContainer — lifecycle DefaultTargetRuntime
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def target_runtime_resource(
+    api_settings: ApiSettings,
+    transport: object | None,
+) -> Iterator[TargetRuntimeBuildResult]:
+    """
+    Назначение:
+        Resource-генератор для TargetRuntime: build → yield → close.
+
+    Контракт:
+        - Оборачивает build_target_runtime_with_info() целиком.
+        - yield возвращает TargetRuntimeBuildResult (runtime + метаданные).
+        - teardown: result.runtime.close() закрывает gateway → driver → httpx.Client.
+        - transport=None → реальный HTTP; override в тестах.
+    """
+    result = build_target_runtime_with_info(api_settings, transport=transport)
+    yield result
+    result.runtime.close()
+
+
+class TargetContainer(containers.DeclarativeContainer):
+    """
+    Назначение:
+        DI-контейнер для lifecycle DefaultTargetRuntime.
+
+    Граница ответственности:
+        - api_settings и transport приходят извне (от AppContainer).
+        - runtime — Resource: build_target_runtime_with_info() целиком,
+          teardown через runtime.close().
+        - TargetKernel создаётся внутри provider chain (factory.py) —
+          не выносится как отдельный провайдер.
+
+    Контракт:
+        - runtime.init() должен быть вызван ДО обращения к runtime().
+        - transport=None → реальный HTTP; override для тестов.
+        - runtime.close() гарантированно вызывается при shutdown_resources().
+    """
+
+    api_settings = providers.Dependency(instance_of=ApiSettings)
+    transport = providers.Dependency()
+
+    runtime = providers.Resource(
+        target_runtime_resource,
+        api_settings=api_settings,
+        transport=transport,
     )
 
 
@@ -307,6 +431,8 @@ def build_dataset_spec(
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Cache gateway wiring
+# Deprecated: заменяется CacheContainer (gateway + roles под Resource/Singleton).
+# Будет удалено в DELIVERY-DEC-007 (Шаг 6) после миграции handlers.
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -317,13 +443,14 @@ def build_cache(
     Назначение:
         Сконфигурировать cache-хранилище (sqlite) и репозиторий.
 
+    Deprecated:
+        Заменяется CacheContainer.gateway + CacheContainer.roles.
+        Будет удалено в DELIVERY-DEC-007 (Шаг 6) после миграции handlers.
+
     Lifecycle (DELIVERY-DEC-002):
         Engines создаются и управляются SqliteContainer (Singleton + Resource teardown).
         gateway.close() вызывает container.shutdown_resources() для корректного
         закрытия engines. Vault engine НЕ инициализируется.
-
-    Transitional:
-        Будет заменено CacheContainer в DELIVERY-DEC-004 (Шаг 3).
     """
     sqlite_settings = SqliteSettings()
     cache_dsl_bundle = load_cache_dsl_runtime()
@@ -369,6 +496,10 @@ def open_cache(
     """
     Назначение:
         Единая lifecycle-обертка для cache gateway в CLI runtime.
+
+    Deprecated:
+        Заменяется CacheContainer.gateway (Resource с teardown).
+        Будет удалено в DELIVERY-DEC-007 (Шаг 6).
     """
     gateway, roles, cache_dsl_bundle = build_cache(paths_settings)
     try:
@@ -676,6 +807,8 @@ def build_pipeline_context(
 __all__ = [
     "SqliteContainer",
     "VaultContainer",
+    "CacheContainer",
+    "TargetContainer",
     "build_diagnostics_catalog",
     "build_dataset_spec",
     "build_cache",
