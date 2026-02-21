@@ -1,6 +1,6 @@
 # DELIVERY-DEC-004: Шаг 3 — CacheContainer: gateway и roles под управлением контейнера
 
-> **Статус**: Принято — реализация запланирована
+> **Статус**: ✅ Реализовано
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [DELIVERY-PROBLEM-001](./DELIVERY-PROBLEM-001-manual-wiring-no-composition-root.md)
 > **Часть плана**: [DELIVERY-DEC-001](./DELIVERY-DEC-001-di-container-hierarchy-and-migration-strategy.md) — Шаг 3 из 6
@@ -140,11 +140,10 @@ return usecase.run(...)
 
 ### Ключевые файлы
 
-| Файл | Изменение |
-|------|-----------|
-| `connector/delivery/cli/containers.py` | Добавить `CacheContainer`, `cache_gateway_resource`; `build_cache()` / `open_cache()` помечаются deprecated |
-| `connector/infra/cache/cache_gateway.py` | Убедиться что `SqliteCacheGateway.from_engine(owns_connection=False)` поддерживается |
-| `tests/unit/delivery/` | Новые тесты `CacheContainer`; обновить fixtures |
+| Файл | Изменение | Статус |
+|------|-----------|--------|
+| `connector/delivery/cli/containers.py` | `CacheContainer`, `cache_gateway_resource`; `build_cache()` / `open_cache()` помечены deprecated | ✅ |
+| `connector/infra/cache/cache_gateway.py` | `SqliteCacheGateway.from_engine(owns_connection=False)` уже поддерживается | ✅ подтверждено |
 
 ### Инварианты
 
@@ -152,6 +151,12 @@ return usecase.run(...)
 2. **`roles` — Singleton**: создаётся один раз при первом обращении; не пересоздаётся
 3. **`gateway.init()` → `roles()` work**: `roles` Singleton ссылается на gateway; оба инициализируются через `cache.gateway.init()`
 4. **Один `CacheContainer` на invocation**: не переиспользуется между вызовами команды
+
+### Нюансы реализации
+
+- **Double `ensure_cache_ready`**: `SqliteContainer.cache_ready` вызывает `ensure_cache_ready()`, и `SqliteCacheGateway.from_engine()` вызывает его повторно внутри. Оба вызова идемпотентны (`CREATE TABLE IF NOT EXISTS`), поэтому безопасны.
+- **`cache_specs` как `Dependency(instance_of=list)`**: cache_specs передаются извне (из `build_cache()` или будущего `AppContainer`), а не загружаются внутри CacheContainer — разделение ответственности: загрузка DSL ≠ сборка gateway.
+- **`build_cache()` и `open_cache()` оставлены deprecated**: используются 10 command handlers; удаление отложено до Шага 6 (DELIVERY-DEC-007) после миграции handlers в Шаге 5.
 
 ---
 
@@ -168,8 +173,8 @@ return usecase.run(...)
 ## ⚠️ Риски и ограничения
 
 **Риски**:
-- ⚠️ `SqliteCacheGateway.from_engine(owns_connection=False)` — если метод не существует или не поддерживает флаг → нужна доработка `cache_gateway.py`
-  - **Митигация**: Прочитать текущий API `SqliteCacheGateway` перед реализацией; добавить `owns_connection` параметр если нужно
+- ~~⚠️ `SqliteCacheGateway.from_engine(owns_connection=False)` — если метод не существует или не поддерживает флаг → нужна доработка `cache_gateway.py`~~
+  - ✅ **Подтверждено**: `from_engine(owns_connection=False)` поддерживается, `close()` с `owns_connection=False` только сбрасывает `_closed=True` без закрытия engines
 
 ---
 
@@ -200,3 +205,4 @@ return usecase.run(...)
 | Дата | Событие |
 |------|---------|
 | 2026-02-21 | Решение предложено и принято как Шаг 3 DI-миграции |
+| 2026-02-21 | Реализовано: CacheContainer + cache_gateway_resource; build_cache/open_cache deprecated |
