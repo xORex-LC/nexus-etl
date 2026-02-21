@@ -11,7 +11,7 @@ import sqlite3
 
 import typer
 
-from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.cli.containers import build_diagnostics_catalog
 from connector.delivery.commands.common import log_sqlite_cache_error, result_with, vault_startup_error_result
 from connector.delivery.commands.import_apply_dry_run_executor import DryRunExecutor
@@ -73,7 +73,7 @@ def _runtime_context(build_result) -> dict[str, str]:
     }
 
 
-def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     """Собрать runtime/deps и выполнить apply use-case для указанного плана."""
     app_settings = ctx.app_settings
     if app_settings is None:
