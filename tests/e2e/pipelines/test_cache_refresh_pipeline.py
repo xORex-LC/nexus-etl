@@ -54,8 +54,8 @@ def make_transport(responder):
 
 
 def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
-    import connector.delivery.commands.cache_refresh as cache_refresh_command
-    from connector.delivery.cli.containers import (
+    import connector.delivery.cli.containers as containers_mod
+    from connector.infra.target.core.factory import (
         build_target_runtime_with_info as _build_real_runtime_with_info,
     )
 
@@ -70,7 +70,7 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
             runtime_mode=runtime_mode,
         )
 
-    monkeypatch.setattr(cache_refresh_command, "build_target_runtime_with_info", factory)
+    monkeypatch.setattr(containers_mod, "build_target_runtime_with_info", factory)
 
 def test_cache_schema_created(tmp_path: Path):
     cache_dir = tmp_path / "cache"
