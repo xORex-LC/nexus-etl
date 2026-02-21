@@ -4,16 +4,16 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet
 
-from connector.config.app_settings import PathsSettings
+from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.datasets.employees.spec import make_employees_spec
-from connector.delivery.cli.containers import build_secret_provider, build_secret_retention_hook
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_models import Operation, Plan, PlanItem, PlanMeta, PlanSummary
 from connector.domain.ports.target.execution import ExecutionResult, RequestExecutorProtocol, RequestSpec
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
+from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
-from connector.config.app_settings import SqliteSettings, build_vault_db_config
+from connector.domain.secrets.vault_retention_service import VaultRetentionService
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite
@@ -35,12 +35,8 @@ class _DummyExecutor(RequestExecutorProtocol):
         return ExecutionResult(ok=False, answer_code=500, error_message="boom")
 
 
-def _paths(tmp_path: Path) -> PathsSettings:
-    return PathsSettings(
-        cache_dir=str(tmp_path / "cache"),
-        log_dir=str(tmp_path / "logs"),
-        report_dir=str(tmp_path / "reports"),
-    )
+def _vault_db_path(tmp_path: Path) -> str:
+    return str(tmp_path / "cache" / "ankey_vault.sqlite3")
 
 
 def _base_state() -> dict[str, object]:
@@ -99,7 +95,7 @@ def _plan(*, lifecycle: dict[str, object] | None) -> Plan:
 def _write_secret(tmp_path: Path) -> None:
     engine = open_sqlite(
         build_vault_db_config(SqliteSettings()),
-        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+        _vault_db_path(tmp_path),
     )
     try:
         store = SecretVaultWriteService(
@@ -121,7 +117,7 @@ def _write_secret(tmp_path: Path) -> None:
 def _read_secret_exists(tmp_path: Path) -> bool:
     engine = open_sqlite(
         build_vault_db_config(SqliteSettings()),
-        str(tmp_path / "cache" / "ankey_vault.sqlite3"),
+        _vault_db_path(tmp_path),
     )
     try:
         repo = SqliteVaultRepository(engine)
@@ -143,9 +139,21 @@ def _read_secret_exists(tmp_path: Path) -> bool:
 
 
 def _run_apply(tmp_path: Path, *, lifecycle: dict[str, object] | None, exec_ok: bool):
-    provider = build_secret_provider("vault", paths_settings=_paths(tmp_path), run_id="run-1")
-    retention = build_secret_retention_hook("vault", paths_settings=_paths(tmp_path))
+    db_path = _vault_db_path(tmp_path)
+    engine = open_sqlite(build_vault_db_config(SqliteSettings()), db_path)
     try:
+        repo = SqliteVaultRepository(engine)
+        cipher = FernetEnvelopeCipher()
+        key_provider = EnvVaultKeyProvider()
+        locator = SecretLocatorService()
+        provider = SecretVaultReadService(
+            repository=repo,
+            cipher=cipher,
+            key_provider=key_provider,
+            locator=locator,
+            default_run_id="run-1",
+        )
+        retention = VaultRetentionService(repository=repo, locator=locator)
         adapter = make_employees_spec(secrets=provider).get_apply_adapter()
         result = ImportApplyService(
             executor=_DummyExecutor(ok=exec_ok),
@@ -160,13 +168,7 @@ def _run_apply(tmp_path: Path, *, lifecycle: dict[str, object] | None, exec_ok: 
         )
         return result
     finally:
-        close_provider = getattr(provider, "close", None)
-        if callable(close_provider):
-            close_provider()
-        if retention is not None:
-            close_retention = getattr(retention, "close", None)
-            if callable(close_retention):
-                close_retention()
+        engine.close()
 
 
 def test_apply_retention_persistent_keeps_secret(tmp_path: Path, monkeypatch):
