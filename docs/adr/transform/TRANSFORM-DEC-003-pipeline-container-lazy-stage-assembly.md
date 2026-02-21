@@ -1,6 +1,6 @@
 # TRANSFORM-DEC-003: PipelineContainer — lazy per-stage сборка зависимостей через DI
 
-> **Статус**: Принято — реализация запланирована
+> **Статус**: Поглощено [TRANSFORM-DEC-004](./TRANSFORM-DEC-004-modular-pipeline-scoped-execution-context.md) — PipelineContainer расширен до полной pipeline-архитектуры с StageFactory и Orchestrator
 > **Дата принятия**: 2026-02-21
 > **Решает проблему**: [TRANSFORM-PROBLEM-003](./TRANSFORM-PROBLEM-003-monolithic-pipeline-factory-eager-coupling.md)
 > **Участники решения**: @xorex-LC
@@ -230,3 +230,4 @@ resolve    →  resolve_stage → planning_deps → resolver_settings ← ТОЛ
 |------|---------|
 | 2026-02-21 | Решение предложено и принято |
 | 2026-02-21 | Зафиксирована связь с TRANSFORM-DEC-002 (natural slot для TransformContext) |
+| 2026-02-22 | Поглощено TRANSFORM-DEC-004: PipelineContainer расширен до полной pipeline-архитектуры |
