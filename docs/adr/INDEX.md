@@ -89,6 +89,8 @@ docs/adr/
 | [TRANSFORM-DEC-003](./transform/TRANSFORM-DEC-003-pipeline-container-lazy-stage-assembly.md) | Decision | PipelineContainer — lazy per-stage сборка зависимостей через DI | Поглощено DEC-004 | 2026-02-21 |
 | [TRANSFORM-PROBLEM-004](./transform/TRANSFORM-PROBLEM-004-missing-modular-pipeline-architecture.md) | Problem | Отсутствие модульной pipeline-архитектуры — нет единого контракта стадий, scoped context, stage factory и orchestrator | Открыто | 2026-02-22 |
 | [TRANSFORM-DEC-004](./transform/TRANSFORM-DEC-004-modular-pipeline-scoped-execution-context.md) | Decision | Modular Pipeline with Scoped Execution Context — целостная pipeline-архитектура | Принято (реализация поэтапная) | 2026-02-22 |
+| [TRANSFORM-PROBLEM-005](./transform/TRANSFORM-PROBLEM-005-dataset-spec-ocp-violation.md) | Problem | DatasetSpec typed `build_*_spec()` методы нарушают OCP при добавлении новых стадий | Открыто | 2026-02-22 |
+| [TRANSFORM-DEC-005](./transform/TRANSFORM-DEC-005-dataset-spec-generic-accessor-evolution.md) | Decision | Двухфазная эволюция DatasetSpec: typed методы (Phase 1) → `build_spec_for(stage_type)` (Phase 2) | Открыто (реализация отложена) | 2026-02-22 |
 
 ### Delivery
 
