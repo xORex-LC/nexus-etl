@@ -8,7 +8,6 @@ from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
     build_dataset_spec,
     build_diagnostics_catalog,
-    build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.usecases.normalize_usecase import NormalizeUseCase
@@ -46,30 +45,25 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     report.set_meta(dataset=dataset_name, items_limit=report_items_limit_value)
 
     try:
-        cache_roles = ctx.container.cache.roles()
-        pipeline_ctx = build_pipeline_context(
-            dataset_spec=dataset_spec,
-            dataset_name=dataset_name,
-            cache_roles=cache_roles,
-            resolver_settings=app_settings.resolver,
-            observability_settings=app_settings.observability,
-            catalog=catalog,
-            csv_has_header=csv_has_header_value,
-        )
-        usecase = NormalizeUseCase(
-            report_items_limit=report_items_limit_value,
-            include_normalized_items=include_normalized_items_value,
-        )
-        return usecase.run(
-            row_source=pipeline_ctx.row_source,
-            map_stage=pipeline_ctx.map_stage,
-            normalize_stage=pipeline_ctx.normalize_stage,
-            dataset=dataset_name,
-            logger=ctx.logger,
-            run_id=run_id,
-            report=report,
-            catalog=catalog,
-        )
+        pipeline = ctx.container.pipeline
+        with pipeline.dataset_spec.override(dataset_spec), \
+             pipeline.run_id.override(run_id), \
+             pipeline.csv_has_header.override(csv_has_header_value), \
+             pipeline.catalog.override(catalog):
+            usecase = NormalizeUseCase(
+                report_items_limit=report_items_limit_value,
+                include_normalized_items=include_normalized_items_value,
+            )
+            return usecase.run(
+                row_source=pipeline.row_source(),
+                map_stage=pipeline.map_stage(),
+                normalize_stage=pipeline.normalize_stage(),
+                dataset=dataset_name,
+                logger=ctx.logger,
+                run_id=run_id,
+                report=report,
+                catalog=catalog,
+            )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="normalize", exc=exc)
 

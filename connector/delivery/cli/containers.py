@@ -4,7 +4,7 @@
 
     Модуль содержит иерархию DI-контейнеров для управления lifecycle
     инфраструктурных ресурсов (SQLite engines, vault services, cache gateway,
-    HTTP target runtime).
+    HTTP target runtime) и сборки transform pipeline (PipelineContainer).
 
     AppContainer — единый CR, создаётся в run_with_report() / run_without_report().
     Command handlers получают зависимости через ctx.container.*.
@@ -14,11 +14,11 @@
     - VaultContainer: vault-сервисы (cipher, read/write/retention) поверх vault_engine.
     - CacheContainer: cache gateway (Resource) + role-based порты (Singleton).
     - TargetContainer: lifecycle DefaultTargetRuntime (HTTP-клиент + gateway).
+    - PipelineContainer: lazy transform/planning stages + orchestrators (DEC-004).
     - AppContainer: монтирует все sub-containers; единственный CR.
     - _init_container_for_requirements(): условная инициализация ресурсов по Requirements.
     - build_diagnostics_catalog(), build_dataset_spec(): stateless утилиты.
-    - PipelineContext, build_pipeline_context(): сборка transform pipeline
-      (будет вынесена в PipelineContainer, TRANSFORM-DEC-003).
+    - PipelineContext, build_pipeline_context(): deprecated (DEC-004 Stage 4).
     - Никакой доменной логики — только сборка графа зависимостей.
 
 Зависимости:
@@ -28,6 +28,7 @@
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -47,17 +48,37 @@ from connector.config.app_settings import (
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.ports.secrets.provider import SecretProviderProtocol
+from connector.domain.ports.cache.roles import (
+    EnrichLookupPort,
+    MatchRuntimePort,
+    ResolveRuntimePort,
+)
+from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
 from connector.domain.secrets.vault_startup_guard import VaultStartupGuard
+from connector.domain.transform.context import PipelineMetadata, StageExecutionContext
+from connector.domain.transform.providers import ProviderGateway
+from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
 from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
 from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
+from connector.delivery.cli.pipeline_registry import (
+    build_stage_factory,
+    build_transform_pipeline,
+    build_full_pipeline,
+)
+from connector.domain.transform_dsl import (
+    load_enrich_build_options_for_dataset,
+    load_map_build_options_for_dataset,
+    load_match_build_options_for_dataset,
+    load_normalize_build_options_for_dataset,
+    load_resolve_build_options_for_dataset,
+)
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
@@ -385,6 +406,256 @@ class TargetContainer(containers.DeclarativeContainer):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# DI-контейнер: PipelineContainer — lazy transform/planning stages (DEC-004)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _build_transform_context(metadata: PipelineMetadata) -> StageExecutionContext:
+    """Scoped context для map/normalize: без capabilities (чистый transform)."""
+    return StageExecutionContext(metadata=metadata, capabilities={})
+
+
+def _build_enrich_context(
+    metadata: PipelineMetadata,
+    cache_roles: SqliteCacheRolePorts,
+    secret_store: object | None,
+    dictionaries: object | None,
+) -> StageExecutionContext:
+    """Scoped context для enrich: EnrichLookupPort + optional secret/dictionary ports."""
+    caps: dict[type, object] = {EnrichLookupPort: cache_roles.enrich_lookup}
+    if secret_store is not None:
+        caps[SecretStoreProtocol] = secret_store
+    if dictionaries is not None:
+        caps[DictionaryProviderPort] = dictionaries
+    return StageExecutionContext(metadata=metadata, capabilities=caps)
+
+
+def _build_planning_context(
+    metadata: PipelineMetadata,
+    cache_roles: SqliteCacheRolePorts,
+    resolver_settings: object | None,
+) -> StageExecutionContext:
+    """Scoped context для match/resolve: MatchRuntimePort + ResolveRuntimePort."""
+    caps: dict[type, object] = {
+        MatchRuntimePort: cache_roles.planning_runtime,
+        ResolveRuntimePort: cache_roles.planning_runtime,
+    }
+    if resolver_settings is not None:
+        caps[ResolverSettings] = resolver_settings
+    return StageExecutionContext(metadata=metadata, capabilities=caps)
+
+
+def _compile_resolve_rules(dataset_spec: DatasetSpec) -> object:
+    """Compile resolve spec → resolve_rules (needed by match_engine_factory)."""
+    resolve_spec = dataset_spec.build_resolve_spec()
+    sink_spec = dataset_spec.build_sink_spec()
+    compiled = ResolveDsl().compile(resolve_spec, sink_spec=sink_spec)
+    return compiled.resolve_rules
+
+
+def _create_stage(
+    factory: object,
+    stage_type: str,
+    spec: object,
+    ctx: StageExecutionContext,
+    **kwargs: Any,
+) -> object:
+    """Delegate to StageFactory.create() — helper for lambda readability."""
+    return factory.create(stage_type, spec, ctx, **kwargs)  # type: ignore[union-attr]
+
+
+class PipelineContainer(containers.DeclarativeContainer):
+    """
+    Назначение:
+        DI-контейнер для lazy сборки transform/planning stages и orchestrators.
+
+    Граница ответственности:
+        - Owns: lazy Factory providers для stages, contexts, orchestrators.
+        - Does NOT: управлять lifecycle инфраструктуры (это SqliteContainer/CacheContainer).
+        - Does NOT: содержать бизнес-логику — только wiring через StageFactory.
+
+    Контракт:
+        - Per-command dependencies (dataset_spec, run_id, csv_has_header, catalog, etc.)
+          задаются через override() context managers в command handlers.
+        - Stages материализуются лениво: normalize handler НЕ материализует planning_context.
+        - Один экземпляр PipelineContainer на invocation CLI-команды (sub-container AppContainer).
+    """
+
+    # ── External dependencies (overridden per-command) ────────────────────────
+
+    dataset_spec = providers.Dependency(instance_of=object)
+    app_settings = providers.Dependency(instance_of=object)
+    cache_roles = providers.Dependency(instance_of=object)
+    catalog = providers.Dependency(instance_of=object)
+    csv_has_header = providers.Dependency(instance_of=bool)
+    run_id = providers.Dependency(instance_of=str)
+    secret_store = providers.Object(None)
+    dictionaries = providers.Object(None)
+    include_deleted = providers.Object(False)
+
+    # ── Derived metadata ──────────────────────────────────────────────────────
+
+    sink_spec = providers.Factory(
+        lambda s: s.build_sink_spec(),
+        s=dataset_spec,
+    )
+
+    pipeline_metadata = providers.Factory(
+        PipelineMetadata,
+        run_id=run_id,
+        dataset_name=providers.Factory(lambda s: s.dataset_name, s=dataset_spec),
+        catalog=catalog,
+        sink_spec=sink_spec,
+    )
+
+    resolver_settings = providers.Factory(
+        lambda s: getattr(s, "resolver", None),
+        s=app_settings,
+    )
+
+    # ── Build options (I/O at wiring boundary) ────────────────────────────────
+
+    map_options = providers.Factory(
+        lambda s: load_map_build_options_for_dataset(s.dataset_name),
+        s=dataset_spec,
+    )
+    normalize_options = providers.Factory(
+        lambda s: load_normalize_build_options_for_dataset(s.dataset_name),
+        s=dataset_spec,
+    )
+    enrich_options = providers.Factory(
+        lambda s: load_enrich_build_options_for_dataset(s.dataset_name),
+        s=dataset_spec,
+    )
+    match_options = providers.Factory(
+        lambda s: load_match_build_options_for_dataset(s.dataset_name),
+        s=dataset_spec,
+    )
+    resolve_options = providers.Factory(
+        lambda s: load_resolve_build_options_for_dataset(s.dataset_name),
+        s=dataset_spec,
+    )
+
+    # ── Scoped execution contexts ─────────────────────────────────────────────
+
+    transform_context = providers.Factory(
+        _build_transform_context,
+        metadata=pipeline_metadata,
+    )
+
+    enrich_context = providers.Factory(
+        _build_enrich_context,
+        metadata=pipeline_metadata,
+        cache_roles=cache_roles,
+        secret_store=secret_store,
+        dictionaries=dictionaries,
+    )
+
+    planning_context = providers.Factory(
+        _build_planning_context,
+        metadata=pipeline_metadata,
+        cache_roles=cache_roles,
+        resolver_settings=resolver_settings,
+    )
+
+    # ── Singletons ────────────────────────────────────────────────────────────
+
+    stage_factory = providers.Singleton(build_stage_factory)
+    provider_gateway = providers.Singleton(ProviderGateway.with_defaults)
+
+    # ── Compiled resolve rules (for match kwargs) ─────────────────────────────
+
+    compiled_resolve_rules = providers.Factory(
+        _compile_resolve_rules,
+        dataset_spec=dataset_spec,
+    )
+
+    # ── Row source ────────────────────────────────────────────────────────────
+
+    row_source = providers.Factory(
+        lambda s, h: s.build_record_source(csv_has_header=h),
+        s=dataset_spec,
+        h=csv_has_header,
+    )
+
+    # ── Transform stages ──────────────────────────────────────────────────────
+
+    map_stage = providers.Factory(
+        _create_stage,
+        factory=stage_factory,
+        stage_type="map",
+        spec=providers.Factory(lambda s: s.build_map_spec(), s=dataset_spec),
+        ctx=transform_context,
+        options=map_options,
+    )
+
+    row_builder = providers.Factory(
+        lambda s: getattr(s, "row_builder", None),
+        s=dataset_spec,
+    )
+
+    normalize_stage = providers.Factory(
+        _create_stage,
+        factory=stage_factory,
+        stage_type="normalize",
+        spec=providers.Factory(lambda s: s.build_normalize_spec(), s=dataset_spec),
+        ctx=transform_context,
+        options=normalize_options,
+        row_builder=row_builder,
+    )
+
+    enrich_stage = providers.Factory(
+        _create_stage,
+        factory=stage_factory,
+        stage_type="enrich",
+        spec=providers.Factory(lambda s: s.build_enrich_spec(), s=dataset_spec),
+        ctx=enrich_context,
+        options=enrich_options,
+        gateway=provider_gateway,
+    )
+
+    # ── Planning stages ───────────────────────────────────────────────────────
+
+    match_stage = providers.Factory(
+        _create_stage,
+        factory=stage_factory,
+        stage_type="match",
+        spec=providers.Factory(lambda s: s.build_match_spec(), s=dataset_spec),
+        ctx=planning_context,
+        options=match_options,
+        resolve_rules=compiled_resolve_rules,
+        include_deleted=include_deleted,
+    )
+
+    resolve_stage = providers.Factory(
+        _create_stage,
+        factory=stage_factory,
+        stage_type="resolve",
+        spec=providers.Factory(lambda s: s.build_resolve_spec(), s=dataset_spec),
+        ctx=planning_context,
+        options=resolve_options,
+    )
+
+    # ── Orchestrators ─────────────────────────────────────────────────────────
+
+    transform_pipeline = providers.Factory(
+        build_transform_pipeline,
+        map_stage=map_stage,
+        normalize_stage=normalize_stage,
+        enrich_stage=enrich_stage,
+    )
+
+    full_pipeline = providers.Factory(
+        build_full_pipeline,
+        map_stage=map_stage,
+        normalize_stage=normalize_stage,
+        enrich_stage=enrich_stage,
+        match_stage=match_stage,
+        resolve_stage=resolve_stage,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # DI-контейнер: AppContainer — единый Composition Root
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -439,6 +710,12 @@ class AppContainer(containers.DeclarativeContainer):
         TargetContainer,
         api_settings=_api_settings,
         transport=providers.Object(None),
+    )
+
+    pipeline = providers.Container(
+        PipelineContainer,
+        app_settings=app_settings,
+        cache_roles=cache.roles,
     )
 
 
@@ -497,7 +774,7 @@ def build_dataset_spec(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Pipeline context (TRANSFORM-DEC-003 — будет вынесен в отдельный контейнер)
+# Pipeline context — deprecated (DEC-004 Stage 4: use PipelineContainer)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -534,10 +811,12 @@ def build_pipeline_context(
     secret_store: Any | None = None,
     dictionaries: DictionaryProviderPort | None = None,
 ) -> PipelineContext:
-    """
-    Назначение:
-        Единая сборка map/normalize/enrich цепочки.
-    """
+    """Deprecated: use PipelineContainer with per-command overrides (DEC-004)."""
+    warnings.warn(
+        "build_pipeline_context is deprecated; use PipelineContainer (DEC-004) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     enrich_deps = dataset_spec.build_enrich_deps(
         None,
         enrich_lookup=cache_roles.enrich_lookup,
@@ -582,6 +861,7 @@ __all__ = [
     "VaultContainer",
     "CacheContainer",
     "TargetContainer",
+    "PipelineContainer",
     "AppContainer",
     "_init_container_for_requirements",
     "build_diagnostics_catalog",

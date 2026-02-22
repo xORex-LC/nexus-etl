@@ -8,11 +8,11 @@ from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
     build_dataset_spec,
     build_diagnostics_catalog,
-    build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
+from connector.domain.transform.stages.stages import StagePipeline
 from connector.usecases.planning_match_runtime import open_match_runtime
 
 
@@ -57,48 +57,42 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     )
 
     try:
-        cache_roles = ctx.container.cache.roles()
+        pipeline = ctx.container.pipeline
+        with pipeline.dataset_spec.override(dataset_spec), \
+             pipeline.run_id.override(run_id), \
+             pipeline.csv_has_header.override(csv_has_header_value), \
+             pipeline.catalog.override(catalog), \
+             pipeline.include_deleted.override(include_deleted_value):
+            map_stage = pipeline.map_stage()
+            normalize_stage = pipeline.normalize_stage()
+            enrich_stage = pipeline.enrich_stage()
+            match_stage = pipeline.match_stage()
 
-        pipeline_ctx = build_pipeline_context(
-            dataset_spec=dataset_spec,
-            dataset_name=dataset_name,
-            cache_roles=cache_roles,
-            resolver_settings=app_settings.resolver,
-            observability_settings=app_settings.observability,
-            catalog=catalog,
-            csv_has_header=csv_has_header_value,
-        )
-        planning_deps = pipeline_ctx.planning_deps
-        enriched_rows = iter_ok(
-            pipeline_ctx.stage_pipeline.run(Extractor(pipeline_ctx.row_source, catalog=pipeline_ctx.catalog).run()),
-            should_skip=lambda item: item.row is None,
-        )
-        match_stage, _resolve_stage = dataset_spec.build_planning_stages(
-            planning_deps=planning_deps,
-            catalog=catalog,
-            include_deleted=include_deleted_value,
-            settings=app_settings.resolver,
-        )
-        planning_runtime = planning_deps.cache_gateway
-        if planning_runtime is None:
-            raise ValueError("planning runtime is not configured")
-
-        with open_match_runtime(
-            run_id=run_id,
-            match_stage=match_stage,
-            match_runtime=planning_runtime,
-            report_items_limit=report_items_limit_value,
-            include_matched_items=include_matched_items_value,
-            batch_size=app_settings.matching_runtime.match_batch_size,
-            flush_interval_ms=app_settings.matching_runtime.match_flush_interval_ms,
-        ) as match_runtime:
-            return match_runtime.match_usecase.run(
-                enriched_source=enriched_rows,
-                match_stage=match_runtime.match_stage,
-                dataset=dataset_name,
-                report=report,
-                run_scope=match_runtime.runtime_scope,
+            row_source = pipeline.row_source()
+            stage_pipeline = StagePipeline([map_stage, normalize_stage, enrich_stage])
+            enriched_rows = iter_ok(
+                stage_pipeline.run(Extractor(row_source, catalog=catalog).run()),
+                should_skip=lambda item: item.row is None,
             )
+
+            planning_runtime = ctx.container.cache.roles().planning_runtime
+
+            with open_match_runtime(
+                run_id=run_id,
+                match_stage=match_stage,
+                match_runtime=planning_runtime,
+                report_items_limit=report_items_limit_value,
+                include_matched_items=include_matched_items_value,
+                batch_size=app_settings.matching_runtime.match_batch_size,
+                flush_interval_ms=app_settings.matching_runtime.match_flush_interval_ms,
+            ) as match_runtime:
+                return match_runtime.match_usecase.run(
+                    enriched_source=enriched_rows,
+                    match_stage=match_runtime.match_stage,
+                    dataset=dataset_name,
+                    report=report,
+                    run_scope=match_runtime.runtime_scope,
+                )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="match", exc=exc)
 
