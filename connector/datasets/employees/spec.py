@@ -1,5 +1,19 @@
+"""
+Назначение:
+    DatasetSpec-реализация для employees.
+
+Граница ответственности:
+    - Owns: DSL spec loaders, record source, report/apply adapters.
+    - Does NOT: собирать стадии (DEC-004: StageFactory + PipelineContainer).
+
+    build_*_stage(), build_*_deps(), build_transform_stages(), build_planning_stages()
+    deprecated — сохранены для обратной совместимости legacy callers
+    (containers.py, import_plan_service.py, commands). Удаление в DEC-004 Stage 4/5.
+"""
+
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 from connector.datasets.apply_adapter import OperationApplyAdapter
@@ -59,7 +73,12 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 
 class EmployeesSpec(DatasetSpec):
     """
-    DatasetSpec для employees: собирает валидаторы, проектор, планировщик и отчётные настройки.
+    Назначение:
+        DatasetSpec для employees: DSL specs, record source, report/apply adapters.
+
+    Deprecated methods (DEC-004 Stage 3):
+        build_*_stage(), build_*_deps(), build_transform_stages(), build_planning_stages()
+        сохранены для legacy callers. Будут удалены в Stage 4/5.
     """
 
     def __init__(
@@ -82,31 +101,7 @@ class EmployeesSpec(DatasetSpec):
             secrets=secrets,
         )
 
-    def build_planning_deps(
-        self,
-        settings,
-        *,
-        planning_runtime: PlanningRuntimePort,
-    ) -> PlanningDependencies:
-        return PlanningDependencies(
-            cache_gateway=planning_runtime,
-            resolver_settings=settings,
-        )
-
-    def build_enrich_deps(
-        self,
-        settings,
-        *,
-        enrich_lookup: EnrichLookupPort,
-        secret_store: SecretStoreProtocol | None = None,
-        dictionaries: DictionaryProviderPort | None = None,
-    ) -> TransformProviderDeps:
-        _ = settings
-        return TransformProviderDeps(
-            cache_gateway=enrich_lookup,
-            secret_store=secret_store,
-            dictionaries=dictionaries,
-        )
+    # ── DSL spec builders (Protocol-required) ─────────────────────────────────
 
     def build_map_spec(self, settings=None) -> MappingSpec:
         _ = settings
@@ -132,7 +127,62 @@ class EmployeesSpec(DatasetSpec):
         _ = settings
         return load_sink_spec_for_dataset(self.dataset_name)
 
+    # ── Record source & adapters (Protocol-required) ──────────────────────────
+
+    def build_record_source(
+        self,
+        csv_has_header: bool,
+    ):
+        source_spec = load_source_spec_for_dataset(self.dataset_name)
+        if source_spec.source.type != "file" or source_spec.source.format != "csv":
+            raise ValueError("employees source spec must be file/csv for current runtime")
+        source_path = resolve_source_location(source_spec)
+        return CsvRecordSource(source_path, csv_has_header)
+
+    def get_report_adapter(self):
+        return self._report_adapter
+
+    def get_apply_adapter(self):
+        return self._apply_adapter
+
+    def get_diagnostic_catalog(self, strict: bool):
+        return build_employees_catalog(strict=strict)
+
+    # ── Deprecated methods (DEC-004 Stage 3) ──────────────────────────────────
+    # Kept for backward compatibility with legacy callers
+    # (containers.py, import_plan_service.py, commands).
+    # Will be removed in DEC-004 Stage 4/5.
+
+    def build_planning_deps(
+        self,
+        settings,
+        *,
+        planning_runtime: PlanningRuntimePort,
+    ) -> PlanningDependencies:
+        """Deprecated: use StageExecutionContext (DEC-004)."""
+        return PlanningDependencies(
+            cache_gateway=planning_runtime,
+            resolver_settings=settings,
+        )
+
+    def build_enrich_deps(
+        self,
+        settings,
+        *,
+        enrich_lookup: EnrichLookupPort,
+        secret_store: SecretStoreProtocol | None = None,
+        dictionaries: DictionaryProviderPort | None = None,
+    ) -> TransformProviderDeps:
+        """Deprecated: use StageExecutionContext (DEC-004)."""
+        _ = settings
+        return TransformProviderDeps(
+            cache_gateway=enrich_lookup,
+            secret_store=secret_store,
+            dictionaries=dictionaries,
+        )
+
     def build_map_stage(self, *, catalog: ErrorCatalog) -> MapStage:
+        """Deprecated: use StageFactory (DEC-004)."""
         options = load_map_build_options_for_dataset(self.dataset_name)
         mapper = MapperEngine(
             self.build_map_spec(),
@@ -143,6 +193,7 @@ class EmployeesSpec(DatasetSpec):
         return MapStage(mapper, catalog)
 
     def build_normalize_stage(self, *, catalog: ErrorCatalog) -> NormalizeStage:
+        """Deprecated: use StageFactory (DEC-004)."""
         options = load_normalize_build_options_for_dataset(self.dataset_name)
         normalizer = NormalizerEngine(
             self.build_normalize_spec(),
@@ -159,6 +210,7 @@ class EmployeesSpec(DatasetSpec):
         catalog: ErrorCatalog,
         enrich_deps: TransformProviderDeps,
     ) -> EnrichStage:
+        """Deprecated: use StageFactory (DEC-004)."""
         options = load_enrich_build_options_for_dataset(self.dataset_name)
         enricher = EnricherEngine(
             spec=self.build_enrich_spec(),
@@ -179,6 +231,7 @@ class EmployeesSpec(DatasetSpec):
         include_deleted: bool,
         settings=None,
     ) -> MatchStage:
+        """Deprecated: use StageFactory (DEC-004)."""
         planning_runtime = planning_deps.cache_gateway
         if planning_runtime is None:
             raise ValueError("planning runtime is not configured")
@@ -202,6 +255,7 @@ class EmployeesSpec(DatasetSpec):
         catalog: ErrorCatalog,
         settings=None,
     ) -> ResolveStage:
+        """Deprecated: use StageFactory (DEC-004)."""
         options = load_resolve_build_options_for_dataset(self.dataset_name)
         planning_runtime = planning_deps.cache_gateway
         if planning_runtime is None:
@@ -222,6 +276,7 @@ class EmployeesSpec(DatasetSpec):
         enrich_deps: TransformProviderDeps,
         catalog: ErrorCatalog,
     ) -> tuple[MapStage, NormalizeStage, EnrichStage]:
+        """Deprecated: use StageFactory (DEC-004)."""
         return (
             self.build_map_stage(catalog=catalog),
             self.build_normalize_stage(catalog=catalog),
@@ -236,6 +291,7 @@ class EmployeesSpec(DatasetSpec):
         include_deleted: bool,
         settings=None,
     ) -> tuple[MatchStage, ResolveStage]:
+        """Deprecated: use StageFactory (DEC-004)."""
         return (
             self.build_match_stage(
                 planning_deps=planning_deps,
@@ -250,24 +306,7 @@ class EmployeesSpec(DatasetSpec):
             ),
         )
 
-    def build_record_source(
-        self,
-        csv_has_header: bool,
-    ):
-        source_spec = load_source_spec_for_dataset(self.dataset_name)
-        if source_spec.source.type != "file" or source_spec.source.format != "csv":
-            raise ValueError("employees source spec must be file/csv for current runtime")
-        source_path = resolve_source_location(source_spec)
-        return CsvRecordSource(source_path, csv_has_header)
-
-    def get_report_adapter(self):
-        return self._report_adapter
-
-    def get_apply_adapter(self):
-        return self._apply_adapter
-
-    def get_diagnostic_catalog(self, strict: bool):
-        return build_employees_catalog(strict=strict)
+    # ── Private helpers ───────────────────────────────────────────────────────
 
     def _compile_resolve(self, settings=None):
         resolve_spec = self.build_resolve_spec(settings=settings)
