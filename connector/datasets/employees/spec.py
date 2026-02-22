@@ -81,6 +81,8 @@ class EmployeesSpec(DatasetSpec):
         сохранены для legacy callers. Будут удалены в Stage 4/5.
     """
 
+    row_builder = NormalizedEmployeesRow
+
     def __init__(
         self,
         secrets: SecretProviderProtocol | None = None,
