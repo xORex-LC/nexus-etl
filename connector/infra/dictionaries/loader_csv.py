@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from io import StringIO
 from pathlib import Path
-from typing import Any
 
 import polars as pl
 
@@ -141,4 +140,3 @@ class CsvDictionaryLoader:
 
 
 __all__ = ["CsvDictionaryLoader"]
-
