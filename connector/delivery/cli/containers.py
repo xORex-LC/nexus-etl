@@ -18,7 +18,6 @@
     - AppContainer: монтирует все sub-containers; единственный CR.
     - _init_container_for_requirements(): условная инициализация ресурсов по Requirements.
     - build_diagnostics_catalog(), build_dataset_spec(): stateless утилиты.
-    - PipelineContext, build_pipeline_context(): deprecated (DEC-004 Stage 4).
     - Никакой доменной логики — только сборка графа зависимостей.
 
 Зависимости:
@@ -28,10 +27,8 @@
 """
 from __future__ import annotations
 
-import warnings
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterator
 
 from dependency_injector import containers, providers
 
@@ -39,7 +36,6 @@ from connector.config.app_settings import (
     ApiSettings,
     AppSettings,
     DatasetSettings,
-    ObservabilitySettings,
     SqliteSettings,
     build_cache_db_config,
     build_identity_db_config,
@@ -65,8 +61,6 @@ from connector.domain.transform.providers import ProviderGateway
 from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
-from connector.domain.transform.stages.stages import StagePipeline, MapStage, NormalizeStage, EnrichStage
-from connector.domain.transform.resolver.resolve_deps import PlanningDependencies
 from connector.delivery.cli.pipeline_registry import (
     build_stage_factory,
     build_transform_pipeline,
@@ -773,88 +767,6 @@ def build_dataset_spec(
     return dataset_name, get_spec(dataset_name, secrets=secrets)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Pipeline context — deprecated (DEC-004 Stage 4: use PipelineContainer)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-@dataclass(frozen=True)
-class PipelineContext:
-    """
-    Назначение:
-        Собранный контекст transform-пайплайна для CLI use-cases.
-
-    Контракт:
-        Используется как единый источник для map/normalize/enrich.
-    """
-
-    dataset_name: str
-    catalog: ErrorCatalog
-    row_source: Iterable
-    map_stage: MapStage
-    normalize_stage: NormalizeStage
-    enrich_stage: EnrichStage
-    stage_pipeline: StagePipeline
-    planning_deps: PlanningDependencies
-    report_items_limit: int
-
-
-def build_pipeline_context(
-    *,
-    dataset_spec: DatasetSpec,
-    dataset_name: str,
-    cache_roles: SqliteCacheRolePorts,
-    resolver_settings: ResolverSettings | None,
-    observability_settings: ObservabilitySettings,
-    catalog: ErrorCatalog,
-    csv_has_header: bool,
-    secret_store: Any | None = None,
-    dictionaries: DictionaryProviderPort | None = None,
-) -> PipelineContext:
-    """Deprecated: use PipelineContainer with per-command overrides (DEC-004)."""
-    warnings.warn(
-        "build_pipeline_context is deprecated; use PipelineContainer (DEC-004) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    enrich_deps = dataset_spec.build_enrich_deps(
-        None,
-        enrich_lookup=cache_roles.enrich_lookup,
-        secret_store=secret_store,
-        dictionaries=dictionaries,
-    )
-    planning_deps = dataset_spec.build_planning_deps(
-        resolver_settings,
-        planning_runtime=cache_roles.planning_runtime,
-    )
-
-    map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
-        enrich_deps=enrich_deps,
-        catalog=catalog,
-    )
-
-    row_source = dataset_spec.build_record_source(csv_has_header=csv_has_header)
-
-    stage_pipeline = StagePipeline(
-        [
-            map_stage,
-            normalize_stage,
-            enrich_stage,
-        ]
-    )
-
-    return PipelineContext(
-        dataset_name=dataset_name,
-        catalog=catalog,
-        row_source=row_source,
-        map_stage=map_stage,
-        normalize_stage=normalize_stage,
-        enrich_stage=enrich_stage,
-        stage_pipeline=stage_pipeline,
-        planning_deps=planning_deps,
-        report_items_limit=observability_settings.report_items_limit,
-    )
-
 
 __all__ = [
     "SqliteContainer",
@@ -866,6 +778,4 @@ __all__ = [
     "_init_container_for_requirements",
     "build_diagnostics_catalog",
     "build_dataset_spec",
-    "PipelineContext",
-    "build_pipeline_context",
 ]

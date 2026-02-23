@@ -3,19 +3,16 @@ from __future__ import annotations
 import logging
 import json
 from itertools import chain
+from typing import Iterable
 
-from connector.config.app_settings import (
-    MatchingRuntimeSettings,
-    ObservabilitySettings,
-)
-from connector.domain.transform.resolver.resolve_deps import ResolverSettings
+from connector.config.app_settings import MatchingRuntimeSettings
 from connector.infra.logging.setup import logEvent
 from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.common.time import getNowIso
 from connector.usecases.plan_usecase import PlanUseCase
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
-from connector.domain.transform.stages.stages import StagePipeline
+from connector.domain.transform.stages.stages import MatchStage, ResolveStage, PipelineOrchestrator
 from connector.usecases.resolve_usecase import ResolveUseCase
 from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
 from connector.domain.transform.matcher.match_models import (
@@ -27,86 +24,52 @@ from connector.domain.transform.matcher.match_models import (
 from connector.domain.models import Identity, RowRef
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.core.result import TransformResult
-from connector.datasets.registry import get_spec
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.diagnostics.catalog import build_catalog
-from connector.domain.ports.cache.roles import EnrichLookupPort, PendingReplayPort, PlanningRuntimePort
-from connector.domain.ports.secrets.provider import SecretStoreProtocol
-from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
+from connector.domain.ports.cache.roles import PendingReplayPort, PlanningRuntimePort
 
 
 class ImportPlanService:
     """
-    Оркестратор построения плана импорта.
+    Назначение:
+        Оркестратор построения плана импорта.
+
+    Граница ответственности:
+        - Координирует transform pipeline → match → resolve → plan.
+        - НЕ собирает стадии: получает pre-built stages от caller (DEC-004).
+        - НЕ управляет lifecycle инфры: cache/vault — ответственность DI-контейнера.
     """
 
     def run(
         self,
         *,
         pending_replay: PendingReplayPort,
-        enrich_lookup: EnrichLookupPort,
         planning_runtime: PlanningRuntimePort,
-        csv_has_header: bool,
         include_deleted: bool,
-        observability_settings: ObservabilitySettings,
-        resolver_settings: ResolverSettings | None,
         matching_runtime_settings: MatchingRuntimeSettings,
         dataset: str,
         logger,
         run_id: str,
         report_items_limit: int,
         report_dir: str,
-        secret_store: SecretStoreProtocol | None = None,
-        dictionaries: DictionaryProviderPort | None = None,
+        row_source: Iterable,
+        transform_pipeline: PipelineOrchestrator,
+        match_stage: MatchStage,
+        resolve_stage: ResolveStage,
+        catalog: ErrorCatalog,
     ) -> CommandResult:
         generated_at = getNowIso()
 
-        dataset_spec = get_spec(dataset)
-        strict = observability_settings.diagnostics_strict
-        catalog = build_catalog(dataset, strict=strict)
-        enrich_deps = dataset_spec.build_enrich_deps(
-            None,
-            enrich_lookup=enrich_lookup,
-            secret_store=secret_store,
-            dictionaries=dictionaries,
-        )
-        planning_deps = dataset_spec.build_planning_deps(
-            resolver_settings,
-            planning_runtime=planning_runtime,
-        )
-        row_source = dataset_spec.build_record_source(
-            csv_has_header=csv_has_header,
-        )
-        map_stage, normalize_stage, enrich_stage = dataset_spec.build_transform_stages(
-            enrich_deps=enrich_deps,
-            catalog=catalog,
-        )
         extractor = Extractor(row_source, catalog=catalog)
-        stage_pipeline = StagePipeline(
-            [
-                map_stage,
-                normalize_stage,
-                enrich_stage,
-            ]
-        )
         enriched_rows = iter_ok(
-            stage_pipeline.run(extractor.run()),
+            transform_pipeline.run(extractor.run()),
             should_skip=lambda item: item.row is None,
         )
-        match_stage, resolve_stage = dataset_spec.build_planning_stages(
-            planning_deps=planning_deps,
-            catalog=catalog,
-            include_deleted=include_deleted,
-            settings=resolver_settings,
-        )
-        planning_runtime_dep = planning_deps.cache_gateway
-        if planning_runtime_dep is None:
-            raise ValueError("planning runtime is not configured")
         with open_match_runtime(
             run_id=run_id,
             match_stage=match_stage,
-            match_runtime=planning_runtime_dep,
+            match_runtime=planning_runtime,
             report_items_limit=report_items_limit,
             include_matched_items=False,
             batch_size=matching_runtime_settings.match_batch_size,

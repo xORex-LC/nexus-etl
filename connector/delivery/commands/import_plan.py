@@ -6,11 +6,12 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.containers import build_dataset_spec
+from connector.delivery.cli.containers import build_dataset_spec, build_diagnostics_catalog
 from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.transform.stages.stages import PipelineOrchestrator
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
     VaultStartupKeyValidationError,
@@ -111,23 +112,43 @@ def handler(ctx: BoundCommandContext, opts: Options) -> CommandResult:
             opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
         )
 
-        service = ImportPlanService()
-        return service.run(
-            pending_replay=cache_roles.pending_replay,
-            enrich_lookup=cache_roles.enrich_lookup,
-            planning_runtime=cache_roles.planning_runtime,
-            csv_has_header=csv_has_header_value,
-            include_deleted=include_deleted_value,
-            observability_settings=app_settings.observability,
-            resolver_settings=app_settings.resolver,
-            matching_runtime_settings=app_settings.matching_runtime,
-            dataset=dataset_name,
-            logger=ctx.logger,
-            run_id=run_id,
-            report_items_limit=report_items_limit_value,
-            report_dir=app_settings.paths.report_dir,
-            secret_store=secret_store,
+        catalog = build_diagnostics_catalog(
+            dataset_name,
+            strict=app_settings.observability.diagnostics_strict,
         )
+
+        pipeline = ctx.container.pipeline
+        with pipeline.dataset_spec.override(_spec), \
+             pipeline.run_id.override(run_id), \
+             pipeline.csv_has_header.override(csv_has_header_value), \
+             pipeline.catalog.override(catalog), \
+             pipeline.include_deleted.override(include_deleted_value), \
+             pipeline.secret_store.override(secret_store):
+
+            row_source = pipeline.row_source()
+            map_stage = pipeline.map_stage()
+            normalize_stage = pipeline.normalize_stage()
+            enrich_stage = pipeline.enrich_stage()
+            match_stage = pipeline.match_stage()
+            resolve_stage = pipeline.resolve_stage()
+
+            service = ImportPlanService()
+            return service.run(
+                pending_replay=cache_roles.pending_replay,
+                planning_runtime=cache_roles.planning_runtime,
+                include_deleted=include_deleted_value,
+                matching_runtime_settings=app_settings.matching_runtime,
+                dataset=dataset_name,
+                logger=ctx.logger,
+                run_id=run_id,
+                report_items_limit=report_items_limit_value,
+                report_dir=app_settings.paths.report_dir,
+                row_source=row_source,
+                transform_pipeline=PipelineOrchestrator([map_stage, normalize_stage, enrich_stage]),
+                match_stage=match_stage,
+                resolve_stage=resolve_stage,
+                catalog=catalog,
+            )
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
