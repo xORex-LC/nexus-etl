@@ -3,19 +3,15 @@
     Стадии конвейера data transform (map/normalize/enrich/match/resolve).
 
     Содержит:
-    - Контракты стадий: StageContract (canonical, DEC-004) и TransformStageProcessor (legacy)
+    - Контракты стадий: StageContract (canonical, DEC-004)
     - Описание engine-протоколов: MatchProcessor, ResolveProcessor
-    - Оркестратор: PipelineOrchestrator с двухуровневыми lifecycle hooks и batching (DEC-004)
+    - Оркестратор: PipelineOrchestrator с двухуровневыми lifecycle hooks и batching
     - Конкретные реализации: MapStage, NormalizeStage, EnrichStage, MatchStage, ResolveStage
 
 Граница ответственности:
     - Owns: stage contracts, stage implementations, orchestration logic, batching
     - Does NOT: load DSL config, handle I/O, build execution context (StageExecutionContext)
     - Does NOT: implement command-specific orchestration (reporting, micro-batching policies)
-
-Миграция:
-    StagePipeline и TransformStageProcessor — backward-compat; удаляются в Этапе 5 DEC-004.
-    PipelineOrchestrator — целевая реализация; BatchConfig — целевой механизм батчинга.
 """
 
 from __future__ import annotations
@@ -324,80 +320,7 @@ class PipelineOrchestrator:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# LEGACY — backward-compat; удаляются в Этапе 5 DEC-004
-# ════════════════════════════════════════════════════════════════════════════════
-
-class TransformStageProcessor(Protocol):
-    """
-    Назначение:
-        Контракт процессора одной стадии трансформации.
-
-    .. deprecated::
-        Используйте StageContract[T_in, T_out] (TRANSFORM-DEC-004).
-        Будет удалён в Этапе 5 миграции.
-    """
-
-    def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult]:
-        ...
-
-
-class StagePipeline:
-    """
-    Назначение:
-        Последовательный запуск набора стадий (map/normalize/enrich/match/resolve).
-
-    .. deprecated::
-        Используйте PipelineOrchestrator (TRANSFORM-DEC-004).
-        Будет удалён в Этапе 5 миграции.
-    """
-
-    def __init__(self, stages: Sequence[TransformStageProcessor]) -> None:
-        self.stages = stages
-
-    def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult]:
-        """
-        Назначение:
-            Прогнать поток результатов через цепочку стадий.
-
-        Алгоритм:
-            - Последовательно передаёт поток в каждую стадию.
-            - Для batched-стадий буферизует вход в чанки.
-        """
-        current = source
-        for stage in self.stages:
-            if getattr(stage, "_is_batched", False):
-                batches = _buffer_into_batches(
-                    current,
-                    batch_size=getattr(stage, "_batch_size", 1000),
-                    key=getattr(stage, "_batch_key", None),
-                )
-                current = _run_batched(stage, batches)
-                continue
-            current = stage.run(current)
-        return current
-
-
-def batched(batch_size: int = 1000, key: Callable | None = None):
-    """
-    Назначение:
-        Декоратор-маркер для стадий, которым нужен батч входных данных.
-
-    .. deprecated::
-        Используйте BatchableStage Protocol и BatchConfig (TRANSFORM-DEC-004).
-        Будет удалён в Этапе 5 миграции.
-    """
-
-    def decorator(stage_cls):
-        stage_cls._is_batched = True
-        stage_cls._batch_size = batch_size
-        stage_cls._batch_key = key
-        return stage_cls
-
-    return decorator
-
-
-# ════════════════════════════════════════════════════════════════════════════════
-# Batching helpers (shared between StagePipeline legacy и PipelineOrchestrator)
+# Batching helpers (used by PipelineOrchestrator)
 # ════════════════════════════════════════════════════════════════════════════════
 
 def _buffer_into_batches(
@@ -438,15 +361,6 @@ def _buffer_into_batches(
         if bucket:
             yield bucket
 
-
-def _run_batched(stage: TransformStageProcessor, batches: Iterable[list[TransformResult]]) -> Iterable[TransformResult]:
-    """
-    Назначение:
-        Прокрутить батчи через стадию и развернуть обратно в поток.
-    """
-    for batch in batches:
-        for item in stage.run(batch):
-            yield item
 
 
 # ════════════════════════════════════════════════════════════════════════════════
