@@ -7,7 +7,7 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.models import DiagnosticStage
 from connector.domain.transform.core.result_processor import TransformResultProcessor
-from connector.domain.transform.stages.stages import MapStage, NormalizeStage, StagePipeline
+from connector.domain.transform.stages.stages import MapStage, NormalizeStage, PipelineOrchestrator
 
 
 class NormalizeUseCase:
@@ -48,7 +48,7 @@ class NormalizeUseCase:
         )
 
         extractor = Extractor(row_source, catalog=catalog)
-        stage_pipeline = StagePipeline([map_stage, normalize_stage])
+        stage_pipeline = PipelineOrchestrator([map_stage, normalize_stage])
         for map_result in stage_pipeline.run(extractor.run()):
             processor.process(map_result)
 
