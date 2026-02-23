@@ -6,7 +6,12 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.context import BoundCommandContext
-from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
+from connector.delivery.commands.common import (
+    attach_dictionary_report_snapshot_if_available,
+    result_with,
+    sqlite_cache_error_result,
+    vault_startup_error_result,
+)
 from connector.delivery.cli.containers import (
     build_dataset_spec,
     build_diagnostics_catalog,
@@ -131,7 +136,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                 report_items_limit=report_items_limit_value,
                 include_enriched_items=include_enriched_items_value,
             )
-            return usecase.run(
+            result = usecase.run(
                 row_source=pipeline.row_source(),
                 map_stage=pipeline.map_stage(),
                 normalize_stage=pipeline.normalize_stage(),
@@ -142,6 +147,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                 report=report,
                 catalog=catalog,
             )
+            attach_dictionary_report_snapshot_if_available(ctx=ctx, report=report)
+            return result
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="enrich", exc=exc)
 

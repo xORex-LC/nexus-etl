@@ -55,8 +55,8 @@ def _load_runtime_bundle_optional(
         Собрать optional DSL runtime bundle словарей (без CSV IO).
 
     Contract:
-        - `None` возвращается только для disabled-mode (`dictionaries` section absent)
-          или при отсутствии enabled словарей (`items:{}` / all disabled).
+        - `None` возвращается только для disabled-mode (`dictionaries` section absent).
+        - Пустой registry (`items:{}` / all disabled) -> валидный empty runtime bundle.
         - Ошибки DSL/manifest/compile не подавляются (`DslLoadError` fail-fast).
     """
     root = _normalize_datasets_root(datasets_root)
@@ -66,8 +66,6 @@ def _load_runtime_bundle_optional(
         if registry is None:
             return None
         specs = load_enabled_dictionary_specs_for_runtime()
-        if not specs:
-            return None
         manifest = load_dictionary_manifest_spec_for_runtime()
         return build_dictionary_dsl_runtime(specs=specs, manifest_spec=manifest)
 
@@ -77,8 +75,6 @@ def _load_runtime_bundle_optional(
 
     registry = load_dictionary_registry_spec(registry_path)
     specs = _load_enabled_specs_from_registry(registry=registry, datasets_root=root)
-    if not specs:
-        return None
     manifest = load_dictionary_manifest_spec(root / "dictionaries" / "manifest.yml")
     return build_dictionary_dsl_runtime(specs=specs, manifest_spec=manifest)
 

@@ -59,3 +59,37 @@ def ensure_supported_cache_dataset(cache_admin, dataset: str | None) -> CommandR
         return None
     typer.echo(f"ERROR: Unsupported cache dataset: {dataset}", err=True)
     return result_with(SystemErrorCode.CACHE_ERROR)
+
+
+def attach_dictionary_report_snapshot_if_available(*, ctx, report) -> None:
+    """
+    Назначение:
+        Best-effort записать snapshot dictionary telemetry в `report.context`.
+
+    Граница ответственности:
+        - Читает telemetry через DI container (`ctx.container.dictionary.telemetry()`).
+        - Не расширяет `DictionaryProviderPort` ради отчётности.
+        - Безопасно no-op, если report/container/dictionary telemetry недоступны.
+    """
+    if report is None:
+        return
+
+    container = getattr(ctx, "container", None)
+    if container is None:
+        return
+
+    dictionary_container = getattr(container, "dictionary", None)
+    if dictionary_container is None:
+        return
+
+    telemetry_provider = getattr(dictionary_container, "telemetry", None)
+    if telemetry_provider is None:
+        return
+
+    telemetry = telemetry_provider()
+    if telemetry is None:
+        return
+
+    snapshot = telemetry.snapshot()
+    if isinstance(snapshot, dict):
+        report.set_context("dictionary", snapshot)
