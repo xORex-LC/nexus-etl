@@ -95,6 +95,8 @@ docs/adr/
 | [TRANSFORM-DEC-006](./transform/TRANSFORM-DEC-006-pipeline-segments-in-container.md) | Decision | PlanningPipeline в delivery-слое — lifecycle-aware класс, предоставляемый PipelineContainer через Factory | Открыто | 2026-02-23 |
 | [TRANSFORM-PROBLEM-007](./transform/TRANSFORM-PROBLEM-007-pipeline-composition-hardcoded-imperatively.md) | Problem | Состав конвейера задаётся императивно — нет декларативного единого источника истины | Открыто | 2026-02-23 |
 | [TRANSFORM-DEC-007](./transform/TRANSFORM-DEC-007-declarative-pipeline-checkpoints.md) | Decision | Декларативный реестр чекпоинтов в AppContainer + PipelineComposer; путь к DSL-конфигурации пайплайна | Открыто (реализация после DEC-006 + PLANNER-DEC-001) | 2026-02-23 |
+| [TRANSFORM-PROBLEM-008](./transform/TRANSFORM-PROBLEM-008-pending-codec-stage-coupling.md) | Problem | pending_codec привязан к стадии resolver — SRP нарушен, будущие consumers получат лишнюю зависимость | Открыто | 2026-02-23 |
+| [TRANSFORM-DEC-008](./transform/TRANSFORM-DEC-008-pending-codec-standalone-feature.md) | Decision | Вынести pending_codec в `domain/transform/pending/` — standalone feature без привязки к стадии | Отложено | 2026-02-23 |
 
 ### Delivery
 
