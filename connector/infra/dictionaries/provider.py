@@ -49,6 +49,17 @@ class PolarsDictionaryProvider(DictionaryProviderPort):
             Lookup через backend с telemetry hit/miss/error.
         """
         key_fingerprint = self._safe_key_fingerprint(dict_name=dict_name, value=key)
+        if self._backend.is_empty_runtime():
+            self._telemetry.record_lookup_result(
+                dict_name=dict_name,
+                op="lookup",
+                hit=False,
+                key_fingerprint=key_fingerprint,
+                result_count=0,
+                limit=limit,
+                fields=fields,
+            )
+            return []
         try:
             rows = self._backend.lookup(dict_name, key, at=at, fields=fields, limit=limit)
         except Exception as exc:
@@ -77,6 +88,17 @@ class PolarsDictionaryProvider(DictionaryProviderPort):
             Membership-check через backend с telemetry (как lookup family op).
         """
         key_fingerprint = self._safe_key_fingerprint(dict_name=dict_name, value=value)
+        if self._backend.is_empty_runtime():
+            self._telemetry.record_lookup_result(
+                dict_name=dict_name,
+                op="contains",
+                hit=False,
+                key_fingerprint=key_fingerprint,
+                result_count=0,
+                limit=None,
+                fields=None,
+            )
+            return False
         try:
             is_present = self._backend.contains(dict_name, value, at=at)
         except Exception as exc:
@@ -111,6 +133,17 @@ class PolarsDictionaryProvider(DictionaryProviderPort):
             Канонизация через backend с telemetry (как lookup family op).
         """
         key_fingerprint = self._safe_key_fingerprint(dict_name=dict_name, value=value)
+        if self._backend.is_empty_runtime():
+            self._telemetry.record_lookup_result(
+                dict_name=dict_name,
+                op="canonicalize",
+                hit=False,
+                key_fingerprint=key_fingerprint,
+                result_count=0,
+                limit=limit,
+                fields=None,
+            )
+            return []
         try:
             rows = self._backend.canonicalize(dict_name, value, at=at, limit=limit)
         except Exception as exc:
