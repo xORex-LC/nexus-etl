@@ -62,6 +62,28 @@ def test_plan_usecase_module_removed() -> None:
     )
 
 
+def test_planning_match_runtime_moved_to_delivery() -> None:
+    path = USECASES_ROOT / "planning_match_runtime.py"
+    assert not path.exists(), (
+        "planning_match_runtime.py должен быть в connector/delivery/cli/, не в usecases/ (TRANSFORM-DEC-006)"
+    )
+
+
+def test_import_plan_does_not_import_orchestrator_symbols() -> None:
+    path = REPO_ROOT / "connector" / "delivery" / "commands" / "import_plan.py"
+    imports = _imports(path)
+    forbidden = {
+        "connector.domain.transform.stages.stages",
+        "connector.usecases.planning_match_runtime",
+        "connector.usecases.resolve_usecase",
+    }
+    violations = [m for m in imports if m in forbidden]
+    assert violations == [], (
+        "import_plan.py не должен знать о стадиях и match lifecycle (TRANSFORM-DEC-006):\n"
+        + "\n".join(violations)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Guard: PendingReplayPort удалён из roles.py
 # ---------------------------------------------------------------------------
