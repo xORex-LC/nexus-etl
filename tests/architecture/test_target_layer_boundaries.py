@@ -73,6 +73,8 @@ ALLOWED_TENACITY_IMPORT_PATHS = {
 }
 ALLOWED_STRUCTLOG_IMPORT_PATHS = {
     "connector/infra/target/core/engines/safe_logging.py",
+    # structlog-forward-adoption: новые usecase-модули используют structlog (DEC-001)
+    "connector/usecases/resolve_usecase.py",
 }
 FORBIDDEN_CORE_LITERALS = ("resourceexists", "health.check")
 FORBIDDEN_TARGET_LEGACY_LITERALS = ("response_json", "body_snippet")
@@ -194,6 +196,10 @@ def test_domain_usecases_delivery_do_not_import_target_core_external_libs() -> N
     for root in (DOMAIN_ROOT, USECASES_ROOT, COMMANDS_ROOT):
         for path in _py_files(root):
             rel = _rel(path)
+            # structlog-forward-adoption: usecases, перечисленные в ALLOWED_STRUCTLOG_IMPORT_PATHS,
+            # разрешены к использованию structlog
+            if rel in ALLOWED_STRUCTLOG_IMPORT_PATHS:
+                continue
             for module in _imports(path):
                 if module.startswith(FORBIDDEN_RUNTIME_DEPENDENCIES):
                     violations.append(f"{rel}: {module}")
