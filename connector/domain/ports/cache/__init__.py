@@ -8,7 +8,6 @@ from connector.domain.ports.cache.roles import (
     EnrichLookupPort,
     MatchRuntimePort,
     PlanningRuntimePort,
-    PendingReplayPort,
     ResolveRuntimePort,
 )
 
@@ -20,7 +19,6 @@ __all__ = [
     "EnrichLookupPort",
     "MatchRuntimePort",
     "PlanningRuntimePort",
-    "PendingReplayPort",
     "PendingLink",
     "PendingRow",
     "PendingStatus",
