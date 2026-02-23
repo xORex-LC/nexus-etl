@@ -73,6 +73,7 @@ ALLOWED_TENACITY_IMPORT_PATHS = {
 }
 ALLOWED_STRUCTLOG_IMPORT_PATHS = {
     "connector/infra/target/core/engines/safe_logging.py",
+    "connector/infra/dictionaries/telemetry.py",
     # structlog-forward-adoption: новые usecase-модули используют structlog (DEC-001)
     "connector/usecases/resolve_usecase.py",
 }
