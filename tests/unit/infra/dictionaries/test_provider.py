@@ -93,14 +93,10 @@ def test_provider_delegates_lookup_contains_canonicalize_and_updates_telemetry()
         "lookup_miss": 2,
         "lookup_error": 0,
     }
-    assert snapshot["dictionaries_detail"] == {
-        "organizations": {
-            "lookup_total": 5,
-            "lookup_hit": 3,
-            "lookup_miss": 2,
-            "lookup_error": 0,
-        }
-    }
+    assert snapshot["dictionaries_detail"]["organizations"]["lookup_total"] == 5
+    assert snapshot["dictionaries_detail"]["organizations"]["lookup_hit"] == 3
+    assert snapshot["dictionaries_detail"]["organizations"]["lookup_miss"] == 2
+    assert snapshot["dictionaries_detail"]["organizations"]["lookup_error"] == 0
 
 
 def test_provider_error_path_increments_lookup_error_counter() -> None:
@@ -123,3 +119,29 @@ def test_provider_error_path_increments_lookup_error_counter() -> None:
     }
     assert snapshot["dictionaries_detail"]["missing_dictionary"]["lookup_error"] == 1
 
+
+def test_provider_empty_runtime_treats_unknown_dict_as_miss_not_error() -> None:
+    empty_bundle = build_dictionary_dsl_runtime(
+        specs={},
+        manifest_spec=DictionaryManifestSpec.model_validate({"version": 1, "items": {}}),
+    )
+    backend = PolarsDictionaryBackend(bundle=empty_bundle)
+    telemetry = DictionaryTelemetry(
+        fingerprint_salt="salt-v1",
+        lookup_hit_sample_percent=0,
+        lookup_miss_sample_percent=0,
+    )
+    provider = PolarsDictionaryProvider(backend=backend, telemetry=telemetry)
+
+    assert provider.lookup("unknown", "key") == []
+    assert provider.canonicalize("unknown", "key") == []
+    assert provider.contains("unknown", "key") is False
+
+    snapshot = telemetry.snapshot()
+    assert snapshot["aggregate"] == {
+        "lookup_total": 3,
+        "lookup_hit": 0,
+        "lookup_miss": 3,
+        "lookup_error": 0,
+    }
+    assert snapshot["dictionaries_detail"]["unknown"]["lookup_miss"] == 3

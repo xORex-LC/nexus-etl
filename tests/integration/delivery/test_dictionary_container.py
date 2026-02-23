@@ -53,6 +53,7 @@ def _write_datasets_fixture(
     include_dictionaries_section: bool = True,
     empty_dictionary_items: bool = False,
     fingerprint_mismatch: bool = False,
+    empty_csv: bool = False,
 ) -> Path:
     datasets_root = tmp_path / "datasets"
     dictionaries_dir = datasets_root / "dictionaries"
@@ -61,7 +62,11 @@ def _write_datasets_fixture(
     spec_payload = _dictionary_spec_payload()
     spec_model = DictionarySpec.model_validate(spec_payload)
 
-    csv_bytes = b"code,name,ouid\n ORG-1 ,Org One,100\nORG-2,Org Two,200\n"
+    csv_bytes = (
+        b"code,name,ouid\n"
+        if empty_csv
+        else b"code,name,ouid\n ORG-1 ,Org One,100\nORG-2,Org Two,200\n"
+    )
     (dictionaries_dir / "organizations.csv").write_bytes(csv_bytes)
     (dictionaries_dir / "organizations.dictionary.yaml").write_text(
         yaml.safe_dump(spec_payload, sort_keys=False),
@@ -112,7 +117,7 @@ def _write_datasets_fixture(
                             else build_content_sha256_bytes(csv_bytes)
                         ),
                         "schema_hash": build_dictionary_schema_hash(spec_model),
-                        "row_count": 2,
+                        "row_count": 0 if empty_csv else 2,
                         "updated_at_utc": "2026-02-23T12:00:00Z",
                         "owner": "tests",
                     }
@@ -133,16 +138,20 @@ def _make_container(
     include_dictionaries_section: bool = True,
     empty_dictionary_items: bool = False,
     fingerprint_mismatch: bool = False,
+    empty_csv: bool = False,
+    load_strategy: str = "eager",
 ) -> DictionaryContainer:
     datasets_root = _write_datasets_fixture(
         tmp_path,
         include_dictionaries_section=include_dictionaries_section,
         empty_dictionary_items=empty_dictionary_items,
         fingerprint_mismatch=fingerprint_mismatch,
+        empty_csv=empty_csv,
     )
     container = DictionaryContainer()
     container.settings.override(
         DictionaryRuntimeSettings(
+            dictionary_load_strategy=load_strategy,
             dictionary_fingerprint_salt="test-salt",
             dictionary_lookup_hit_sample_percent=0,
             dictionary_lookup_miss_sample_percent=0,
@@ -228,5 +237,52 @@ def test_dictionary_container_bootstrap_fixtures_from_repo_init_success() -> Non
         assert provider is not None
         # Bootstrap fixture must expose organizations dictionary through runtime.
         assert "organizations" in backend.get_loaded_dict_names()
+    finally:
+        container.shutdown_resources()
+
+
+def test_dictionary_container_lazy_mode_loads_on_first_access(tmp_path: Path) -> None:
+    container = _make_container(tmp_path, load_strategy="lazy")
+    try:
+        container.init_resources()
+        backend = container.backend()
+        provider = container.provider()
+        assert isinstance(backend, PolarsDictionaryBackend)
+        assert provider is not None
+        assert backend.get_loaded_dict_names() == ()
+
+        assert provider.contains("organizations", "org-1") is True
+        assert backend.get_loaded_dict_names() == ("organizations",)
+
+        snapshot = container.telemetry().snapshot()
+        assert snapshot["summary"]["load_strategy"] == "lazy"
+        assert snapshot["summary"]["loaded_count"] == 1
+        assert snapshot["dictionaries_detail"]["organizations"]["row_count"] == 2
+    finally:
+        container.shutdown_resources()
+
+
+def test_dictionary_container_lazy_mode_defers_fingerprint_error_until_first_access(tmp_path: Path) -> None:
+    container = _make_container(tmp_path, fingerprint_mismatch=True, load_strategy="lazy")
+    try:
+        container.init_resources()
+        provider = container.provider()
+        assert provider is not None
+        with pytest.raises(DslLoadError) as exc_info:
+            provider.lookup("organizations", "org-1")
+        assert exc_info.value.code == "DICT_SOURCE_FINGERPRINT_MISMATCH"
+    finally:
+        container.shutdown_resources()
+
+
+def test_dictionary_container_empty_csv_records_warning_in_telemetry_snapshot(tmp_path: Path) -> None:
+    container = _make_container(tmp_path, empty_csv=True)
+    try:
+        container.init_resources()
+        snapshot = container.telemetry().snapshot()
+        assert snapshot["summary"]["warnings_count"] == 1
+        assert snapshot["anomalies"][0]["code"] == "DICT_SOURCE_EMPTY"
+        assert snapshot["dictionaries_detail"]["organizations"]["row_count"] == 0
+        assert snapshot["dictionaries_detail"]["organizations"]["fingerprint_kind"] == "content_sha256"
     finally:
         container.shutdown_resources()

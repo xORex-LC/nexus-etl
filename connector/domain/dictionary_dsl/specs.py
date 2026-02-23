@@ -166,9 +166,11 @@ class DictionarySpec(DslBaseModel):
         Каноническая Pydantic-модель одного словаря (файл `*.dictionary.yaml`).
     """
 
+    model_config = {"extra": "forbid", "populate_by_name": True}
+
     dictionary: str
     source: DictionarySourceSpec
-    schema: DictionarySchemaSpec
+    data_schema: DictionarySchemaSpec = Field(alias="schema")
     lookup: DictionaryLookupSpec = Field(default_factory=DictionaryLookupSpec)
 
     @field_validator("dictionary", mode="after")

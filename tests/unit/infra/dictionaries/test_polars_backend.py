@@ -165,3 +165,41 @@ def test_polars_backend_accepts_empty_dataframe_when_columns_exist() -> None:
     assert backend.lookup("organizations", "ORG-1") == []
     assert backend.get_version_info("organizations").row_count == 0
 
+
+def test_polars_backend_lazy_loader_loads_on_first_access() -> None:
+    spec = _spec()
+    backend = PolarsDictionaryBackend(bundle=_bundle(spec))
+    calls: list[str] = []
+
+    def _lazy_loader(dict_name: str) -> None:
+        calls.append(dict_name)
+        backend.load_dictionary_frame(
+            dict_name=dict_name,
+            frame=pl.DataFrame(
+                {
+                    "code": ["ORG-1"],
+                    "name": ["Org One"],
+                    "ouid": ["100"],
+                }
+            ),
+            content_sha256="a" * 64,
+        )
+
+    backend.set_lazy_loader(_lazy_loader)
+
+    assert backend.get_loaded_dict_names() == ()
+    assert backend.lookup("organizations", "org-1", fields=("name",)) == [{"name": "Org One"}]
+    assert backend.lookup("organizations", "ORG-1", fields=("name",)) == [{"name": "Org One"}]
+    assert calls == ["organizations"]
+    assert backend.get_loaded_dict_names() == ("organizations",)
+
+
+def test_polars_backend_empty_runtime_treats_lookup_family_as_miss() -> None:
+    empty_manifest = DictionaryManifestSpec.model_validate({"version": 1, "items": {}})
+    empty_bundle = build_dictionary_dsl_runtime(specs={}, manifest_spec=empty_manifest)
+    backend = PolarsDictionaryBackend(bundle=empty_bundle)
+
+    assert backend.is_empty_runtime() is True
+    assert backend.lookup("missing", "key") == []
+    assert backend.canonicalize("missing", "key") == []
+    assert backend.contains("missing", "key") is False

@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import polars as pl
 
@@ -45,12 +45,21 @@ class PolarsDictionaryBackend:
     Контракт:
         - Требует `DictionaryDslRuntimeBundle` (скомпилированный DSL без IO).
         - Данные загружаются отдельно через `CsvDictionaryLoader.load_into(self)`.
-        - До загрузки словаря lookup/contains/canonicalize по нему бросают `KeyError`.
+        - Поддерживает lazy first-load через callback, если настроен orchestration-слоем.
+        - Unknown dict в non-empty runtime -> `KeyError`.
+        - Empty runtime (`items:{}`) трактуется как miss (lookup=[] / contains=False).
     """
 
-    def __init__(self, *, bundle: DictionaryDslRuntimeBundle) -> None:
+    def __init__(
+        self,
+        *,
+        bundle: DictionaryDslRuntimeBundle,
+        lazy_loader: Callable[[str], None] | None = None,
+    ) -> None:
         self.bundle = bundle
+        self._lazy_loader = lazy_loader
         self._loaded: dict[str, _LoadedDictionaryData] = {}
+        self._loading_in_progress: set[str] = set()
 
     def load_dictionary_frame(
         self,
@@ -58,7 +67,7 @@ class PolarsDictionaryBackend:
         dict_name: str,
         frame: pl.DataFrame,
         content_sha256: str,
-    ) -> None:
+    ) -> DictionaryVersionInfo:
         """
         Назначение:
             Загрузить/заменить данные словаря из готового `polars.DataFrame`.
@@ -105,6 +114,18 @@ class PolarsDictionaryBackend:
             key_index=key_index,
             version_info=version_info,
         )
+        return version_info
+
+    def set_lazy_loader(self, lazy_loader: Callable[[str], None] | None) -> None:
+        """
+        Назначение:
+            Настроить lazy loader callback (per-dictionary first access load).
+
+        Граница:
+            - Callback поставляется orchestration/DI слоем.
+            - Backend не знает о CSV loader/DI напрямую.
+        """
+        self._lazy_loader = lazy_loader
 
     def lookup(
         self,
@@ -120,6 +141,8 @@ class PolarsDictionaryBackend:
             Найти записи словаря по ключу с projection/limit.
         """
         _ = at
+        if self.is_empty_runtime():
+            return []
         loaded = self._require_loaded(dict_name)
         projection = self._resolve_projection(loaded.compiled, fields)
         indexes = self._lookup_indexes(loaded, key)
@@ -141,6 +164,8 @@ class PolarsDictionaryBackend:
             Быстрый membership-check по словарю (через in-memory key index).
         """
         _ = at
+        if self.is_empty_runtime():
+            return False
         loaded = self._require_loaded(dict_name)
         normalized = self._normalize_lookup_key(loaded.compiled, value)
         return self._index_key(normalized) in loaded.key_index
@@ -171,11 +196,61 @@ class PolarsDictionaryBackend:
         """
         return tuple(sorted(self._loaded.keys()))
 
+    def get_declared_dict_names(self) -> tuple[str, ...]:
+        """Назначение:
+        Вернуть имена словарей, объявленных в runtime bundle (loaded + unloaded).
+        """
+        return tuple(sorted(self.bundle.specs.keys()))
+
+    def has_declared_dictionary(self, dict_name: str) -> bool:
+        """Назначение:
+        Проверить, объявлен ли словарь в runtime bundle.
+        """
+        return dict_name in self.bundle.specs
+
+    def is_loaded(self, dict_name: str) -> bool:
+        """Назначение:
+        Проверить, загружен ли словарь в runtime data store.
+        """
+        return dict_name in self._loaded
+
+    def is_empty_runtime(self) -> bool:
+        """Назначение:
+        Пустой runtime (`items:{}` / all disabled) — без объявленных словарей.
+        """
+        return not self.bundle.specs
+
     def _require_loaded(self, dict_name: str) -> _LoadedDictionaryData:
         loaded = self._loaded.get(dict_name)
+        if loaded is None and dict_name in self.bundle.specs:
+            self._load_dictionary_lazy_if_needed(dict_name)
+            loaded = self._loaded.get(dict_name)
         if loaded is None:
             raise KeyError(dict_name)
         return loaded
+
+    def _load_dictionary_lazy_if_needed(self, dict_name: str) -> None:
+        """
+        Назначение:
+            Подгрузить один словарь по первому обращению в lazy режиме.
+
+        Contract:
+            - Если lazy loader не задан, метод no-op.
+            - Повторная загрузка не выполняется.
+            - Ошибки callback не подавляются (fail-fast).
+        """
+        if dict_name in self._loaded:
+            return
+        if self._lazy_loader is None:
+            return
+        if dict_name in self._loading_in_progress:
+            raise RuntimeError(f"Recursive lazy dictionary load detected for '{dict_name}'")
+
+        self._loading_in_progress.add(dict_name)
+        try:
+            self._lazy_loader(dict_name)
+        finally:
+            self._loading_in_progress.discard(dict_name)
 
     def _validate_columns(self, *, compiled: CompiledDictionarySpec, frame: pl.DataFrame) -> None:
         required_columns = set(compiled.allowed_columns)
