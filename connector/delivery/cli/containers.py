@@ -63,9 +63,9 @@ from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
 from connector.delivery.cli.pipeline_registry import (
     build_stage_factory,
-    build_transform_pipeline,
-    build_full_pipeline,
+    build_transform_segment,
 )
+from connector.delivery.pipelines.planning_pipeline import PlanningPipeline
 from connector.domain.transform_dsl import (
     load_enrich_build_options_for_dataset,
     load_map_build_options_for_dataset,
@@ -461,10 +461,12 @@ def _create_stage(
 class PipelineContainer(containers.DeclarativeContainer):
     """
     Назначение:
-        DI-контейнер для lazy сборки transform/planning stages и orchestrators.
+        DI-контейнер для lazy сборки transform/planning stages, orchestrators и
+        lifecycle-aware конвейеров (DEC-004, DEC-006).
 
     Граница ответственности:
-        - Owns: lazy Factory providers для stages, contexts, orchestrators.
+        - Owns: lazy Factory providers для stages, contexts, transform_segment и
+          planning_pipeline (lifecycle-aware конвейер для import_plan).
         - Does NOT: управлять lifecycle инфраструктуры (это SqliteContainer/CacheContainer).
         - Does NOT: содержать бизнес-логику — только wiring через StageFactory.
 
@@ -473,6 +475,8 @@ class PipelineContainer(containers.DeclarativeContainer):
           задаются через override() context managers в command handlers.
         - Stages материализуются лениво: normalize handler НЕ материализует planning_context.
         - Один экземпляр PipelineContainer на invocation CLI-команды (sub-container AppContainer).
+        - planning_pipeline — providers.Factory: PlanningPipeline инкапсулирует
+          lifecycle match-runtime scope; lifecycle-логика живёт в PlanningPipeline, не здесь.
     """
 
     # ── External dependencies (overridden per-command) ────────────────────────
@@ -630,22 +634,26 @@ class PipelineContainer(containers.DeclarativeContainer):
         options=resolve_options,
     )
 
-    # ── Orchestrators ─────────────────────────────────────────────────────────
+    # ── Orchestrators / pipelines ─────────────────────────────────────────────
 
-    transform_pipeline = providers.Factory(
-        build_transform_pipeline,
+    # transform_segment: переходный провайдер (DEC-006); удаляется в DEC-007
+    # (заменяется PipelineComposer.compose("enrich")).
+    transform_segment = providers.Factory(
+        build_transform_segment,
         map_stage=map_stage,
         normalize_stage=normalize_stage,
         enrich_stage=enrich_stage,
     )
 
-    full_pipeline = providers.Factory(
-        build_full_pipeline,
-        map_stage=map_stage,
-        normalize_stage=normalize_stage,
-        enrich_stage=enrich_stage,
+    planning_pipeline = providers.Factory(
+        PlanningPipeline,
+        transform_segment=transform_segment,
         match_stage=match_stage,
         resolve_stage=resolve_stage,
+        row_source=row_source,
+        catalog=catalog,
+        dataset_spec=dataset_spec,
+        app_settings=app_settings,
     )
 
 
