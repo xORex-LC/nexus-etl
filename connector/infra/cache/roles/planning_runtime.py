@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.domain.ports.cache.roles import PendingReplayPort, PlanningRuntimePort
+from connector.domain.ports.cache.roles import PlanningRuntimePort
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 
 
-class SqlitePlanningRuntimeAdapter(PlanningRuntimePort, PendingReplayPort):
+class SqlitePlanningRuntimeAdapter(PlanningRuntimePort):
     """
     Role adapter для связки match+resolve и pending replay.
     """

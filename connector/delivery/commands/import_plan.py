@@ -134,7 +134,6 @@ def handler(ctx: BoundCommandContext, opts: Options) -> CommandResult:
 
             service = ImportPlanService()
             return service.run(
-                pending_replay=cache_roles.pending_replay,
                 planning_runtime=cache_roles.planning_runtime,
                 include_deleted=include_deleted_value,
                 matching_runtime_settings=app_settings.matching_runtime,
