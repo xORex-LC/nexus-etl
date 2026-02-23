@@ -325,7 +325,12 @@ def enrich(
         command_name="enrich",
         opts=opts,
         handler=enrich_command.handler,
-        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(
+            requires_source=True,
+            requires_dataset=True,
+            requires_cache=True,
+            requires_dictionaries=True,
+        ),
     )
 
 
@@ -357,7 +362,12 @@ def importPlan(
         command_name="import-plan",
         opts=opts,
         handler=import_plan_command.handler,
-        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(
+            requires_source=True,
+            requires_dataset=True,
+            requires_cache=True,
+            requires_dictionaries=True,
+        ),
     )
 
 

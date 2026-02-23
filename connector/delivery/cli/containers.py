@@ -14,6 +14,7 @@
     - VaultContainer: vault-сервисы (cipher, read/write/retention) поверх vault_engine.
     - CacheContainer: cache gateway (Resource) + role-based порты (Singleton).
     - TargetContainer: lifecycle DefaultTargetRuntime (HTTP-клиент + gateway).
+    - DictionaryContainer: lifecycle dictionary runtime v1 (optional DSL+CSV+Polars backend).
     - PipelineContainer: lazy transform/planning stages + orchestrators (DEC-004).
     - AppContainer: монтирует все sub-containers; единственный CR.
     - _init_container_for_requirements(): условная инициализация ресурсов по Requirements.
@@ -36,6 +37,7 @@ from connector.config.app_settings import (
     ApiSettings,
     AppSettings,
     DatasetSettings,
+    DictionaryRuntimeSettings,
     SqliteSettings,
     build_cache_db_config,
     build_identity_db_config,
@@ -65,6 +67,7 @@ from connector.delivery.cli.pipeline_registry import (
     build_stage_factory,
     build_transform_segment,
 )
+from connector.delivery.cli.dictionaries_container import DictionaryContainer
 from connector.delivery.pipelines.planning_pipeline import PlanningPipeline
 from connector.domain.transform_dsl import (
     load_enrich_build_options_for_dataset,
@@ -683,6 +686,7 @@ class AppContainer(containers.DeclarativeContainer):
     app_settings = providers.Dependency(instance_of=AppSettings)
 
     _sqlite_cfg = providers.Singleton(SqliteSettings)
+    _dictionary_cfg = providers.Singleton(DictionaryRuntimeSettings)
     _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_settings)
     _api_settings = providers.Callable(lambda s: s.api, s=app_settings)
 
@@ -714,6 +718,12 @@ class AppContainer(containers.DeclarativeContainer):
         transport=providers.Object(None),
     )
 
+    dictionary = providers.Container(
+        DictionaryContainer,
+        settings=_dictionary_cfg,
+        datasets_root=providers.Object(None),
+    )
+
     pipeline = providers.Container(
         PipelineContainer,
         app_settings=app_settings,
@@ -733,6 +743,8 @@ def _init_container_for_requirements(
         - requires_cache: открывает cache/identity engines + schema + gateway.
         - requires_vault_init: открывает vault engine + schema + VaultStartupGuard.
         - requires_api: создаёт target runtime (HTTP-клиент + gateway).
+        - requires_dictionaries: eager-init dictionary backend Resource и, если runtime активен,
+          пробрасывает capability в PipelineContainer через `pipeline.dictionaries`.
         - Вызывается ОДИН раз перед handler_fn() в run_with_report().
     """
     if req.requires_cache:
@@ -743,6 +755,11 @@ def _init_container_for_requirements(
         container.sqlite.vault_ready.init()
     if req.requires_api:
         container.target.runtime.init()
+    if req.requires_dictionaries:
+        container.dictionary.backend.init()
+        dictionary_provider = container.dictionary.provider()
+        if dictionary_provider is not None:
+            container.pipeline.dictionaries.override(dictionary_provider)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
