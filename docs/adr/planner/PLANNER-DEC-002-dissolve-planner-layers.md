@@ -1,6 +1,6 @@
 # PLANNER-DEC-002: Растворение избыточных слоёв планнера и очистка plan_writer
 
-> **Статус**: Открыто (реализуется совместно с PLANNER-DEC-001)
+> **Статус**: Закрыто
 > **Дата принятия**: 2026-02-23
 > **Решает проблему**: [PLANNER-PROBLEM-002](./PLANNER-PROBLEM-002-planner-redundant-layers-and-masking.md)
 > **Реализуется совместно с**: [PLANNER-DEC-001](./PLANNER-DEC-001-pending-replay-at-resolve-boundary.md)
