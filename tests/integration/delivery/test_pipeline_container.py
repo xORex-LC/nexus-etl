@@ -178,6 +178,22 @@ class TestStageWiring:
 
         assert isinstance(resolve_stage, ResolveStage)
 
+    def test_transform_segment_wiring(self):
+        """transform_segment() returns PipelineOrchestrator([map, normalize, enrich])."""
+        from connector.domain.transform.stages.stages import PipelineOrchestrator
+        container = _make_pipeline_container()
+        _apply_command_overrides(container)
+
+        assert isinstance(container.transform_segment(), PipelineOrchestrator)
+
+    def test_planning_pipeline_wiring(self):
+        """planning_pipeline() returns PlanningPipeline (Factory wiring works)."""
+        from connector.delivery.pipelines.planning_pipeline import PlanningPipeline
+        container = _make_pipeline_container()
+        _apply_command_overrides(container)
+
+        assert isinstance(container.planning_pipeline(), PlanningPipeline)
+
 
 # ════════════════════════════════════════════════════════════════════════════════
 # Lazy materialization tests

@@ -1,6 +1,6 @@
 # TRANSFORM-PROBLEM-006: Владение композицией конвейера разделено между CLI, ImportPlanService и planning_match_runtime
 
-> **Статус**: Открыта / Решена в [TRANSFORM-DEC-006](./TRANSFORM-DEC-006-pipeline-segments-in-container.md)
+> **Статус**: Закрыто / Решена в [TRANSFORM-DEC-006](./TRANSFORM-DEC-006-pipeline-segments-in-container.md)
 > **Дата создания**: 2026-02-23
 > **Затронутые компоненты**: `ImportPlanService`, `import_plan.py`, `planning_match_runtime.py`, `PipelineContainer`
 
