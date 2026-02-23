@@ -36,6 +36,7 @@ from connector.delivery.cli import runtime as runtime_module
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.dsl.issues import DslLoadError
 from connector.domain.secrets.errors import SecretKeyConfigError
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 
@@ -280,3 +281,25 @@ def test_initialize_container_resources_maps_unknown_error(
     assert result is not None
     assert isinstance(result, CommandResult)
     assert result.system_codes == {SystemErrorCode.INTERNAL_ERROR}
+
+
+def test_initialize_container_resources_reraises_dsl_load_error_from_init_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        runtime_module,
+        "_init_container_for_requirements",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            DslLoadError(code="DICT_RUNTIME_INIT_FAILED", message="dictionary init failed")
+        ),
+    )
+
+    with pytest.raises(DslLoadError) as exc_info:
+        runtime_module._initialize_container_resources(
+            container=object(),  # type: ignore[arg-type]
+            requirements=Requirements(requires_dictionaries=True),
+            logger=logging.getLogger("runtime-init-mapping-test"),
+            run_id="r-dict",
+        )
+
+    assert exc_info.value.code == "DICT_RUNTIME_INIT_FAILED"

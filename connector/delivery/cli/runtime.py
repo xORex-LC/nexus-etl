@@ -352,6 +352,9 @@ def _initialize_container_resources(
 ) -> int | DomainCommandResult | CliCommandResult | None:
     try:
         _init_container_for_requirements(container, requirements)
+    except DslLoadError:
+        # Dictionary/DSL init failures must reach outer DSL error handling path unchanged.
+        raise
     except sqlite3.Error as exc:
         logEvent(logger, logging.ERROR, run_id, "cache", f"Container cache init failed: {exc}")
         typer.echo("ERROR: failed to initialize cache resources (see logs/report)", err=True)
