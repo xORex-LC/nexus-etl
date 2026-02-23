@@ -1,0 +1,17 @@
+dictionary: organizations
+source:
+  format: csv
+  location: dictionaries/organizations.csv
+  csv:
+    delimiter: ","
+    has_header: true
+    encoding: utf-8
+schema:
+  key_column: code
+  value_columns: [name, ouid]
+  normalized_key:
+    ops:
+      - op: trim
+      - op: lower
+lookup:
+  allow_duplicates: false

@@ -187,12 +187,19 @@ class TestStageWiring:
         assert isinstance(container.transform_segment(), PipelineOrchestrator)
 
     def test_planning_pipeline_wiring(self):
-        """planning_pipeline() returns PlanningPipeline (Factory wiring works)."""
+        """
+        planning_pipeline() returns PlanningPipeline (Factory wiring works).
+
+        Примечание:
+            Для этого wiring-теста row_source подменяется заглушкой, чтобы
+            не зависеть от source DSL/env (`EMPLOYEES_SOURCE_PATH`).
+        """
         from connector.delivery.pipelines.planning_pipeline import PlanningPipeline
         container = _make_pipeline_container()
         _apply_command_overrides(container)
 
-        assert isinstance(container.planning_pipeline(), PlanningPipeline)
+        with container.row_source.override(providers.Object(object())):
+            assert isinstance(container.planning_pipeline(), PlanningPipeline)
 
 
 # ════════════════════════════════════════════════════════════════════════════════
