@@ -12,8 +12,7 @@ from connector.delivery.cli.containers import (
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
-from connector.domain.transform.stages.stages import PipelineOrchestrator
-from connector.usecases.planning_match_runtime import open_match_runtime
+from connector.delivery.cli.planning_match_runtime import open_match_runtime
 
 
 @dataclass(frozen=True)
@@ -63,15 +62,11 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
              pipeline.csv_has_header.override(csv_has_header_value), \
              pipeline.catalog.override(catalog), \
              pipeline.include_deleted.override(include_deleted_value):
-            map_stage = pipeline.map_stage()
-            normalize_stage = pipeline.normalize_stage()
-            enrich_stage = pipeline.enrich_stage()
             match_stage = pipeline.match_stage()
 
             row_source = pipeline.row_source()
-            stage_pipeline = PipelineOrchestrator([map_stage, normalize_stage, enrich_stage])
             enriched_rows = iter_ok(
-                stage_pipeline.run(Extractor(row_source, catalog=catalog).run()),
+                pipeline.transform_segment().run(Extractor(row_source, catalog=catalog).run()),
                 should_skip=lambda item: item.row is None,
             )
 

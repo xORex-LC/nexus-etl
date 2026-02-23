@@ -13,9 +13,6 @@ from connector.delivery.commands.common import result_with, sqlite_cache_error_r
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_builder import PlanBuilder
-from connector.domain.transform.core.extractor import Extractor
-from connector.domain.transform.core.iterators import iter_ok
-from connector.domain.transform.stages.stages import PipelineOrchestrator
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
     VaultStartupKeyValidationError,
@@ -34,8 +31,6 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
 )
 from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.infra.logging.setup import logEvent
-from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
-from connector.usecases.resolve_usecase import ResolveUseCase
 
 
 @dataclass(frozen=True)
@@ -104,8 +99,6 @@ def handler(ctx: BoundCommandContext, opts: Options) -> CommandResult:
             ctx.container.sqlite.vault_ready.init()
             secret_store = ctx.container.vault.write_service()
 
-        cache_roles = ctx.container.cache.roles()
-
         include_deleted_value = (
             opts.include_deleted if opts.include_deleted is not None else app_settings.dataset.include_deleted
         )
@@ -131,50 +124,14 @@ def handler(ctx: BoundCommandContext, opts: Options) -> CommandResult:
              pipeline.include_deleted.override(include_deleted_value), \
              pipeline.secret_store.override(secret_store):
 
-            row_source = pipeline.row_source()
-            map_stage = pipeline.map_stage()
-            normalize_stage = pipeline.normalize_stage()
-            enrich_stage = pipeline.enrich_stage()
-            match_stage = pipeline.match_stage()
-            resolve_stage = pipeline.resolve_stage()
-            transform_pipeline = PipelineOrchestrator([map_stage, normalize_stage, enrich_stage])
-
             generated_at = getNowIso()
-            extractor = Extractor(row_source, catalog=catalog)
-            enriched_rows = iter_ok(
-                transform_pipeline.run(extractor.run()),
-                should_skip=lambda item: item.row is None,
-            )
-
-            with open_match_runtime(
+            plan_pipeline = pipeline.planning_pipeline()
+            planning_runtime = ctx.container.cache.roles().planning_runtime
+            with plan_pipeline.open(
                 run_id=run_id,
-                match_stage=match_stage,
-                match_runtime=cache_roles.planning_runtime,
+                planning_runtime=planning_runtime,
                 report_items_limit=report_items_limit_value,
-                include_matched_items=False,
-                batch_size=app_settings.matching_runtime.match_batch_size,
-                flush_interval_ms=app_settings.matching_runtime.match_flush_interval_ms,
-            ) as match_runtime:
-                matched_rows = iter_matched_ok(
-                    runtime=match_runtime,
-                    enriched_source=enriched_rows,
-                )
-
-                resolve_usecase = ResolveUseCase(
-                    report_items_limit=report_items_limit_value,
-                    include_resolved_items=False,
-                    batch_size=app_settings.matching_runtime.resolve_batch_size,
-                    flush_interval_ms=app_settings.matching_runtime.resolve_flush_interval_ms,
-                )
-                resolved_rows = iter_ok(
-                    resolve_usecase.iter_resolved(
-                        matched_source=matched_rows,
-                        resolve_stage=resolve_stage,
-                        dataset=dataset_name,
-                        pending_replay=cache_roles.planning_runtime,
-                    )
-                )
-
+            ) as resolved_rows:
                 plan_result = PlanBuilder().build_from_stream(resolved_rows)
 
             plan_meta = {

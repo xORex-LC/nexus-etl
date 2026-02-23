@@ -1,6 +1,6 @@
 # TRANSFORM-DEC-006: Pipeline segments в PipelineContainer — контейнер владеет композицией и lifecycle
 
-> **Статус**: Открыто
+> **Статус**: Закрыто
 > **Дата принятия**: 2026-02-23
 > **Решает проблему**: [TRANSFORM-PROBLEM-006](./TRANSFORM-PROBLEM-006-pipeline-composition-ownership.md)
 > **Зависит от**: [PLANNER-DEC-001](../planner/PLANNER-DEC-001-pending-replay-at-resolve-boundary.md) (prerequisite)
