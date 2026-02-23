@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import structlog
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
+from itertools import chain
 from typing import Iterable
 
 from connector.domain.models import DiagnosticStage, RowRef
@@ -10,10 +12,14 @@ from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.ports.cache.roles import ResolveRuntimePort
 from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.result_processor import PlanningResultProcessor
+from connector.domain.transform.resolver import pending_codec
 from connector.domain.transform.stages.stages import ResolveStage
+
+logger = structlog.get_logger(__name__)
 
 
 class ResolveUseCase:
@@ -40,12 +46,32 @@ class ResolveUseCase:
         resolve_stage: ResolveStage,
         *,
         dataset: str | None = None,
+        pending_replay: ResolveRuntimePort | None = None,
     ):
         """
         Назначение:
             Итератор разрешённых строк (для plan).
+
+        Параметр ``pending_replay``:
+            Если передан вместе с ``dataset``, pending-строки из storage
+            десериализуются через ``pending_codec`` и добавляются в конец
+            ``matched_source`` перед разрешением.
+            ``None`` (по умолчанию) — поведение без изменений.
         """
-        return self._iter_resolved(matched_source, resolve_stage, dataset=dataset)
+        pending_rows: list[TransformResult] = []
+        if pending_replay is not None and dataset is not None:
+            load_result = pending_codec.load_pending_rows(
+                pending_replay.list_pending_rows(dataset)
+            )
+            pending_rows = load_result.rows
+            if load_result.skipped > 0:
+                logger.warning(
+                    "pending_codec_skipped_invalid",
+                    count=load_result.skipped,
+                    dataset=dataset,
+                )
+        all_matched = chain(matched_source, pending_rows)
+        return self._iter_resolved(all_matched, resolve_stage, dataset=dataset)
 
     def run(
         self,
