@@ -1,6 +1,6 @@
 # PLANNER-PROBLEM-001: Pending replay — разорванная пара сериализации и утечка инфраструктурной логики в ImportPlanService
 
-> **Статус**: Открыта / Решена в PLANNER-DEC-001
+> **Статус**: Закрыто / [PLANNER-DEC-001](./PLANNER-DEC-001-pending-replay-at-resolve-boundary.md)
 > **Дата создания**: 2026-02-23
 > **Затронутые компоненты**: `ImportPlanService`, `PendingReplayPort`, `ResolveRuntimePort`, `ResolveUseCase`
 
