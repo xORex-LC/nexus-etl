@@ -9,7 +9,12 @@ import typer
 from connector.common.time import getNowIso
 from connector.delivery.cli.containers import build_dataset_spec, build_diagnostics_catalog
 from connector.delivery.cli.context import BoundCommandContext
-from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
+from connector.delivery.commands.common import (
+    attach_dictionary_report_snapshot_if_available,
+    result_with,
+    sqlite_cache_error_result,
+    vault_startup_error_result,
+)
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_builder import PlanBuilder
@@ -51,7 +56,7 @@ _STARTUP_ERRORS = (
 )
 
 
-def handler(ctx: BoundCommandContext, opts: Options) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResult:
     """
     Назначение:
         Запустить сценарий import-plan через CLI handler.
@@ -150,6 +155,7 @@ def handler(ctx: BoundCommandContext, opts: Options) -> CommandResult:
             logEvent(ctx.logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
             result = CommandResult()
             result.add_code(SystemErrorCode.OK)
+            attach_dictionary_report_snapshot_if_available(ctx=ctx, report=report)
             return result
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
