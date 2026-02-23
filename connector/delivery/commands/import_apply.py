@@ -40,7 +40,6 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
     resolve_vault_runtime_mode,
 )
 from connector.datasets.registry import build_identity_index_plan, get_spec
-from connector.infra.secrets import NullSecretProvider
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.infra.logging.setup import logEvent
 from connector.usecases.import_apply_service import ImportApplyService
@@ -193,17 +192,16 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     )
     report.set_context("target_runtime", _runtime_context(build_result))
 
-    if rollout_decision.vault_enabled:
-        secrets_provider = ctx.container.vault.read_service(default_run_id=plan.meta.run_id)
-    else:
-        secrets_provider = NullSecretProvider()
     # Dry-run должен оставаться чистым: retention hooks отключены полностью.
     secret_retention = (
         None
         if dry_run or not rollout_decision.vault_enabled
         else ctx.container.vault.retention_service()
     )
-    dataset_spec = get_spec(dataset_name, secrets=secrets_provider)
+    if rollout_decision.vault_enabled:
+        dataset_spec = get_spec(dataset_name, secrets=ctx.container.vault.read_service(default_run_id=plan.meta.run_id))
+    else:
+        dataset_spec = get_spec(dataset_name)
     apply_adapter = dataset_spec.get_apply_adapter()
     executor = DryRunExecutor() if dry_run else runtime.executor
     identity_syncer = (
