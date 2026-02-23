@@ -1,6 +1,6 @@
 # PLANNER-PROBLEM-002: Планнер выполняет избыточные операции и нарушает границы ответственности
 
-> **Статус**: Открыта / Решена в [PLANNER-DEC-002](./PLANNER-DEC-002-dissolve-planner-layers.md)
+> **Статус**: Закрыто / Решена в [PLANNER-DEC-002](./PLANNER-DEC-002-dissolve-planner-layers.md)
 > **Дата создания**: 2026-02-23
 > **Затронутые компоненты**: `plan_writer.py`, `PlanUseCase`, `ImportPlanService`, `PlanBuilder`
 

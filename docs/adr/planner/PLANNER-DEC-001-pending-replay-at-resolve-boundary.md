@@ -1,6 +1,6 @@
 # PLANNER-DEC-001: Pending replay на границе ResolveUseCase + десериализация в доменном слое (pending_codec)
 
-> **Статус**: Открыто
+> **Статус**: Закрыто
 > **Дата принятия**: 2026-02-23
 > **Решает проблему**: [PLANNER-PROBLEM-001](./PLANNER-PROBLEM-001-pending-replay-infra-leak.md)
 > **Участники решения**: @xorex-LC
