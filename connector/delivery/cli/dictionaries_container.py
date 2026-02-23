@@ -142,8 +142,15 @@ def _load_enabled_specs_from_registry(
     return specs
 
 
-def _build_csv_loader(*, datasets_root: str | Path | None) -> CsvDictionaryLoader:
-    return CsvDictionaryLoader(datasets_root=datasets_root)
+def _build_csv_loader(
+    *,
+    datasets_root: str | Path | None,
+    telemetry: DictionaryTelemetry,
+) -> CsvDictionaryLoader:
+    return CsvDictionaryLoader(
+        datasets_root=datasets_root,
+        on_dictionary_loaded=telemetry.record_dictionary_loaded,
+    )
 
 
 def _build_dictionary_telemetry(*, settings: DictionaryRuntimeSettings) -> DictionaryTelemetry:
@@ -164,23 +171,48 @@ def dictionary_backend_resource(
     dsl_runtime_bundle: DictionaryDslRuntimeBundle | None,
     csv_loader: CsvDictionaryLoader,
     settings: DictionaryRuntimeSettings,
+    telemetry: DictionaryTelemetry,
 ) -> Iterator[PolarsDictionaryBackend | None]:
     """
     Назначение:
-        Resource-генератор backend словарей: eager load (fail-fast) -> yield -> no-op teardown.
+        Resource-генератор backend словарей: init runtime state -> eager/lazy policy -> yield -> no-op teardown.
 
     Контракт:
         - `dsl_runtime_bundle is None` -> disabled mode (`yield None`).
-        - Ошибки DSL/CSV/fingerprint validation пробрасываются как `DslLoadError`.
+        - `eager`: все CSV загружаются на startup (fail-fast на CSV/fingerprint/schema).
+        - `lazy`: CSV грузится по первому обращению к конкретному словарю.
+        - Ошибки DSL/CSV/fingerprint/schema validation пробрасываются как `DslLoadError`.
         - Teardown no-op: runtime read-only in-memory, отдельного close() не требуется.
     """
-    _ = settings.dictionary_load_strategy  # Stage 6 will differentiate eager/lazy; Stage 4 keeps fail-fast init.
+    load_strategy = settings.dictionary_load_strategy
     if dsl_runtime_bundle is None:
+        telemetry.record_runtime_initialized(
+            enabled=False,
+            load_strategy=load_strategy,
+            declared_dict_names=(),
+        )
         yield None
         return
 
     backend = PolarsDictionaryBackend(bundle=dsl_runtime_bundle)
-    csv_loader.load_into(backend)
+    telemetry.record_runtime_initialized(
+        enabled=True,
+        load_strategy=load_strategy,
+        declared_dict_names=backend.get_declared_dict_names(),
+    )
+
+    if load_strategy == "eager":
+        csv_loader.load_into(backend)
+    elif load_strategy == "lazy":
+        backend.set_lazy_loader(
+            lambda dict_name: csv_loader.load_dictionary_into(backend, dict_name=dict_name)
+        )
+    else:
+        raise DslLoadError(
+            code="DICT_RUNTIME_INIT_FAILED",
+            message=f"Unsupported dictionary_load_strategy: '{load_strategy}'",
+            details={"load_strategy": load_strategy},
+        )
     yield backend
 
 
@@ -202,7 +234,7 @@ class DictionaryContainer(containers.DeclarativeContainer):
     Граница ответственности:
         - dsl_runtime_bundle: Singleton (optional DSL compile step, без CSV IO).
         - csv_loader: Singleton (CSV reader/manifest validation orchestration helper).
-        - backend: Resource (eager CSV load + in-memory index build).
+        - backend: Resource (eager/lazy policy + in-memory index lifecycle).
         - telemetry/provider: Singleton поверх backend Resource.
         - Не является composition root; монтируется в `AppContainer`.
     """
@@ -215,14 +247,15 @@ class DictionaryContainer(containers.DeclarativeContainer):
         datasets_root=datasets_root,
     )
 
-    csv_loader = providers.Singleton(
-        _build_csv_loader,
-        datasets_root=datasets_root,
-    )
-
     telemetry = providers.Singleton(
         _build_dictionary_telemetry,
         settings=settings,
+    )
+
+    csv_loader = providers.Singleton(
+        _build_csv_loader,
+        datasets_root=datasets_root,
+        telemetry=telemetry,
     )
 
     backend = providers.Resource(
@@ -230,6 +263,7 @@ class DictionaryContainer(containers.DeclarativeContainer):
         dsl_runtime_bundle=dsl_runtime_bundle,
         csv_loader=csv_loader,
         settings=settings,
+        telemetry=telemetry,
     )
 
     provider = providers.Singleton(

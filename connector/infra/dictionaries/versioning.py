@@ -29,7 +29,7 @@ def _canonical_json(value: Any) -> str:
 
 
 def _normalized_key_ops_payload(spec: DictionarySpec) -> list[dict[str, Any]]:
-    ops_spec = spec.schema.normalized_key
+    ops_spec = spec.data_schema.normalized_key
     if ops_spec is None:
         return []
     return [{"op": op.op, "args": dict(op.args)} for op in ops_spec.ops]
@@ -49,8 +49,8 @@ def build_dictionary_schema_hash(spec: DictionarySpec) -> str:
             "format": spec.source.format,
         },
         "schema": {
-            "key_column": spec.schema.key_column,
-            "value_columns": list(spec.schema.value_columns),
+            "key_column": spec.data_schema.key_column,
+            "value_columns": list(spec.data_schema.value_columns),
             "normalized_key": {
                 "ops": _normalized_key_ops_payload(spec),
             },
