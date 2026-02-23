@@ -44,3 +44,10 @@ cache:
       order_hint: 20
       allow_partial_refresh: false
       enabled: true
+
+dictionaries:
+  version: 1
+  items:
+    organizations:
+      spec: dictionaries/organizations.dictionary.yaml
+      enabled: true

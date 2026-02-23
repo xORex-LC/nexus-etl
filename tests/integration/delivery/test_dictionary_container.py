@@ -51,6 +51,7 @@ def _write_datasets_fixture(
     tmp_path: Path,
     *,
     include_dictionaries_section: bool = True,
+    empty_dictionary_items: bool = False,
     fingerprint_mismatch: bool = False,
 ) -> Path:
     datasets_root = tmp_path / "datasets"
@@ -74,12 +75,16 @@ def _write_datasets_fixture(
             "datasets": {},
             "dictionaries": {
                 "version": 1,
-                "items": {
-                    "organizations": {
-                        "spec": "dictionaries/organizations.dictionary.yaml",
-                        "enabled": True,
+                "items": (
+                    {}
+                    if empty_dictionary_items
+                    else {
+                        "organizations": {
+                            "spec": "dictionaries/organizations.dictionary.yaml",
+                            "enabled": True,
+                        }
                     }
-                },
+                ),
             },
         }
     else:
@@ -93,21 +98,26 @@ def _write_datasets_fixture(
     )
 
     if include_dictionaries_section:
-        content_sha256 = build_content_sha256_bytes(csv_bytes)
-        if fingerprint_mismatch:
-            content_sha256 = "f" * 64
         manifest_payload = {
             "version": 1,
-            "items": {
-                "organizations": {
-                    "csv_path": "dictionaries/organizations.csv",
-                    "content_sha256": content_sha256,
-                    "schema_hash": build_dictionary_schema_hash(spec_model),
-                    "row_count": 2,
-                    "updated_at_utc": "2026-02-23T12:00:00Z",
-                    "owner": "tests",
+            "items": (
+                {}
+                if empty_dictionary_items
+                else {
+                    "organizations": {
+                        "csv_path": "dictionaries/organizations.csv",
+                        "content_sha256": (
+                            "f" * 64
+                            if fingerprint_mismatch
+                            else build_content_sha256_bytes(csv_bytes)
+                        ),
+                        "schema_hash": build_dictionary_schema_hash(spec_model),
+                        "row_count": 2,
+                        "updated_at_utc": "2026-02-23T12:00:00Z",
+                        "owner": "tests",
+                    }
                 }
-            },
+            ),
         }
         (dictionaries_dir / "manifest.yml").write_text(
             yaml.safe_dump(manifest_payload, sort_keys=False),
@@ -117,10 +127,17 @@ def _write_datasets_fixture(
     return datasets_root
 
 
-def _make_container(tmp_path: Path, *, include_dictionaries_section: bool = True, fingerprint_mismatch: bool = False) -> DictionaryContainer:
+def _make_container(
+    tmp_path: Path,
+    *,
+    include_dictionaries_section: bool = True,
+    empty_dictionary_items: bool = False,
+    fingerprint_mismatch: bool = False,
+) -> DictionaryContainer:
     datasets_root = _write_datasets_fixture(
         tmp_path,
         include_dictionaries_section=include_dictionaries_section,
+        empty_dictionary_items=empty_dictionary_items,
         fingerprint_mismatch=fingerprint_mismatch,
     )
     container = DictionaryContainer()
@@ -175,5 +192,41 @@ def test_dictionary_container_disabled_mode_when_registry_has_no_dictionaries_se
         container.init_resources()
         assert container.backend() is None
         assert container.provider() is None
+    finally:
+        container.shutdown_resources()
+
+
+def test_dictionary_container_empty_items_registry_is_valid_empty_runtime(tmp_path: Path) -> None:
+    container = _make_container(tmp_path, empty_dictionary_items=True)
+    try:
+        container.init_resources()
+        backend = container.backend()
+        provider = container.provider()
+        assert isinstance(backend, PolarsDictionaryBackend)
+        assert backend.get_loaded_dict_names() == ()
+        assert provider is not None
+    finally:
+        container.shutdown_resources()
+
+
+def test_dictionary_container_bootstrap_fixtures_from_repo_init_success() -> None:
+    container = DictionaryContainer()
+    container.settings.override(
+        DictionaryRuntimeSettings(
+            dictionary_fingerprint_salt="repo-fixture-test",
+            dictionary_lookup_hit_sample_percent=0,
+            dictionary_lookup_miss_sample_percent=0,
+        )
+    )
+    # datasets_root=None -> canonical repo datasets/ path.
+    container.datasets_root.override(None)
+    try:
+        container.init_resources()
+        backend = container.backend()
+        provider = container.provider()
+        assert isinstance(backend, PolarsDictionaryBackend)
+        assert provider is not None
+        # Bootstrap fixture must expose organizations dictionary through runtime.
+        assert "organizations" in backend.get_loaded_dict_names()
     finally:
         container.shutdown_resources()

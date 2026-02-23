@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -61,6 +62,15 @@ def test_import_plan_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: 
     )
 
     assert result.exit_code == 0
+
+    report_path = report_dir / "report_import-plan_vault-plan.json"
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    dictionary_ctx = report.get("context", {}).get("dictionary")
+    assert isinstance(dictionary_ctx, dict)
+    assert dictionary_ctx.get("component") == "dictionary"
+    assert "aggregate" in dictionary_ctx
+    assert "dictionaries_detail" in dictionary_ctx
 
     vault_db_path = cache_dir / "ankey_vault.sqlite3"
     assert vault_db_path.exists()
