@@ -6,11 +6,15 @@ from dataclasses import dataclass
 
 import typer
 
+from connector.common.time import getNowIso
 from connector.delivery.cli.containers import build_dataset_spec, build_diagnostics_catalog
 from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.planning.plan_builder import PlanBuilder
+from connector.domain.transform.core.extractor import Extractor
+from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.stages.stages import PipelineOrchestrator
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
@@ -28,8 +32,10 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
     VAULT_RUNTIME_MODE_OFF,
     resolve_vault_runtime_mode,
 )
+from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.infra.logging.setup import logEvent
-from connector.usecases.import_plan_service import ImportPlanService
+from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
+from connector.usecases.resolve_usecase import ResolveUseCase
 
 
 @dataclass(frozen=True)
@@ -131,23 +137,63 @@ def handler(ctx: BoundCommandContext, opts: Options) -> CommandResult:
             enrich_stage = pipeline.enrich_stage()
             match_stage = pipeline.match_stage()
             resolve_stage = pipeline.resolve_stage()
+            transform_pipeline = PipelineOrchestrator([map_stage, normalize_stage, enrich_stage])
 
-            service = ImportPlanService()
-            return service.run(
-                planning_runtime=cache_roles.planning_runtime,
-                include_deleted=include_deleted_value,
-                matching_runtime_settings=app_settings.matching_runtime,
-                dataset=dataset_name,
-                logger=ctx.logger,
-                run_id=run_id,
-                report_items_limit=report_items_limit_value,
-                report_dir=app_settings.paths.report_dir,
-                row_source=row_source,
-                transform_pipeline=PipelineOrchestrator([map_stage, normalize_stage, enrich_stage]),
-                match_stage=match_stage,
-                resolve_stage=resolve_stage,
-                catalog=catalog,
+            generated_at = getNowIso()
+            extractor = Extractor(row_source, catalog=catalog)
+            enriched_rows = iter_ok(
+                transform_pipeline.run(extractor.run()),
+                should_skip=lambda item: item.row is None,
             )
+
+            with open_match_runtime(
+                run_id=run_id,
+                match_stage=match_stage,
+                match_runtime=cache_roles.planning_runtime,
+                report_items_limit=report_items_limit_value,
+                include_matched_items=False,
+                batch_size=app_settings.matching_runtime.match_batch_size,
+                flush_interval_ms=app_settings.matching_runtime.match_flush_interval_ms,
+            ) as match_runtime:
+                matched_rows = iter_matched_ok(
+                    runtime=match_runtime,
+                    enriched_source=enriched_rows,
+                )
+
+                resolve_usecase = ResolveUseCase(
+                    report_items_limit=report_items_limit_value,
+                    include_resolved_items=False,
+                    batch_size=app_settings.matching_runtime.resolve_batch_size,
+                    flush_interval_ms=app_settings.matching_runtime.resolve_flush_interval_ms,
+                )
+                resolved_rows = iter_ok(
+                    resolve_usecase.iter_resolved(
+                        matched_source=matched_rows,
+                        resolve_stage=resolve_stage,
+                        dataset=dataset_name,
+                        pending_replay=cache_roles.planning_runtime,
+                    )
+                )
+
+                plan_result = PlanBuilder().build_from_stream(resolved_rows)
+
+            plan_meta = {
+                "csv_path": None,
+                "include_deleted": include_deleted_value,
+                "dataset": dataset_name,
+            }
+            plan_path = write_plan_file(
+                plan_items=plan_result.items,
+                summary=plan_result.summary_as_dict(),
+                meta=plan_meta,
+                report_dir=app_settings.paths.report_dir,
+                run_id=run_id,
+                generated_at=generated_at,
+            )
+            logEvent(ctx.logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
+            result = CommandResult()
+            result.add_code(SystemErrorCode.OK)
+            return result
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
