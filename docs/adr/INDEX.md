@@ -88,9 +88,13 @@ docs/adr/
 | [TRANSFORM-PROBLEM-003](./transform/TRANSFORM-PROBLEM-003-monolithic-pipeline-factory-eager-coupling.md) | Problem | Монолитная `build_pipeline_context()` — сквозная утечка зависимостей между CLI-командами | Закрыто (через DEC-004) | 2026-02-21 |
 | [TRANSFORM-DEC-003](./transform/TRANSFORM-DEC-003-pipeline-container-lazy-stage-assembly.md) | Decision | PipelineContainer — lazy per-stage сборка зависимостей через DI | Поглощено DEC-004 | 2026-02-21 |
 | [TRANSFORM-PROBLEM-004](./transform/TRANSFORM-PROBLEM-004-missing-modular-pipeline-architecture.md) | Problem | Отсутствие модульной pipeline-архитектуры — нет единого контракта стадий, scoped context, stage factory и orchestrator | Закрыто (через DEC-004) | 2026-02-22 |
-| [TRANSFORM-DEC-004](./transform/TRANSFORM-DEC-004-modular-pipeline-scoped-execution-context.md) | Decision | Modular Pipeline with Scoped Execution Context — целостная pipeline-архитектура | Закрыто (реализовано) | 2026-02-22 |
+| [TRANSFORM-DEC-004](./transform/TRANSFORM-DEC-004-modular-pipeline-scoped-execution-context.md) | Decision | Modular Pipeline with Scoped Execution Context — целостная pipeline-архитектура | Закрыто | 2026-02-22 |
 | [TRANSFORM-PROBLEM-005](./transform/TRANSFORM-PROBLEM-005-dataset-spec-ocp-violation.md) | Problem | DatasetSpec typed `build_*_spec()` методы нарушают OCP при добавлении новых стадий | Открыто | 2026-02-22 |
 | [TRANSFORM-DEC-005](./transform/TRANSFORM-DEC-005-dataset-spec-generic-accessor-evolution.md) | Decision | Двухфазная эволюция DatasetSpec: typed методы (Phase 1) → `build_spec_for(stage_type)` (Phase 2) | Открыто (реализация отложена) | 2026-02-22 |
+| [TRANSFORM-PROBLEM-006](./transform/TRANSFORM-PROBLEM-006-pipeline-composition-ownership.md) | Problem | Владение композицией конвейера разделено между CLI, ImportPlanService и planning_match_runtime | Открыто | 2026-02-23 |
+| [TRANSFORM-DEC-006](./transform/TRANSFORM-DEC-006-pipeline-segments-in-container.md) | Decision | PlanningPipeline в delivery-слое — lifecycle-aware класс, предоставляемый PipelineContainer через Factory | Открыто | 2026-02-23 |
+| [TRANSFORM-PROBLEM-007](./transform/TRANSFORM-PROBLEM-007-pipeline-composition-hardcoded-imperatively.md) | Problem | Состав конвейера задаётся императивно — нет декларативного единого источника истины | Открыто | 2026-02-23 |
+| [TRANSFORM-DEC-007](./transform/TRANSFORM-DEC-007-declarative-pipeline-checkpoints.md) | Decision | Декларативный реестр чекпоинтов в AppContainer + PipelineComposer; путь к DSL-конфигурации пайплайна | Открыто (реализация после DEC-006 + PLANNER-DEC-001) | 2026-02-23 |
 
 ### Delivery
 
@@ -124,6 +128,15 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [VAULT-PROBLEM-001](./vault/VAULT-PROBLEM-001-plaintext-dev-vault-and-missing-crypto-lifecycle.md) | Problem | Plaintext dev-vault и отсутствующий production-контур секретов | Закрыто | 2026-02-18 |
 | [VAULT-DEC-001](./vault/VAULT-DEC-001-envelope-encrypted-vault-with-hexagonal-ports.md) | Decision | Envelope-encrypted vault с hexagonal разделением crypto/storage | Закрыто | 2026-02-18 |
+
+### Planner
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [PLANNER-PROBLEM-001](./planner/PLANNER-PROBLEM-001-pending-replay-infra-leak.md) | Problem | Pending replay — разорванная пара сериализации и утечка инфраструктурной логики в ImportPlanService | Открыто | 2026-02-23 |
+| [PLANNER-DEC-001](./planner/PLANNER-DEC-001-pending-replay-at-resolve-boundary.md) | Decision | Pending replay на границе ResolveUseCase + десериализация в доменном слое (pending_codec) | Открыто | 2026-02-23 |
+| [PLANNER-PROBLEM-002](./planner/PLANNER-PROBLEM-002-planner-redundant-layers-and-masking.md) | Problem | Планнер выполняет избыточные операции: мёртвая маскировка в plan_writer, пустые слои PlanUseCase/ImportPlanService, infra-импорты в use-case | Открыто | 2026-02-23 |
+| [PLANNER-DEC-002](./planner/PLANNER-DEC-002-dissolve-planner-layers.md) | Decision | Растворение PlanUseCase/ImportPlanService: PlanBuilder.build_from_stream(), маскировка из plan_writer удалена, координация в command handler | Открыто (реализуется с DEC-001) | 2026-02-23 |
 
 ### Observability
 
