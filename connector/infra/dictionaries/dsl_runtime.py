@@ -65,11 +65,11 @@ class CompiledDictionarySpec:
 
     @property
     def key_column(self) -> str:
-        return self.spec.schema.key_column
+        return self.spec.data_schema.key_column
 
     @property
     def value_columns(self) -> tuple[str, ...]:
-        return tuple(self.spec.schema.value_columns)
+        return tuple(self.spec.data_schema.value_columns)
 
     @property
     def allowed_columns(self) -> tuple[str, ...]:
@@ -205,7 +205,7 @@ def _compile_normalized_key_ops(
     Назначение:
         Скомпилировать декларативный список `normalized_key.ops` в callable chain.
     """
-    normalized_key_spec = spec.schema.normalized_key
+    normalized_key_spec = spec.data_schema.normalized_key
     if normalized_key_spec is None or not normalized_key_spec.ops:
         return ()
 

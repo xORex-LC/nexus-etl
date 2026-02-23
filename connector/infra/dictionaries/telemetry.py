@@ -12,10 +12,12 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import structlog
+
+from connector.infra.dictionaries.loader_csv import DictionaryCsvLoadEvent
 
 
 @dataclass
@@ -37,6 +39,19 @@ class _LookupCounters:
             "lookup_miss": self.lookup_miss,
             "lookup_error": self.lookup_error,
         }
+
+
+@dataclass
+class _DictionaryRuntimeMetadata:
+    """
+    Назначение:
+        Сериализуемая runtime metadata одного словаря для report snapshot.
+    """
+
+    row_count: int | None = None
+    fingerprint_kind: str | None = None
+    version_info: dict[str, Any] | None = None
+    anomalies: list[dict[str, Any]] = field(default_factory=list)
 
 
 class DictionaryTelemetry:
@@ -73,6 +88,11 @@ class DictionaryTelemetry:
         self._logger = structlog.get_logger(__name__)
         self._aggregate = _LookupCounters()
         self._per_dictionary: dict[str, _LookupCounters] = {}
+        self._runtime_enabled: bool | None = None
+        self._load_strategy: str | None = None
+        self._declared_dict_names: tuple[str, ...] = ()
+        self._metadata_by_dict: dict[str, _DictionaryRuntimeMetadata] = {}
+        self._anomalies: list[dict[str, Any]] = []
 
     def build_key_fingerprint(self, normalized_key: Any) -> str:
         """
@@ -122,6 +142,60 @@ class DictionaryTelemetry:
                 fields=list(fields) if fields is not None else None,
             )
 
+    def record_runtime_initialized(
+        self,
+        *,
+        enabled: bool,
+        load_strategy: str,
+        declared_dict_names: tuple[str, ...],
+    ) -> None:
+        """
+        Назначение:
+            Зафиксировать runtime-state словарного слоя для report snapshot.
+
+        Contract:
+            - Вызывается orchestration/DI слоем при init backend resource.
+            - Не инициирует загрузку словарей и не меняет counters.
+        """
+        self._runtime_enabled = enabled
+        self._load_strategy = load_strategy
+        self._declared_dict_names = tuple(sorted(declared_dict_names))
+        for dict_name in self._declared_dict_names:
+            self._touch_metadata(dict_name)
+
+    def record_dictionary_loaded(self, event: DictionaryCsvLoadEvent) -> None:
+        """
+        Назначение:
+            Зафиксировать успешную загрузку словаря (version metadata + empty-source warning path).
+        """
+        meta = self._touch_metadata(event.dict_name)
+        meta.row_count = event.row_count
+        meta.fingerprint_kind = event.version_info.fingerprint_kind
+        meta.version_info = asdict(event.version_info)
+
+        if event.source_empty:
+            anomaly = {
+                "code": "DICT_SOURCE_EMPTY",
+                "severity": "WARNING",
+                "dict_name": event.dict_name,
+                "path": event.path,
+                "row_count": event.row_count,
+            }
+            meta.anomalies.append(anomaly)
+            self._anomalies.append(anomaly)
+            self._logger.warning(
+                "source_empty",
+                component="dictionary",
+                dict_name=event.dict_name,
+                op="load",
+                backend=self._backend,
+                code="DICT_SOURCE_EMPTY",
+                severity="WARNING",
+                row_count=event.row_count,
+                path=event.path,
+                version_id=event.version_info.version_id,
+            )
+
     def record_lookup_error(
         self,
         *,
@@ -155,14 +229,37 @@ class DictionaryTelemetry:
         Назначение:
             Вернуть сериализуемый snapshot counters для report context.
         """
-        dictionaries_detail = {
-            dict_name: counters.as_dict()
-            for dict_name, counters in sorted(self._per_dictionary.items())
-        }
+        all_dict_names = sorted(set(self._per_dictionary.keys()) | set(self._metadata_by_dict.keys()))
+        dictionaries_detail: dict[str, dict[str, Any]] = {}
+        for dict_name in all_dict_names:
+            counters = self._per_dictionary.get(dict_name, _LookupCounters())
+            meta = self._metadata_by_dict.get(dict_name)
+            dictionaries_detail[dict_name] = {
+                **counters.as_dict(),
+                "row_count": meta.row_count if meta is not None else None,
+                "fingerprint_kind": meta.fingerprint_kind if meta is not None else None,
+                "version_info": meta.version_info if meta is not None else None,
+                "anomalies": list(meta.anomalies) if meta is not None else [],
+            }
+
+        loaded_count = sum(
+            1
+            for meta in self._metadata_by_dict.values()
+            if meta.version_info is not None
+        )
         return {
             "component": "dictionary",
             "backend": self._backend,
             "aggregate": self._aggregate.as_dict(),
+            "summary": {
+                "runtime_enabled": self._runtime_enabled,
+                "load_strategy": self._load_strategy,
+                "declared_dictionaries": list(self._declared_dict_names),
+                "declared_count": len(self._declared_dict_names),
+                "loaded_count": loaded_count,
+                "warnings_count": len(self._anomalies),
+            },
+            "anomalies": list(self._anomalies),
             "dictionaries_detail": dictionaries_detail,
         }
 
@@ -172,6 +269,13 @@ class DictionaryTelemetry:
             counters = _LookupCounters()
             self._per_dictionary[dict_name] = counters
         return counters
+
+    def _touch_metadata(self, dict_name: str) -> _DictionaryRuntimeMetadata:
+        meta = self._metadata_by_dict.get(dict_name)
+        if meta is None:
+            meta = _DictionaryRuntimeMetadata()
+            self._metadata_by_dict[dict_name] = meta
+        return meta
 
     def _increment(self, dict_counters: _LookupCounters, key: str) -> None:
         setattr(self._aggregate, key, getattr(self._aggregate, key) + 1)

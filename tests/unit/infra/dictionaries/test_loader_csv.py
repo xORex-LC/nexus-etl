@@ -143,3 +143,29 @@ def test_csv_loader_reports_schema_error_from_backend(tmp_path: Path) -> None:
 
     assert exc_info.value.code == "DICT_SCHEMA_INVALID"
 
+
+def test_csv_loader_emits_source_empty_load_event_for_empty_csv(tmp_path: Path) -> None:
+    spec = _spec()
+    raw = b"code,name,ouid\n"
+    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+
+    backend = _backend_for(
+        spec=spec,
+        content_sha256=build_content_sha256_bytes(raw),
+        row_count=0,
+    )
+    events = []
+    loader = CsvDictionaryLoader(
+        datasets_root=tmp_path / "datasets",
+        on_dictionary_loaded=events.append,
+    )
+
+    loader.load_dictionary_into(backend, dict_name="organizations")
+
+    assert backend.lookup("organizations", "ORG-1") == []
+    assert len(events) == 1
+    event = events[0]
+    assert event.dict_name == "organizations"
+    assert event.row_count == 0
+    assert event.source_empty is True
+    assert event.version_info.row_count == 0
