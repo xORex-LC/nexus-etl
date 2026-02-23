@@ -121,3 +121,15 @@ def test_translate_dsl_load_error_to_diagnostic_item() -> None:
     assert diag.code == "MAP_DSL_SPEC_INVALID"
     assert diag.stage == DiagnosticStage.MAP
     assert diag.details == {"path": "datasets/employees.mapping.yaml"}
+
+
+def test_core_catalog_contains_dictionary_codes_with_expected_severity() -> None:
+    catalog = build_catalog(None, strict=True)
+
+    warn_item = build_warning(catalog=catalog, stage=DiagnosticStage.ENRICH, code="DICT_SOURCE_EMPTY")
+    error_item = build_error(catalog=catalog, stage=DiagnosticStage.ENRICH, code="DICT_DSL_REGISTRY_INVALID")
+
+    assert warn_item.code == "DICT_SOURCE_EMPTY"
+    assert warn_item.severity == DiagnosticSeverity.WARNING
+    assert error_item.code == "DICT_DSL_REGISTRY_INVALID"
+    assert error_item.severity == DiagnosticSeverity.ERROR
