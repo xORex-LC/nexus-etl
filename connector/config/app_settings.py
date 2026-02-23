@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -264,6 +264,30 @@ class SqliteSettings(BaseSettings):
 
     # Identity
     identity_db_path: str | None = None  # None → {cache_dir}/identity.sqlite3
+
+
+class DictionaryRuntimeSettings(BaseSettings):
+    """
+    Назначение:
+        Минимальная runtime-конфигурация Dictionary layer v1 (infra telemetry/loading knobs).
+
+    Граница ответственности:
+        - Отдельный `BaseSettings` (forward adoption), не расширяет legacy `AppSettings`.
+        - Используется DI-wiring слоем (`delivery/cli`) для сборки dictionary runtime.
+        - Более глубокая конфигурация слоя может быть выделена позже отдельной задачей.
+        - Техдолг v1: env-prefix пока жёстко привязан к app namespace (`ANKEY_`);
+          перейти на декларативное описание/источник префикса при следующей правке settings-слоя.
+    """
+
+    # TODO(settings-techdebt): убрать literal `ANKEY_` из класса и перейти на
+    # декларативное описание env namespace/prefix в общем settings-контуре приложения.
+    model_config = SettingsConfigDict(env_prefix="ANKEY_", env_ignore_empty=True)
+
+    dictionary_load_strategy: Literal["eager", "lazy"] = "eager"
+    dictionary_fingerprint_salt: str = "dictionary-runtime-v1"
+    dictionary_fingerprint_salt_version: str = "v1"
+    dictionary_lookup_hit_sample_percent: int = 1
+    dictionary_lookup_miss_sample_percent: int = 10
 
 
 def build_vault_db_config(s: SqliteSettings) -> SqliteDbConfig:
