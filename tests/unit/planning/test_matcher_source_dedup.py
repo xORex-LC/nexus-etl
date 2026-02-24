@@ -7,6 +7,7 @@ from connector.domain.models import Identity, RowRef
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.ids.match_key import MatchKey
+from connector.domain.transform.matcher.dedup_store import LocalSourceDedupStore
 from connector.domain.transform.matcher.match_core import MatchCore
 from connector.domain.transform.matcher.match_models import MatchDecisionStatus
 from connector.domain.transform_dsl.compilers.match import (
@@ -24,7 +25,6 @@ CATALOG = build_catalog("employees", strict=True)
 @dataclass
 class FakeCacheRepo:
     responses: dict[tuple[str, str], list[dict]]
-    values: dict[tuple[str, str, str], str] | None = None
 
     def find(
         self,
@@ -41,20 +41,14 @@ class FakeCacheRepo:
         return self.responses.get((key, value), [])
 
     def set_runtime_state(self, scope: str, dataset: str, state_key: str, state_value: str) -> None:
-        if self.values is None:
-            self.values = {}
-        self.values[(scope, dataset, state_key)] = state_value
+        _ = (scope, dataset, state_key, state_value)
 
     def get_runtime_state(self, scope: str, dataset: str, state_key: str) -> str | None:
-        if self.values is None:
-            return None
-        return self.values.get((scope, dataset, state_key))
+        _ = (scope, dataset, state_key)
+        return None
 
     def clear_runtime_scope(self, scope: str) -> None:
-        if self.values is None:
-            return
-        for key in [k for k in self.values if k[0] == scope]:
-            del self.values[key]
+        _ = scope
 
 
 def _row(*, phone: str, position: str = "Engineer") -> NormalizedEmployeesRow:
@@ -124,6 +118,7 @@ def _build_matcher(*, on_conflict: str = "error") -> MatchCore:
         resolve_rules=_resolve_rules(),
         include_deleted=False,
         catalog=CATALOG,
+        dedup_store=LocalSourceDedupStore(),
     )
 
 
@@ -176,6 +171,7 @@ def test_source_dedup_requires_canonical_identity_key():
         resolve_rules=_resolve_rules(),
         include_deleted=False,
         catalog=CATALOG,
+        dedup_store=LocalSourceDedupStore(),
     )
 
     first = matcher.match_with_source_dedup(_result(_row(phone="+111")))
@@ -185,28 +181,6 @@ def test_source_dedup_requires_canonical_identity_key():
     assert second.row is not None
     assert second.errors == ()
     assert second.warnings == ()
-
-
-def test_source_dedup_reads_scoped_runtime_state_from_identity_repo():
-    shared_gateway = FakeCacheRepo(
-        responses={
-            ("match_key", "Doe|John|M|100"): [{"_id": "u-1", "match_key": "Doe|John|M|100"}],
-        },
-        values={},
-    )
-    matcher1 = _build_matcher()
-    matcher1.cache_gateway = shared_gateway
-    matcher1.bind_runtime_scope("run:scope")
-    first = matcher1.match_with_source_dedup(_result(_row(phone="+111")))
-    assert first.row is not None
-
-    matcher2 = _build_matcher()
-    matcher2.cache_gateway = shared_gateway
-    matcher2.bind_runtime_scope("run:scope")
-    second = matcher2.match_with_source_dedup(_result(_row(phone="+111")))
-
-    assert second.row is None
-    assert any(w.code == "MATCH_DUPLICATE_SOURCE" for w in second.warnings)
 
 
 def test_source_dedup_uses_canonical_key_with_identity_primary():
@@ -242,6 +216,7 @@ def test_source_dedup_uses_canonical_key_with_identity_primary():
         resolve_rules=_resolve_rules(),
         include_deleted=False,
         catalog=CATALOG,
+        dedup_store=LocalSourceDedupStore(),
     )
 
     first = matcher.match_with_source_dedup(_result(_row(phone="+111", position="Engineer")))

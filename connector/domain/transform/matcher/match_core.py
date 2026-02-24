@@ -1,6 +1,10 @@
 """
 Назначение:
     Сопоставление записей внутри источника и с кэшем.
+
+    Source-dedup состояние вынесено в ISourceDedupStore (DI-зависимость).
+    MatchCore не управляет lifecycle dedup-стора — reset() вызывается
+    снаружи (PlanningPipeline) перед каждым прогоном.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from connector.domain.transform_dsl.compilers.match import (
 from connector.domain.transform_dsl.compilers.resolve import ResolveRules
 from connector.domain.transform.matcher.scoring import is_tie, rank_candidates
 from connector.domain.ports.cache.roles import MatchRuntimePort
+from connector.domain.transform.matcher.ports import ISourceDedupStore
 from connector.domain.transform.core.result import TransformResult
 
 
@@ -39,6 +44,15 @@ class MatchCore:
     Назначение/ответственность:
         Ядро матчинга: сопоставление валидированной строки с кэшем/target
         без принятия решений apply/resolve.
+
+    Граница ответственности:
+        - Owns: identity lookup, fuzzy scoring, source-dedup policy.
+        - Does NOT: управлять lifecycle dedup-стора — reset() вызывается
+          снаружи (PlanningPipeline) перед каждым прогоном.
+        - Does NOT: знать о scoped runtime state или dataset-prefix в ключах.
+
+    Зависимости (инжектируются через __init__):
+        dedup_store — ISourceDedupStore: хранит и проверяет source-dedup состояние.
     """
 
     def __init__(
@@ -49,6 +63,7 @@ class MatchCore:
         resolve_rules: ResolveRules,
         include_deleted: bool,
         catalog: ErrorCatalog,
+        dedup_store: ISourceDedupStore,
     ) -> None:
         self.dataset = dataset
         self.cache_gateway = cache_gateway
@@ -58,36 +73,24 @@ class MatchCore:
         self.resolve_rules = resolve_rules
         self.include_deleted = include_deleted
         self.catalog = catalog
-        self._seen_source: dict[str, str] = {}
-        self._runtime_scope: str | None = None
-
-    def reset_source_dedup(self) -> None:
-        """
-        Назначение:
-            Сбросить in-memory состояние source-dedup перед новым прогоном.
-        """
-        self._seen_source.clear()
-
-    def bind_runtime_scope(self, scope: str | None) -> None:
-        """
-        Назначение:
-            Подключить scoped runtime-state для source-dedup.
-        """
-        self._runtime_scope = scope
+        self._dedup_store = dedup_store
 
     def match_stream(self, enriched_source: Iterable[TransformResult[Any]]) -> Iterable[TransformResult[MatchedRow]]:
         """
         Назначение:
-            Потоковый match + source-dedup внутри matcher-core.
+            Потоковый match + source-dedup.
+
+        Инвариант:
+            reset() dedup_store — ответственность PlanningPipeline,
+            не вызывается здесь.
         """
-        self.reset_source_dedup()
         for enriched in enriched_source:
             yield self.match_with_source_dedup(enriched)
 
     def match_with_source_dedup(self, enriched: TransformResult[Any]) -> TransformResult[MatchedRow]:
         """
         Назначение:
-            Выполнить match и применить source-dedup политики.
+            Выполнить match и применить source-dedup политики через dedup_store.
         """
         matched = self.match(enriched)
         if matched.row is None:
@@ -97,19 +100,15 @@ class MatchCore:
         if not dedup_rules.enabled:
             return matched
 
-        dedup_key = _build_source_dedup_key(
-            self.dataset,
-            matched.row.identity,
-        )
+        dedup_key = _build_source_dedup_key(matched.row.identity)
         if dedup_key is None:
             return matched
 
-        prev_fingerprint = self._read_seen_fingerprint(dedup_key)
-        if prev_fingerprint is None:
-            self._write_seen_fingerprint(dedup_key, matched.row.fingerprint)
+        outcome = self._dedup_store.check_and_register(dedup_key, matched.row.fingerprint)
+        if outcome.is_first:
             return matched
 
-        if prev_fingerprint == matched.row.fingerprint:
+        if outcome.is_duplicate:
             warning = _build_source_duplicate_warning(self.catalog, matched.row)
             return _drop_matched_row(
                 matched,
@@ -117,6 +116,7 @@ class MatchCore:
                 drop_reason="duplicate_source",
             )
 
+        # outcome.is_conflict
         if dedup_rules.on_conflict == "warn":
             warning = _build_source_conflict_warning(self.catalog, matched.row)
             return _drop_matched_row(
@@ -131,20 +131,6 @@ class MatchCore:
             error=error,
             drop_reason="conflict_source",
         )
-
-    def _read_seen_fingerprint(self, dedup_key: str) -> str | None:
-        scope = self._runtime_scope
-        if scope:
-            value = self.cache_gateway.get_runtime_state(scope, self.dataset, dedup_key)
-            if value is not None:
-                return value
-        return self._seen_source.get(dedup_key)
-
-    def _write_seen_fingerprint(self, dedup_key: str, fingerprint: str) -> None:
-        self._seen_source[dedup_key] = fingerprint
-        scope = self._runtime_scope
-        if scope:
-            self.cache_gateway.set_runtime_state(scope, self.dataset, dedup_key, fingerprint)
 
     def match(self, enriched: TransformResult[Any]) -> TransformResult[MatchedRow]:
         """
@@ -612,17 +598,22 @@ def _extract_row_and_context(source: TransformResult[Any]) -> tuple[Any | None, 
     return row, _build_match_context(source, row)
 
 
-def _build_source_dedup_key(
-    dataset: str,
-    identity: Identity,
-) -> str | None:
+def _build_source_dedup_key(identity: Identity) -> str | None:
+    """
+    Назначение:
+        Построить ключ дедупликации из identity без dataset-prefix.
+
+    Dataset-prefix убран: изоляция прогонов обеспечивается через
+    reset() dedup_store перед каждым прогоном (PlanningPipeline),
+    а не через namespace в ключе.
+    """
     primary = (identity.primary or "").strip()
     value = (identity.primary_value or "").strip()
     if value == "":
         return None
     if primary == "":
         return None
-    return f"{dataset}:{primary}:{value}"
+    return f"{primary}:{value}"
 
 
 def _read_value(
