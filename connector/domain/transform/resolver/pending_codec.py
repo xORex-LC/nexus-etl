@@ -1,29 +1,26 @@
 """
 Назначение:
-    Десериализация pending payload → типизированные domain-объекты.
+    Сериализация и десериализация pending payload.
 
 Единственная ответственность (SRP):
-    Преобразует raw ``list[PendingRow]`` (JSON-строки из storage) в
-    ``PendingLoadResult(rows, skipped)``.
+    PendingCodecAdapter — реализует IPendingCodec: serialize() пакует MatchedRow
+    в JSON-строку для storage, deserialize() восстанавливает список TransformResult
+    из raw PendingRow.
+
+    load_pending_rows() — public helper для legacy-кода (ResolveUseCase).
 
 Границы:
     - Зависит только от domain-типов и stdlib ``json``.
     - Не вызывает порты, не обращается к storage.
-    - Не содержит ``_serialize_*`` функций — сериализация pending payload
-      принадлежит ``resolve_core.py`` (там же, где принимается решение
-      "создать pending link").
     - Не логирует — счётчик ``skipped`` возвращается caller'у (``ResolveUseCase``),
       который принимает решение о наблюдаемости.
-
-Симметричная пара:
-    ``_serialize_pending_payload()`` в ``resolve_core.py`` — пишет в storage.
-    ``load_pending_rows()`` (этот модуль) — читает из storage.
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from connector.domain.models import Identity, RowRef
 from connector.domain.ports.cache.models import PendingRow
@@ -51,6 +48,57 @@ class PendingLoadResult:
 
     rows: list[TransformResult]
     skipped: int
+
+
+class PendingCodecAdapter:
+    """
+    Назначение:
+        Реализация IPendingCodec — пара serialize/deserialize для pending payload.
+
+    Граница ответственности:
+        - serialize(): упаковывает MatchedRow + desired_state + meta в JSON-строку.
+        - deserialize(): делегирует load_pending_rows(), возвращает PendingLoadResult.
+        - Не вызывает порты и не знает о storage.
+    """
+
+    def serialize(
+        self,
+        matched: MatchedRow,
+        desired_state: dict[str, Any],
+        meta: dict[str, Any] | None,
+    ) -> str:
+        """
+        Назначение:
+            Сериализовать pending-пейлоад в JSON-строку для записи в storage.
+        """
+        payload = {
+            "identity": {
+                "primary": matched.identity.primary,
+                "values": dict(matched.identity.values),
+            },
+            "row_ref": {
+                "line_no": matched.row_ref.line_no,
+                "row_id": matched.row_ref.row_id,
+                "identity_primary": matched.row_ref.identity_primary,
+                "identity_value": matched.row_ref.identity_value,
+            },
+            "desired_state": desired_state,
+            "existing": matched.existing,
+            "fingerprint": matched.fingerprint,
+            "fingerprint_fields": list(matched.fingerprint_fields),
+            "match_decision": _serialize_match_decision(matched),
+            "source_links": _serialize_source_links(matched),
+            "target_id": matched.target_id,
+            "meta": meta or {},
+        }
+        return json.dumps(payload, ensure_ascii=True, default=str)
+
+    def deserialize(self, pending_rows: list[PendingRow]) -> PendingLoadResult:
+        """
+        Назначение:
+            Десериализовать список PendingRow → PendingLoadResult.
+        """
+        return load_pending_rows(pending_rows)
 
 
 def load_pending_rows(pending_rows: list[PendingRow]) -> PendingLoadResult:
@@ -90,6 +138,49 @@ def load_pending_rows(pending_rows: list[PendingRow]) -> PendingLoadResult:
         )
     return PendingLoadResult(rows=results, skipped=skipped)
 
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Serialization helpers (used by PendingCodecAdapter.serialize)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def _serialize_source_links(matched: MatchedRow) -> dict[str, dict[str, Any]]:
+    return {
+        field: {
+            "primary": identity.primary,
+            "values": dict(identity.values),
+        }
+        for field, identity in matched.source_links.items()
+    }
+
+
+def _serialize_match_decision(matched: MatchedRow) -> dict[str, Any]:
+    decision = matched.match_decision
+    return {
+        "status": decision.status.value,
+        "reason_code": decision.reason_code,
+        "message": decision.message,
+        "score": decision.score,
+        "meta": decision.meta,
+        "selected": _serialize_candidate(decision.selected),
+        "candidates": [_serialize_candidate(candidate) for candidate in decision.candidates],
+    }
+
+
+def _serialize_candidate(candidate: MatchCandidate | None) -> dict[str, Any] | None:
+    if candidate is None:
+        return None
+    return {
+        "target_id": candidate.target_id,
+        "identity": candidate.identity,
+        "score": candidate.score,
+        "match_mode": candidate.match_mode,
+        "evidence": candidate.evidence,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Deserialization helpers (used by load_pending_rows)
+# ════════════════════════════════════════════════════════════════════════════════
 
 def _deserialize_pending_matched_row(
     payload: dict,
@@ -266,3 +357,6 @@ def _deserialize_source_links(payload: object) -> dict[str, Identity] | None:
             values={str(k): str(v) for k, v in values.items() if v is not None},
         )
     return source_links
+
+
+__all__ = ["PendingCodecAdapter", "PendingLoadResult", "load_pending_rows"]

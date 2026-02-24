@@ -1,13 +1,24 @@
 """
 Назначение:
-    Resolve-стадия: связывание и обогащение по lookup.
+    Ядро resolve-стадии: принятие решения по операции и формирование данных для плана.
+
+Граница ответственности:
+    - Owns: бизнес-правила resolve (операция CREATE/UPDATE/SKIP, pending-links, merge).
+    - Does NOT: управлять sweep-lifecycle expired pending (делегирует PendingExpiryService).
+    - Does NOT: сериализацию pending payload (делегирует IPendingCodec).
+    - Does NOT: batch-index lifecycle (предоставляет build_batch_index как helper).
+
+Инварианты:
+    - codec: IPendingCodec — обязательный параметр; ResolveEngine предоставляет
+      PendingCodecAdapter() по умолчанию.
+    - batch_index — плоская структура {lookup_key: [ids]}: dataset-намспейсинг
+      больше не нужен, изоляция обеспечивается per-run lifecycle.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-import json
 import logging
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
@@ -17,6 +28,7 @@ from connector.domain.transform.common.sink_schema import validate_sink_fields
 from connector.domain.dsl.diagnostics import append_dsl_issues
 from connector.domain.transform_dsl.specs import SinkSpec
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
+from connector.domain.transform.resolver.ports import IPendingCodec
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.domain.transform.matcher.match_models import (
     MatchedRow,
@@ -32,7 +44,6 @@ from connector.domain.transform_dsl.compilers.resolve import (
     ResolveRules,
     SecretLifecyclePolicy,
 )
-from connector.domain.ports.cache.models import PendingLink
 from connector.domain.ports.cache.roles import ResolveRuntimePort
 
 logger = logging.getLogger(__name__)
@@ -42,6 +53,12 @@ class ResolveCore:
     """
     Назначение/ответственность:
         Ядро resolve-стадии: принятие решения по операции и формирование данных для плана.
+
+    Границы:
+        - Owns: бизнес-правила (операция, pending-links, merge, sink-validation).
+        - Does NOT: sweep expired pending — ответственность PendingExpiryService.
+        - Does NOT: сериализация payload — делегирует self._codec (IPendingCodec).
+        - Does NOT: batch-index lifecycle — предоставляет build_batch_index как helper.
     """
 
     def __init__(
@@ -53,6 +70,7 @@ class ResolveCore:
         settings: ResolverSettings | None = None,
         catalog: ErrorCatalog,
         sink_spec: SinkSpec | None = None,
+        codec: IPendingCodec,
     ) -> None:
         self.resolve_rules = resolve_rules
         self.link_rules = link_rules or LinkRules()
@@ -60,27 +78,23 @@ class ResolveCore:
         self.settings = settings
         self.catalog = catalog
         self.sink_spec = sink_spec
-        self._last_sweep_at: datetime | None = None
-        self._expired: list[PendingLink] = []
-
-    def drain_expired(self) -> list[PendingLink]:
-        expired = list(self._expired)
-        self._expired.clear()
-        return expired
+        self._codec = codec
 
     def build_batch_index(
         self,
         matched_rows: list,
-        dataset: str,
-    ) -> dict[str, dict[str, list[str]]]:
+    ) -> dict[str, list[str]]:
         """
         Назначение:
-            Построить индекс resolved id по identity-ключам в пределах батча.
+            Построить плоский индекс resolved id по identity-ключам в пределах батча.
+
+        Возвращаемая структура: ``{lookup_key: [ids]}`` — без вложенности по dataset.
+        Изоляция обеспечивается per-run lifecycle (ResolveContextStage), а не namespace.
         """
-        key_names, id_field = _collect_batch_keys(self.link_rules, dataset)
+        key_names, id_field = _collect_batch_keys(self.link_rules)
         if not key_names:
             return {}
-        index: dict[str, dict[str, list[str]]] = {dataset: {}}
+        index: dict[str, list[str]] = {}
         for item in matched_rows:
             row = item.row
             if row is None:
@@ -93,25 +107,9 @@ class ResolveCore:
                 if value is None:
                     continue
                 lookup_key = format_identity_key(key_name, value)
-                bucket = index[dataset].setdefault(lookup_key, [])
+                bucket = index.setdefault(lookup_key, [])
                 bucket.append(resolved_id)
         return index
-
-    def _maybe_sweep_expired(self) -> None:
-        if self.cache_gateway is None:
-            return
-        interval = self.settings.pending_sweep_interval_seconds if self.settings else 0
-        if interval <= 0:
-            return
-        now = datetime.now(timezone.utc)
-        if self._last_sweep_at is not None:
-            elapsed = (now - self._last_sweep_at).total_seconds()
-            if elapsed < interval:
-                return
-        self._last_sweep_at = now
-        expired = self.cache_gateway.sweep_expired(now.isoformat(), reason="expired")
-        if expired:
-            self._expired.extend(expired)
 
     def resolve(
         self,
@@ -119,7 +117,7 @@ class ResolveCore:
         *,
         target_id_map: dict[str, str],
         meta: dict[str, Any] | None = None,
-        batch_index: dict[str, dict[str, list[str]]] | None = None,
+        batch_index: dict[str, list[str]] | None = None,
     ) -> tuple[ResolvedRow | None, list[DiagnosticItem], list[DiagnosticItem]]:
         """
         Назначение:
@@ -133,8 +131,6 @@ class ResolveCore:
         """
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
-
-        self._maybe_sweep_expired()
 
         decision_status = resolve_decision_status(matched)
         if decision_status in (MatchDecisionStatus.AMBIGUOUS, MatchDecisionStatus.CONFLICT_SOURCE):
@@ -246,7 +242,7 @@ class ResolveCore:
         warnings: list[DiagnosticItem],
         errors: list[DiagnosticItem],
         meta: dict[str, Any] | None,
-        batch_index: dict[str, dict[str, list[str]]] | None,
+        batch_index: dict[str, list[str]] | None,
     ) -> tuple[bool, bool, set[str]]:
         """
         Назначение:
@@ -308,7 +304,7 @@ class ResolveCore:
                 row_id = matched.row_ref.row_id
                 expires_at = _build_expires_at(self.settings)
                 lookup_key = used_lookup or ""
-                payload = _serialize_pending_payload(matched, desired_state, meta)
+                payload = self._codec.serialize(matched, desired_state, meta)
                 pending_id = self.cache_gateway.add_pending(
                     dataset=rule.target_dataset,
                     source_row_id=row_id,
@@ -494,7 +490,7 @@ def _resolve_with_rules(
     key_values: dict[str, str],
     desired_state: dict[str, Any],
     cache_gateway: ResolveRuntimePort,
-    batch_index: dict[str, dict[str, list[str]]] | None,
+    batch_index: dict[str, list[str]] | None,
 ) -> tuple[str | None, str | None, str | None]:
     """
     Назначение:
@@ -534,7 +530,7 @@ def _apply_dedup_rules(
     key_values: dict[str, str],
     desired_state: dict[str, Any],
     cache_gateway: ResolveRuntimePort,
-    batch_index: dict[str, dict[str, list[str]]] | None,
+    batch_index: dict[str, list[str]] | None,
 ) -> list[str]:
     """
     Назначение:
@@ -569,7 +565,7 @@ def _apply_dedup_rules(
 
 
 def _lookup_candidates(
-    batch_index: dict[str, dict[str, list[str]]] | None,
+    batch_index: dict[str, list[str]] | None,
     cache_gateway: ResolveRuntimePort,
     dataset: str,
     lookup_key: str,
@@ -577,10 +573,13 @@ def _lookup_candidates(
     """
     Назначение:
         Получить кандидатов из batch_index или репозитория.
+
+    batch_index — плоская структура ``{lookup_key: [ids]}``.
+    dataset — передаётся только в cache_gateway.find_candidates().
     """
-    batch_hits = []
+    batch_hits: list[str] = []
     if batch_index:
-        batch_hits = batch_index.get(dataset, {}).get(lookup_key, [])
+        batch_hits = batch_index.get(lookup_key, [])
     if batch_hits:
         return list(dict.fromkeys(batch_hits))
     return cache_gateway.find_candidates(dataset, lookup_key)
@@ -624,16 +623,17 @@ def _should_skip_int(rule: LinkFieldRule) -> bool:
     return True
 
 
-def _collect_batch_keys(link_rules: LinkRules, dataset: str) -> tuple[set[str], str]:
+def _collect_batch_keys(link_rules: LinkRules) -> tuple[set[str], str]:
     """
     Назначение:
-        Собрать ключи, нужные для batch-индекса.
+        Собрать identity-ключи из всех link-правил для построения batch-индекса.
+
+    Убран dataset-фильтр: индекс строится для всех правил батча.
+    Изоляция обеспечивается per-run lifecycle, а не namespace.
     """
     keys: set[str] = set()
     id_field = "_id"
     for rule in link_rules.fields:
-        if rule.target_dataset != dataset:
-            continue
         keys.update(key.name for key in rule.resolve_keys)
         for dedup in rule.dedup_rules:
             keys.update(dedup)
@@ -675,73 +675,6 @@ def _extract_identity_value(row: MatchedRow, key_name: str) -> str | None:
         if raw is not None:
             return str(raw).strip()
     return None
-
-
-def _serialize_pending_payload(
-    matched: MatchedRow,
-    desired_state: dict[str, Any],
-    meta: dict[str, Any] | None,
-) -> str:
-    """
-    Назначение:
-        Сериализовать pending-пейлоад в JSON.
-    """
-    payload = {
-        "identity": {
-            "primary": matched.identity.primary,
-            "values": dict(matched.identity.values),
-        },
-        "row_ref": {
-            "line_no": matched.row_ref.line_no,
-            "row_id": matched.row_ref.row_id,
-            "identity_primary": matched.row_ref.identity_primary,
-            "identity_value": matched.row_ref.identity_value,
-        },
-        "desired_state": desired_state,
-        "existing": matched.existing,
-        "fingerprint": matched.fingerprint,
-        "fingerprint_fields": list(matched.fingerprint_fields),
-        "match_decision": _serialize_match_decision(matched),
-        "source_links": _serialize_source_links(matched),
-        "target_id": matched.target_id,
-        "meta": meta or {},
-    }
-    return json.dumps(payload, ensure_ascii=True, default=str)
-
-
-def _serialize_source_links(matched: MatchedRow) -> dict[str, dict[str, Any]]:
-    return {
-        field: {
-            "primary": identity.primary,
-            "values": dict(identity.values),
-        }
-        for field, identity in matched.source_links.items()
-    }
-
-
-def _serialize_match_decision(matched: MatchedRow) -> dict[str, Any]:
-    decision = matched.match_decision
-    return {
-        "status": decision.status.value,
-        "reason_code": decision.reason_code,
-        "message": decision.message,
-        "score": decision.score,
-        "meta": decision.meta,
-        "selected": _serialize_candidate(decision.selected),
-        "candidates": [_serialize_candidate(candidate) for candidate in decision.candidates],
-    }
-
-
-def _serialize_candidate(candidate) -> dict[str, Any] | None:
-    if candidate is None:
-        return None
-    return {
-        "target_id": candidate.target_id,
-        "identity": candidate.identity,
-        "score": candidate.score,
-        "match_mode": candidate.match_mode,
-        "evidence": candidate.evidence,
-    }
 
 
 def _serialize_secret_lifecycle(policy: SecretLifecyclePolicy | None) -> dict[str, Any] | None:
