@@ -68,7 +68,7 @@ class ResolveProcessor(Protocol):
         Минимальный контракт resolve-движка для ResolveStage/ResolveUseCase.
     """
 
-    def build_batch_index(self, matched_rows: list, dataset: str) -> dict[str, dict[str, list[str]]]:
+    def build_batch_index(self, matched_rows: list) -> dict[str, list[str]]:
         ...
 
     def resolve(
@@ -77,7 +77,7 @@ class ResolveProcessor(Protocol):
         *,
         target_id_map: dict[str, str],
         meta: dict | None = None,
-        batch_index: dict[str, dict[str, list[str]]] | None = None,
+        batch_index: dict[str, list[str]] | None = None,
     ):
         ...
 
@@ -579,7 +579,7 @@ class ResolveStage:
         for matched in source:
             matched_rows.append(matched)
 
-        batch_index = _build_batch_index(matched_rows, self.resolver, dataset)
+        batch_index = _build_batch_index(matched_rows, self.resolver)
         target_id_map = _build_target_id_map(matched_rows)
 
         for matched in matched_rows:
@@ -646,12 +646,11 @@ def _build_target_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dic
 def _build_batch_index(
     matched_rows: list[TransformResult[MatchedRow]],
     resolver: ResolveProcessor,
-    dataset: str | None,
-) -> dict[str, dict[str, list[str]]]:
+) -> dict[str, list[str]]:
     """
     Назначение:
-        Подготовить индекс батча для resolve-правил.
+        Подготовить плоский индекс батча для resolve-правил.
+
+    Структура: ``{lookup_key: [ids]}`` — без вложенности по dataset.
     """
-    if dataset is None:
-        return {}
-    return resolver.build_batch_index(matched_rows, dataset)
+    return resolver.build_batch_index(matched_rows)
