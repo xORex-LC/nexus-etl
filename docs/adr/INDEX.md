@@ -33,9 +33,17 @@ docs/adr/
 │   ├── VAULT-PROBLEM-001-...md
 │   ├── VAULT-DEC-001-...md
 │   └── ...
-├── transform/          # ADR для Transform слоя (resolve, mapping, etc)
-│   ├── RESOLVE-PROBLEM-001-...md
-│   ├── RESOLVE-DEC-001-...md
+├── transform/          # ADR для Transform слоя (pipeline, stages, orchestration)
+│   ├── TRANSFORM-PROBLEM-001-...md
+│   ├── TRANSFORM-DEC-001-...md
+│   └── ...
+├── resolver/           # ADR для Resolver стадии (бизнес-логика + DI-интеграция)
+│   ├── RESOLVER-PROBLEM-001-...md
+│   ├── RESOLVER-DEC-001-...md
+│   └── ...
+├── matcher/            # ADR для Matcher стадии (бизнес-логика + DI-интеграция)
+│   ├── MATCHER-PROBLEM-001-...md
+│   ├── MATCHER-DEC-001-...md
 │   └── ...
 ├── TEMPLATE-PROBLEM.md # Шаблон для проблем
 ├── TEMPLATE-DECISION.md # Шаблон для решений
@@ -97,6 +105,7 @@ docs/adr/
 | [TRANSFORM-DEC-007](./transform/TRANSFORM-DEC-007-declarative-pipeline-checkpoints.md) | Decision | Декларативный реестр чекпоинтов в AppContainer + PipelineComposer; путь к DSL-конфигурации пайплайна | ❌ Открыто (реализация после DEC-006 + PLANNER-DEC-001) | 2026-02-23 |
 | [TRANSFORM-PROBLEM-008](./transform/TRANSFORM-PROBLEM-008-pending-codec-stage-coupling.md) | Problem | pending_codec привязан к стадии resolver — SRP нарушен, будущие consumers получат лишнюю зависимость | ❌ Открыто | 2026-02-23 |
 | [TRANSFORM-DEC-008](./transform/TRANSFORM-DEC-008-pending-codec-standalone-feature.md) | Decision | Вынести pending_codec в `domain/transform/pending/` — standalone feature без привязки к стадии | ❌ Открыто (реализация отложена) | 2026-02-23 |
+| [TRANSFORM-PROBLEM-009](./transform/TRANSFORM-PROBLEM-009-sink-validation-cross-cutting-in-stage-cores.md) | Problem | Sink schema validation — cross-cutting concern внутри всех 4 stage cores | ❌ Открыто (наблюдение, accepted pattern) | 2026-02-24 |
 
 ### Delivery
 
@@ -130,6 +139,20 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [VAULT-PROBLEM-001](./vault/VAULT-PROBLEM-001-plaintext-dev-vault-and-missing-crypto-lifecycle.md) | Problem | Plaintext dev-vault и отсутствующий production-контур секретов | ✅ Закрыто | 2026-02-18 |
 | [VAULT-DEC-001](./vault/VAULT-DEC-001-envelope-encrypted-vault-with-hexagonal-ports.md) | Decision | Envelope-encrypted vault с hexagonal разделением crypto/storage | ✅ Закрыто | 2026-02-18 |
+
+### Matcher
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [MATCHER-PROBLEM-001](./matcher/MATCHER-PROBLEM-001-match-stage-mixed-responsibilities.md) | Problem | MatchStage несёт инфраструктурный state и lifecycle — смешение с бизнес-логикой сопоставления | ❌ Открыто | 2026-02-24 |
+| [MATCHER-DEC-001](./matcher/MATCHER-DEC-001-externalize-dedup-state-to-di-service.md) | Decision | Вынесение dedup-state в ISourceDedupStore — MatchStage как чистый per-record трансформер; введение PipelineRunContext | ❌ Открыто (реализация запланирована) | 2026-02-24 |
+
+### Resolver
+
+| ID | Тип | Название | Статус | Дата |
+|----|-----|----------|--------|------|
+| [RESOLVER-PROBLEM-001](./resolver/RESOLVER-PROBLEM-001-resolve-stage-mixed-responsibilities.md) | Problem | ResolveStage перегружена — смешение бизнес-логики с инфраструктурными механиками | ❌ Открыто | 2026-02-24 |
+| [RESOLVER-DEC-001](./resolver/RESOLVER-DEC-001-externalize-mechanics-to-di-services.md) | Decision | Вынесение инфраструктурных механик в DI-сервисы — ResolveStage как чистый per-record трансформер | ❌ Открыто (реализация запланирована) | 2026-02-24 |
 
 ### Planner
 
