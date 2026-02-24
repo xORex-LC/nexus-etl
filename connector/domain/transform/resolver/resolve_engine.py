@@ -3,12 +3,16 @@
     StageEngine-обвязка resolver: ResolveSpec -> ResolveDsl -> ResolveCore.
 
 Граница ответственности:
-    - Owns: компиляция ResolveSpec → ResolveCore.
+    - Owns: компиляция ResolveSpec → ResolveCore; проброс codec.
     - Does NOT: бизнес-логика resolve (делегирует ResolveCore).
 
     Поддерживает два пути инициализации (DEC-004 transition):
     - ctx: StageExecutionContext — новый путь (capabilities из context).
     - scattered params (cache_gateway, settings, catalog) — legacy путь.
+
+Переходный период (Stage 3 → Stage 4):
+    drain_expired() оставлен как no-op стаб, пока ResolveUseCase не переключён
+    на IPendingExpiryService (Stage 4).
 """
 
 from __future__ import annotations
@@ -20,6 +24,8 @@ from connector.domain.ports.cache.roles import ResolveRuntimePort
 from connector.domain.transform_dsl.build_options import ResolveDslBuildOptions
 from connector.domain.transform_dsl.specs import ResolveSpec, SinkSpec
 from connector.domain.transform.resolver.resolve_core import ResolveCore
+from connector.domain.transform.resolver.pending_codec import PendingCodecAdapter
+from connector.domain.transform.resolver.ports import IPendingCodec
 from connector.domain.transform.matcher.match_models import MatchedRow
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
@@ -36,6 +42,10 @@ class ResolveEngine:
     Поддерживает два пути инициализации (DEC-004 transition):
         - ctx: StageExecutionContext — scoped capabilities (новый путь).
         - cache_gateway/settings/catalog — scattered params (legacy путь).
+
+    codec:
+        Если не передан — создаётся PendingCodecAdapter() по умолчанию.
+        В Stage 4 будет передаваться явно из PipelineRunContext через DI.
     """
 
     def __init__(
@@ -49,6 +59,7 @@ class ResolveEngine:
         sink_spec: SinkSpec | None = None,
         dsl: ResolveDsl | None = None,
         options: ResolveDslBuildOptions | None = None,
+        codec: IPendingCodec | None = None,
     ) -> None:
         if ctx is not None:
             resolved_gateway = ctx.get(ResolveRuntimePort)
@@ -72,6 +83,7 @@ class ResolveEngine:
             settings=resolved_settings,
             catalog=resolved_catalog,
             sink_spec=resolved_sink_spec,
+            codec=codec or PendingCodecAdapter(),
         )
 
     @property
@@ -83,10 +95,14 @@ class ResolveEngine:
         return self.core.cache_gateway
 
     def drain_expired(self):
-        return self.core.drain_expired()
+        """
+        No-op stub. Lifecycle drain теперь в IPendingExpiryService.
+        Оставлен для совместимости с ResolveUseCase до Stage 4.
+        """
+        return []
 
-    def build_batch_index(self, matched_rows: list, dataset: str) -> dict[str, dict[str, list[str]]]:
-        return self.core.build_batch_index(matched_rows, dataset)
+    def build_batch_index(self, matched_rows: list) -> dict[str, list[str]]:
+        return self.core.build_batch_index(matched_rows)
 
     def resolve(
         self,
@@ -94,7 +110,7 @@ class ResolveEngine:
         *,
         target_id_map: dict[str, str],
         meta: dict[str, Any] | None = None,
-        batch_index: dict[str, dict[str, list[str]]] | None = None,
+        batch_index: dict[str, list[str]] | None = None,
     ):
         return self.core.resolve(
             matched,

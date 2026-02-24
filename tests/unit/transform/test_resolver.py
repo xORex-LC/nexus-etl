@@ -5,6 +5,7 @@ from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.domain.transform.matcher.match_models import MatchedRow, MatchDecision, MatchDecisionStatus
 from connector.domain.transform.resolver.resolve_core import ResolveCore
+from connector.domain.transform.resolver.pending_codec import PendingCodecAdapter
 from connector.domain.transform_dsl.compilers.resolve import LinkFieldRule, LinkKeyRule, LinkRules, ResolveRules
 from connector.domain.transform_dsl import load_sink_spec_for_dataset
 from connector.domain.diagnostics.catalog import build_catalog
@@ -49,6 +50,7 @@ def _make_resolver(engine: SqliteEngine, settings: ResolverSettings) -> tuple[Re
         cache_gateway=cache_roles.planning_runtime,
         settings=settings,
         catalog=catalog,
+        codec=PendingCodecAdapter(),
     )
     return resolver, pending_repo
 
@@ -227,9 +229,7 @@ def test_resolver_uses_batch_index_for_candidates():
 
     matched = _make_matched_row()
     batch_index = {
-        "employees": {
-            format_identity_key("match_key", "mgr"): ["99"],
-        }
+        format_identity_key("match_key", "mgr"): ["99"],
     }
     resolved, errors, warnings = resolver.resolve(
         matched,
@@ -307,6 +307,7 @@ def test_resolver_hard_error_on_unresolved_rule():
         cache_gateway=cache_roles.planning_runtime,
         settings=settings,
         catalog=catalog,
+        codec=PendingCodecAdapter(),
     )
 
     matched = _make_matched_row()
@@ -357,6 +358,7 @@ def test_resolver_validates_sink_for_resolved_mutations():
         settings=settings,
         catalog=catalog,
         sink_spec=load_sink_spec_for_dataset("employees"),
+        codec=PendingCodecAdapter(),
     )
 
     matched = _make_matched_row()
