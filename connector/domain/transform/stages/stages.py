@@ -14,7 +14,7 @@
 Граница ответственности:
     - Owns: stage contracts, stage implementations, orchestration logic, batching
     - Does NOT: load DSL config, handle I/O, build execution context (StageExecutionContext)
-    - Does NOT: implement command-specific orchestration (reporting, micro-batching policies)
+    - Does NOT: implement command-specific orchestration (reporting)
 
 ResolveContextStage / ResolveStage — парная модель (DEC-004 Stage 4):
     ResolveContextStage буферизует весь батч, строит batch_index через resolver,
@@ -33,7 +33,9 @@ from connector.domain.diagnostics.boundary import diagnostic_boundary
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.models import DiagnosticStage
 from connector.domain.ports.transform.sources import SourceMapper
+from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.enrich import EnricherEngine
+from connector.domain.transform.matcher.ports import IMatchBatchSettings
 from connector.domain.transform.normalize import NormalizerEngine
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.matcher.match_models import MatchedRow
@@ -505,42 +507,53 @@ class MatchStage:
         Стадия match (enriched → matched). Реализует StageContract.
 
     Инварианты:
-        - Stateless functor (match runtime инъецируется через matcher).
+        - Micro-batching инкапсулирован (IMatchBatchSettings).
         - Record-level match miss → catalog.
-        - UseCase ответственен за scope binding и micro-batching.
+        - Scope cleanup — ответственность IMatchScopeService (delivery-слой).
     """
 
     stage_name: str = "match"
 
-    def __init__(self, matcher: MatchProcessor, catalog: ErrorCatalog) -> None:
+    def __init__(
+        self,
+        matcher: MatchProcessor,
+        catalog: ErrorCatalog,
+        batch_settings: IMatchBatchSettings,
+    ) -> None:
         self.matcher = matcher
         self.catalog = catalog
+        self._batch_settings = batch_settings
 
     def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult[MatchedRow]]:
-        for enriched in source:
-            boundary_errors: list = []
-            matched: TransformResult[MatchedRow] | None = None
-            with diagnostic_boundary(
-                stage=DiagnosticStage.MATCH,
-                catalog=self.catalog,
-                sink=boundary_errors,
-                record_ref=enriched.row_ref,
-            ):
-                matched = self.matcher.match_with_source_dedup(enriched)
-            if matched is None:
-                builder = enriched.as_builder()
-                builder.set_row(None)
-                for err in boundary_errors:
-                    builder.add_error_item(err)
-                yield builder.build()
-                continue
-            if boundary_errors:
-                builder = matched.as_builder()
-                for err in boundary_errors:
-                    builder.add_error_item(err)
-                yield builder.build()
-                continue
-            yield matched
+        for batch in iter_micro_batches(
+            source,
+            batch_size=self._batch_settings.batch_size,
+            flush_interval_ms=self._batch_settings.flush_interval_ms,
+        ):
+            for enriched in batch:
+                boundary_errors: list = []
+                matched: TransformResult[MatchedRow] | None = None
+                with diagnostic_boundary(
+                    stage=DiagnosticStage.MATCH,
+                    catalog=self.catalog,
+                    sink=boundary_errors,
+                    record_ref=enriched.row_ref,
+                ):
+                    matched = self.matcher.match_with_source_dedup(enriched)
+                if matched is None:
+                    builder = enriched.as_builder()
+                    builder.set_row(None)
+                    for err in boundary_errors:
+                        builder.add_error_item(err)
+                    yield builder.build()
+                    continue
+                if boundary_errors:
+                    builder = matched.as_builder()
+                    for err in boundary_errors:
+                        builder.add_error_item(err)
+                    yield builder.build()
+                    continue
+                yield matched
 
 
 class ResolveContextStage:
