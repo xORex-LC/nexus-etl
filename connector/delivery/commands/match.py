@@ -86,7 +86,6 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                     match_stage=match_runtime.match_stage,
                     dataset=dataset_name,
                     report=report,
-                    run_scope=match_runtime.runtime_scope,
                 )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="match", exc=exc)

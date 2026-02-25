@@ -61,12 +61,6 @@ class MatchProcessor(Protocol):
     def match_with_source_dedup(self, enriched: TransformResult) -> TransformResult[MatchedRow]:
         ...
 
-    def reset_source_dedup(self) -> None:
-        ...
-
-    def bind_runtime_scope(self, scope: str | None) -> None:
-        ...
-
 
 class ResolveProcessor(Protocol):
     """
@@ -698,5 +692,4 @@ class ResolveStage:
                 errors=tuple(errors),
                 warnings=tuple(warnings),
             )
-
 
