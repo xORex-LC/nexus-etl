@@ -22,6 +22,7 @@ from connector.domain.transform.stages.stages import (
     NormalizeStage,
     EnrichStage,
     MatchStage,
+    ResolveContextStage,
     ResolveStage,
     MatchProcessor,
     ResolveProcessor,
@@ -79,8 +80,14 @@ def _make_match_stage() -> MatchStage:
     return MatchStage(matcher=Mock(spec=MatchProcessor), catalog=_make_catalog())
 
 
+def _make_resolve_context_stage() -> ResolveContextStage:
+    return ResolveContextStage(batch_index=Mock(), resolver=Mock(spec=ResolveProcessor))
+
+
 def _make_resolve_stage() -> ResolveStage:
-    return ResolveStage(resolver=Mock(spec=ResolveProcessor), catalog=_make_catalog())
+    return ResolveStage(
+        resolver=Mock(spec=ResolveProcessor), catalog=_make_catalog(), batch_index=Mock()
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -91,12 +98,13 @@ class TestStageContractArchitecture:
     """Структурная корректность StageContract Protocol."""
 
     def test_all_stages_implement_stage_contract(self):
-        """Все 5 конкретных стадий satisfying StageContract через structural subtyping."""
+        """Все 6 конкретных стадий satisfying StageContract через structural subtyping."""
         stages = [
             _make_map_stage(),
             _make_normalize_stage(),
             _make_enrich_stage(),
             _make_match_stage(),
+            _make_resolve_context_stage(),
             _make_resolve_stage(),
         ]
         for stage in stages:
@@ -106,9 +114,9 @@ class TestStageContractArchitecture:
             )
 
     def test_resolve_stage_run_no_extra_kwargs(self):
-        """ResolveStage.run(source) без dataset kwarg — соответствует StageContract."""
+        """ResolveStage.run(source) без дополнительных kwargs — соответствует StageContract."""
+        # IBatchIndexService.get() вызывается при первой итерации — для пустого source не вызывается.
         stage = _make_resolve_stage()
-        # Должен вызываться без dataset — протокол не предусматривает extra kwargs
         result = list(stage.run(iter([])))
         assert result == []
 
@@ -143,6 +151,7 @@ class TestStageContractArchitecture:
         assert _make_normalize_stage().stage_name == "normalize"
         assert _make_enrich_stage().stage_name == "enrich"
         assert _make_match_stage().stage_name == "match"
+        assert _make_resolve_context_stage().stage_name == "resolve_context"
         assert _make_resolve_stage().stage_name == "resolve"
 
     def test_batch_config_is_frozen_dataclass(self):
