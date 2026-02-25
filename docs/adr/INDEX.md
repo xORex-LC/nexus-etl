@@ -71,6 +71,8 @@ docs/adr/
 | [CONFIG-DEC-001](./config/CONFIG-DEC-001-modular-settings-and-slice-wiring.md) | Decision | Модульный Settings и slice-based wiring | ✅ Закрыто | 2026-02-12 |
 | [CONFIG-PROBLEM-002](./config/CONFIG-PROBLEM-002-manual-settings-validation.md) | Problem | Ручная валидация Settings и отсутствие Pydantic в конфиг-слое | ❌ Открыто | 2026-02-19 |
 | [CONFIG-DEC-002](./config/CONFIG-DEC-002-pydantic-settings-migration.md) | Decision | Миграция Settings на Pydantic BaseSettings | ❌ Открыто (реализация отложена) | 2026-02-19 |
+| [CONFIG-PROBLEM-003](./config/CONFIG-PROBLEM-003-settings-fragmentation-and-runtime-default-drift.md) | Problem | Отсутствие целостной и явно зафиксированной модели конфигурационных контуров | ❌ Открыто | 2026-02-19 |
+| [CONFIG-DEC-003](./config/CONFIG-DEC-003-settings-taxonomy-and-boundary-adapters.md) | Decision | Единый pipeline доставки конфигурации и единая каноническую модель приложения | ❌ Открыто (реализация отложена) | 2026-02-19 |
 
 ### DSL
 
