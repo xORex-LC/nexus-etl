@@ -297,6 +297,8 @@ class TestPlanningPipelineResetsDedup:
         resolve_context_stage = MagicMock()
         resolve_context_stage.run.return_value = iter([])
         resolve_stage = MagicMock()
+        resolve_stage_hooks = MagicMock()
+        pending_expiry = MagicMock()
         row_source = MagicMock()
         row_source.open.return_value.__enter__ = MagicMock(return_value=MagicMock())
         row_source.open.return_value.__exit__ = MagicMock(return_value=False)
@@ -319,6 +321,8 @@ class TestPlanningPipelineResetsDedup:
             match_stage=match_stage,
             resolve_context_stage=resolve_context_stage,
             resolve_stage=resolve_stage,
+            resolve_stage_hooks=resolve_stage_hooks,
+            pending_expiry=pending_expiry,
             dedup_store=dedup_store,
             row_source=row_source,
             catalog=catalog,

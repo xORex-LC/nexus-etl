@@ -17,7 +17,8 @@ from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.result_processor import PlanningResultProcessor
 from connector.domain.transform.resolver import pending_codec
-from connector.domain.transform.stages.stages import ResolveStage
+from connector.domain.transform.resolver.ports import IPendingExpiryService
+from connector.domain.transform.stages.stages import PipelineHooks, PipelineOrchestrator, ResolveStage
 
 logger = structlog.get_logger(__name__)
 
@@ -26,6 +27,10 @@ class ResolveUseCase:
     """
     Назначение/ответственность:
         Use-case разрешения операций (match -> resolve).
+
+    Граница ответственности:
+        - Owns: micro-batching, transaction scope, report aggregation.
+        - Does NOT: создавать infra-сервисы (pending expiry/codec) — получает через DI.
     """
 
     def __init__(
@@ -47,6 +52,7 @@ class ResolveUseCase:
         *,
         dataset: str | None = None,
         pending_replay: ResolveRuntimePort | None = None,
+        resolve_hooks: PipelineHooks | None = None,
     ):
         """
         Назначение:
@@ -57,6 +63,10 @@ class ResolveUseCase:
             десериализуются через ``pending_codec`` и добавляются в конец
             ``matched_source`` перед разрешением.
             ``None`` (по умолчанию) — поведение без изменений.
+
+        Параметр ``resolve_hooks``:
+            Lifecycle hooks для micro-batch запуска ``ResolveStage``.
+            Используется delivery-layer для housekeeping (например, sweep expired pending).
         """
         pending_rows: list[TransformResult] = []
         if pending_replay is not None and dataset is not None:
@@ -71,7 +81,7 @@ class ResolveUseCase:
                     dataset=dataset,
                 )
         all_matched = chain(matched_source, pending_rows)
-        return self._iter_resolved(all_matched, resolve_stage)
+        return self._iter_resolved(all_matched, resolve_stage, resolve_hooks=resolve_hooks)
 
     def run(
         self,
@@ -80,10 +90,22 @@ class ResolveUseCase:
         dataset: str,
         report,
         catalog: ErrorCatalog,
+        *,
+        pending_expiry: IPendingExpiryService,
+        resolve_hooks: PipelineHooks,
     ) -> CommandResult:
+        """
+        Назначение:
+            Выполнить resolve-проход с репортингом и lifecycle housekeeping.
+
+        Contract:
+            - ``pending_expiry`` хранит expired pending между micro-batches.
+            - ``resolve_hooks`` должен триггерить ``pending_expiry.sweep()`` после
+              завершения каждого micro-batch resolve-стадии.
+        """
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         resolver = resolve_stage.resolver
-        _report_expired(report, resolver.drain_expired(), resolver.settings, catalog)
+        _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
         processor = PlanningResultProcessor(
             report=report,
             include_items=self.include_resolved_items,
@@ -96,10 +118,17 @@ class ResolveUseCase:
             include_upstream_diagnostics=False,
         )
 
-        for resolved in self._iter_resolved(matched_source, resolve_stage):
+        for resolved in self._iter_resolved(
+            matched_source,
+            resolve_stage,
+            resolve_hooks=resolve_hooks,
+        ):
             _count_special_ops(report, resolved.errors, resolved.warnings)
             processor.process(resolved)
-            _report_expired(report, resolver.drain_expired(), resolver.settings, catalog)
+            _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
+        # Sweep выполняется через resolve_hooks.on_stage_complete после исчерпания
+        # micro-batch; отдельный финальный drain нужен, чтобы не потерять последний batch.
+        _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
         _purge_pending(resolver)
         result = processor.finalize()
         if report.summary.errors_total > 0:
@@ -110,7 +139,19 @@ class ResolveUseCase:
         self,
         matched_source: Iterable[TransformResult],
         resolve_stage: ResolveStage,
+        *,
+        resolve_hooks: PipelineHooks | None = None,
     ):
+        """
+        Назначение:
+            Выполнить resolve в micro-batches с транзакционным scope на батч.
+
+        Алгоритм:
+            1. Нарезать поток matched-элементов на micro-batches.
+            2. Для каждого батча открыть transaction() runtime-порта (если есть).
+            3. Запустить ``ResolveStage`` напрямую или через ``PipelineOrchestrator``
+               (если переданы lifecycle hooks).
+        """
         batches = iter(
             iter_micro_batches(
                 matched_source,
@@ -118,13 +159,19 @@ class ResolveUseCase:
                 flush_interval_ms=self.flush_interval_ms,
             )
         )
+        resolve_segment = (
+            PipelineOrchestrator([resolve_stage], hooks=resolve_hooks)
+            if resolve_hooks is not None
+            else None
+        )
         while True:
             with _resolve_transaction(resolve_stage):
                 try:
                     batch = next(batches)
                 except StopIteration:
                     return
-                for resolved in resolve_stage.run(batch):
+                stage_stream = resolve_segment.run(batch) if resolve_segment is not None else resolve_stage.run(batch)
+                for resolved in stage_stream:
                     yield resolved
 
 
