@@ -129,6 +129,7 @@ class TestPipelineContainerE2E:
             container.normalize_stage(),
             container.enrich_stage(),
             container.match_stage(),
+            container.resolve_context_stage(),
             container.resolve_stage(),
         ]
         for stage in stages:

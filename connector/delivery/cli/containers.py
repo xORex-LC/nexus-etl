@@ -61,6 +61,11 @@ from connector.domain.secrets.vault_startup_guard import VaultStartupGuard
 from connector.domain.transform.context import PipelineMetadata, StageExecutionContext
 from connector.domain.transform.providers import ProviderGateway
 from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
+from connector.domain.transform.pipeline_run_context import PipelineRunContext
+from connector.domain.transform.matcher.dedup_store import LocalSourceDedupStore
+from connector.domain.transform.resolver.batch_index_service import InMemoryBatchIndexService
+from connector.domain.transform.resolver.resolve_engine import ResolveEngine
+from connector.domain.transform.stages.stages import ResolveContextStage, ResolveStage
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
 from connector.delivery.cli.pipeline_registry import (
@@ -564,6 +569,17 @@ class PipelineContainer(containers.DeclarativeContainer):
     stage_factory = providers.Singleton(build_stage_factory)
     provider_gateway = providers.Singleton(ProviderGateway.with_defaults)
 
+    # ── Per-run state singletons (DEC-004 Stage 4) ────────────────────────────
+
+    _dedup_store = providers.Singleton(LocalSourceDedupStore)
+    _batch_index = providers.Singleton(InMemoryBatchIndexService)
+
+    run_context = providers.Singleton(
+        PipelineRunContext,
+        dedup_store=_dedup_store,
+        batch_index=_batch_index,
+    )
+
     # ── Compiled resolve rules (for match kwargs) ─────────────────────────────
 
     compiled_resolve_rules = providers.Factory(
@@ -628,13 +644,25 @@ class PipelineContainer(containers.DeclarativeContainer):
         include_deleted=include_deleted,
     )
 
-    resolve_stage = providers.Factory(
-        _create_stage,
-        factory=stage_factory,
-        stage_type="resolve",
+    # ── Resolve engine (Singleton, shared between ResolveContextStage и ResolveStage)
+    _resolve_engine = providers.Singleton(
+        ResolveEngine,
         spec=providers.Factory(lambda s: s.build_resolve_spec(), s=dataset_spec),
         ctx=planning_context,
         options=resolve_options,
+    )
+
+    resolve_context_stage = providers.Singleton(
+        ResolveContextStage,
+        batch_index=_batch_index,
+        resolver=_resolve_engine,
+    )
+
+    resolve_stage = providers.Singleton(
+        ResolveStage,
+        resolver=_resolve_engine,
+        catalog=catalog,
+        batch_index=_batch_index,
     )
 
     # ── Orchestrators / pipelines ─────────────────────────────────────────────
@@ -652,7 +680,9 @@ class PipelineContainer(containers.DeclarativeContainer):
         PlanningPipeline,
         transform_segment=transform_segment,
         match_stage=match_stage,
+        resolve_context_stage=resolve_context_stage,
         resolve_stage=resolve_stage,
+        dedup_store=_dedup_store,
         row_source=row_source,
         catalog=catalog,
         dataset_spec=dataset_spec,

@@ -4,7 +4,7 @@
 
     В delivery layer (не domain) сосредоточена:
     - типобезопасность сборки pipeline (build_transform_segment);
-    - регистрация всех 5 stage descriptors.
+    - регистрация всех 6 stage descriptors.
 
 Граница ответственности:
     - Owns: typed factory functions, stage descriptor registration.
@@ -14,6 +14,12 @@
 Использование:
     build_transform_segment — из PipelineContainer (DEC-006).
     build_stage_factory() — из PipelineContainer (DEC-004).
+
+Примечание по resolve_context:
+    ResolveContextStage регистрируется для introspection (registered_types).
+    В production создаётся напрямую в PipelineContainer как Singleton,
+    а не через StageFactory.create(). Stub-функции намеренно бросают
+    NotImplementedError, предотвращая случайный вызов через factory.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ from connector.domain.transform.stages.stages import (
     NormalizeStage,
     PipelineHooks,
     PipelineOrchestrator,
+    ResolveContextStage,
     ResolveStage,
 )
 
@@ -117,6 +124,38 @@ def _resolve_engine_factory(
     )
 
 
+def _resolve_stage_stub_wrapper(
+    engine: object, ctx: StageExecutionContext,
+) -> ResolveStage:
+    """
+    Назначение:
+        Stub. ResolveStage создаётся напрямую в PipelineContainer (требует batch_index).
+        Зарегистрирован в StageFactory только для introspection (registered_types).
+    """
+    raise NotImplementedError("resolve is created directly in PipelineContainer, not via StageFactory")
+
+
+def _resolve_context_stub_factory(
+    spec: object, ctx: StageExecutionContext, **kwargs: object,
+) -> None:
+    """
+    Назначение:
+        Stub. ResolveContextStage создаётся напрямую в PipelineContainer, не через StageFactory.
+        Зарегистрирован только для introspection (StageFactory.registered_types).
+    """
+    raise NotImplementedError("resolve_context is created directly in PipelineContainer, not via StageFactory")
+
+
+def _resolve_context_stub_wrapper(
+    engine: object, ctx: StageExecutionContext,
+) -> ResolveContextStage:
+    """
+    Назначение:
+        Stub. ResolveContextStage создаётся напрямую в PipelineContainer, не через StageFactory.
+    """
+    raise NotImplementedError("resolve_context is created directly in PipelineContainer, not via StageFactory")
+
+
 def _stage_wrapper(
     stage_cls: type,
 ) -> callable:
@@ -129,10 +168,15 @@ def _stage_wrapper(
 def build_stage_factory() -> StageFactory:
     """
     Назначение:
-        Создать StageFactory с зарегистрированными 5 стадиями.
+        Создать StageFactory с зарегистрированными 6 стадиями.
 
     Регистрация дескрипторов — ответственность delivery layer.
     StageFactory (domain) хранит только registry и create() логику.
+
+    Примечание:
+        resolve_context — зарегистрирован только для introspection (registered_types).
+        В production ResolveContextStage создаётся напрямую в PipelineContainer.
+        Вызов create("resolve_context", ...) бросает NotImplementedError.
     """
     factory = StageFactory()
 
@@ -167,7 +211,16 @@ def build_stage_factory() -> StageFactory:
     factory.register(StageDescriptor(
         stage_type="resolve",
         engine_factory=_resolve_engine_factory,
-        stage_wrapper=_stage_wrapper(ResolveStage),
+        # Wrapper не используется: ResolveStage создаётся напрямую в PipelineContainer
+        # (требует batch_index: IBatchIndexService — недоступен через _stage_wrapper).
+        stage_wrapper=_resolve_stage_stub_wrapper,
+        required_capabilities=frozenset(),
+    ))
+
+    factory.register(StageDescriptor(
+        stage_type="resolve_context",
+        engine_factory=_resolve_context_stub_factory,
+        stage_wrapper=_resolve_context_stub_wrapper,
         required_capabilities=frozenset(),
     ))
 

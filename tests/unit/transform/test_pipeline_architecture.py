@@ -12,6 +12,7 @@ from connector.domain.transform.stages.stages import (
     NormalizeStage,
     EnrichStage,
     MatchStage,
+    ResolveContextStage,
     ResolveStage,
     MatchProcessor,
     ResolveProcessor,
@@ -25,9 +26,10 @@ def _make_catalog() -> ErrorCatalog:
 
 def test_invariant_stages_are_stateless():
     """
-    All 5 concrete stages have no mutable per-run state.
+    All 6 concrete stages have no mutable per-run state.
     They delegate to injected engines and carry only immutable references.
     Re-running the same stage with fresh source yields independent results.
+    Private attributes (_batch_index etc.) are excluded from the check (they're DI-injected).
     """
     catalog = _make_catalog()
 
@@ -35,9 +37,12 @@ def test_invariant_stages_are_stateless():
     norm_stage = NormalizeStage(normalizer=Mock(), catalog=catalog)
     enrich_stage = EnrichStage(enricher=Mock(), catalog=catalog)
     match_stage = MatchStage(matcher=Mock(spec=MatchProcessor), catalog=catalog)
-    resolve_stage = ResolveStage(resolver=Mock(spec=ResolveProcessor), catalog=catalog)
+    resolve_context_stage = ResolveContextStage(batch_index=Mock(), resolver=Mock(spec=ResolveProcessor))
+    resolve_stage = ResolveStage(
+        resolver=Mock(spec=ResolveProcessor), catalog=catalog, batch_index=Mock()
+    )
 
-    stages = [map_stage, norm_stage, enrich_stage, match_stage, resolve_stage]
+    stages = [map_stage, norm_stage, enrich_stage, match_stage, resolve_context_stage, resolve_stage]
     for stage in stages:
         assert isinstance(stage, StageContract)
         # No __dict__ keys beyond constructor-injected attributes
