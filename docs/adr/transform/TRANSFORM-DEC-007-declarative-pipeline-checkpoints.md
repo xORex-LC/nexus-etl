@@ -1,6 +1,6 @@
 # TRANSFORM-DEC-007: Декларативный реестр чекпоинтов в AppContainer + PipelineComposer
 
-> **Статус**: Открыто (реализация после PLANNER-DEC-001 + TRANSFORM-DEC-006)
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-23
 > **Решает проблему**: [TRANSFORM-PROBLEM-007](./TRANSFORM-PROBLEM-007-pipeline-composition-hardcoded-imperatively.md)
 > **Зависит от**: [TRANSFORM-DEC-006](./TRANSFORM-DEC-006-pipeline-segments-in-container.md), [PLANNER-DEC-001](../planner/PLANNER-DEC-001-pending-replay-at-resolve-boundary.md)

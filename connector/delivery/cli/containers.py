@@ -72,10 +72,9 @@ from connector.domain.transform.resolver.resolve_engine import ResolveEngine
 from connector.domain.transform.stages.stages import MatchStage, ResolveContextStage, ResolveStage
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
-from connector.delivery.cli.pipeline_registry import (
-    build_stage_factory,
-    build_transform_segment,
-)
+from connector.delivery.cli.pipeline_config import PIPELINE_CHECKPOINTS, StageName
+from connector.delivery.cli.pipeline_composer import PipelineComposer
+from connector.delivery.cli.pipeline_registry import build_stage_factory
 from connector.delivery.cli.dictionaries_container import DictionaryContainer
 from connector.delivery.pipelines.planning_pipeline import PlanningPipeline
 from connector.delivery.pipelines.planning_pipeline_hooks import PlanningPipelineHooks
@@ -474,10 +473,10 @@ class PipelineContainer(containers.DeclarativeContainer):
     """
     Назначение:
         DI-контейнер для lazy сборки transform/planning stages, orchestrators и
-        lifecycle-aware конвейеров (DEC-004, DEC-006).
+        lifecycle-aware конвейеров (DEC-004, DEC-006, DEC-007).
 
     Граница ответственности:
-        - Owns: lazy Factory providers для stages, contexts, transform_segment и
+        - Owns: lazy Factory providers для stages, contexts, pipeline_composer (DEC-007) и
           planning_pipeline (lifecycle-aware конвейер для import_plan).
         - Does NOT: управлять lifecycle инфраструктуры (это SqliteContainer/CacheContainer).
         - Does NOT: содержать бизнес-логику — только wiring через StageFactory.
@@ -489,6 +488,8 @@ class PipelineContainer(containers.DeclarativeContainer):
         - Один экземпляр PipelineContainer на invocation CLI-команды (sub-container AppContainer).
         - planning_pipeline — providers.Factory: PlanningPipeline инкапсулирует
           lifecycle match-runtime scope; lifecycle-логика живёт в PlanningPipeline, не здесь.
+        - pipeline_composer — providers.Singleton: держит plain dict с provider-ссылками,
+          вызывает их лениво внутри compose() в активном override()-контексте.
     """
 
     # ── External dependencies (overridden per-command) ────────────────────────
@@ -713,23 +714,27 @@ class PipelineContainer(containers.DeclarativeContainer):
 
     # ── Orchestrators / pipelines ─────────────────────────────────────────────
 
-    # transform_segment: переходный провайдер (DEC-006); удаляется в DEC-007
-    # (заменяется PipelineComposer.compose("enrich")).
-    transform_segment = providers.Factory(
-        build_transform_segment,
-        map_stage=map_stage,
-        normalize_stage=normalize_stage,
-        enrich_stage=enrich_stage,
+    # pipeline_composer: declarative checkpoint assembly (DEC-007).
+    # stage_registry is a plain dict (not providers.Dict) so provider-callables
+    # remain lazy — compose() calls them inside the active override() context.
+    pipeline_composer = providers.Singleton(
+        PipelineComposer,
+        stage_registry={
+            StageName.MAP: map_stage,
+            StageName.NORMALIZE: normalize_stage,
+            StageName.ENRICH: enrich_stage,
+            StageName.MATCH: match_stage,
+            StageName.RESOLVE_CONTEXT: resolve_context_stage,
+            StageName.RESOLVE: resolve_stage,
+        },
+        checkpoints=providers.Object(PIPELINE_CHECKPOINTS),
     )
 
     planning_pipeline = providers.Factory(
         PlanningPipeline,
-        transform_segment=transform_segment,
-        match_stage=match_stage,
-        match_scope=match_scope,
-        resolve_context_stage=resolve_context_stage,
+        composer=pipeline_composer,
+        plan_hooks=resolve_stage_hooks,
         resolve_stage=resolve_stage,
-        resolve_stage_hooks=resolve_stage_hooks,
         pending_expiry=pending_expiry,
         dedup_store=_dedup_store,
         row_source=row_source,

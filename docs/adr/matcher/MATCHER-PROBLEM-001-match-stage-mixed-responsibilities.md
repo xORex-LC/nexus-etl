@@ -1,6 +1,6 @@
 # MATCHER-PROBLEM-001: MatchStage несёт инфраструктурный state и lifecycle — смешение с бизнес-логикой сопоставления
 
-> **Статус**: Открыта / Решена в [MATCHER-DEC-001](./MATCHER-DEC-001-externalize-dedup-state-to-di-service.md)
+> **Статус**: Решена в [MATCHER-DEC-001](./MATCHER-DEC-001-externalize-dedup-state-to-di-service.md)
 > **Дата создания**: 2026-02-24
 > **Затронутые компоненты**: `MatchStage`, `MatchCore`, `StageContract`, `PipelineContainer`, `PipelineComposer`
 
