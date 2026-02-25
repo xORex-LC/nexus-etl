@@ -43,6 +43,7 @@ from connector.config.app_settings import (
     build_identity_db_config,
     build_vault_db_config,
 )
+from connector.domain.transform.matcher.match_deps import MatchBatchSettings, MatchScopeService
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.catalog import ErrorCatalog
@@ -63,11 +64,12 @@ from connector.domain.transform.providers import ProviderGateway
 from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
 from connector.domain.transform.pipeline_run_context import PipelineRunContext
 from connector.domain.transform.matcher.dedup_store import LocalSourceDedupStore
+from connector.domain.transform.matcher.match_engine import MatchEngine
 from connector.domain.transform.resolver.batch_index_service import InMemoryBatchIndexService
 from connector.domain.transform.resolver.pending_codec import PendingCodecAdapter
 from connector.domain.transform.resolver.pending_expiry_service import PendingExpiryService
 from connector.domain.transform.resolver.resolve_engine import ResolveEngine
-from connector.domain.transform.stages.stages import ResolveContextStage, ResolveStage
+from connector.domain.transform.stages.stages import MatchStage, ResolveContextStage, ResolveStage
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
 from connector.delivery.cli.pipeline_registry import (
@@ -581,12 +583,31 @@ class PipelineContainer(containers.DeclarativeContainer):
         cache_gateway=providers.Factory(lambda roles: roles.planning_runtime, roles=cache_roles),
         settings=resolver_settings,
     )
+    match_batch_settings = providers.Singleton(
+        MatchBatchSettings,
+        batch_size=providers.Factory(
+            lambda s: s.matching_runtime.match_batch_size, s=app_settings
+        ),
+        flush_interval_ms=providers.Factory(
+            lambda s: s.matching_runtime.match_flush_interval_ms, s=app_settings
+        ),
+    )
+
+    match_scope = providers.Singleton(
+        MatchScopeService,
+        match_runtime=providers.Factory(
+            lambda roles: roles.planning_runtime, roles=cache_roles
+        ),
+        run_id=run_id,
+    )
+
     plan_hooks = providers.Singleton(
         PlanningPipelineHooks,
         pending_expiry=pending_expiry,
+        match_scope=match_scope,
     )
     resolve_stage_hooks = providers.Singleton(
-        lambda hooks: hooks.resolve_stage_hooks(),
+        lambda hooks: hooks.plan_hooks(),
         hooks=plan_hooks,
     )
 
@@ -649,16 +670,23 @@ class PipelineContainer(containers.DeclarativeContainer):
 
     # ── Planning stages ───────────────────────────────────────────────────────
 
-    match_stage = providers.Factory(
-        _create_stage,
-        factory=stage_factory,
-        stage_type="match",
+    # MatchEngine — Singleton (аналогично _resolve_engine): MatchStage создаётся
+    # напрямую в PipelineContainer, т.к. требует batch_settings (Variant B, DEC-002).
+    _match_engine = providers.Singleton(
+        MatchEngine,
         spec=providers.Factory(lambda s: s.build_match_spec(), s=dataset_spec),
         ctx=planning_context,
-        options=match_options,
         resolve_rules=compiled_resolve_rules,
         include_deleted=include_deleted,
+        options=match_options,
         dedup_store=_dedup_store,
+    )
+
+    match_stage = providers.Singleton(
+        MatchStage,
+        matcher=_match_engine,
+        catalog=catalog,
+        batch_settings=match_batch_settings,
     )
 
     # ── Resolve engine (Singleton, shared between ResolveContextStage и ResolveStage)
@@ -698,6 +726,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         PlanningPipeline,
         transform_segment=transform_segment,
         match_stage=match_stage,
+        match_scope=match_scope,
         resolve_context_stage=resolve_context_stage,
         resolve_stage=resolve_stage,
         resolve_stage_hooks=resolve_stage_hooks,

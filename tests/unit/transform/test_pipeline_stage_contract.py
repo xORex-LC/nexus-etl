@@ -77,7 +77,10 @@ def _make_enrich_stage() -> EnrichStage:
 
 
 def _make_match_stage() -> MatchStage:
-    return MatchStage(matcher=Mock(spec=MatchProcessor), catalog=_make_catalog())
+    batch_settings = Mock()
+    batch_settings.batch_size = 500
+    batch_settings.flush_interval_ms = 500
+    return MatchStage(matcher=Mock(spec=MatchProcessor), catalog=_make_catalog(), batch_settings=batch_settings)
 
 
 def _make_resolve_context_stage() -> ResolveContextStage:

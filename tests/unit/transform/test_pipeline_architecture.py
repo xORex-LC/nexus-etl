@@ -33,10 +33,14 @@ def test_invariant_stages_are_stateless():
     """
     catalog = _make_catalog()
 
+    batch_settings = Mock()
+    batch_settings.batch_size = 500
+    batch_settings.flush_interval_ms = 500
+
     map_stage = MapStage(mapper=Mock(), catalog=catalog)
     norm_stage = NormalizeStage(normalizer=Mock(), catalog=catalog)
     enrich_stage = EnrichStage(enricher=Mock(), catalog=catalog)
-    match_stage = MatchStage(matcher=Mock(spec=MatchProcessor), catalog=catalog)
+    match_stage = MatchStage(matcher=Mock(spec=MatchProcessor), catalog=catalog, batch_settings=batch_settings)
     resolve_context_stage = ResolveContextStage(batch_index=Mock(), resolver=Mock(spec=ResolveProcessor))
     resolve_stage = ResolveStage(
         resolver=Mock(spec=ResolveProcessor), catalog=catalog, batch_index=Mock()

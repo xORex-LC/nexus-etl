@@ -12,7 +12,7 @@ from connector.delivery.cli.containers import (
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
-from connector.delivery.cli.planning_match_runtime import open_match_runtime
+from connector.usecases.match_usecase import MatchUseCase
 
 
 @dataclass(frozen=True)
@@ -25,10 +25,6 @@ class Options:
 
 
 def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
-    """
-    Назначение:
-        Запустить match сценарий через delivery-команду.
-    """
     run_id = ctx.run_id
     app_settings = ctx.app_settings
     if app_settings is None:
@@ -63,6 +59,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
              pipeline.catalog.override(catalog), \
              pipeline.include_deleted.override(include_deleted_value):
             match_stage = pipeline.match_stage()
+            match_scope = pipeline.match_scope()
 
             row_source = pipeline.row_source()
             enriched_rows = iter_ok(
@@ -70,23 +67,19 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                 should_skip=lambda item: item.row is None,
             )
 
-            planning_runtime = ctx.container.cache.roles().planning_runtime
-
-            with open_match_runtime(
-                run_id=run_id,
-                match_stage=match_stage,
-                match_runtime=planning_runtime,
+            match_usecase = MatchUseCase(
                 report_items_limit=report_items_limit_value,
                 include_matched_items=include_matched_items_value,
-                batch_size=app_settings.matching_runtime.match_batch_size,
-                flush_interval_ms=app_settings.matching_runtime.match_flush_interval_ms,
-            ) as match_runtime:
-                return match_runtime.match_usecase.run(
+            )
+            try:
+                return match_usecase.run(
                     enriched_source=enriched_rows,
-                    match_stage=match_runtime.match_stage,
+                    match_stage=match_stage,
                     dataset=dataset_name,
                     report=report,
                 )
+            finally:
+                match_scope.clear_scope()
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="match", exc=exc)
 
