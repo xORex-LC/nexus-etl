@@ -111,6 +111,7 @@ def _match_engine_factory(
         resolve_rules=kwargs["resolve_rules"],  # type: ignore[arg-type]
         include_deleted=kwargs.get("include_deleted", False),  # type: ignore[arg-type]
         options=kwargs.get("options"),  # type: ignore[arg-type]
+        dedup_store=kwargs.get("dedup_store"),  # type: ignore[arg-type]
     )
 
 
@@ -121,6 +122,7 @@ def _resolve_engine_factory(
         spec=spec,  # type: ignore[arg-type]
         ctx=ctx,
         options=kwargs.get("options"),  # type: ignore[arg-type]
+        codec=kwargs["codec"],  # type: ignore[arg-type]
     )
 
 

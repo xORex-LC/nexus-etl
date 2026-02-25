@@ -64,6 +64,8 @@ from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
 from connector.domain.transform.pipeline_run_context import PipelineRunContext
 from connector.domain.transform.matcher.dedup_store import LocalSourceDedupStore
 from connector.domain.transform.resolver.batch_index_service import InMemoryBatchIndexService
+from connector.domain.transform.resolver.pending_codec import PendingCodecAdapter
+from connector.domain.transform.resolver.pending_expiry_service import PendingExpiryService
 from connector.domain.transform.resolver.resolve_engine import ResolveEngine
 from connector.domain.transform.stages.stages import ResolveContextStage, ResolveStage
 from connector.datasets.registry import get_spec, resolve_dataset_name
@@ -74,6 +76,7 @@ from connector.delivery.cli.pipeline_registry import (
 )
 from connector.delivery.cli.dictionaries_container import DictionaryContainer
 from connector.delivery.pipelines.planning_pipeline import PlanningPipeline
+from connector.delivery.pipelines.planning_pipeline_hooks import PlanningPipelineHooks
 from connector.domain.transform_dsl import (
     load_enrich_build_options_for_dataset,
     load_map_build_options_for_dataset,
@@ -97,7 +100,6 @@ from connector.infra.target.core.factory import (
     TargetRuntimeBuildResult,
     build_target_runtime_with_info,
 )
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Path helpers (inline — no legacy db.py dependency)
@@ -573,6 +575,20 @@ class PipelineContainer(containers.DeclarativeContainer):
 
     _dedup_store = providers.Singleton(LocalSourceDedupStore)
     _batch_index = providers.Singleton(InMemoryBatchIndexService)
+    pending_codec = providers.Singleton(PendingCodecAdapter)
+    pending_expiry = providers.Singleton(
+        PendingExpiryService,
+        cache_gateway=providers.Factory(lambda roles: roles.planning_runtime, roles=cache_roles),
+        settings=resolver_settings,
+    )
+    plan_hooks = providers.Singleton(
+        PlanningPipelineHooks,
+        pending_expiry=pending_expiry,
+    )
+    resolve_stage_hooks = providers.Singleton(
+        lambda hooks: hooks.resolve_stage_hooks(),
+        hooks=plan_hooks,
+    )
 
     run_context = providers.Singleton(
         PipelineRunContext,
@@ -642,6 +658,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         options=match_options,
         resolve_rules=compiled_resolve_rules,
         include_deleted=include_deleted,
+        dedup_store=_dedup_store,
     )
 
     # ── Resolve engine (Singleton, shared between ResolveContextStage и ResolveStage)
@@ -650,6 +667,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         spec=providers.Factory(lambda s: s.build_resolve_spec(), s=dataset_spec),
         ctx=planning_context,
         options=resolve_options,
+        codec=pending_codec,
     )
 
     resolve_context_stage = providers.Singleton(
@@ -682,6 +700,8 @@ class PipelineContainer(containers.DeclarativeContainer):
         match_stage=match_stage,
         resolve_context_stage=resolve_context_stage,
         resolve_stage=resolve_stage,
+        resolve_stage_hooks=resolve_stage_hooks,
+        pending_expiry=pending_expiry,
         dedup_store=_dedup_store,
         row_source=row_source,
         catalog=catalog,
