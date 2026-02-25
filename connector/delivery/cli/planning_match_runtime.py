@@ -15,12 +15,11 @@ from connector.usecases.match_usecase import MatchUseCase
 class MatchRuntime:
     """
     Назначение:
-        Собранный runtime для match-стадии (matcher + use-case + scope).
+        Собранный runtime для match-стадии (matcher + use-case).
     """
 
     match_stage: MatchStage
     match_usecase: MatchUseCase
-    runtime_scope: str
     match_runtime: MatchRuntimePort
 
 
@@ -38,6 +37,11 @@ def open_match_runtime(
     """
     Назначение:
         Единая точка setup/cleanup для match-runtime.
+
+    Контракт:
+        - Создаёт MatchUseCase без runtime-scope параметров matcher'а.
+        - runtime_scope используется только для cleanup runtime storage
+          (clear_runtime_scope) при выходе из контекстного менеджера.
     """
     runtime_scope = f"run:{run_id}"
     match_usecase = MatchUseCase(
@@ -49,7 +53,6 @@ def open_match_runtime(
     runtime = MatchRuntime(
         match_stage=match_stage,
         match_usecase=match_usecase,
-        runtime_scope=runtime_scope,
         match_runtime=match_runtime,
     )
     try:
@@ -66,12 +69,14 @@ def iter_matched_ok(
     """
     Назначение:
         Единый stream matched-результатов для downstream стадий.
+
+    Матчинг выполняется без run_scope-параметра use-case: dedup lifecycle
+    инкапсулирован в DI/store, а не в MatchUseCase.
     """
     return iter_ok(
         runtime.match_usecase.iter_matched(
             enriched_source=enriched_source,
             match_stage=runtime.match_stage,
-            run_scope=runtime.runtime_scope,
         ),
         should_skip=lambda r: r.row is None,
     )
