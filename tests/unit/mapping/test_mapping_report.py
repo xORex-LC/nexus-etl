@@ -5,7 +5,7 @@ from connector.domain.transform_dsl import load_mapping_spec_for_dataset
 from connector.infra.artifacts.report_writer import createEmptyReport
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.domain.transform.stages.stages import MapStage
+from connector.domain.transform.stages.stages import MapStage, PipelineOrchestrator
 
 CATALOG = build_catalog("employees", strict=True)
 SOURCE_COLUMNS = load_mapping_spec_for_dataset("employees").source_columns
@@ -23,10 +23,11 @@ def _run_mapping(records: list[SourceRecord]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
     report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
     map_stage = MapStage(MapperEngine.from_dataset(catalog=CATALOG, dataset="employees"), CATALOG)
+    pipeline = PipelineOrchestrator([map_stage])
     row_source = records
     result = usecase.run(
         row_source=row_source,
-        map_stage=map_stage,
+        pipeline=pipeline,
         dataset="employees",
         logger=logging.getLogger("mapping-test"),
         run_id="run-1",

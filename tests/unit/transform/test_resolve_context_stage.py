@@ -291,21 +291,17 @@ class TestPlanningPipelineResetsDedup:
         from connector.delivery.pipelines.planning_pipeline import PlanningPipeline
 
         dedup_store = MagicMock()
-        transform_segment = MagicMock()
-        transform_segment.run.return_value = iter([])
-        match_stage = MagicMock()
-        resolve_context_stage = MagicMock()
-        resolve_context_stage.run.return_value = iter([])
+        # composer.compose() returns a mock pipeline whose run() yields nothing
+        composer = MagicMock()
+        composer.compose.return_value.run.return_value = iter([])
+        plan_hooks = MagicMock()
         resolve_stage = MagicMock()
-        resolve_stage_hooks = MagicMock()
         pending_expiry = MagicMock()
         row_source = MagicMock()
         row_source.open.return_value.__enter__ = MagicMock(return_value=MagicMock())
         row_source.open.return_value.__exit__ = MagicMock(return_value=False)
 
         app_settings = MagicMock()
-        app_settings.matching_runtime.match_batch_size = 10
-        app_settings.matching_runtime.match_flush_interval_ms = 100
         app_settings.matching_runtime.resolve_batch_size = 10
         app_settings.matching_runtime.resolve_flush_interval_ms = 100
 
@@ -315,15 +311,11 @@ class TestPlanningPipelineResetsDedup:
 
         planning_runtime = MagicMock()
         planning_runtime.list_pending_rows.return_value = []
-        match_scope = MagicMock()
 
         pipeline = PlanningPipeline(
-            transform_segment=transform_segment,
-            match_stage=match_stage,
-            match_scope=match_scope,
-            resolve_context_stage=resolve_context_stage,
+            composer=composer,
+            plan_hooks=plan_hooks,
             resolve_stage=resolve_stage,
-            resolve_stage_hooks=resolve_stage_hooks,
             pending_expiry=pending_expiry,
             dedup_store=dedup_store,
             row_source=row_source,

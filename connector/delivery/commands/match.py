@@ -4,14 +4,13 @@ import sqlite3
 from dataclasses import dataclass
 
 from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.pipeline_config import CheckpointName
 from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
     build_dataset_spec,
     build_diagnostics_catalog,
 )
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.transform.core.extractor import Extractor
-from connector.domain.transform.core.iterators import iter_ok
 from connector.usecases.match_usecase import MatchUseCase
 
 
@@ -53,33 +52,25 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
 
     try:
         pipeline = ctx.container.pipeline
+        composer = pipeline.pipeline_composer()
         with pipeline.dataset_spec.override(dataset_spec), \
              pipeline.run_id.override(run_id), \
              pipeline.csv_has_header.override(csv_has_header_value), \
              pipeline.catalog.override(catalog), \
              pipeline.include_deleted.override(include_deleted_value):
-            match_stage = pipeline.match_stage()
-            match_scope = pipeline.match_scope()
-
-            row_source = pipeline.row_source()
-            enriched_rows = iter_ok(
-                pipeline.transform_segment().run(Extractor(row_source, catalog=catalog).run()),
-                should_skip=lambda item: item.row is None,
-            )
-
+            plan_hooks = pipeline.resolve_stage_hooks()
+            match_pipeline = composer.compose(CheckpointName.MATCH, hooks=plan_hooks)
             match_usecase = MatchUseCase(
                 report_items_limit=report_items_limit_value,
                 include_matched_items=include_matched_items_value,
             )
-            try:
-                return match_usecase.run(
-                    enriched_source=enriched_rows,
-                    match_stage=match_stage,
-                    dataset=dataset_name,
-                    report=report,
-                )
-            finally:
-                match_scope.clear_scope()
+            return match_usecase.run(
+                row_source=pipeline.row_source(),
+                pipeline=match_pipeline,
+                dataset=dataset_name,
+                report=report,
+                catalog=catalog,
+            )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="match", exc=exc)
 

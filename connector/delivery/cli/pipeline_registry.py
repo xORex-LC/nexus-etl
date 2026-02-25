@@ -3,7 +3,7 @@
     Typed factory functions и StageFactory registry для сборки pipeline.
 
     В delivery layer (не domain) сосредоточена:
-    - типобезопасность сборки pipeline (build_transform_segment);
+    - типобезопасность сборки pipeline;
     - регистрация всех 6 stage descriptors.
 
 Граница ответственности:
@@ -12,7 +12,6 @@
     - Does NOT: содержать бизнес-логику — только wiring stage → orchestrator/factory.
 
 Использование:
-    build_transform_segment — из PipelineContainer (DEC-006).
     build_stage_factory() — из PipelineContainer (DEC-004).
 
 Примечание по match/resolve/resolve_context:
@@ -38,31 +37,9 @@ from connector.domain.transform.stages.stages import (
     MapStage,
     MatchStage,
     NormalizeStage,
-    PipelineHooks,
-    PipelineOrchestrator,
     ResolveContextStage,
     ResolveStage,
 )
-
-
-def build_transform_segment(
-    map_stage: AnyStageContract,
-    normalize_stage: AnyStageContract,
-    enrich_stage: AnyStageContract,
-    *,
-    hooks: PipelineHooks | None = None,
-) -> PipelineOrchestrator:
-    """
-    Назначение:
-        Собрать transform-сегмент pipeline [map → normalize → enrich].
-
-    Используется PipelineContainer.transform_segment (DEC-006).
-    В DEC-007 заменяется PipelineComposer.compose("enrich").
-    """
-    return PipelineOrchestrator(
-        [map_stage, normalize_stage, enrich_stage],
-        hooks=hooks,
-    )
 
 
 # ── Stage Factory ──────────────────────────────────────────────────────────────

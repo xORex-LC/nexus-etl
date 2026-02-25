@@ -4,6 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 
 from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.pipeline_config import CheckpointName
 from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
     build_dataset_spec,
@@ -46,6 +47,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
 
     try:
         pipeline = ctx.container.pipeline
+        composer = pipeline.pipeline_composer()
         with pipeline.dataset_spec.override(dataset_spec), \
              pipeline.run_id.override(run_id), \
              pipeline.csv_has_header.override(csv_has_header_value), \
@@ -56,8 +58,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
             )
             return usecase.run(
                 row_source=pipeline.row_source(),
-                map_stage=pipeline.map_stage(),
-                normalize_stage=pipeline.normalize_stage(),
+                pipeline=composer.compose(CheckpointName.NORMALIZE),
                 dataset=dataset_name,
                 logger=ctx.logger,
                 run_id=run_id,

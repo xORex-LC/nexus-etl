@@ -1,24 +1,26 @@
 from __future__ import annotations
 
-from typing import Iterable
-
+from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import DiagnosticStage
+from connector.domain.transform.core.extractor import Extractor
+from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result_processor import PlanningResultProcessor
-from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.stages.stages import MatchStage
+from connector.domain.transform.stages.stages import PipelineOrchestrator
 
 
 class MatchUseCase:
     """
     Назначение/ответственность:
-        Use-case для сопоставления строк после enrich (enrich -> match).
+        Use-case для сопоставления строк (map → normalize → enrich → match).
 
     Граница ответственности:
-        - Owns: report aggregation.
+        - Owns: сборка Extractor из row_source, report aggregation.
         - Micro-batching делегирован MatchStage (IMatchBatchSettings).
-        - Does NOT: управлять lifecycle dedup-state или scope cleanup.
+        - iter_ok фильтрует error records из upstream стадий перед aggregation.
+        - Does NOT: управлять lifecycle dedup-state или scope cleanup —
+          это ответственность PipelineHooks через on_stage_complete("match").
     """
 
     def __init__(
@@ -31,11 +33,26 @@ class MatchUseCase:
 
     def run(
         self,
-        enriched_source: Iterable[TransformResult],
-        match_stage: MatchStage,
+        row_source,
+        pipeline: PipelineOrchestrator,
         dataset: str,
         report,
+        catalog: ErrorCatalog,
     ) -> CommandResult:
+        """
+        Назначение:
+            Выполнить полный pipeline (map → match) и агрегировать результаты.
+
+        Параметр pipeline:
+            PipelineOrchestrator с checkpoint MATCH (MAP→NORMALIZE→ENRICH→MATCH).
+            Lifecycle hooks для scope cleanup передаются через pipeline.
+            Scope cleanup вызывается автоматически через on_stage_complete("match").
+
+        Фильтрация upstream ошибок:
+            iter_ok фильтрует записи с errors из предыдущих стадий.
+            MatchStage guard пропускает row=None записи — они попадают в iter_ok
+            и отфильтровываются (имеют errors от upstream стадий).
+        """
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         processor = PlanningResultProcessor(
             report=report,
@@ -50,7 +67,8 @@ class MatchUseCase:
             include_upstream_diagnostics=False,
         )
 
-        for matched in match_stage.run(enriched_source):
+        extractor = Extractor(row_source, catalog=catalog)
+        for matched in iter_ok(pipeline.run(extractor.run())):
             force_failed = bool((matched.meta or {}).get("match_drop_reason"))
             processor.process(matched, force_failed=force_failed)
 

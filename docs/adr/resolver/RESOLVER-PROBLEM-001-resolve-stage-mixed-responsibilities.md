@@ -1,6 +1,6 @@
 # RESOLVER-PROBLEM-001: ResolveStage перегружена — смешение бизнес-логики с инфраструктурными механиками
 
-> **Статус**: Открыта / Решена в [RESOLVER-DEC-001](./RESOLVER-DEC-001-externalize-mechanics-to-di-services.md)
+> **Статус**: Решена в [RESOLVER-DEC-001](./RESOLVER-DEC-001-externalize-mechanics-to-di-services.md)
 > **Дата создания**: 2026-02-24
 > **Затронутые компоненты**: `ResolveStage`, `ResolveCore`, `StageContract`, `PipelineContainer`, `PipelineComposer`
 

@@ -1,6 +1,6 @@
 # TRANSFORM-PROBLEM-007: Состав конвейера задаётся императивно — нет декларативного единого источника истины
 
-> **Статус**: Открыта / Решена в [TRANSFORM-DEC-007](./TRANSFORM-DEC-007-declarative-pipeline-checkpoints.md)
+> **Статус**: Решена в [TRANSFORM-DEC-007](./TRANSFORM-DEC-007-declarative-pipeline-checkpoints.md)
 > **Дата создания**: 2026-02-23
 > **Затронутые компоненты**: `PipelineContainer`, `AppContainer`, delivery-команды, `PlanningPipeline`
 

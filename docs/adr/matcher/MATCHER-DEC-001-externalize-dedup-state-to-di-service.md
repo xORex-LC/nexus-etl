@@ -1,6 +1,6 @@
 # MATCHER-DEC-001: Вынесение dedup-state в ISourceDedupStore — MatchStage как чистый per-record трансформер; введение PipelineRunContext
 
-> **Статус**: Принято
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-24
 > **Решает проблему**: [MATCHER-PROBLEM-001](./MATCHER-PROBLEM-001-match-stage-mixed-responsibilities.md)
 > **Зависит от**: [RESOLVER-DEC-001](../resolver/RESOLVER-DEC-001-externalize-mechanics-to-di-services.md) — вводит `IBatchIndexService`; оба сервиса объединяются в `PipelineRunContext`
