@@ -10,10 +10,6 @@
     Поддерживает два пути инициализации (DEC-004 transition):
     - ctx: StageExecutionContext — новый путь (capabilities из context).
     - scattered params (dataset, cache_gateway, catalog) — legacy путь.
-
-Переходный период (Stage 2 → Stage 4):
-    reset_source_dedup() и bind_runtime_scope() оставлены как no-op стабы,
-    пока MatchProcessor Protocol и MatchUseCase не обновлены (Stage 4).
 """
 
 from __future__ import annotations
@@ -94,18 +90,5 @@ class MatchEngine:
 
     def match_stream(self, enriched_source):
         return self.core.match_stream(enriched_source)
-
-    def reset_source_dedup(self) -> None:
-        """
-        No-op stub. Lifecycle reset теперь в PlanningPipeline через dedup_store.reset().
-        Оставлен для совместимости с MatchProcessor Protocol до Stage 4.
-        """
-
-    def bind_runtime_scope(self, scope: str | None) -> None:
-        """
-        No-op stub. Scoped dedup теперь реализуется через ScopedSourceDedupStore.
-        Оставлен для совместимости с MatchProcessor Protocol до Stage 4.
-        """
-
 
 __all__ = ["MatchEngine"]

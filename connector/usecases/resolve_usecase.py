@@ -99,8 +99,8 @@ class ResolveUseCase:
             Выполнить resolve-проход с репортингом и lifecycle housekeeping.
 
         Contract:
-            - ``pending_expiry`` хранит expired pending между micro-batches.
-            - ``resolve_hooks`` должен триггерить ``pending_expiry.sweep()`` после
+            - pending_expiry хранит expired pending между micro-batches.
+            - resolve_hooks должен триггерить pending_expiry.sweep() после
               завершения каждого micro-batch resolve-стадии.
         """
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
