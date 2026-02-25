@@ -16,7 +16,8 @@
     - Owns: lifecycle match-runtime scope (open/close через open_match_runtime),
       сборку enriched/matched/contextualized/resolved потоков,
       вызов dedup_store.reset() перед каждым прогоном,
-      передачу pending_replay в ResolveUseCase.
+      передачу pending_replay и resolve lifecycle hooks в ResolveUseCase,
+      очистку buffered expired pending после завершения open().
     - Does NOT: знать о vault, secrets, plan serialization, CLI-opts.
     - Does NOT: управлять lifecycle инфраструктурных ресурсов (engines, gateway) —
       это зона PipelineContainer / CacheContainer.
@@ -36,9 +37,11 @@ from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.matcher.ports import ISourceDedupStore
+from connector.domain.transform.resolver.ports import IPendingExpiryService
 from connector.domain.transform.stages.stages import (
     MatchStage,
     PipelineOrchestrator,
+    PipelineHooks,
     ResolveContextStage,
     ResolveStage,
 )
@@ -58,6 +61,8 @@ class PlanningPipeline:
           (в т.ч. GeneratorExit, исключение в consumer-е).
         - Итератор resolved_rows валиден только внутри блока `with open(...)`.
           Консьюмировать снаружи — ошибка.
+        - Expired pending из housekeeping sweep не репортятся здесь и дренируются
+          в finally (репортинг — ответственность ResolveUseCase.run/resolve command).
 
     Эволюция (DEC-007):
         transform_segment: PipelineOrchestrator → composer: PipelineComposer.
@@ -70,6 +75,8 @@ class PlanningPipeline:
         match_stage: MatchStage,
         resolve_context_stage: ResolveContextStage,
         resolve_stage: ResolveStage,
+        resolve_stage_hooks: PipelineHooks,
+        pending_expiry: IPendingExpiryService,
         dedup_store: ISourceDedupStore,
         row_source: Any,
         catalog: ErrorCatalog,
@@ -80,6 +87,8 @@ class PlanningPipeline:
         self._match_stage = match_stage
         self._resolve_context_stage = resolve_context_stage
         self._resolve_stage = resolve_stage
+        self._resolve_stage_hooks = resolve_stage_hooks
+        self._pending_expiry = pending_expiry
         self._dedup_store = dedup_store
         self._row_source = row_source
         self._catalog = catalog
@@ -140,6 +149,12 @@ class PlanningPipeline:
                     resolve_stage=self._resolve_stage,
                     dataset=dataset_name,
                     pending_replay=planning_runtime,  # PLANNER-DEC-001
+                    resolve_hooks=self._resolve_stage_hooks,
                 )
             )
-            yield resolved
+            try:
+                yield resolved
+            finally:
+                # import_plan не репортит expired pending, но буфер sweep-сервиса
+                # нужно очищать между вызовами/тестами того же PipelineContainer.
+                self._pending_expiry.drain_expired()

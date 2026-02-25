@@ -40,8 +40,8 @@ from connector.domain.transform.matcher.match_models import MatchedRow
 from connector.domain.transform.resolver.ports import IBatchIndexService
 
 T = TypeVar("T")
-T_in = TypeVar("T_in")
-T_out = TypeVar("T_out")
+T_in = TypeVar("T_in", contravariant=True)
+T_out = TypeVar("T_out", covariant=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════════
