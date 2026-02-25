@@ -1,6 +1,6 @@
 # MATCHER-DEC-002: Интернализация micro-batch исполнения и scope cleanup в DI-сервисы — MatchStage как полноправный участник PipelineOrchestrator
 
-> **Статус**: Принято
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-25
 > **Решает проблему**: [MATCHER-PROBLEM-002](./MATCHER-PROBLEM-002-match-stage-external-batch-orchestration.md)
 > **Зависит от**: [MATCHER-DEC-001](./MATCHER-DEC-001-externalize-dedup-state-to-di-service.md) — `ISourceDedupStore`, `PipelineRunContext`; [RESOLVER-DEC-001](../resolver/RESOLVER-DEC-001-externalize-mechanics-to-di-services.md) — шаблон DI-сервисов

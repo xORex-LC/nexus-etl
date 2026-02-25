@@ -1,6 +1,6 @@
 # RESOLVER-DEC-001: Вынесение инфраструктурных механик в DI-сервисы — ResolveStage как чистый per-record трансформер
 
-> **Статус**: Принято (обновлено 2026-02-24)
+> **Статус**: Принято / Реализовано
 > **Дата принятия**: 2026-02-24
 > **Решает проблему**: [RESOLVER-PROBLEM-001](./RESOLVER-PROBLEM-001-resolve-stage-mixed-responsibilities.md)
 > **Зависит от**: [TRANSFORM-DEC-007](../transform/TRANSFORM-DEC-007-declarative-pipeline-checkpoints.md), [TRANSFORM-DEC-008](../transform/TRANSFORM-DEC-008-pending-codec-standalone-feature.md)
