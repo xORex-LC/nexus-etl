@@ -315,10 +315,12 @@ class TestPlanningPipelineResetsDedup:
 
         planning_runtime = MagicMock()
         planning_runtime.list_pending_rows.return_value = []
+        match_scope = MagicMock()
 
         pipeline = PlanningPipeline(
             transform_segment=transform_segment,
             match_stage=match_stage,
+            match_scope=match_scope,
             resolve_context_stage=resolve_context_stage,
             resolve_stage=resolve_stage,
             resolve_stage_hooks=resolve_stage_hooks,
@@ -330,8 +332,8 @@ class TestPlanningPipelineResetsDedup:
             app_settings=app_settings,
         )
 
-        # open() вызывает open_match_runtime, которая может падать без реального runtime.
-        # Проверяем только то, что reset() вызывается ПЕРЕД любыми операциями.
+        # open() вызывает dedup_store.reset() перед pipeline;
+        # проверяем что reset() вызывается ПЕРЕД любыми другими операциями.
         dedup_store.reset.assert_not_called()
 
         # Пробуем вызвать open(); он может бросить из-за mock — нас интересует только reset().

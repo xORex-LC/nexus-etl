@@ -15,11 +15,11 @@
     build_transform_segment — из PipelineContainer (DEC-006).
     build_stage_factory() — из PipelineContainer (DEC-004).
 
-Примечание по resolve_context:
-    ResolveContextStage регистрируется для introspection (registered_types).
-    В production создаётся напрямую в PipelineContainer как Singleton,
-    а не через StageFactory.create(). Stub-функции намеренно бросают
-    NotImplementedError, предотвращая случайный вызов через factory.
+Примечание по match/resolve/resolve_context:
+    MatchStage, ResolveStage и ResolveContextStage регистрируются для introspection.
+    В production создаются напрямую в PipelineContainer как Singleton (требуют
+    дополнительных зависимостей: batch_settings / batch_index).
+    Stub-функции намеренно бросают NotImplementedError.
 """
 
 from __future__ import annotations
@@ -126,35 +126,31 @@ def _resolve_engine_factory(
     )
 
 
+def _match_stage_stub_wrapper(
+    engine: object, ctx: StageExecutionContext,
+) -> MatchStage:
+    """Stub. MatchStage создаётся напрямую в PipelineContainer (требует batch_settings)."""
+    raise NotImplementedError("match is created directly in PipelineContainer, not via StageFactory")
+
+
 def _resolve_stage_stub_wrapper(
     engine: object, ctx: StageExecutionContext,
 ) -> ResolveStage:
-    """
-    Назначение:
-        Stub. ResolveStage создаётся напрямую в PipelineContainer (требует batch_index).
-        Зарегистрирован в StageFactory только для introspection (registered_types).
-    """
+    """Stub. ResolveStage создаётся напрямую в PipelineContainer (требует batch_index)."""
     raise NotImplementedError("resolve is created directly in PipelineContainer, not via StageFactory")
 
 
 def _resolve_context_stub_factory(
     spec: object, ctx: StageExecutionContext, **kwargs: object,
 ) -> None:
-    """
-    Назначение:
-        Stub. ResolveContextStage создаётся напрямую в PipelineContainer, не через StageFactory.
-        Зарегистрирован только для introspection (StageFactory.registered_types).
-    """
+    """Stub. ResolveContextStage создаётся напрямую в PipelineContainer, не через StageFactory."""
     raise NotImplementedError("resolve_context is created directly in PipelineContainer, not via StageFactory")
 
 
 def _resolve_context_stub_wrapper(
     engine: object, ctx: StageExecutionContext,
 ) -> ResolveContextStage:
-    """
-    Назначение:
-        Stub. ResolveContextStage создаётся напрямую в PipelineContainer, не через StageFactory.
-    """
+    """Stub. ResolveContextStage создаётся напрямую в PipelineContainer, не через StageFactory."""
     raise NotImplementedError("resolve_context is created directly in PipelineContainer, not via StageFactory")
 
 
@@ -176,9 +172,9 @@ def build_stage_factory() -> StageFactory:
     StageFactory (domain) хранит только registry и create() логику.
 
     Примечание:
-        resolve_context — зарегистрирован только для introspection (registered_types).
-        В production ResolveContextStage создаётся напрямую в PipelineContainer.
-        Вызов create("resolve_context", ...) бросает NotImplementedError.
+        match, resolve, resolve_context — зарегистрированы для introspection (registered_types).
+        В production создаются напрямую в PipelineContainer (требуют дополнительных
+        зависимостей: batch_settings / batch_index). Вызов create() бросает NotImplementedError.
     """
     factory = StageFactory()
 
@@ -206,7 +202,9 @@ def build_stage_factory() -> StageFactory:
     factory.register(StageDescriptor(
         stage_type="match",
         engine_factory=_match_engine_factory,
-        stage_wrapper=_stage_wrapper(MatchStage),
+        # Wrapper не используется: MatchStage создаётся напрямую в PipelineContainer
+        # (требует batch_settings: IMatchBatchSettings — недоступен через _stage_wrapper).
+        stage_wrapper=_match_stage_stub_wrapper,
         required_capabilities=frozenset({MatchRuntimePort}),
     ))
 

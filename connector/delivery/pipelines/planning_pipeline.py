@@ -4,7 +4,7 @@
 
     Инкапсулирует полный цикл планирования:
       transform (map → normalize → enrich)
-      → match (с открытием/очисткой runtime scope)
+      → match (с очисткой runtime scope через IMatchScopeService)
       → resolve_context (буферизация + batch_index)
       → resolve (с pending replay из PLANNER-DEC-001).
 
@@ -13,7 +13,7 @@
     стадиях, lifecycle match-runtime и деталях оркестрации.
 
 Граница ответственности:
-    - Owns: lifecycle match-runtime scope (open/close через open_match_runtime),
+    - Owns: lifecycle match-scope (clear через IMatchScopeService в finally),
       сборку enriched/matched/contextualized/resolved потоков,
       вызов dedup_store.reset() перед каждым прогоном,
       передачу pending_replay и resolve lifecycle hooks в ResolveUseCase,
@@ -36,7 +36,7 @@ from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.matcher.ports import ISourceDedupStore
+from connector.domain.transform.matcher.ports import IMatchScopeService, ISourceDedupStore
 from connector.domain.transform.resolver.ports import IPendingExpiryService
 from connector.domain.transform.stages.stages import (
     MatchStage,
@@ -45,7 +45,6 @@ from connector.domain.transform.stages.stages import (
     ResolveContextStage,
     ResolveStage,
 )
-from connector.delivery.cli.planning_match_runtime import iter_matched_ok, open_match_runtime
 from connector.usecases.resolve_usecase import ResolveUseCase
 
 
@@ -57,7 +56,7 @@ class PlanningPipeline:
         Создаётся PipelineContainer.planning_pipeline Factory.
 
     Инварианты:
-        - open() гарантирует clear_runtime_scope() при любом выходе
+        - open() гарантирует match_scope.clear_scope() при любом выходе
           (в т.ч. GeneratorExit, исключение в consumer-е).
         - Итератор resolved_rows валиден только внутри блока `with open(...)`.
           Консьюмировать снаружи — ошибка.
@@ -73,6 +72,7 @@ class PlanningPipeline:
         self,
         transform_segment: PipelineOrchestrator,
         match_stage: MatchStage,
+        match_scope: IMatchScopeService,
         resolve_context_stage: ResolveContextStage,
         resolve_stage: ResolveStage,
         resolve_stage_hooks: PipelineHooks,
@@ -85,6 +85,7 @@ class PlanningPipeline:
     ) -> None:
         self._transform_segment = transform_segment
         self._match_stage = match_stage
+        self._match_scope = match_scope
         self._resolve_context_stage = resolve_context_stage
         self._resolve_stage = resolve_stage
         self._resolve_stage_hooks = resolve_stage_hooks
@@ -110,7 +111,7 @@ class PlanningPipeline:
         Контракт:
             - Yields lazy iterable[TransformResult] — валиден только внутри with-блока.
             - При выходе (включая исключение в consumer-е) гарантированно вызывает
-              clear_runtime_scope() через finally в open_match_runtime.
+              match_scope.clear_scope() через finally.
             - planning_runtime должен быть открыт до вызова (получается из cache.roles()).
         """
         self._dedup_store.reset()
@@ -124,16 +125,11 @@ class PlanningPipeline:
             should_skip=lambda item: item.row is None,
         )
 
-        with open_match_runtime(
-            run_id=run_id,
-            match_stage=self._match_stage,
-            match_runtime=planning_runtime,
-            report_items_limit=report_items_limit,
-            include_matched_items=False,
-            batch_size=app.matching_runtime.match_batch_size,
-            flush_interval_ms=app.matching_runtime.match_flush_interval_ms,
-        ) as match_runtime:
-            matched = iter_matched_ok(runtime=match_runtime, enriched_source=enriched)
+        try:
+            matched = iter_ok(
+                self._match_stage.run(enriched),
+                should_skip=lambda r: r.row is None,
+            )
             # ResolveContextStage буферизует весь поток matched, строит batch_index,
             # и передаёт записи без изменений. get() в ResolveStage.run() уже корректен.
             contextualized = self._resolve_context_stage.run(matched)
@@ -158,3 +154,5 @@ class PlanningPipeline:
                 # import_plan не репортит expired pending, но буфер sweep-сервиса
                 # нужно очищать между вызовами/тестами того же PipelineContainer.
                 self._pending_expiry.drain_expired()
+        finally:
+            self._match_scope.clear_scope()

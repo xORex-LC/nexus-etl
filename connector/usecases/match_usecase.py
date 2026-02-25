@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from connector.domain.transform.matcher.match_models import MatchedRow
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import DiagnosticStage
-from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.core.result_processor import PlanningResultProcessor
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.stages.stages import MatchStage
@@ -18,33 +16,18 @@ class MatchUseCase:
         Use-case для сопоставления строк после enrich (enrich -> match).
 
     Граница ответственности:
-        - Owns: micro-batching и report aggregation.
-        - Does NOT: управлять lifecycle dedup-state (reset/scope выбирается и
-          применяется в delivery/DI через ISourceDedupStore).
+        - Owns: report aggregation.
+        - Micro-batching делегирован MatchStage (IMatchBatchSettings).
+        - Does NOT: управлять lifecycle dedup-state или scope cleanup.
     """
 
     def __init__(
         self,
         report_items_limit: int,
         include_matched_items: bool,
-        batch_size: int = 500,
-        flush_interval_ms: int = 500,
     ) -> None:
         self.report_items_limit = report_items_limit
         self.include_matched_items = include_matched_items
-        self.batch_size = batch_size
-        self.flush_interval_ms = flush_interval_ms
-
-    def iter_matched(
-        self,
-        enriched_source: Iterable[TransformResult],
-        match_stage: MatchStage,
-    ):
-        """
-        Назначение:
-            Итератор сопоставленных строк (для resolver/plan).
-        """
-        return self._iter_matched(enriched_source, match_stage)
 
     def run(
         self,
@@ -67,10 +50,7 @@ class MatchUseCase:
             include_upstream_diagnostics=False,
         )
 
-        for matched in self._iter_matched(
-            enriched_source,
-            match_stage,
-        ):
+        for matched in match_stage.run(enriched_source):
             force_failed = bool((matched.meta or {}).get("match_drop_reason"))
             processor.process(matched, force_failed=force_failed)
 
@@ -78,23 +58,3 @@ class MatchUseCase:
         if report.summary.errors_total > 0:
             result.add_code(SystemErrorCode.CONFLICT)
         return result
-
-    def _iter_matched(
-        self,
-        enriched_source: Iterable[TransformResult],
-        match_stage: MatchStage,
-    ):
-        """
-        Назначение:
-            Выполнить match-стадию в micro-batches без дополнительных lifecycle-вызовов.
-
-        Контракт:
-            dedup-state уже должен быть подготовлен снаружи (PlanningPipeline/DI).
-        """
-        for batch in iter_micro_batches(
-            enriched_source,
-            batch_size=self.batch_size,
-            flush_interval_ms=self.flush_interval_ms,
-        ):
-            for matched in match_stage.run(batch):
-                yield matched
