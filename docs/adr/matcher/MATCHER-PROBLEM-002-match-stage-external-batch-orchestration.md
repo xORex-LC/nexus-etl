@@ -1,6 +1,6 @@
 # MATCHER-PROBLEM-002: MatchStage заблокирована от PipelineOrchestrator-композиции — micro-batch оркестрация и scope cleanup вынесены наружу
 
-> **Статус**: Открыта / Решена в [MATCHER-DEC-002](./MATCHER-DEC-002-internalize-batch-execution-to-stage.md)
+> **Статус**: Решена в [MATCHER-DEC-002](./MATCHER-DEC-002-internalize-batch-execution-to-stage.md)
 > **Дата создания**: 2026-02-25
 > **Затронутые компоненты**: `MatchStage`, `MatchUseCase`, `open_match_runtime`, `PlanningPipeline`, `PipelineOrchestrator`, `PIPELINE_CHECKPOINTS`
 

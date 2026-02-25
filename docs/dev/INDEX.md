@@ -41,6 +41,7 @@
 ## 📚 Практические руководства
 
 - [Как добавить DSL операцию](guides/how-to-add-dsl-operation.md) — Пошаговое руководство
+- [Как добавить стадию пайплайна](guides/how-to-add-pipeline-stage.md) — Два пути: StageFactory и Singleton (TRANSFORM-DEC-007)
 - [Как документировать сложный метод](guides/method-documentation-template.md) — Шаблон для методов 50+ строк
 - Как создать новый слой _(TODO)_
 - DSL паттерны _(TODO)_

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.pipeline_config import CheckpointName
 from connector.delivery.commands.common import (
     attach_dictionary_report_snapshot_if_available,
     result_with,
@@ -127,6 +128,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
 
     try:
         pipeline = ctx.container.pipeline
+        composer = pipeline.pipeline_composer()
         with pipeline.dataset_spec.override(dataset_spec), \
              pipeline.run_id.override(run_id), \
              pipeline.csv_has_header.override(csv_has_header_value), \
@@ -138,9 +140,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
             )
             result = usecase.run(
                 row_source=pipeline.row_source(),
-                map_stage=pipeline.map_stage(),
-                normalize_stage=pipeline.normalize_stage(),
-                enrich_stage=pipeline.enrich_stage(),
+                pipeline=composer.compose(CheckpointName.ENRICH),
                 dataset=dataset_name,
                 logger=ctx.logger,
                 run_id=run_id,

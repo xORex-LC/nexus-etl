@@ -531,6 +531,9 @@ class MatchStage:
             flush_interval_ms=self._batch_settings.flush_interval_ms,
         ):
             for enriched in batch:
+                if enriched.row is None:
+                    yield enriched  # type: ignore[misc]
+                    continue
                 boundary_errors: list = []
                 matched: TransformResult[MatchedRow] | None = None
                 with diagnostic_boundary(

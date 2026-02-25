@@ -4,6 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 
 from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.pipeline_config import CheckpointName
 from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
     build_dataset_spec,
@@ -11,7 +12,6 @@ from connector.delivery.cli.containers import (
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.transform.core.extractor import Extractor
-from connector.domain.transform.core.iterators import iter_ok
 from connector.usecases.resolve_usecase import ResolveUseCase
 
 
@@ -53,23 +53,16 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
 
     try:
         pipeline = ctx.container.pipeline
+        composer = pipeline.pipeline_composer()
         with pipeline.dataset_spec.override(dataset_spec), \
              pipeline.run_id.override(run_id), \
              pipeline.csv_has_header.override(csv_has_header_value), \
              pipeline.catalog.override(catalog), \
              pipeline.include_deleted.override(include_deleted_value):
-            match_stage = pipeline.match_stage()
-            match_scope = pipeline.match_scope()
-            resolve_context_stage = pipeline.resolve_context_stage()
-            resolve_stage = pipeline.resolve_stage()
-            pending_expiry = pipeline.pending_expiry()
-            resolve_stage_hooks = pipeline.resolve_stage_hooks()
-
+            plan_hooks = pipeline.resolve_stage_hooks()
             row_source = pipeline.row_source()
-            enriched_rows = iter_ok(
-                pipeline.transform_segment().run(Extractor(row_source, catalog=catalog).run()),
-                should_skip=lambda item: item.row is None,
-            )
+            pre_resolve = composer.compose(CheckpointName.RESOLVE_CONTEXT, hooks=plan_hooks)
+            contextualized = pre_resolve.run(Extractor(row_source, catalog=catalog).run())
 
             planning_runtime = ctx.container.cache.roles().planning_runtime
 
@@ -79,23 +72,15 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                 batch_size=app_settings.matching_runtime.resolve_batch_size,
                 flush_interval_ms=app_settings.matching_runtime.resolve_flush_interval_ms,
             )
-            try:
-                matched_rows = iter_ok(
-                    match_stage.run(enriched_rows),
-                    should_skip=lambda r: r.row is None,
-                )
-                contextualized_rows = resolve_context_stage.run(matched_rows)
-                return resolve_usecase.run(
-                    matched_source=contextualized_rows,
-                    resolve_stage=resolve_stage,
-                    dataset=dataset_name,
-                    report=report,
-                    catalog=catalog,
-                    pending_expiry=pending_expiry,
-                    resolve_hooks=resolve_stage_hooks,
-                )
-            finally:
-                match_scope.clear_scope()
+            return resolve_usecase.run(
+                matched_source=contextualized,
+                resolve_stage=pipeline.resolve_stage(),
+                dataset=dataset_name,
+                report=report,
+                catalog=catalog,
+                pending_expiry=pipeline.pending_expiry(),
+                resolve_hooks=plan_hooks,
+            )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="resolve", exc=exc)
 

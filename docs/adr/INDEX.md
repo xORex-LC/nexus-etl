@@ -91,8 +91,8 @@ docs/adr/
 
 | ID | Тип | Название | Статус | Дата |
 |----|-----|----------|--------|------|
-| [TRANSFORM-PROBLEM-001](./transform/TRANSFORM-PROBLEM-001-enrich-dictionary-runtime-gap.md) | Problem | Отсутствует runtime-реализация справочников для enrich lookup | ❌ Открыто (реализация запланирована) | 2026-02-19 |
-| [TRANSFORM-DEC-001](./transform/TRANSFORM-DEC-001-columnar-dictionary-runtime-for-enricher.md) | Decision | Справочная подсистема enrich (Polars v1, migration-ready для v2: Polars+DuckDB+Parquet) | ❌ Открыто | 2026-02-19 |
+| [TRANSFORM-PROBLEM-001](./transform/TRANSFORM-PROBLEM-001-enrich-dictionary-runtime-gap.md) | Problem | Отсутствует runtime-реализация справочников для enrich lookup | ✅ Закрыто | 2026-02-19 |
+| [TRANSFORM-DEC-001](./transform/TRANSFORM-DEC-001-columnar-dictionary-runtime-for-enricher.md) | Decision | Справочная подсистема enrich (Polars v1, migration-ready для v2: Polars+DuckDB+Parquet) | ✅ Закрыто | 2026-02-19 |
 | [TRANSFORM-PROBLEM-002](./transform/TRANSFORM-PROBLEM-002-transform-provider-deps-coupling.md) | Problem | TransformProviderDeps coupling: обязательный cache_gateway нарушает pay-for-what-you-use | ✅ Закрыто (через DEC-004) | 2026-02-20 |
 | [TRANSFORM-DEC-002](./transform/TRANSFORM-DEC-002-transform-context-capability-registry.md) | Decision | TransformContext — typed capability registry как целевая архитектура для transform-зависимостей | ✅ Закрыто | 2026-02-20 |
 | [TRANSFORM-PROBLEM-003](./transform/TRANSFORM-PROBLEM-003-monolithic-pipeline-factory-eager-coupling.md) | Problem | Монолитная `build_pipeline_context()` — сквозная утечка зависимостей между CLI-командами | ✅ Закрыто | 2026-02-21 |
@@ -103,10 +103,10 @@ docs/adr/
 | [TRANSFORM-DEC-005](./transform/TRANSFORM-DEC-005-dataset-spec-generic-accessor-evolution.md) | Decision | Двухфазная эволюция DatasetSpec: typed методы (Phase 1) → `build_spec_for(stage_type)` (Phase 2) | ❌ Открыто (реализация отложена) | 2026-02-22 |
 | [TRANSFORM-PROBLEM-006](./transform/TRANSFORM-PROBLEM-006-pipeline-composition-ownership.md) | Problem | Владение композицией конвейера разделено между CLI, ImportPlanService и planning_match_runtime | ✅ Закрыто | 2026-02-23 |
 | [TRANSFORM-DEC-006](./transform/TRANSFORM-DEC-006-pipeline-segments-in-container.md) | Decision | PlanningPipeline в delivery-слое — lifecycle-aware класс, предоставляемый PipelineContainer через Factory | ✅ Закрыто | 2026-02-23 |
-| [TRANSFORM-PROBLEM-007](./transform/TRANSFORM-PROBLEM-007-pipeline-composition-hardcoded-imperatively.md) | Problem | Состав конвейера задаётся императивно — нет декларативного единого источника истины | ❌ Открыто | 2026-02-23 |
-| [TRANSFORM-DEC-007](./transform/TRANSFORM-DEC-007-declarative-pipeline-checkpoints.md) | Decision | Декларативный реестр чекпоинтов в AppContainer + PipelineComposer; путь к DSL-конфигурации пайплайна | ❌ Открыто (реализация после DEC-006 + PLANNER-DEC-001) | 2026-02-23 |
-| [TRANSFORM-PROBLEM-008](./transform/TRANSFORM-PROBLEM-008-pending-codec-stage-coupling.md) | Problem | pending_codec привязан к стадии resolver — SRP нарушен, будущие consumers получат лишнюю зависимость | ❌ Открыто | 2026-02-23 |
-| [TRANSFORM-DEC-008](./transform/TRANSFORM-DEC-008-pending-codec-standalone-feature.md) | Decision | Вынести pending_codec в `domain/transform/pending/` — standalone feature без привязки к стадии | ❌ Открыто (реализация отложена) | 2026-02-23 |
+| [TRANSFORM-PROBLEM-007](./transform/TRANSFORM-PROBLEM-007-pipeline-composition-hardcoded-imperatively.md) | Problem | Состав конвейера задаётся императивно — нет декларативного единого источника истины | ✅ Закрыто | 2026-02-23 |
+| [TRANSFORM-DEC-007](./transform/TRANSFORM-DEC-007-declarative-pipeline-checkpoints.md) | Decision | Декларативный реестр чекпоинтов в AppContainer + PipelineComposer; путь к DSL-конфигурации пайплайна | ✅ Закрыто | 2026-02-23 |
+| [TRANSFORM-PROBLEM-008](./transform/TRANSFORM-PROBLEM-008-pending-codec-stage-coupling.md) | Problem | pending_codec привязан к стадии resolver — SRP нарушен, будущие consumers получат лишнюю зависимость | ✅ Закрыто | 2026-02-23 |
+| [TRANSFORM-DEC-008](./transform/TRANSFORM-DEC-008-pending-codec-standalone-feature.md) | Decision | Вынести pending_codec в `domain/transform/pending/` — standalone feature без привязки к стадии | ✅ Закрыто | 2026-02-23 |
 | [TRANSFORM-PROBLEM-009](./transform/TRANSFORM-PROBLEM-009-sink-validation-cross-cutting-in-stage-cores.md) | Problem | Sink schema validation — cross-cutting concern внутри всех 4 stage cores | ❌ Открыто (наблюдение, accepted pattern) | 2026-02-24 |
 
 ### Delivery
@@ -146,15 +146,17 @@ docs/adr/
 
 | ID | Тип | Название | Статус | Дата |
 |----|-----|----------|--------|------|
-| [MATCHER-PROBLEM-001](./matcher/MATCHER-PROBLEM-001-match-stage-mixed-responsibilities.md) | Problem | MatchStage несёт инфраструктурный state и lifecycle — смешение с бизнес-логикой сопоставления | ❌ Открыто | 2026-02-24 |
-| [MATCHER-DEC-001](./matcher/MATCHER-DEC-001-externalize-dedup-state-to-di-service.md) | Decision | Вынесение dedup-state в ISourceDedupStore — MatchStage как чистый per-record трансформер; введение PipelineRunContext | ❌ Открыто (реализация запланирована) | 2026-02-24 |
+| [MATCHER-PROBLEM-001](./matcher/MATCHER-PROBLEM-001-match-stage-mixed-responsibilities.md) | Problem | MatchStage несёт инфраструктурный state и lifecycle — смешение с бизнес-логикой сопоставления | ✅ Закрыто | 2026-02-24 |
+| [MATCHER-DEC-001](./matcher/MATCHER-DEC-001-externalize-dedup-state-to-di-service.md) | Decision | Вынесение dedup-state в ISourceDedupStore — MatchStage как чистый per-record трансформер; введение PipelineRunContext | ✅ Закрыто | 2026-02-24 |
+| [MATCHER-PROBLEM-002](./matcher/MATCHER-PROBLEM-002-match-stage-external-batch-orchestration.md) | Problem | MatchStage совмещает с точки зрения оркестрации два внешних зависимых механизма | ✅ Закрыто | 2026-02-25 |
+| [MATCHER-DEC-002](./matcher/MATCHER-DEC-002-internalize-batch-execution-to-stage.md) | Decision | Внешние механики Match вынесены в именованные DI-сервисы IMatchBatchSettings и IMatchScopeService | ✅ Закрыто | 2026-02-25 |
 
 ### Resolver
 
 | ID | Тип | Название | Статус | Дата |
 |----|-----|----------|--------|------|
-| [RESOLVER-PROBLEM-001](./resolver/RESOLVER-PROBLEM-001-resolve-stage-mixed-responsibilities.md) | Problem | ResolveStage перегружена — смешение бизнес-логики с инфраструктурными механиками | ❌ Открыто | 2026-02-24 |
-| [RESOLVER-DEC-001](./resolver/RESOLVER-DEC-001-externalize-mechanics-to-di-services.md) | Decision | Вынесение инфраструктурных механик в DI-сервисы — ResolveStage как чистый per-record трансформер | ❌ Открыто (реализация запланирована) | 2026-02-24 |
+| [RESOLVER-PROBLEM-001](./resolver/RESOLVER-PROBLEM-001-resolve-stage-mixed-responsibilities.md) | Problem | ResolveStage перегружена — смешение бизнес-логики с инфраструктурными механиками | ✅ Закрыто | 2026-02-24 |
+| [RESOLVER-DEC-001](./resolver/RESOLVER-DEC-001-externalize-mechanics-to-di-services.md) | Decision | Вынесение инфраструктурных механик в DI-сервисы — ResolveStage как чистый per-record трансформер | ✅ Закрыто | 2026-02-24 |
 
 ### Planner
 
