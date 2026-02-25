@@ -16,6 +16,11 @@ class MatchUseCase:
     """
     Назначение/ответственность:
         Use-case для сопоставления строк после enrich (enrich -> match).
+
+    Граница ответственности:
+        - Owns: micro-batching и report aggregation.
+        - Does NOT: управлять lifecycle dedup-state (reset/scope выбирается и
+          применяется в delivery/DI через ISourceDedupStore).
     """
 
     def __init__(
@@ -34,18 +39,12 @@ class MatchUseCase:
         self,
         enriched_source: Iterable[TransformResult],
         match_stage: MatchStage,
-        *,
-        run_scope: str | None = None,
     ):
         """
         Назначение:
             Итератор сопоставленных строк (для resolver/plan).
         """
-        return self._iter_matched(
-            enriched_source,
-            match_stage,
-            run_scope=run_scope,
-        )
+        return self._iter_matched(enriched_source, match_stage)
 
     def run(
         self,
@@ -53,7 +52,6 @@ class MatchUseCase:
         match_stage: MatchStage,
         dataset: str,
         report,
-        run_scope: str | None = None,
     ) -> CommandResult:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         processor = PlanningResultProcessor(
@@ -72,7 +70,6 @@ class MatchUseCase:
         for matched in self._iter_matched(
             enriched_source,
             match_stage,
-            run_scope=run_scope,
         ):
             force_failed = bool((matched.meta or {}).get("match_drop_reason"))
             processor.process(matched, force_failed=force_failed)
@@ -86,12 +83,14 @@ class MatchUseCase:
         self,
         enriched_source: Iterable[TransformResult],
         match_stage: MatchStage,
-        *,
-        run_scope: str | None = None,
     ):
-        matcher = match_stage.matcher
-        matcher.reset_source_dedup()
-        matcher.bind_runtime_scope(run_scope)
+        """
+        Назначение:
+            Выполнить match-стадию в micro-batches без дополнительных lifecycle-вызовов.
+
+        Контракт:
+            dedup-state уже должен быть подготовлен снаружи (PlanningPipeline/DI).
+        """
         for batch in iter_micro_batches(
             enriched_source,
             batch_size=self.batch_size,
