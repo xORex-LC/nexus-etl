@@ -5,15 +5,17 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.context import CommandContext
-from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
+from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.pipeline_config import CheckpointName
+from connector.delivery.commands.common import (
+    attach_dictionary_report_snapshot_if_available,
+    result_with,
+    sqlite_cache_error_result,
+    vault_startup_error_result,
+)
 from connector.delivery.cli.containers import (
-    build_cache,
     build_dataset_spec,
     build_diagnostics_catalog,
-    ensure_vault_startup_ready,
-    open_secret_store,
-    build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -54,7 +56,7 @@ _STARTUP_ERRORS = (
 )
 
 
-def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
     app_settings = ctx.app_settings
     if app_settings is None:
@@ -102,11 +104,13 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         )
         return result_with(SystemErrorCode.INTERNAL_ERROR)
 
-    if rollout_decision.startup_guard_required:
+    secret_store = None
+    if rollout_decision.vault_enabled:
         try:
-            ensure_vault_startup_ready(paths_settings=app_settings.paths)
+            ctx.container.sqlite.vault_ready.init()
         except _STARTUP_ERRORS as exc:
             return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
+        secret_store = ctx.container.vault.write_service()
 
     catalog = ctx.catalog or build_diagnostics_catalog(
         dataset_name,
@@ -122,43 +126,31 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         },
     )
 
-    gateway = None
     try:
-        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
-        with open_secret_store(
-            paths_settings=app_settings.paths,
-            enabled=rollout_decision.vault_enabled,
-        ) as secret_store:
-            pipeline_ctx = build_pipeline_context(
-                dataset_spec=dataset_spec,
-                dataset_name=dataset_name,
-                cache_roles=cache_roles,
-                resolver_settings=app_settings.resolver,
-                observability_settings=app_settings.observability,
-                catalog=catalog,
-                csv_has_header=csv_has_header_value,
-                secret_store=secret_store,
-            )
+        pipeline = ctx.container.pipeline
+        composer = pipeline.pipeline_composer()
+        with pipeline.dataset_spec.override(dataset_spec), \
+             pipeline.run_id.override(run_id), \
+             pipeline.csv_has_header.override(csv_has_header_value), \
+             pipeline.catalog.override(catalog), \
+             pipeline.secret_store.override(secret_store):
             usecase = EnrichUseCase(
                 report_items_limit=report_items_limit_value,
                 include_enriched_items=include_enriched_items_value,
             )
-            return usecase.run(
-                row_source=pipeline_ctx.row_source,
-                map_stage=pipeline_ctx.map_stage,
-                normalize_stage=pipeline_ctx.normalize_stage,
-                enrich_stage=pipeline_ctx.enrich_stage,
+            result = usecase.run(
+                row_source=pipeline.row_source(),
+                pipeline=composer.compose(CheckpointName.ENRICH),
                 dataset=dataset_name,
                 logger=ctx.logger,
                 run_id=run_id,
                 report=report,
                 catalog=catalog,
             )
+            attach_dictionary_report_snapshot_if_available(ctx=ctx, report=report)
+            return result
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="enrich", exc=exc)
-    finally:
-        if gateway is not None:
-            gateway.close()
 
 
 def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:

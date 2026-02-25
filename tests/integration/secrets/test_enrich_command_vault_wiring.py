@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -60,6 +61,21 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
     )
 
     assert result.exit_code == 0
+
+    report_path = report_dir / "report_enrich_vault-write.json"
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    dictionary_ctx = report.get("context", {}).get("dictionary")
+    assert isinstance(dictionary_ctx, dict)
+    assert dictionary_ctx.get("component") == "dictionary"
+    assert dictionary_ctx.get("backend") == "polars"
+    assert "aggregate" in dictionary_ctx
+    assert "dictionaries_detail" in dictionary_ctx
+    org_detail = dictionary_ctx["dictionaries_detail"].get("organizations")
+    assert isinstance(org_detail, dict)
+    assert org_detail.get("row_count") is not None
+    assert org_detail.get("fingerprint_kind") == "content_sha256"
+    assert isinstance(org_detail.get("version_info"), dict)
 
     vault_db_path = cache_dir / "ankey_vault.sqlite3"
     assert vault_db_path.exists()

@@ -1,9 +1,9 @@
 # TRANSFORM-DEC-001: Справочная подсистема enrich (Polars v1, migration-ready для v2: Polars+DuckDB+Parquet)
 
-> **Статус**: Предложено
+> **Статус**: Предложено / Отложена
 > **Дата принятия**: 2026-02-19
 > **Решает проблему**: [TRANSFORM-PROBLEM-001](./TRANSFORM-PROBLEM-001-enrich-dictionary-runtime-gap.md)
-> **Участники решения**: @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 
@@ -55,22 +55,30 @@
 
 ### DI-стратегия (forward adoption)
 
-Для v1 принимается локальное применение `dependency-injector` только в Dictionary runtime
-composition root.
+`DictionaryContainer` — `DeclarativeContainer`, который монтируется как субконтейнер в
+`AppContainer` через `providers.Container(DictionaryContainer, ...)`.
+
+Файл `connector/delivery/cli/dictionaries_container.py` содержит только описание
+`DictionaryContainer` — он **не является автономным Composition Root**.
+Единственный CR приложения — `AppContainer` в `connector/delivery/cli/containers.py`.
 
 Границы:
 1. DI-контейнер создается и используется только на уровне wiring (`connector/delivery/cli/`).
 2. Domain/use-case/stage-код не получает container как зависимость.
 3. Внедрение зависимостей остается constructor-based через контракты (`DictionaryProviderPort`).
-4. Legacy composition root `connector/delivery/cli/containers.py` не мигрируется; словарный
-   DI-контейнер создаётся в отдельном `connector/delivery/cli/dictionaries_container.py`
-   и интегрируется через параметр `dictionaries=` в `build_pipeline_context()`.
+4. `DictionaryContainer` монтируется в `AppContainer` через `providers.Container(...)`.
+5. `PipelineContainer.dictionaries` (уже существует как `providers.Object(None)`) переопределяется
+   в `_init_container_for_requirements()` реальным провайдером при `requires_dictionaries=True`.
 
 Lifecycle провайдеров (v1):
-- `DictionaryDslRuntimeBundle` — `Singleton`.
-- `CsvDictionaryLoader` — `Singleton`.
-- `PolarsDictionaryBackend` — `Singleton`.
-- `DictionaryProviderPort` адаптер — `Singleton`.
+- `DictionaryDslRuntimeBundle` — `Singleton` (DSL parsing, нет IO).
+- `CsvDictionaryLoader` — `Singleton` (stateless).
+- `PolarsDictionaryBackend` — `Resource` (eager CSV load при `init_resources()` → fail-fast).
+- `PolarsDictionaryProvider` адаптер — `Singleton` (поверх `Resource` backend).
+
+Смысл `Resource` для backend: `init_resources()` выполняет eager CSV load; любой `DslLoadError`
+(файл не найден, fingerprint mismatch, дубли ключей) всплывает сразу — AppContainer завершает
+run fail-fast. Teardown не нужен (read-only in-memory).
 
 Переход v1 -> v2:
 - container API для потребителей не меняется;
@@ -80,13 +88,26 @@ Lifecycle провайдеров (v1):
 ### Карта ответственности (модуль/класс/метод)
 
 - **Модуль `connector/domain/dictionary_dsl/specs.py`**:
-  - Обязан: валидировать конфигурацию словаря (имя, путь CSV, ключ, колонки).
-  - Запрещено: читать данные и выполнять lookup.
-- **Модуль `loader_csv.py`**:
-  - Обязан: читать CSV и создавать in-memory представление словаря.
-  - Запрещено: бизнес-валидация enrich-правил.
+  - Обязан: валидировать конфигурацию словаря (имя, путь CSV, ключ, колонки);
+    whitelist-проверка `normalized_key.ops` через `@field_validator` (domain-правило).
+  - Запрещено: читать данные, выполнять lookup, импортировать Polars/DuckDB/infra.
+- **Модуль `connector/infra/dictionaries/dsl_runtime.py`**:
+  - Обязан: принять `dict[str, DictionarySpec]` (уже прошедший Pydantic-валидацию)
+    и построить `DictionaryDslRuntimeBundle`; резолюция имён ops через `OperationRegistry`
+    (`op_name → Operation`) — infra-шаг связывания, не бизнес-правило.
+  - Запрещено: применять whitelist-правила (это specs.py), выполнять IO (читать CSV),
+    принимать решения о том, какие словари включить.
+- **Модуль `connector/infra/dictionaries/loader_csv.py`**:
+  - Обязан: читать CSV и загружать данные в backend (`load_into(backend)`).
+  - Запрещено: бизнес-валидация enrich-правил, whitelist-проверки ops.
+- **Класс `connector/infra/dictionaries/telemetry.py` → `DictionaryTelemetry`**:
+  - Обязан: владеть runtime-счётчиками (`lookup_total/hit/miss/error`) и logging через
+    structlog; оба аспекта когезивны — каждое изменение счётчика неотделимо от log-события.
+  - Запрещено: содержать lookup-логику, знать про pipeline-оркестрацию.
+  - Trade-off v1: logging и counters в одном классе; при росте ответственности — разделить
+    на `DictionaryRuntimeCounters` (dataclass) + stateless logging helpers.
 - **Класс `PolarsDictionaryProvider`**:
-  - Обязан: реализовать `DictionaryProviderPort`.
+  - Обязан: реализовать `DictionaryProviderPort`; делегировать в backend; обновлять телеметрию.
   - Запрещено: знать про pipeline stage/diagnostics orchestration.
 - **Метод `lookup()`**:
   - Обязан: только поиск по словарю с projection/limit.
@@ -345,10 +366,33 @@ Pydantic обязателен на входных границах Dictionary DS
 5. `key_column` не входит в конфликт с `value_columns`.
 6. `value_columns` не пустой.
 7. `normalized_key.ops` валидируется как список `OperationCall`.
-8. `normalized_key.ops[].op` ограничивается whitelist-подмножеством для dictionary runtime.
+8. `normalized_key.ops[].op` ограничивается whitelist-подмножеством через `@field_validator`
+   в `DictionaryNormalizedKeySpec` (domain-правило, не infra):
+
+```python
+DICTIONARY_NORMALIZED_KEY_OPS_WHITELIST: frozenset[str] = frozenset({
+    "trim", "lower", "upper", "to_string", "regex_replace",
+})
+
+class DictionaryNormalizedKeySpec(DslBaseModel):
+    ops: list[OperationCall] = Field(default_factory=list)
+
+    @field_validator("ops", mode="after")
+    @classmethod
+    def _validate_ops_whitelist(cls, ops: list[OperationCall]) -> list[OperationCall]:
+        invalid = {op.op for op in ops} - DICTIONARY_NORMALIZED_KEY_OPS_WHITELIST
+        if invalid:
+            raise ValueError(
+                f"ops not allowed in normalized_key: {sorted(invalid)}. "
+                f"Allowed: {sorted(DICTIONARY_NORMALIZED_KEY_OPS_WHITELIST)}"
+            )
+        return ops
+```
+
 9. `source.csv.encoding` задан и по умолчанию равен `utf-8`.
 
-Все ошибки загрузки/валидации оборачиваются в `DslLoadError` с кодами `DICT_DSL_*`.
+Все ошибки загрузки/валидации оборачиваются в `DslLoadError` с кодами `DICT_DSL_*`
+(стандартный паттерн: `loader.py` оборачивает `ValidationError → DslLoadError`).
 В runtime lookup-path повторная ручная валидация не выполняется.
 
 ### Что уже есть в проекте и что добавляем
@@ -396,14 +440,50 @@ Pydantic обязателен на входных границах Dictionary DS
 
 ### Порядок инициализации container'ов (v1)
 
-1. Инициализировать runtime settings (включая `DictionaryRuntimeSettings`).
-2. Прочитать `datasets/registry.yml` и определить наличие секции `dictionaries`.
-3. Если секция отсутствует: не создавать dictionary container, передать
-   `dictionaries=None` в `build_pipeline_context()`.
-4. Если секция присутствует: инициализировать `dictionaries_container.py` и собрать
-   `DictionaryProviderPort` **до** вызова `build_pipeline_context()`.
-5. Любая ошибка инициализации dictionary runtime (DSL/spec/manifest/CSV/backend wiring)
+Инициализация выполняется в `_init_container_for_requirements()` — единственная точка
+условного lifecycle-управления в `AppContainer`.
+
+```python
+# connector/delivery/cli/containers.py (фрагмент)
+
+class AppContainer(containers.DeclarativeContainer):
+    ...
+    _dictionary_settings = providers.Callable(lambda s: s.dictionary, s=app_settings)
+
+    dictionary = providers.Container(
+        DictionaryContainer,
+        settings=_dictionary_settings,
+    )
+
+    pipeline = providers.Container(
+        PipelineContainer,
+        ...
+        # dictionaries=providers.Object(None) — уже есть в PipelineContainer
+    )
+
+
+def _init_container_for_requirements(container: AppContainer, req: Requirements) -> None:
+    ...
+    if req.requires_dictionaries:
+        # Resource: eager CSV load → DslLoadError если broken → fail-fast
+        container.dictionary.backend.init()
+        # PipelineContainer.dictionaries (providers.Object(None)) → реальный провайдер
+        container.pipeline.dictionaries.override(container.dictionary.provider)
+    # Если requires_dictionaries=False: PipelineContainer.dictionaries остаётся None
+```
+
+Порядок:
+1. `AppContainer` создаётся в entry point (CLI-команда / `run_with_report()`).
+2. `app_settings` пробрасывается через `override()`.
+3. `_init_container_for_requirements()` проверяет `req.requires_dictionaries`.
+4. При `requires_dictionaries=True`:
+   - `container.dictionary.backend.init()` → eager CSV load (fail-fast при ошибке).
+   - `container.pipeline.dictionaries.override(container.dictionary.provider)`.
+5. При `requires_dictionaries=False`: словарный runtime не создаётся, `dictionaries=None`.
+6. Любая ошибка инициализации dictionary runtime (DSL/spec/manifest/CSV/fingerprint)
    приводит к fail-fast завершению всего run (без silent fallback).
+7. `container.shutdown_resources()` вызывается в `finally` — `DictionaryContainer.backend`
+   teardown не выполняет IO (read-only in-memory), завершается без ошибок.
 
 ### Graceful degradation при отсутствии словарей (v1)
 
@@ -573,19 +653,46 @@ def should_log_debug(event: str, dict_name: str, key_fingerprint: str) -> bool:
     return True
 ```
 
-Маленький пример: startup-only reload и интеграция с composition root
+Маленький пример: startup-only reload и интеграция с AppContainer
 
 ```python
-# dictionaries_container.py — строит провайдер один раз
-bundle = load_dictionary_dsl_runtime()           # -> DictionaryDslRuntimeBundle
-provider = build_dictionary_provider(bundle)     # -> DictionaryProviderPort адаптер
+# connector/delivery/cli/dictionaries_container.py — DeclarativeContainer (не CR)
 
-# containers.py — build_pipeline_context() принимает провайдер снаружи
-ctx = build_pipeline_context(
-    ...,
-    dictionaries=provider,   # Singleton, неизменяем в пределах run
-)
-# в пределах одного run provider неизменяем; новые данные — следующий run
+def dictionary_backend_resource(
+    bundle: DictionaryDslRuntimeBundle,
+    loader: CsvDictionaryLoader,
+    settings: DictionaryRuntimeSettings,
+) -> Iterator[PolarsDictionaryBackend]:
+    backend = PolarsDictionaryBackend(bundle=bundle, settings=settings)
+    loader.load_into(backend)   # eager: DslLoadError → fail-fast при init_resources()
+    yield backend
+    # teardown: нет (read-only in-memory)
+
+
+class DictionaryContainer(containers.DeclarativeContainer):
+    settings = providers.Dependency(instance_of=DictionaryRuntimeSettings)
+
+    dsl_runtime = providers.Singleton(build_dictionary_dsl_runtime, settings=settings)
+    csv_loader  = providers.Singleton(CsvDictionaryLoader)
+
+    backend = providers.Resource(
+        dictionary_backend_resource,
+        bundle=dsl_runtime, loader=csv_loader, settings=settings,
+    )
+    provider = providers.Singleton(PolarsDictionaryProvider, backend=backend, settings=settings)
+
+
+# connector/delivery/cli/containers.py — AppContainer монтирует DictionaryContainer
+class AppContainer(containers.DeclarativeContainer):
+    ...
+    _dictionary_settings = providers.Callable(lambda s: s.dictionary, s=app_settings)
+    dictionary = providers.Container(DictionaryContainer, settings=_dictionary_settings)
+    ...
+
+# _init_container_for_requirements(): provider неизменяем в пределах run
+if req.requires_dictionaries:
+    container.dictionary.backend.init()
+    container.pipeline.dictionaries.override(container.dictionary.provider)
 ```
 
 Маленький пример: lazy-load per dictionary (опция v1)
@@ -646,16 +753,18 @@ dictionaries:
    - опциональные: `source.csv.*` (`delimiter`, `has_header`, `encoding`), `schema.normalized_key`, `lookup.allow_duplicates`;
    - в v1 `source.format` ограничен `csv`.
 
-4. **Точка wiring локального DI-container (Dictionary runtime)**:
-   - контейнер создается только в `connector/delivery/cli/dictionaries_container.py`;
-   - контейнер не передается в domain/use-case;
-   - наружу выходит только `DictionaryProviderPort`;
-   - порядок инициализации: `settings -> dictionaries_container (если секция присутствует) -> build_pipeline_context()`;
-   - если `dictionaries_container` не смог инициализироваться, run завершается fail-fast
-     (без silent fallback к `dictionaries=None`);
-   - интеграция с существующим composition root: `build_pipeline_context()` в
-     `connector/delivery/cli/containers.py` принимает параметр `dictionaries: DictionaryProviderPort | None`;
-   - `build_enrich_deps()` в `DatasetSpec` и `EmployeesSpec` также расширяются этим параметром.
+4. **Точка wiring DI-container (Dictionary runtime)**:
+   - `DictionaryContainer` — `DeclarativeContainer` в `dictionaries_container.py`,
+     монтируется в `AppContainer` через `providers.Container(DictionaryContainer, ...)`;
+   - единственный CR — `AppContainer` в `connector/delivery/cli/containers.py`;
+   - контейнер не передается в domain/use-case; наружу выходит только `DictionaryProviderPort`;
+   - `PipelineContainer.dictionaries` (уже существует как `providers.Object(None)`) переопределяется
+     в `_init_container_for_requirements()` через `container.pipeline.dictionaries.override(...)`;
+   - условная инициализация: `req.requires_dictionaries=True` → `container.dictionary.backend.init()`
+     → eager CSV load → fail-fast при ошибке;
+   - при `requires_dictionaries=False`: `PipelineContainer.dictionaries` остаётся `None`;
+   - `build_enrich_deps()` в `DatasetSpec` и `EmployeesSpec` принимают `dictionaries` из
+     stage context — без изменений в сигнатуре `build_pipeline_context()`.
 
 5. **Taxonomy diagnostics кодов и зоны применения**:
    - `DICT_*` используется только для DSL/load/runtime init слоя словарей;
@@ -826,7 +935,7 @@ connector/
 │       ├── versioning.py                       # schema_hash/version_id/fingerprint
 │       └── backends/polars_backend.py          # In-memory lookup engine
 ├── delivery/
-│   └── cli/dictionaries_container.py           # Локальный DI composition root
+│   └── cli/dictionaries_container.py           # DictionaryContainer (субконтейнер AppContainer)
 └── datasets/
     ├── registry.yml                            # секция dictionaries
     └── employees/spec.py                       # Проброс deps.dictionaries
@@ -860,10 +969,10 @@ tests/
 | `connector/infra/dictionaries/provider.py` | Адаптер порта поверх Polars backend |
 | `connector/infra/dictionaries/telemetry.py` | Structlog logging + runtime counters/report context |
 | `connector/infra/dictionaries/versioning.py` | Version contract + fingerprint strategies (v1/v2) |
-| `connector/delivery/cli/dictionaries_container.py` | Новый локальный DI-container: `load_dictionary_dsl_runtime` + `build_dictionary_provider` (Singleton) |
-| `connector/delivery/cli/containers.py` | Обновить: `build_pipeline_context()` — добавить параметр `dictionaries: DictionaryProviderPort \| None = None` |
+| `connector/delivery/cli/dictionaries_container.py` | Новый `DictionaryContainer(DeclarativeContainer)`: `dsl_runtime` (Singleton), `csv_loader` (Singleton), `backend` (Resource), `provider` (Singleton) |
+| `connector/delivery/cli/containers.py` | Обновить `AppContainer`: добавить `dictionary = providers.Container(DictionaryContainer, ...)`; обновить `_init_container_for_requirements()`: добавить ветку `requires_dictionaries` |
 | `connector/domain/diagnostics/core_catalog.py` | Регистрация `DICT_*` кодов |
-| `connector/datasets/spec.py` | Обновить: `build_enrich_deps()` базового `DatasetSpec` — добавить параметр `dictionaries` |
+| `connector/datasets/spec.py` | Обновить: `build_enrich_deps()` базового `DatasetSpec` — `dictionaries` приходит из `PipelineContainer.dictionaries` через stage context |
 | `connector/datasets/employees/spec.py` | Обновить: `EmployeesSpec.build_enrich_deps()` — принять и пробросить `dictionaries` в `TransformProviderDeps` |
 | `datasets/registry.yml` | Добавить секцию `dictionaries` |
 
@@ -905,6 +1014,10 @@ tests/
   - unknown `dict_name` при `items: {}` -> `ENRICH_NO_CANDIDATES`.
 - Report context: обязательные поля секции `dictionary`, корректные агрегированные и per-dictionary
   счетчики (`dictionaries_detail`).
+- **DictionaryContainer**: `init_resources()` не бросает при корректных данных;
+  `provider()` возвращает `DictionaryProviderPort`-совместимый экземпляр;
+  два вызова `provider()` возвращают один и тот же объект (Singleton);
+  `shutdown_resources()` завершается без ошибок (teardown = no-op).
 
 ### Integration
 
@@ -914,6 +1027,44 @@ tests/
 - Совместимость контракта: одинаковое поведение порта для v1 backend и mock v2 backend.
 - Startup fail-fast при broken spec/CSV/fingerprint mismatch.
 - Lazy-mode: ошибка неиспользованного словаря не валит run до первого обращения к нему.
+- **DictionaryContainer lifecycle**: eager-mode — `init_resources()` падает с `DslLoadError`
+  при broken CSV; `shutdown_resources()` не бросает (teardown = no-op).
+  Паттерн теста по аналогии с `test_sqlite_container.py`:
+
+```python
+def test_dictionary_container_init(tmp_path, sample_dictionary_csv):
+    container = DictionaryContainer()
+    container.settings.override(DictionaryRuntimeSettings(...))
+    try:
+        container.init_resources()
+        provider = container.provider()
+        assert isinstance(provider, PolarsDictionaryProvider)
+        assert container.provider() is container.provider()  # Singleton
+    finally:
+        container.shutdown_resources()
+
+
+def test_dictionary_container_fail_fast_on_broken_csv(tmp_path):
+    """Broken CSV (missing key column) → DslLoadError при init_resources()."""
+    container = DictionaryContainer()
+    container.settings.override(DictionaryRuntimeSettings(...))
+    with pytest.raises(DslLoadError, match="DICT_SCHEMA_INVALID"):
+        container.init_resources()
+    container.shutdown_resources()
+
+
+def test_dictionary_container_fail_fast_on_fingerprint_mismatch(tmp_path):
+    """Fingerprint mismatch → DslLoadError(DICT_SOURCE_FINGERPRINT_MISMATCH) при init."""
+    ...
+
+
+def test_dictionary_container_shutdown_is_noop(tmp_path, sample_dictionary_csv):
+    """shutdown_resources() после init не бросает (teardown = no-op)."""
+    container = DictionaryContainer()
+    container.settings.override(DictionaryRuntimeSettings(...))
+    container.init_resources()
+    container.shutdown_resources()  # не должно падать
+```
 
 ### E2E
 
@@ -924,12 +1075,12 @@ tests/
 
 ### Performance / Benchmark
 
-- `pytest-benchmark` профиль `v1_small` (100-200 строк): startup load + lookup hit/miss.
-- `pytest-benchmark` профиль `v1_upper` (10k строк): projection/limit нагрузка и hit/miss ratio.
-- `pytest-benchmark` профиль `migration_signal` (100k строк): не-блокирующий, для отслеживания v2 trigger.
-- `pytest-benchmark` профиль `v1_lazy_cold_start`: latency первого обращения к словарю в lazy-mode.
-- `pytest-benchmark` профиль `v1_lazy_warm_hit`: latency повторного hit после lazy-load.
-- `pytest-benchmark` профиль `v1_exists_hot_path`: latency `contains/exists` hit/miss с key-set индексом.
+- `pyperf` профиль `v1_small` (100-200 строк): startup load + lookup hit/miss.
+- `pyperf` профиль `v1_upper` (10k строк): projection/limit нагрузка и hit/miss ratio.
+- `pyperf` профиль `migration_signal` (100k строк): не-блокирующий, для отслеживания v2 trigger.
+- `pyperf` профиль `v1_lazy_cold_start`: latency первого обращения к словарю в lazy-mode.
+- `pyperf` профиль `v1_lazy_warm_hit`: latency повторного hit после lazy-load.
+- `pyperf` профиль `v1_exists_hot_path`: latency `contains/exists` hit/miss с key-set индексом.
 - Gating правило CI: regression медианы > 30% от baseline для `v1_small`/`v1_upper` — fail.
 - Trend правило: 3 последовательных деградации или hard trigger по объему инициируют ADR update на v2 rollout.
 
@@ -1008,3 +1159,8 @@ tests/
 | 2026-02-20 | Зафиксирована v1 оптимизация hot path `contains/exists`: допускается set-based key index (`O(1)`), benchmark-профиль `v1_exists_hot_path` добавлен в требования |
 | 2026-02-20 | Зафиксирован lifecycle-контракт инициализации: dictionary container поднимается после settings и до `build_pipeline_context()`, ошибки инициализации dictionary runtime завершают run fail-fast |
 | 2026-02-20 | Расширен контракт `report.context[\"dictionary\"]`: добавлен обязательный per-dictionary breakdown `dictionaries_detail` с метриками rows/hit/miss/error |
+| 2026-02-23 | Исправлена DI-стратегия: `DictionaryContainer` — субконтейнер `AppContainer` (не автономный CR); `dictionaries_container.py` содержит `DeclarativeContainer`, монтируется через `providers.Container(...)` |
+| 2026-02-23 | Lifecycle backend: `PolarsDictionaryBackend` изменён с `Singleton` на `Resource` — fail-fast eager CSV load при `init_resources()`; teardown = no-op |
+| 2026-02-23 | Зафиксирована ответственность модулей: `dsl_runtime.py` — pure transformer specs→bundle, резолюция ops через OperationRegistry (не whitelist); `telemetry.py` — когезивный класс logging+counters с явным trade-off |
+| 2026-02-23 | Whitelist `normalized_key.ops` перенесён в domain: `@field_validator` в `DictionaryNormalizedKeySpec` с константой `DICTIONARY_NORMALIZED_KEY_OPS_WHITELIST` |
+| 2026-02-23 | Добавлены integration-тесты `DictionaryContainer`: init/Singleton/fail-fast/shutdown паттерн по аналогии с `test_sqlite_container.py` |

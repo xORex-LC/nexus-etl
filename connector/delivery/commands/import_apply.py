@@ -11,16 +11,9 @@ import sqlite3
 
 import typer
 
-from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.containers import build_diagnostics_catalog
 from connector.delivery.commands.common import log_sqlite_cache_error, result_with, vault_startup_error_result
-from connector.delivery.cli.containers import (
-    build_cache,
-    build_secret_retention_hook,
-    build_target_runtime_with_info,
-    build_diagnostics_catalog,
-    build_secret_provider,
-    ensure_vault_startup_ready,
-)
 from connector.delivery.commands.import_apply_dry_run_executor import DryRunExecutor
 from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
 from connector.delivery.telemetry.apply_logging_sink import LoggingApplyTelemetrySink
@@ -79,7 +72,7 @@ def _runtime_context(build_result) -> dict[str, str]:
     }
 
 
-def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     """Собрать runtime/deps и выполнить apply use-case для указанного плана."""
     app_settings = ctx.app_settings
     if app_settings is None:
@@ -142,15 +135,13 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         return result_with(SystemErrorCode.INTERNAL_ERROR)
 
     startup_guard_passed = True
-    if rollout_decision.startup_guard_required:
+    if rollout_decision.vault_enabled:
         try:
-            ensure_vault_startup_ready(paths_settings=app_settings.paths)
-            startup_guard_passed = True
+            ctx.container.sqlite.vault_ready.init()
         except _STARTUP_ERRORS as exc:
             startup_guard_passed = False
             return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
 
-    secret_source = "vault" if rollout_decision.vault_enabled else None
     dry_run = configured_dry_run or rollout_decision.force_dry_run
 
     dataset_name = plan.meta.dataset
@@ -158,154 +149,126 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         dataset_name,
         strict=app_settings.observability.diagnostics_strict,
     )
-    gateway = None
-    apply_runtime = None
-    runtime = None
-    secrets_provider = None
-    secret_retention = None
+
+    cache_roles = ctx.container.cache.roles()
+    apply_runtime = cache_roles.apply_runtime
     identity_keys: dict[str, set[str]] = {}
     identity_id_fields: dict[str, str] = {}
     try:
-        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
-        apply_runtime = cache_roles.apply_runtime
         identity_keys, identity_id_fields = build_identity_index_plan()
-    except sqlite3.Error as exc:
-        log_sqlite_cache_error(logger=ctx.logger, run_id=run_id, exc=exc)
     except Exception as exc:
         logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to init identity index: {exc}")
 
-    try:
-        build_result = build_target_runtime_with_info(
-            app_settings.api,
-            include_reader=False,
-        )
-        runtime = build_result.runtime
-        target_meta = runtime.meta()
-        endpoint = target_meta.endpoint
+    build_result = ctx.container.target.runtime()
+    runtime = build_result.runtime
+    target_meta = runtime.meta()
+    endpoint = target_meta.endpoint
 
-        report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
-        report.set_context(
-            "apply",
-            {
-                "plan_path": opts.plan_path or plan.meta.plan_path,
-                "include_deleted": plan.meta.include_deleted,
-                "stop_on_first_error": stop_on_first_error,
-                "max_actions": max_actions,
-                "dry_run": dry_run,
-                "configured_dry_run": configured_dry_run,
-                "retries": app_settings.api.retries,
-                "retry_backoff_seconds": app_settings.api.retry_backoff_seconds,
-                "vault_rollout": {
-                    "vault_runtime": runtime_mode_decision.to_context(),
-                    **rollout_decision.to_context(),
-                },
-            },
-        )
-        report.set_context(
-            "apply_target",
-            {
-                "endpoint": endpoint,
-                "user": app_settings.api.username,
-                "target_runtime_mode": build_result.effective_mode,
-            },
-        )
-        report.set_context("target_runtime", _runtime_context(build_result))
-
-        secrets_provider = build_secret_provider(
-            secret_source,
-            paths_settings=app_settings.paths,
-            run_id=plan.meta.run_id,
-        )
-        # Dry-run должен оставаться чистым: retention hooks отключены полностью.
-        secret_retention = (
-            None
-            if dry_run
-            else build_secret_retention_hook(
-                secret_source,
-                paths_settings=app_settings.paths,
-            )
-        )
-        dataset_spec = get_spec(dataset_name, secrets=secrets_provider)
-        apply_adapter = dataset_spec.get_apply_adapter()
-        executor = DryRunExecutor() if dry_run else runtime.executor
-        identity_syncer = (
-            IdentityIndexSyncer(
-                runtime=apply_runtime,
-                identity_keys=identity_keys,
-                identity_id_fields=identity_id_fields,
-            )
-            if apply_runtime is not None
-            else None
-        )
-
-        telemetry_sink = LoggingApplyTelemetrySink(
-            logger=ctx.logger,
-            run_id=run_id,
-            dataset=dataset_name,
-        )
-
-        service = ImportApplyService(
-            executor,
-            identity_syncer=identity_syncer,
-            secret_retention=secret_retention,
-            allow_post_success_side_effects=not dry_run,
-        )
-        apply_result = service.apply_plan(
-            plan=plan,
-            catalog=catalog,
-            apply_adapter=apply_adapter,
-            stop_on_first_error=stop_on_first_error,
-            max_actions=max_actions,
-            max_item_outcomes=report_items_limit,
-            telemetry=telemetry_sink,
-        )
-
-        maintenance_stats = (
-            {}
-            if dry_run or secret_retention is None
-            else secret_retention.run_maintenance()
-        )
-        operational_metrics = build_vault_operational_metrics(
-            summary=apply_result.summary,
-            startup_guard_passed=startup_guard_passed,
-            thresholds=_rollout_thresholds(app_settings),
-        )
-        runtime_context: dict = {
-            "retries_used": runtime.stats().retries_total,
-            "target_runtime_mode": build_result.effective_mode,
-            "target_runtime_requested_mode": build_result.requested_mode,
-            "vault_maintenance": dict(maintenance_stats),
+    report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
+    report.set_context(
+        "apply",
+        {
+            "plan_path": opts.plan_path or plan.meta.plan_path,
+            "include_deleted": plan.meta.include_deleted,
+            "stop_on_first_error": stop_on_first_error,
+            "max_actions": max_actions,
+            "dry_run": dry_run,
+            "configured_dry_run": configured_dry_run,
+            "retries": app_settings.api.retries,
+            "retry_backoff_seconds": app_settings.api.retry_backoff_seconds,
             "vault_rollout": {
                 "vault_runtime": runtime_mode_decision.to_context(),
                 **rollout_decision.to_context(),
             },
-            "vault_operational": operational_metrics,
-        }
+        },
+    )
+    report.set_context(
+        "apply_target",
+        {
+            "endpoint": endpoint,
+            "user": app_settings.api.username,
+            "target_runtime_mode": build_result.effective_mode,
+        },
+    )
+    report.set_context("target_runtime", _runtime_context(build_result))
 
-        ApplyReportPresenter.present(
-            result=apply_result,
-            collector=report,
-            plan=plan,
-            runtime_context=runtime_context,
+    # Dry-run должен оставаться чистым: retention hooks отключены полностью.
+    secret_retention = (
+        None
+        if dry_run or not rollout_decision.vault_enabled
+        else ctx.container.vault.retention_service()
+    )
+    if rollout_decision.vault_enabled:
+        dataset_spec = get_spec(dataset_name, secrets=ctx.container.vault.read_service(default_run_id=plan.meta.run_id))
+    else:
+        dataset_spec = get_spec(dataset_name)
+    apply_adapter = dataset_spec.get_apply_adapter()
+    executor = DryRunExecutor() if dry_run else runtime.executor
+    identity_syncer = (
+        IdentityIndexSyncer(
+            runtime=apply_runtime,
+            identity_keys=identity_keys,
+            identity_id_fields=identity_id_fields,
         )
+        if apply_runtime is not None
+        else None
+    )
 
-        result = CommandResult()
-        for code in apply_result.all_codes:
-            result.add_code(code)
-        return result
-    finally:
-        if secret_retention is not None:
-            close_retention = getattr(secret_retention, "close", None)
-            if callable(close_retention):
-                close_retention()
-        if secrets_provider is not None:
-            close = getattr(secrets_provider, "close", None)
-            if callable(close):
-                close()
-        if runtime is not None:
-            runtime.close()
-        if gateway is not None:
-            gateway.close()
+    telemetry_sink = LoggingApplyTelemetrySink(
+        logger=ctx.logger,
+        run_id=run_id,
+        dataset=dataset_name,
+    )
+
+    service = ImportApplyService(
+        executor,
+        identity_syncer=identity_syncer,
+        secret_retention=secret_retention,
+        allow_post_success_side_effects=not dry_run,
+    )
+    apply_result = service.apply_plan(
+        plan=plan,
+        catalog=catalog,
+        apply_adapter=apply_adapter,
+        stop_on_first_error=stop_on_first_error,
+        max_actions=max_actions,
+        max_item_outcomes=report_items_limit,
+        telemetry=telemetry_sink,
+    )
+
+    maintenance_stats = (
+        {}
+        if dry_run or secret_retention is None
+        else secret_retention.run_maintenance()
+    )
+    operational_metrics = build_vault_operational_metrics(
+        summary=apply_result.summary,
+        startup_guard_passed=startup_guard_passed,
+        thresholds=_rollout_thresholds(app_settings),
+    )
+    runtime_context: dict = {
+        "retries_used": runtime.stats().retries_total,
+        "target_runtime_mode": build_result.effective_mode,
+        "target_runtime_requested_mode": build_result.requested_mode,
+        "vault_maintenance": dict(maintenance_stats),
+        "vault_rollout": {
+            "vault_runtime": runtime_mode_decision.to_context(),
+            **rollout_decision.to_context(),
+        },
+        "vault_operational": operational_metrics,
+    }
+
+    ApplyReportPresenter.present(
+        result=apply_result,
+        collector=report,
+        plan=plan,
+        runtime_context=runtime_context,
+    )
+
+    result = CommandResult()
+    for code in apply_result.all_codes:
+        result.add_code(code)
+    return result
 
 
 def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:

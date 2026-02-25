@@ -1,6 +1,6 @@
 # DSL-PROBLEM-004: Неконсистентная compile-архитектура transform стейджей
 
-> **Статус**: Решена в DSL-DEC-004
+> **Статус**: Решена в [DSL-DEC-004](./DSL-DEC-004-standardized-compile-contract.md)
 > **Дата создания**: 2026-02-17
 > **Затронутые компоненты**: `connector/domain/transform/mapping/mapper_dsl.py`, `connector/domain/transform/normalize/normalizer_dsl.py`, `connector/domain/transform/enrich/enricher_dsl.py`, `connector/domain/transform/matcher/match_dsl.py`, `connector/domain/transform/resolver/resolve_dsl.py`
 > **Созависимая проблема**: [DSL-PROBLEM-003](./DSL-PROBLEM-003-dsl-core-mixed-responsibilities.md)

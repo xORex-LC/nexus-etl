@@ -1,23 +1,33 @@
 """Stage orchestration for data transform pipeline."""
 
 from connector.domain.transform.stages.stages import (
-    TransformStageProcessor,
-    StagePipeline,
+    StageContract,
+    AnyStageContract,
+    BatchConfig,
+    BatchableStage,
+    PipelineHooks,
+    PipelineOrchestrator,
+    MatchProcessor,
+    ResolveProcessor,
     MapStage,
     NormalizeStage,
     EnrichStage,
     MatchStage,
     ResolveStage,
-    batched,
 )
 
 __all__ = [
-    "TransformStageProcessor",
-    "StagePipeline",
+    "StageContract",
+    "AnyStageContract",
+    "BatchConfig",
+    "BatchableStage",
+    "PipelineHooks",
+    "PipelineOrchestrator",
+    "MatchProcessor",
+    "ResolveProcessor",
     "MapStage",
     "NormalizeStage",
     "EnrichStage",
     "MatchStage",
     "ResolveStage",
-    "batched",
 ]

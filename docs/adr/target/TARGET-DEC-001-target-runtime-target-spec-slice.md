@@ -1,6 +1,6 @@
 # TARGET-DEC-001: TargetRuntime + target-spec slice для изоляции load-слоя от target-инфры
 
-> **Статус**: Принято / реализовано (частично superseded [TARGET-DEC-003](./TARGET-DEC-003-target-core.md))
+> **Статус**: Принято / Реализовано (частично superseded [TARGET-DEC-003](./TARGET-DEC-003-target-core.md))
 > **Дата принятия**: 2026-02-13
 > **Решает проблему**: [TARGET-PROBLEM-001](./TARGET-PROBLEM-001-load-layer-target-wiring.md)
 > **Участники решения**: @xorex-LC

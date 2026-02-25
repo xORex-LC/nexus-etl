@@ -1,6 +1,6 @@
 # OBSERVABILITY-PROBLEM-001: Непоследовательное использование logging и structlog
 
-> **Статус**: Решена в OBSERVABILITY-DEC-001
+> **Статус**: Решение найдено и описано в [OBSERVABILITY-DEC-001](./OBSERVABILITY-DEC-001-structlog-as-standard.md)
 > **Дата создания**: 2026-02-19
 > **Затронутые компоненты**: `connector/infra/logging/setup.py`, все модули использующие `logging.getLogger()`
 

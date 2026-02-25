@@ -3,19 +3,16 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
-from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.pipeline_config import CheckpointName
 from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
-    build_cache,
     build_dataset_spec,
     build_diagnostics_catalog,
-    build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.transform.core.extractor import Extractor
-from connector.domain.transform.core.iterators import iter_ok
 from connector.usecases.resolve_usecase import ResolveUseCase
-from connector.usecases.planning_match_runtime import open_match_runtime, iter_matched_ok
 
 
 @dataclass(frozen=True)
@@ -27,11 +24,7 @@ class Options:
     include_deleted: bool | None = None
 
 
-def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
-    """
-    Назначение:
-        Запустить resolve сценарий через delivery-команду.
-    """
+def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
     app_settings = ctx.app_settings
     if app_settings is None:
@@ -58,47 +51,21 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
         opts.include_resolved_items if opts.include_resolved_items is not None else False
     )
 
-    gateway = None
     try:
-        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
+        pipeline = ctx.container.pipeline
+        composer = pipeline.pipeline_composer()
+        with pipeline.dataset_spec.override(dataset_spec), \
+             pipeline.run_id.override(run_id), \
+             pipeline.csv_has_header.override(csv_has_header_value), \
+             pipeline.catalog.override(catalog), \
+             pipeline.include_deleted.override(include_deleted_value):
+            plan_hooks = pipeline.resolve_stage_hooks()
+            row_source = pipeline.row_source()
+            pre_resolve = composer.compose(CheckpointName.RESOLVE_CONTEXT, hooks=plan_hooks)
+            contextualized = pre_resolve.run(Extractor(row_source, catalog=catalog).run())
 
-        pipeline_ctx = build_pipeline_context(
-            dataset_spec=dataset_spec,
-            dataset_name=dataset_name,
-            cache_roles=cache_roles,
-            resolver_settings=app_settings.resolver,
-            observability_settings=app_settings.observability,
-            catalog=catalog,
-            csv_has_header=csv_has_header_value,
-        )
-        planning_deps = pipeline_ctx.planning_deps
-        enriched_rows = iter_ok(
-            pipeline_ctx.stage_pipeline.run(Extractor(pipeline_ctx.row_source, catalog=pipeline_ctx.catalog).run()),
-            should_skip=lambda item: item.row is None,
-        )
-        match_stage, resolve_stage = dataset_spec.build_planning_stages(
-            planning_deps=planning_deps,
-            catalog=catalog,
-            include_deleted=include_deleted_value,
-            settings=app_settings.resolver,
-        )
-        planning_runtime = planning_deps.cache_gateway
-        if planning_runtime is None:
-            raise ValueError("planning runtime is not configured")
+            planning_runtime = ctx.container.cache.roles().planning_runtime
 
-        with open_match_runtime(
-            run_id=run_id,
-            match_stage=match_stage,
-            match_runtime=planning_runtime,
-            report_items_limit=report_items_limit_value,
-            include_matched_items=False,
-            batch_size=app_settings.matching_runtime.match_batch_size,
-            flush_interval_ms=app_settings.matching_runtime.match_flush_interval_ms,
-        ) as match_runtime:
-            matched_rows = iter_matched_ok(
-                runtime=match_runtime,
-                enriched_source=enriched_rows,
-            )
             resolve_usecase = ResolveUseCase(
                 report_items_limit=report_items_limit_value,
                 include_resolved_items=include_resolved_items_value,
@@ -106,17 +73,16 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
                 flush_interval_ms=app_settings.matching_runtime.resolve_flush_interval_ms,
             )
             return resolve_usecase.run(
-                matched_source=matched_rows,
-                resolve_stage=resolve_stage,
+                matched_source=contextualized,
+                resolve_stage=pipeline.resolve_stage(),
                 dataset=dataset_name,
                 report=report,
                 catalog=catalog,
+                pending_expiry=pipeline.pending_expiry(),
+                resolve_hooks=plan_hooks,
             )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="resolve", exc=exc)
-    finally:
-        if gateway is not None:
-            gateway.close()
 
 
 __all__ = ["handler", "Options"]

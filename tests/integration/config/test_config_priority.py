@@ -1,8 +1,11 @@
 import httpx
 from typer.testing import CliRunner
 from connector.main import app
-import connector.delivery.commands.check_api as check_api_command
+import connector.delivery.cli.containers as containers_mod
 from connector.config.app_settings import load_app_settings
+from connector.infra.target.core.factory import (
+    build_target_runtime_with_info as _real_build_target_runtime_with_info,
+)
 
 runner = CliRunner()
 
@@ -29,24 +32,20 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
     captured: dict[str, object] = {}
 
     def factory(*args, **kwargs):
-        from connector.delivery.cli.containers import (
-            build_target_runtime_with_info as _build_real_runtime_with_info,
-        )
-
         api_settings = kwargs.get("api_settings")
         if api_settings is None and args:
             api_settings = args[0]
         kwargs["transport"] = transport
         captured["kwargs"] = kwargs
         captured["api_settings"] = api_settings
-        return _build_real_runtime_with_info(
+        return _real_build_target_runtime_with_info(
             api_settings,
             transport=kwargs["transport"],
             include_reader=kwargs.get("include_reader", True),
             runtime_mode=kwargs.get("runtime_mode"),
         )
 
-    monkeypatch.setattr(check_api_command, "build_target_runtime_with_info", factory)
+    monkeypatch.setattr(containers_mod, "build_target_runtime_with_info", factory)
     result = runner.invoke(
         app,
         ["--config", str(cfg), "--host", "3.3.3.3", "--port", "3333", "--api-username", "cli_user", "--api-password", "cli_pass", "check-api"],

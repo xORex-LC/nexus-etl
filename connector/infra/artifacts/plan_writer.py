@@ -4,15 +4,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from connector.common.sanitize import maskSecretsInObject
-def _mask_sensitive_item(item: dict[str, Any]) -> dict[str, Any]:
-    """
-    Назначение:
-        Маскирует чувствительные поля плана перед записью в файл/отчёт.
-    """
-    clone = json.loads(json.dumps(item))
-    return maskSecretsInObject(clone)
-
 
 def write_plan_file(
     plan_items: list[dict[str, Any]],
@@ -38,7 +29,6 @@ def write_plan_file(
     plan_dir = Path(report_dir)
     plan_dir.mkdir(parents=True, exist_ok=True)
     plan_path = plan_dir / f"plan_import_{run_id}.json"
-    masked_items = [_mask_sensitive_item(item) for item in plan_items]
     data = {
         "meta": {
             "run_id": run_id,
@@ -46,7 +36,7 @@ def write_plan_file(
             **meta,
         },
         "summary": summary,
-        "items": masked_items,
+        "items": plan_items,
     }
     plan_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return str(plan_path)

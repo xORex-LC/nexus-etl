@@ -7,7 +7,7 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.models import DiagnosticStage
 from connector.domain.transform.core.result_processor import TransformResultProcessor
-from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage, StagePipeline
+from connector.domain.transform.stages.stages import PipelineOrchestrator
 
 
 class EnrichUseCase:
@@ -27,9 +27,7 @@ class EnrichUseCase:
     def run(
         self,
         row_source,
-        map_stage: MapStage,
-        normalize_stage: NormalizeStage,
-        enrich_stage: EnrichStage,
+        pipeline: PipelineOrchestrator,
         dataset: str,
         logger: logging.Logger,
         run_id: str,
@@ -49,10 +47,7 @@ class EnrichUseCase:
         )
 
         extractor = Extractor(row_source, catalog=catalog)
-        stage_pipeline = StagePipeline([map_stage, normalize_stage, enrich_stage])
-        for map_result in stage_pipeline.run(extractor.run()):
+        for map_result in pipeline.run(extractor.run()):
             processor.process(map_result)
 
         return processor.finalize()
-
-    # NOTE: итератор без ошибок вынесен в iter_ok(stage.run(...))

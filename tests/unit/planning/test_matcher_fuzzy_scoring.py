@@ -7,6 +7,7 @@ from connector.domain.models import Identity, RowRef
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.ids.match_key import MatchKey
+from connector.domain.transform.matcher.dedup_store import LocalSourceDedupStore
 from connector.domain.transform.matcher.match_core import MatchCore
 from connector.domain.transform.matcher.match_models import (
     MatchDecisionReason,
@@ -123,6 +124,7 @@ def _matcher(
         resolve_rules=_resolve_rules(),
         include_deleted=False,
         catalog=CATALOG,
+        dedup_store=LocalSourceDedupStore(),
     )
 
 

@@ -1,9 +1,9 @@
 # TRANSFORM-DEC-002: TransformContext — typed capability registry для transform-зависимостей
 
-> **Статус**: Предложено — реализация отложена до trigger-критериев; временная митигация применена
+> **Статус**: Поглощено [TRANSFORM-DEC-004](./TRANSFORM-DEC-004-modular-pipeline-scoped-execution-context.md) — TransformContext эволюционировал в StageExecutionContext как часть целостной pipeline-архитектуры
 > **Дата принятия**: 2026-02-20
 > **Решает проблему**: [TRANSFORM-PROBLEM-002](./TRANSFORM-PROBLEM-002-transform-provider-deps-coupling.md)
-> **Участники решения**: @xorex
+> **Участники решения**: @xorex-LC
 
 ---
 
@@ -279,3 +279,4 @@ EnricherEngine(deps=ctx)
 | 2026-02-20 | Проблема TRANSFORM-PROBLEM-002 обнаружена, решение предложено |
 | 2026-02-20 | Временная митигация Вариант A применена: `cache_gateway: EnrichLookupPort \| None = None` |
 | 2026-02-20 | TransformContext зафиксирован как целевая архитектура, статус: Предложено |
+| 2026-02-22 | Поглощено TRANSFORM-DEC-004: TransformContext → StageExecutionContext в составе целостной pipeline-архитектуры |

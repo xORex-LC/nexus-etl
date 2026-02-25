@@ -8,6 +8,7 @@ from connector.domain.transform_dsl import load_resolve_spec_for_dataset
 from connector.domain.transform_dsl import load_sink_spec_for_dataset
 from connector.domain.transform_dsl.specs import ResolveSpec
 from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
+from connector.domain.transform.resolver.pending_codec import PendingCodecAdapter
 from connector.domain.transform.resolver.resolve_engine import ResolveEngine
 from connector.domain.diagnostics.catalog import build_catalog
 
@@ -186,6 +187,7 @@ def test_resolve_engine_wraps_lookup_core():
         settings=None,
         catalog=build_catalog("employees", strict=True),
         sink_spec=load_sink_spec_for_dataset("employees"),
+        codec=PendingCodecAdapter(),
     )
     assert engine.resolve_rules.diff_policy is not None
     assert len(engine.link_rules.fields) == 2

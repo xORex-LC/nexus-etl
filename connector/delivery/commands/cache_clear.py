@@ -5,8 +5,7 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.context import CommandContext
-from connector.delivery.cli.containers import open_cache
+from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import (
     ensure_supported_cache_dataset,
     sqlite_cache_error_result,
@@ -22,32 +21,33 @@ class Options:
     cascade: bool | None = None
 
 
-def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     app_settings = ctx.app_settings
     if app_settings is None:
         raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 
     try:
-        with open_cache(app_settings.paths) as (_gateway, cache_roles, cache_dsl_bundle):
-            unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
-            if unsupported_result is not None:
-                return unsupported_result
-            cache_clear = CacheClearUseCase(cache_roles.cache_admin)
-            service = CacheCommandService(cache_roles.cache_admin, cache_clear=cache_clear)
-            runtime_policy = cache_dsl_bundle.runtime.policy
-            result = service.clear(
-                ctx.logger,
-                report,
-                run_id,
-                dataset=opts.dataset,
-                cascade=opts.cascade if opts.cascade is not None else runtime_policy.clear_cascade_default,
-            )
-            exit_code = result.exit_code()
-            if exit_code != 0:
-                typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
-                return result
+        cache_roles = ctx.container.cache.roles()
+        cache_dsl_bundle = ctx.container.cache_dsl()
+        unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
+        if unsupported_result is not None:
+            return unsupported_result
+        cache_clear = CacheClearUseCase(cache_roles.cache_admin)
+        service = CacheCommandService(cache_roles.cache_admin, cache_clear=cache_clear)
+        runtime_policy = cache_dsl_bundle.runtime.policy
+        result = service.clear(
+            ctx.logger,
+            report,
+            run_id,
+            dataset=opts.dataset,
+            cascade=opts.cascade if opts.cascade is not None else runtime_policy.clear_cascade_default,
+        )
+        exit_code = result.exit_code()
+        if exit_code != 0:
+            typer.echo("ERROR: cache clear failed (see logs/report)", err=True)
             return result
+        return result
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="cache-clear", exc=exc)
 
