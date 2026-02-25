@@ -71,7 +71,7 @@ class ResolveUseCase:
                     dataset=dataset,
                 )
         all_matched = chain(matched_source, pending_rows)
-        return self._iter_resolved(all_matched, resolve_stage, dataset=dataset)
+        return self._iter_resolved(all_matched, resolve_stage)
 
     def run(
         self,
@@ -96,7 +96,7 @@ class ResolveUseCase:
             include_upstream_diagnostics=False,
         )
 
-        for resolved in self._iter_resolved(matched_source, resolve_stage, dataset=dataset):
+        for resolved in self._iter_resolved(matched_source, resolve_stage):
             _count_special_ops(report, resolved.errors, resolved.warnings)
             processor.process(resolved)
             _report_expired(report, resolver.drain_expired(), resolver.settings, catalog)
@@ -110,8 +110,6 @@ class ResolveUseCase:
         self,
         matched_source: Iterable[TransformResult],
         resolve_stage: ResolveStage,
-        *,
-        dataset: str | None = None,
     ):
         batches = iter(
             iter_micro_batches(
@@ -126,7 +124,7 @@ class ResolveUseCase:
                     batch = next(batches)
                 except StopIteration:
                     return
-                for resolved in resolve_stage.run(batch, dataset=dataset):
+                for resolved in resolve_stage.run(batch):
                     yield resolved
 
 

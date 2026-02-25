@@ -5,6 +5,7 @@
     Инкапсулирует полный цикл планирования:
       transform (map → normalize → enrich)
       → match (с открытием/очисткой runtime scope)
+      → resolve_context (буферизация + batch_index)
       → resolve (с pending replay из PLANNER-DEC-001).
 
     Создаётся через PipelineContainer.planning_pipeline (providers.Factory).
@@ -13,7 +14,9 @@
 
 Граница ответственности:
     - Owns: lifecycle match-runtime scope (open/close через open_match_runtime),
-      сборку enriched/matched/resolved потоков, передачу pending_replay в ResolveUseCase.
+      сборку enriched/matched/contextualized/resolved потоков,
+      вызов dedup_store.reset() перед каждым прогоном,
+      передачу pending_replay в ResolveUseCase.
     - Does NOT: знать о vault, secrets, plan serialization, CLI-opts.
     - Does NOT: управлять lifecycle инфраструктурных ресурсов (engines, gateway) —
       это зона PipelineContainer / CacheContainer.
@@ -32,9 +35,11 @@ from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.matcher.ports import ISourceDedupStore
 from connector.domain.transform.stages.stages import (
     MatchStage,
     PipelineOrchestrator,
+    ResolveContextStage,
     ResolveStage,
 )
 from connector.delivery.cli.planning_match_runtime import iter_matched_ok, open_match_runtime
@@ -63,7 +68,9 @@ class PlanningPipeline:
         self,
         transform_segment: PipelineOrchestrator,
         match_stage: MatchStage,
+        resolve_context_stage: ResolveContextStage,
         resolve_stage: ResolveStage,
+        dedup_store: ISourceDedupStore,
         row_source: Any,
         catalog: ErrorCatalog,
         dataset_spec: Any,
@@ -71,7 +78,9 @@ class PlanningPipeline:
     ) -> None:
         self._transform_segment = transform_segment
         self._match_stage = match_stage
+        self._resolve_context_stage = resolve_context_stage
         self._resolve_stage = resolve_stage
+        self._dedup_store = dedup_store
         self._row_source = row_source
         self._catalog = catalog
         self._dataset_spec = dataset_spec
@@ -95,6 +104,8 @@ class PlanningPipeline:
               clear_runtime_scope() через finally в open_match_runtime.
             - planning_runtime должен быть открыт до вызова (получается из cache.roles()).
         """
+        self._dedup_store.reset()
+
         app = self._app_settings
         dataset_name = self._dataset_spec.dataset_name
 
@@ -114,6 +125,9 @@ class PlanningPipeline:
             flush_interval_ms=app.matching_runtime.match_flush_interval_ms,
         ) as match_runtime:
             matched = iter_matched_ok(runtime=match_runtime, enriched_source=enriched)
+            # ResolveContextStage буферизует весь поток matched, строит batch_index,
+            # и передаёт записи без изменений. get() в ResolveStage.run() уже корректен.
+            contextualized = self._resolve_context_stage.run(matched)
             resolve_usecase = ResolveUseCase(
                 report_items_limit=report_items_limit,
                 include_resolved_items=False,
@@ -122,7 +136,7 @@ class PlanningPipeline:
             )
             resolved = iter_ok(
                 resolve_usecase.iter_resolved(
-                    matched_source=matched,
+                    matched_source=contextualized,
                     resolve_stage=self._resolve_stage,
                     dataset=dataset_name,
                     pending_replay=planning_runtime,  # PLANNER-DEC-001

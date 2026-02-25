@@ -6,12 +6,21 @@
     - Контракты стадий: StageContract (canonical, DEC-004)
     - Описание engine-протоколов: MatchProcessor, ResolveProcessor
     - Оркестратор: PipelineOrchestrator с двухуровневыми lifecycle hooks и batching
-    - Конкретные реализации: MapStage, NormalizeStage, EnrichStage, MatchStage, ResolveStage
+    - Конкретные реализации:
+        MapStage, NormalizeStage, EnrichStage, MatchStage,
+        ResolveContextStage (буферизация + batch_index),
+        ResolveStage (lazy per-record resolve)
 
 Граница ответственности:
     - Owns: stage contracts, stage implementations, orchestration logic, batching
     - Does NOT: load DSL config, handle I/O, build execution context (StageExecutionContext)
     - Does NOT: implement command-specific orchestration (reporting, micro-batching policies)
+
+ResolveContextStage / ResolveStage — парная модель (DEC-004 Stage 4):
+    ResolveContextStage буферизует весь батч, строит batch_index через resolver,
+    сохраняет его в IBatchIndexService.set_index() и передаёт записи без изменений.
+    ResolveStage читает индекс через IBatchIndexService.get() и разрешает записи лениво.
+    IBatchIndexService — разделяемый Singleton в PipelineRunContext (DI-контейнер).
 """
 
 from __future__ import annotations
@@ -27,11 +36,8 @@ from connector.domain.ports.transform.sources import SourceMapper
 from connector.domain.transform.enrich import EnricherEngine
 from connector.domain.transform.normalize import NormalizerEngine
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.matcher.match_models import (
-    MatchedRow,
-    MatchDecisionStatus,
-    resolve_decision_status,
-)
+from connector.domain.transform.matcher.match_models import MatchedRow
+from connector.domain.transform.resolver.ports import IBatchIndexService
 
 T = TypeVar("T")
 T_in = TypeVar("T_in")
@@ -543,46 +549,124 @@ class MatchStage:
             yield matched
 
 
+class ResolveContextStage:
+    """
+    Назначение:
+        Буферизующая стадия, предшествующая ResolveStage в парной модели DEC-004.
+
+        Собирает все matched-записи из source в список, строит batch-индекс
+        через ResolveProcessor.build_batch_index() и сохраняет его в
+        IBatchIndexService.set_index(). Затем передаёт записи без изменений.
+
+    Инварианты:
+        - Буферизует весь входной поток в память.
+        - set_index() вызывается ровно один раз за вызов run().
+        - Не изменяет и не фильтрует TransformResult.
+
+    Граница ответственности:
+        - Owns: буферизация источника и построение batch-индекса.
+        - Does NOT: логика resolve, мутация записей.
+        - Does NOT: знать о micro-batching или транзакциях.
+
+    Жизненный цикл (DI):
+        Singleton в PipelineContainer. batch_index и resolver разделяются с ResolveStage.
+        batch_index: IBatchIndexService — Singleton в PipelineRunContext.
+    """
+
+    stage_name: str = "resolve_context"
+
+    def __init__(
+        self,
+        batch_index: IBatchIndexService,
+        resolver: ResolveProcessor,
+    ) -> None:
+        self._batch_index = batch_index
+        self._resolver = resolver
+
+    def run(self, source: Iterable[TransformResult]) -> Iterable[TransformResult]:
+        """
+        Назначение:
+            Буферизовать source, построить batch-индекс, передать записи без изменений.
+
+        Алгоритм:
+            1. Собрать все TransformResult из source в список.
+            2. Построить batch_index: {lookup_key: [ids]} через resolver.build_batch_index().
+            3. Сохранить индекс в IBatchIndexService.set_index() — перезаписывает предыдущий.
+            4. yield from all_records — передать записи потребителю без изменений.
+
+        Примечание:
+            Как generator-функция (yield from), реально буферизует source
+            при первой итерации (lazy execution). ResolveStage.run() вызывает
+            IBatchIndexService.get() после того, как получит первую запись —
+            к этому моменту set_index() уже выполнен.
+        """
+        all_records = list(source)
+        index = self._resolver.build_batch_index(all_records)
+        self._batch_index.set_index(index)
+        yield from all_records
+
+
 class ResolveStage:
     """
     Назначение:
-        Стадия resolve (matched → resolved). Реализует StageContract.
+        Lazy стадия resolve (matched → resolved). Реализует StageContract.
+
+        Читает batch-индекс из IBatchIndexService (заполняется ResolveContextStage)
+        и разрешает каждую запись per-record без внутренней буферизации.
 
     Инварианты:
-        - Stateless functor (resolver инъецируется).
-        - UseCase ответственен за транзакции и drain_expired.
-        - dataset kwarg в run() deprecated: dataset перейдёт в context.metadata в Этапе 2.
+        - Lazy generator: не буферизует source.
+        - IBatchIndexService.get() вызывается один раз перед началом итерации;
+          ResolveContextStage гарантирует set_index() до первого yield.
+        - target_id_map всегда пустой: cross-record linking через batch_index.
+        - resolver инъецируется через DI (shared Singleton с ResolveContextStage).
+
+    Граница ответственности:
+        - Owns: per-record resolve логика, diagnostic boundary, сборка TransformResult.
+        - Does NOT: буферизация, построение batch_index, micro-batching.
+
+    Жизненный цикл (DI):
+        Singleton в PipelineContainer. Разделяет resolver и batch_index
+        с ResolveContextStage через PipelineRunContext.
     """
 
     stage_name: str = "resolve"
 
-    def __init__(self, resolver: ResolveProcessor, catalog: ErrorCatalog) -> None:
+    def __init__(
+        self,
+        resolver: ResolveProcessor,
+        catalog: ErrorCatalog,
+        *,
+        batch_index: IBatchIndexService,
+    ) -> None:
         self.resolver = resolver
         self.catalog = catalog
+        self._batch_index = batch_index
 
     def run(
         self,
         source: Iterable[TransformResult[MatchedRow]],
-        *,
-        dataset: str | None = None,
     ) -> Iterable[TransformResult]:
         """
         Назначение:
-            Обработать батч matched-записей: построить batch_index, разрешить каждую запись.
+            Lazy resolve: одна запись на входе → одна запись на выходе.
 
-        Note:
-            dataset kwarg deprecated — в Этапе 2 DEC-004 dataset перейдёт в
-            StageExecutionContext.metadata.dataset_name. Вызов без dataset уже допустим
-            (batch_index будет пустым, что корректно для run без context).
+        Алгоритм:
+            1. Для каждой matched-записи получить batch_index лениво (однократно, при первой записи).
+            2. Если row is None: передать без изменений.
+            3. Иначе: вызвать resolver.resolve() с batch_index и target_id_map={}.
+            4. Собрать результат в TransformResult.
+
+        Примечание:
+            batch_index читается лениво при первой записи из source. Это гарантирует,
+            что ResolveContextStage.run() успевает вызвать set_index() до вызова get()
+            — ResolveContextStage буферизует source и вызывает set_index() при первом yield,
+            что происходит в момент итерации первой записи из source в этом методе.
         """
-        matched_rows: list[TransformResult[MatchedRow]] = []
+        batch_index: dict[str, list[str]] | None = None
         for matched in source:
-            matched_rows.append(matched)
-
-        batch_index = _build_batch_index(matched_rows, self.resolver)
-        target_id_map = _build_target_id_map(matched_rows)
-
-        for matched in matched_rows:
+            if batch_index is None:
+                batch_index = self._batch_index.get()
             if matched.row is None:
                 yield matched  # type: ignore[return-value]
                 continue
@@ -598,7 +682,7 @@ class ResolveStage:
             ):
                 resolved_row, errors, warnings = self.resolver.resolve(
                     matched.row,
-                    target_id_map=target_id_map,
+                    target_id_map={},
                     meta=matched.meta,
                     batch_index=batch_index,
                 )
@@ -616,41 +700,3 @@ class ResolveStage:
             )
 
 
-# ════════════════════════════════════════════════════════════════════════════════
-# Module-level helpers
-# ════════════════════════════════════════════════════════════════════════════════
-
-def _build_target_id_map(matched_rows: list[TransformResult[MatchedRow]]) -> dict[str, str]:
-    """
-    Назначение:
-        Построить карту identity→target_id для resolve-стадии.
-
-    Алгоритм:
-        - Для matched берём _id из existing.
-        - Иначе используем target_id из matched-строки.
-    """
-    mapping: dict[str, str] = {}
-    for item in matched_rows:
-        row = item.row
-        if row is None:
-            continue
-        if resolve_decision_status(row) == MatchDecisionStatus.MATCHED and row.existing:
-            target_id = row.existing.get("_id")
-        else:
-            target_id = row.target_id
-        if target_id:
-            mapping[row.identity.primary_value] = str(target_id)
-    return mapping
-
-
-def _build_batch_index(
-    matched_rows: list[TransformResult[MatchedRow]],
-    resolver: ResolveProcessor,
-) -> dict[str, list[str]]:
-    """
-    Назначение:
-        Подготовить плоский индекс батча для resolve-правил.
-
-    Структура: ``{lookup_key: [ids]}`` — без вложенности по dataset.
-    """
-    return resolver.build_batch_index(matched_rows)
