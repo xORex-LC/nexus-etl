@@ -1,5 +1,5 @@
 """
-Tests for StageFactory and StageDescriptor (DEC-004 Stage 3).
+Tests for StageFactory and StageDescriptor (DEC-004 Stage 3 / Stage 4).
 
 Architecture:
     - StageDescriptor is a frozen dataclass.
@@ -14,7 +14,9 @@ Unit:
     - Introspection via registered_types.
 
 Integration:
-    - build_stage_factory() registers all 5 stage types.
+    - build_stage_factory() registers all 6 stage types (incl. resolve_context).
+    - resolve_context и resolve зарегистрированы для introspection;
+      create() для них бросает NotImplementedError (создаются напрямую в PipelineContainer).
 """
 
 from __future__ import annotations
@@ -254,10 +256,25 @@ class TestStageFactoryFailFast:
 
 class TestBuildStageFactory:
 
-    def test_all_5_stage_types_registered(self):
+    def test_all_6_stage_types_registered(self):
         from connector.delivery.cli.pipeline_registry import build_stage_factory
 
         factory = build_stage_factory()
 
-        expected = {"map", "normalize", "enrich", "match", "resolve"}
+        expected = {"map", "normalize", "enrich", "match", "resolve", "resolve_context"}
         assert set(factory.registered_types) == expected
+
+    def test_resolve_context_create_raises_not_implemented(self):
+        """resolve_context создаётся напрямую в PipelineContainer — create() не используется."""
+        from connector.delivery.cli.pipeline_registry import build_stage_factory
+        from unittest.mock import Mock
+        from connector.domain.transform.context import StageExecutionContext, PipelineMetadata
+
+        factory = build_stage_factory()
+        catalog = Mock()
+        metadata = PipelineMetadata(run_id="r", dataset_name="ds", catalog=catalog, sink_spec=None)
+        ctx = StageExecutionContext(metadata=metadata, capabilities={})
+
+        with pytest.raises(NotImplementedError):
+            factory.create("resolve_context", Mock(), ctx)
+
