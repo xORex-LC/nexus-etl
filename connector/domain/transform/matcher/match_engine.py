@@ -46,8 +46,9 @@ class MatchEngine:
         - dataset/cache_gateway/catalog — scattered params (legacy путь).
 
     dedup_store:
-        Если не передан — создаётся LocalSourceDedupStore() по умолчанию.
-        В Stage 4 будет передаваться явно из PipelineRunContext через DI.
+        Production path (PipelineContainer) передаёт экземпляр явно через DI
+        из PipelineRunContext. Fallback LocalSourceDedupStore() оставлен для
+        прямого/тестового конструирования MatchEngine.
     """
 
     def __init__(

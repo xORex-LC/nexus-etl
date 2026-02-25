@@ -64,7 +64,10 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
              pipeline.catalog.override(catalog), \
              pipeline.include_deleted.override(include_deleted_value):
             match_stage = pipeline.match_stage()
+            resolve_context_stage = pipeline.resolve_context_stage()
             resolve_stage = pipeline.resolve_stage()
+            pending_expiry = pipeline.pending_expiry()
+            resolve_stage_hooks = pipeline.resolve_stage_hooks()
 
             row_source = pipeline.row_source()
             enriched_rows = iter_ok(
@@ -87,6 +90,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                     runtime=match_runtime,
                     enriched_source=enriched_rows,
                 )
+                contextualized_rows = resolve_context_stage.run(matched_rows)
                 resolve_usecase = ResolveUseCase(
                     report_items_limit=report_items_limit_value,
                     include_resolved_items=include_resolved_items_value,
@@ -94,11 +98,13 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                     flush_interval_ms=app_settings.matching_runtime.resolve_flush_interval_ms,
                 )
                 return resolve_usecase.run(
-                    matched_source=matched_rows,
+                    matched_source=contextualized_rows,
                     resolve_stage=resolve_stage,
                     dataset=dataset_name,
                     report=report,
                     catalog=catalog,
+                    pending_expiry=pending_expiry,
+                    resolve_hooks=resolve_stage_hooks,
                 )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="resolve", exc=exc)
