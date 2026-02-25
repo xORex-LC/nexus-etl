@@ -4,7 +4,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-import connector.delivery.commands.check_api as check_api_command
+import connector.delivery.cli.containers as containers_mod
 from connector.infra.target.core.factory import TargetRuntimeBuildResult
 from connector.main import app
 
@@ -83,7 +83,7 @@ def test_check_api_smoke_works_with_slice_wiring(tmp_path: Path, monkeypatch) ->
             effective_mode="core",
         )
 
-    monkeypatch.setattr(check_api_command, "build_target_runtime_with_info", _build_target_runtime_with_info)
+    monkeypatch.setattr(containers_mod, "build_target_runtime_with_info", _build_target_runtime_with_info)
 
     result = runner.invoke(
         app,

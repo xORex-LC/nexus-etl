@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterable
 
 from connector.domain.planning.plan_models import Operation, PlanItem, PlanSummary
+from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.matcher.match_models import ResolvedRow, ResolveOp
 
 @dataclass
@@ -101,6 +102,30 @@ class PlanBuilder:
             items=self.plan_items,
             summary=summary,
         )
+
+    def build_from_stream(
+        self,
+        resolved_rows: Iterable[TransformResult],
+    ) -> PlanBuildResult:
+        """
+        Назначение:
+            Полный цикл: принять поток resolved-строк, добавить в builder, вернуть результат.
+        Контракт:
+            - Строки с row=None пропускаются (ошибки транспорта).
+            - Строки с resolved.errors пропускаются (ошибки трансформации).
+            - Строки с ResolveOp.CONFLICT пропускаются (конфликт: два кандидата).
+            - Остальные добавляются через add_resolved().
+        """
+        for resolved in resolved_rows:
+            resolved_row = resolved.row
+            if resolved_row is None:
+                continue
+            if resolved.errors:
+                continue
+            if resolved_row.op == ResolveOp.CONFLICT:
+                continue
+            self.add_resolved(resolved_row)
+        return self.build()
 
     def _serialize_plan_item(self, plan_item: PlanItem) -> dict[str, Any]:
         """

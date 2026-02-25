@@ -17,6 +17,7 @@ dependencies = [
   "structlog>=25.0.0",
   "cryptography>=43.0.0",
   "dependency-injector>=4.40.0",
+  "polars>=1.0.0",
 ]
 
 [project.optional-dependencies]

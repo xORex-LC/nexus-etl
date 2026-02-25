@@ -526,9 +526,9 @@ def test_enricher_warns_when_candidate_violates_sink_type():
     assert enriched.row.organization_id == 10
 
 
-def test_employees_spec_wires_sink_spec_into_normalizer():
+def test_employees_spec_sink_spec_has_dataset():
     spec = make_employees_spec()
-    stage = spec.build_normalize_stage(catalog=CATALOG)
+    sink_spec = spec.build_sink_spec()
 
-    assert stage.normalizer.core.sink_spec is not None
-    assert stage.normalizer.core.sink_spec.dataset == "employees"
+    assert sink_spec is not None
+    assert sink_spec.dataset == "employees"

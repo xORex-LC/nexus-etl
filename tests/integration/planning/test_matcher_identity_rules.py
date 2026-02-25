@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from connector.domain.models import RowRef
 from connector.domain.transform.matcher.context import MatchContext
+from connector.domain.transform.matcher.dedup_store import LocalSourceDedupStore
 from connector.domain.transform.matcher.match_core import MatchCore
 from connector.domain.transform_dsl.compilers.match import MatchDsl
 from connector.domain.transform.matcher.match_models import MatchDecisionStatus
@@ -111,6 +112,7 @@ def test_matcher_uses_next_identity_rule_when_primary_missing():
         resolve_rules=resolve_rules,
         include_deleted=False,
         catalog=CATALOG,
+        dedup_store=LocalSourceDedupStore(),
     )
 
     match_context = _make_context(match_key="", usr_org_tab_num="TAB-1")
@@ -141,6 +143,7 @@ def test_matcher_returns_conflict_when_secondary_rule_has_multiple_candidates():
         resolve_rules=resolve_rules,
         include_deleted=False,
         catalog=CATALOG,
+        dedup_store=LocalSourceDedupStore(),
     )
 
     match_context = _make_context(match_key="", usr_org_tab_num="TAB-1")

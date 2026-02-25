@@ -1,6 +1,6 @@
 # DSL-PROBLEM-002: Архитектурная связность DSL Core и дрейф контрактов при росте
 
-> **Статус**: Решена в DSL-DEC-002
+> **Статус**: Решена в [DSL-DEC-002](./DSL-DEC-002-modular-dsl-core-and-contract-stabilization.md)
 > **Дата создания**: 2026-02-13
 > **Затронутые компоненты**: `connector/domain/dsl/specs/*`, `connector/domain/dsl/loader/*`, `connector/domain/dsl/build_options.py`, `connector/domain/dsl/ops.py`, `connector/infra/cache/sync/dsl_adapter.py`
 

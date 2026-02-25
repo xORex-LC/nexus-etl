@@ -3,13 +3,12 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
-from connector.delivery.cli.context import CommandContext
+from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.pipeline_config import CheckpointName
 from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
-    build_cache,
     build_dataset_spec,
     build_diagnostics_catalog,
-    build_pipeline_context,
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.usecases.mapping_usecase import MappingUseCase
@@ -23,7 +22,7 @@ class Options:
     include_mapped_items: bool | None = None
 
 
-def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
     app_settings = ctx.app_settings
     if app_settings is None:
@@ -46,36 +45,28 @@ def handler(ctx: CommandContext, opts: Options, report) -> CommandResult:
     )
     report.set_meta(dataset=dataset_name, items_limit=report_items_limit_value)
 
-    gateway = None
     try:
-        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
-        pipeline_ctx = build_pipeline_context(
-            dataset_spec=dataset_spec,
-            dataset_name=dataset_name,
-            cache_roles=cache_roles,
-            resolver_settings=app_settings.resolver,
-            observability_settings=app_settings.observability,
-            catalog=catalog,
-            csv_has_header=csv_has_header_value,
-        )
-        usecase = MappingUseCase(
-            report_items_limit=report_items_limit_value,
-            include_mapped_items=include_mapped_items_value,
-        )
-        return usecase.run(
-            row_source=pipeline_ctx.row_source,
-            map_stage=pipeline_ctx.map_stage,
-            dataset=dataset_name,
-            logger=ctx.logger,
-            run_id=run_id,
-            report=report,
-            catalog=catalog,
-        )
+        pipeline = ctx.container.pipeline
+        composer = pipeline.pipeline_composer()
+        with pipeline.dataset_spec.override(dataset_spec), \
+             pipeline.run_id.override(run_id), \
+             pipeline.csv_has_header.override(csv_has_header_value), \
+             pipeline.catalog.override(catalog):
+            usecase = MappingUseCase(
+                report_items_limit=report_items_limit_value,
+                include_mapped_items=include_mapped_items_value,
+            )
+            return usecase.run(
+                row_source=pipeline.row_source(),
+                pipeline=composer.compose(CheckpointName.MAP),
+                dataset=dataset_name,
+                logger=ctx.logger,
+                run_id=run_id,
+                report=report,
+                catalog=catalog,
+            )
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="mapping", exc=exc)
-    finally:
-        if gateway is not None:
-            gateway.close()
 
 
 __all__ = ["handler", "Options"]

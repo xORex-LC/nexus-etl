@@ -1,0 +1,9 @@
+version: 1
+items:
+  organizations:
+    csv_path: dictionaries/organizations.csv
+    content_sha256: 59aff796321b42f93fdd63c8e32016968e3e8a9a4fc00c79caa5370286f9568a
+    schema_hash: c797aaf53db754500bb427b7b825a864911ae361a34288f4e896a9d4ac3d5854
+    row_count: 2
+    updated_at_utc: "2026-02-23T12:00:00Z"
+    owner: dataset-employees

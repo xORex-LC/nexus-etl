@@ -4,7 +4,7 @@ import logging
 
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.diagnostics.catalog import ErrorCatalog
-from connector.domain.transform.stages.stages import MapStage
+from connector.domain.transform.stages.stages import PipelineOrchestrator
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.models import DiagnosticStage
 from connector.domain.transform.core.result_processor import TransformResultProcessor
@@ -27,7 +27,7 @@ class MappingUseCase:
     def run(
         self,
         row_source,
-        map_stage: MapStage,
+        pipeline: PipelineOrchestrator,
         dataset: str,
         logger: logging.Logger,
         run_id: str,
@@ -47,7 +47,7 @@ class MappingUseCase:
         )
 
         extractor = Extractor(row_source, catalog=catalog)
-        for map_result in map_stage.run(extractor.run()):
+        for map_result in pipeline.run(extractor.run()):
             processor.process(map_result)
 
         return processor.finalize()

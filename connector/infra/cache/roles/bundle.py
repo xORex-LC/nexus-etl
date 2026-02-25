@@ -7,7 +7,6 @@ from connector.domain.ports.cache.roles import (
     CacheAdminPort,
     CacheRefreshPort,
     EnrichLookupPort,
-    PendingReplayPort,
     PlanningRuntimePort,
 )
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
@@ -28,7 +27,6 @@ class SqliteCacheRolePorts:
     cache_refresh: CacheRefreshPort
     enrich_lookup: EnrichLookupPort
     planning_runtime: PlanningRuntimePort
-    pending_replay: PendingReplayPort
     apply_runtime: ApplyRuntimePort
 
 
@@ -47,7 +45,6 @@ def build_sqlite_cache_role_ports(gateway: SqliteCacheGateway) -> SqliteCacheRol
         cache_refresh=cache_refresh,
         enrich_lookup=enrich_lookup,
         planning_runtime=planning_runtime,
-        pending_replay=planning_runtime,
         apply_runtime=apply_runtime,
     )
 

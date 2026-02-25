@@ -1,7 +1,6 @@
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.infra.secrets.dict_provider import DictSecretProvider
-from connector.infra.secrets.null_provider import NullSecretProvider
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec, RequestExecutorProtocol
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -79,8 +78,7 @@ def test_apply_create_uses_secret_provider_when_missing_password():
 
 
 def test_apply_create_fails_when_secret_missing():
-    provider = NullSecretProvider()
-    adapter = make_employees_spec(secrets=provider).get_apply_adapter()
+    adapter = make_employees_spec().get_apply_adapter()
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor)
     plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
@@ -101,9 +99,8 @@ def test_apply_create_fails_when_secret_missing():
     assert diag.code == "SECRET_REQUIRED"
 
 
-class CountingProvider(NullSecretProvider):
+class CountingProvider:
     def __init__(self):
-        super().__init__()
         self.calls = 0
 
     def get_secret(self, **kwargs):

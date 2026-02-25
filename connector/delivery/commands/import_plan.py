@@ -6,16 +6,18 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.delivery.cli.containers import (
-    build_cache,
-    build_dataset_spec,
-    ensure_vault_startup_ready,
-    open_secret_store,
+from connector.common.time import getNowIso
+from connector.delivery.cli.containers import build_dataset_spec, build_diagnostics_catalog
+from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.commands.common import (
+    attach_dictionary_report_snapshot_if_available,
+    result_with,
+    sqlite_cache_error_result,
+    vault_startup_error_result,
 )
-from connector.delivery.cli.context import CommandContext
-from connector.delivery.commands.common import result_with, sqlite_cache_error_result, vault_startup_error_result
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
     VaultStartupKeyValidationError,
@@ -32,8 +34,8 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
     VAULT_RUNTIME_MODE_OFF,
     resolve_vault_runtime_mode,
 )
+from connector.infra.artifacts.plan_writer import write_plan_file
 from connector.infra.logging.setup import logEvent
-from connector.usecases.import_plan_service import ImportPlanService
 
 
 @dataclass(frozen=True)
@@ -54,7 +56,7 @@ _STARTUP_ERRORS = (
 )
 
 
-def handler(ctx: CommandContext, opts: Options) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResult:
     """
     Назначение:
         Запустить сценарий import-plan через CLI handler.
@@ -64,7 +66,6 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
         raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 
-    gateway = None
     try:
         dataset_name, _spec = build_dataset_spec(opts.dataset, app_settings.dataset)
         runtime_mode_decision = resolve_vault_runtime_mode(
@@ -98,10 +99,10 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
             )
             return result_with(SystemErrorCode.INTERNAL_ERROR)
 
-        if rollout_decision.startup_guard_required:
-            ensure_vault_startup_ready(paths_settings=app_settings.paths)
-
-        gateway, cache_roles, _cache_specs = build_cache(app_settings.paths)
+        secret_store = None
+        if rollout_decision.vault_enabled:
+            ctx.container.sqlite.vault_ready.init()
+            secret_store = ctx.container.vault.write_service()
 
         include_deleted_value = (
             opts.include_deleted if opts.include_deleted is not None else app_settings.dataset.include_deleted
@@ -115,27 +116,47 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
             opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
         )
 
-        with open_secret_store(
-            paths_settings=app_settings.paths,
-            enabled=rollout_decision.vault_enabled,
-        ) as secret_store:
-            service = ImportPlanService()
-            return service.run(
-                pending_replay=cache_roles.pending_replay,
-                enrich_lookup=cache_roles.enrich_lookup,
-                planning_runtime=cache_roles.planning_runtime,
-                csv_has_header=csv_has_header_value,
-                include_deleted=include_deleted_value,
-                observability_settings=app_settings.observability,
-                resolver_settings=app_settings.resolver,
-                matching_runtime_settings=app_settings.matching_runtime,
-                dataset=dataset_name,
-                logger=ctx.logger,
+        catalog = build_diagnostics_catalog(
+            dataset_name,
+            strict=app_settings.observability.diagnostics_strict,
+        )
+
+        pipeline = ctx.container.pipeline
+        with pipeline.dataset_spec.override(_spec), \
+             pipeline.run_id.override(run_id), \
+             pipeline.csv_has_header.override(csv_has_header_value), \
+             pipeline.catalog.override(catalog), \
+             pipeline.include_deleted.override(include_deleted_value), \
+             pipeline.secret_store.override(secret_store):
+
+            generated_at = getNowIso()
+            plan_pipeline = pipeline.planning_pipeline()
+            planning_runtime = ctx.container.cache.roles().planning_runtime
+            with plan_pipeline.open(
                 run_id=run_id,
+                planning_runtime=planning_runtime,
                 report_items_limit=report_items_limit_value,
+            ) as resolved_rows:
+                plan_result = PlanBuilder().build_from_stream(resolved_rows)
+
+            plan_meta = {
+                "csv_path": None,
+                "include_deleted": include_deleted_value,
+                "dataset": dataset_name,
+            }
+            plan_path = write_plan_file(
+                plan_items=plan_result.items,
+                summary=plan_result.summary_as_dict(),
+                meta=plan_meta,
                 report_dir=app_settings.paths.report_dir,
-                secret_store=secret_store,
+                run_id=run_id,
+                generated_at=generated_at,
             )
+            logEvent(ctx.logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
+            result = CommandResult()
+            result.add_code(SystemErrorCode.OK)
+            attach_dictionary_report_snapshot_if_available(ctx=ctx, report=report)
+            return result
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
@@ -147,9 +168,6 @@ def handler(ctx: CommandContext, opts: Options) -> CommandResult:
         logEvent(ctx.logger, logging.ERROR, run_id, "plan", f"Import plan failed: {exc}")
         typer.echo("ERROR: import plan failed (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
-    finally:
-        if gateway is not None:
-            gateway.close()
 
 
 def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:
