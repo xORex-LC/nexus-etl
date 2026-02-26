@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from connector.config.models import AppConfig
+from connector.config.projections import to_cache_db_config
 from pathlib import Path
 
 import pytest
 
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
-from connector.config.app_settings import SqliteSettings, build_cache_db_config
 from connector.infra.cache.backends.sqlite.handlers.generic_handler import GenericCacheHandler
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.cache_spec import CacheSpec, FieldSpec
@@ -32,7 +33,7 @@ def _make_spec() -> CacheSpec:
 def _setup_db(tmp_path: Path, spec: CacheSpec) -> tuple[SqliteEngine, GenericCacheHandler]:
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), db_path)
+    engine = open_sqlite(to_cache_db_config(AppConfig()), db_path)
     handler = GenericCacheHandler(spec)
     ensure_cache_ready(engine, [spec])
     return engine, handler

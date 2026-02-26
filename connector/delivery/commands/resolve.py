@@ -26,26 +26,26 @@ class Options:
 
 def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
-    app_settings = ctx.app_settings
-    if app_settings is None:
+    app_config = ctx.app_config
+    if app_config is None:
         raise ValueError("App settings are not initialized")
 
-    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_config.dataset)
     catalog = ctx.catalog or build_diagnostics_catalog(
         dataset_name,
-        strict=app_settings.observability.diagnostics_strict,
+        strict=app_config.observability.diagnostics_strict,
     )
 
     csv_has_header_value = (
-        opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
+        opts.csv_has_header if opts.csv_has_header is not None else app_config.dataset.csv_has_header
     )
     include_deleted_value = (
-        opts.include_deleted if opts.include_deleted is not None else app_settings.dataset.include_deleted
+        opts.include_deleted if opts.include_deleted is not None else app_config.dataset.include_deleted
     )
     report_items_limit_value = (
         opts.report_items_limit
         if opts.report_items_limit is not None
-        else app_settings.observability.report_items_limit
+        else app_config.observability.report_items_limit
     )
     include_resolved_items_value = (
         opts.include_resolved_items if opts.include_resolved_items is not None else False
@@ -69,8 +69,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
             resolve_usecase = ResolveUseCase(
                 report_items_limit=report_items_limit_value,
                 include_resolved_items=include_resolved_items_value,
-                batch_size=app_settings.matching_runtime.resolve_batch_size,
-                flush_interval_ms=app_settings.matching_runtime.resolve_flush_interval_ms,
+                batch_size=app_config.resolver.resolve_batch_size,
+                flush_interval_ms=app_config.resolver.resolve_flush_interval_ms,
             )
             return resolve_usecase.run(
                 matched_source=contextualized,

@@ -20,8 +20,8 @@ class Options:
 
 
 def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
-    app_settings = ctx.app_settings
-    if app_settings is None:
+    app_config = ctx.app_config
+    if app_config is None:
         raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 

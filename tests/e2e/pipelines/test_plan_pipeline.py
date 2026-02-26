@@ -4,8 +4,9 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
+from connector.config.loader import load_app_config
+from connector.config.projections import to_cache_db_config, to_identity_db_config
 from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
-from connector.config.app_settings import SqliteSettings, build_cache_db_config, build_identity_db_config
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
@@ -53,7 +54,7 @@ def make_row(
     ]
 
 def _build_repo(db_path: str) -> SqliteCacheRepository:
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), db_path)
+    engine = open_sqlite(to_cache_db_config(load_app_config().app_config), db_path)
     cache_specs = list(load_cache_dsl_runtime().cache_specs)
     ensure_cache_ready(engine, cache_specs)
     return SqliteCacheRepository(engine, cache_specs)
@@ -61,7 +62,7 @@ def _build_repo(db_path: str) -> SqliteCacheRepository:
 
 def _open_identity_engine(cache_db_path: str) -> SqliteEngine:
     identity_db_path = str(Path(cache_db_path).parent / "identity.sqlite3")
-    engine = open_sqlite(build_identity_db_config(SqliteSettings()), identity_db_path)
+    engine = open_sqlite(to_identity_db_config(load_app_config().app_config), identity_db_path)
     ensure_identity_schema(engine)
     return engine
 

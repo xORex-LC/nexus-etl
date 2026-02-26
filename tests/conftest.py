@@ -7,5 +7,5 @@ import os
 # На CI/локальных тестах режим WAL в некоторых средах может инициализироваться
 # очень медленно для каждого нового файла БД. Для тестового контура достаточно
 # режима DELETE, он существенно быстрее на cold-start.
-os.environ.setdefault("ANKEY_CACHE_SQLITE_JOURNAL_MODE", "DELETE")
+os.environ.setdefault("ANKEY_SQLITE__CACHE_JOURNAL_MODE", "DELETE")
 

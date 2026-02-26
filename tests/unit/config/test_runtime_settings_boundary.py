@@ -7,7 +7,7 @@ import pytest
 import typer
 
 from connector.config.models import AppConfig
-from connector.config.config import SettingsIssue, SettingsParseError
+from connector.config.config import SettingsIssue, SettingsLoadError
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.runtime import run_without_report
@@ -32,7 +32,7 @@ def test_run_without_report_handles_settings_load_error(tmp_path) -> None:
     )
 
     def handler(_ctx, _opts):
-        raise SettingsParseError(
+        raise SettingsLoadError(
             "invalid settings",
             [
                 SettingsIssue(

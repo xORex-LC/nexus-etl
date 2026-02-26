@@ -4,8 +4,9 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import httpx
+from connector.config.loader import load_app_config
+from connector.config.projections import to_cache_db_config, to_identity_db_config
 from connector.infra.sqlite.engine import open_sqlite
-from connector.config.app_settings import SqliteSettings, build_cache_db_config
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
@@ -75,7 +76,7 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
 def test_cache_schema_created(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = Path(cache_dir) / "ankey_cache.sqlite3"
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
+    engine = open_sqlite(to_cache_db_config(load_app_config().app_config), str(db_path))
     try:
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         ensure_cache_ready(engine, cache_specs)
@@ -92,7 +93,7 @@ def test_cache_schema_created(tmp_path: Path):
 def test_cache_upsert_user(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = Path(cache_dir) / "ankey_cache.sqlite3"
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
+    engine = open_sqlite(to_cache_db_config(load_app_config().app_config), str(db_path))
     try:
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         ensure_cache_ready(engine, cache_specs)
@@ -187,7 +188,7 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
     db_path = Path(cache_dir) / "ankey_cache.sqlite3"
     assert db_path.exists()
 
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
+    engine = open_sqlite(to_cache_db_config(load_app_config().app_config), str(db_path))
     try:
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         repo = SqliteCacheRepository(engine, cache_specs)
@@ -257,7 +258,7 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
     assert result.exit_code == 0
 
     db_path = Path(cache_dir) / "ankey_cache.sqlite3"
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
+    engine = open_sqlite(to_cache_db_config(load_app_config().app_config), str(db_path))
     try:
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         repo = SqliteCacheRepository(engine, cache_specs)
@@ -276,7 +277,7 @@ def test_cache_does_not_store_passwords(monkeypatch, tmp_path: Path):
     assert result.exit_code == 0
 
     db_path = Path(cache_dir) / "ankey_cache.sqlite3"
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), str(db_path))
+    engine = open_sqlite(to_cache_db_config(load_app_config().app_config), str(db_path))
     try:
         columns = [row[1] for row in engine.fetchall("PRAGMA table_info(users)")]
     finally:

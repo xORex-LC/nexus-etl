@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from connector.config.models import AppConfig
+from connector.config.projections import to_vault_db_config
 from pathlib import Path
 
 import pytest
 
-from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.domain.secrets.models import VaultDekRecord, VaultProbeRecord, VaultSecretRecord
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import SCHEMA_VERSION
@@ -13,7 +14,7 @@ from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
 
 def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, SqliteEngine]:
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         str(tmp_path / "cache" / "ankey_vault.sqlite3"),
     )
     return SqliteVaultRepository(engine), engine

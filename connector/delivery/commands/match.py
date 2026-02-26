@@ -25,26 +25,26 @@ class Options:
 
 def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     run_id = ctx.run_id
-    app_settings = ctx.app_settings
-    if app_settings is None:
+    app_config = ctx.app_config
+    if app_config is None:
         raise ValueError("App settings are not initialized")
 
-    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+    dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_config.dataset)
     catalog = ctx.catalog or build_diagnostics_catalog(
         dataset_name,
-        strict=app_settings.observability.diagnostics_strict,
+        strict=app_config.observability.diagnostics_strict,
     )
 
     csv_has_header_value = (
-        opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
+        opts.csv_has_header if opts.csv_has_header is not None else app_config.dataset.csv_has_header
     )
     include_deleted_value = (
-        opts.include_deleted if opts.include_deleted is not None else app_settings.dataset.include_deleted
+        opts.include_deleted if opts.include_deleted is not None else app_config.dataset.include_deleted
     )
     report_items_limit_value = (
         opts.report_items_limit
         if opts.report_items_limit is not None
-        else app_settings.observability.report_items_limit
+        else app_config.observability.report_items_limit
     )
     include_matched_items_value = (
         opts.include_matched_items if opts.include_matched_items is not None else False

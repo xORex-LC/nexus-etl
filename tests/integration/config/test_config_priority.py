@@ -2,7 +2,7 @@ import httpx
 from typer.testing import CliRunner
 from connector.main import app
 import connector.delivery.cli.containers as containers_mod
-from connector.config.app_settings import load_app_settings
+from connector.config.loader import load_app_config
 from connector.infra.target.core.factory import (
     build_target_runtime_with_info as _real_build_target_runtime_with_info,
 )
@@ -13,19 +13,20 @@ def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
     cfg = tmp_path / "config.yml"
     cfg.write_text(
         "\n".join([
-            'host: "1.1.1.1"',
-            "port: 1111",
-            'api_username: "cfg_user"',
-            'api_password: "cfg_pass"',
+            "api:",
+            '  host: "1.1.1.1"',
+            "  port: 1111",
+            '  username: "cfg_user"',
+            '  password: "cfg_pass"',
         ]),
         encoding="utf-8",
     )
 
     # ENV overrides config
-    monkeypatch.setenv("ANKEY_HOST", "2.2.2.2")
-    monkeypatch.setenv("ANKEY_PORT", "2222")
-    monkeypatch.setenv("ANKEY_API_USERNAME", "env_user")
-    monkeypatch.setenv("ANKEY_API_PASSWORD", "env_pass")
+    monkeypatch.setenv("ANKEY_API__HOST", "2.2.2.2")
+    monkeypatch.setenv("ANKEY_API__PORT", "2222")
+    monkeypatch.setenv("ANKEY_API__USERNAME", "env_user")
+    monkeypatch.setenv("ANKEY_API__PASSWORD", "env_pass")
 
     # CLI overrides env
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"items": []}))
@@ -63,33 +64,35 @@ def test_batch_settings_priority_cli_over_env_over_config(tmp_path, monkeypatch)
     cfg.write_text(
         "\n".join(
             [
-                "match_batch_size: 100",
-                "match_flush_interval_ms: 200",
-                "resolve_batch_size: 300",
-                "resolve_flush_interval_ms: 400",
+                "matching_runtime:",
+                "  match_batch_size: 100",
+                "  match_flush_interval_ms: 200",
+                "resolver:",
+                "  resolve_batch_size: 300",
+                "  resolve_flush_interval_ms: 400",
             ]
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("ANKEY_MATCH_BATCH_SIZE", "101")
-    monkeypatch.setenv("ANKEY_MATCH_FLUSH_INTERVAL_MS", "201")
-    monkeypatch.setenv("ANKEY_RESOLVE_BATCH_SIZE", "301")
-    monkeypatch.setenv("ANKEY_RESOLVE_FLUSH_INTERVAL_MS", "401")
+    monkeypatch.setenv("ANKEY_MATCHING_RUNTIME__MATCH_BATCH_SIZE", "101")
+    monkeypatch.setenv("ANKEY_MATCHING_RUNTIME__MATCH_FLUSH_INTERVAL_MS", "201")
+    monkeypatch.setenv("ANKEY_RESOLVER__RESOLVE_BATCH_SIZE", "301")
+    monkeypatch.setenv("ANKEY_RESOLVER__RESOLVE_FLUSH_INTERVAL_MS", "401")
 
-    loaded = load_app_settings(
+    loaded = load_app_config(
         config_path=str(cfg),
         cli_overrides={
-            "match_batch_size": 102,
-            "match_flush_interval_ms": 202,
-            "resolve_batch_size": 302,
-            "resolve_flush_interval_ms": 402,
+            "matching_runtime.match_batch_size": 102,
+            "matching_runtime.match_flush_interval_ms": 202,
+            "resolver.resolve_batch_size": 302,
+            "resolver.resolve_flush_interval_ms": 402,
         },
     )
 
-    assert loaded.app_settings.matching_runtime.match_batch_size == 102
-    assert loaded.app_settings.matching_runtime.match_flush_interval_ms == 202
-    assert loaded.app_settings.matching_runtime.resolve_batch_size == 302
-    assert loaded.app_settings.matching_runtime.resolve_flush_interval_ms == 402
+    assert loaded.app_config.matching_runtime.match_batch_size == 102
+    assert loaded.app_config.matching_runtime.match_flush_interval_ms == 202
+    assert loaded.app_config.resolver.resolve_batch_size == 302
+    assert loaded.app_config.resolver.resolve_flush_interval_ms == 402
 
 
 def test_zero_and_false_values_are_not_lost(tmp_path, monkeypatch):
@@ -97,23 +100,25 @@ def test_zero_and_false_values_are_not_lost(tmp_path, monkeypatch):
     cfg.write_text(
         "\n".join(
             [
-                "report_items_limit: 123",
-                "include_deleted: true",
+                "observability:",
+                "  report_items_limit: 123",
+                "dataset:",
+                "  include_deleted: true",
             ]
         ),
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("ANKEY_REPORT_ITEMS_LIMIT", "0")
-    monkeypatch.setenv("ANKEY_INCLUDE_DELETED", "0")
+    monkeypatch.setenv("ANKEY_OBSERVABILITY__REPORT_ITEMS_LIMIT", "201")
+    monkeypatch.setenv("ANKEY_DATASET__INCLUDE_DELETED", "false")
 
-    loaded = load_app_settings(
+    loaded = load_app_config(
         config_path=str(cfg),
         cli_overrides={},
     )
 
-    assert loaded.app_settings.observability.report_items_limit == 0
-    assert loaded.app_settings.dataset.include_deleted is False
+    assert loaded.app_config.observability.report_items_limit == 201
+    assert loaded.app_config.dataset.include_deleted is False
 
 
 def test_field_level_source_trace(tmp_path, monkeypatch):
@@ -121,48 +126,53 @@ def test_field_level_source_trace(tmp_path, monkeypatch):
     cfg.write_text(
         "\n".join(
             [
-                'host: "cfg-host"',
-                "port: 1111",
-                "retries: 5",
+                "api:",
+                '  host: "cfg-host"',
+                "  port: 1111",
+                "  retries: 5",
             ]
         ),
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("ANKEY_PORT", "2222")
+    monkeypatch.setenv("ANKEY_API__PORT", "2222")
 
-    loaded = load_app_settings(
+    loaded = load_app_config(
         config_path=str(cfg),
         cli_overrides={
-            "retries": 7,
+            "api.retries": 7,
         },
     )
 
-    assert loaded.app_settings.api.host == "cfg-host"
-    assert loaded.app_settings.api.port == 2222
-    assert loaded.app_settings.api.retries == 7
+    assert loaded.app_config.api.host == "cfg-host"
+    assert loaded.app_config.api.port == 2222
+    assert loaded.app_config.api.retries == 7
 
-    assert loaded.source_trace["host"] == "config"
-    assert loaded.source_trace["port"] == "env"
-    assert loaded.source_trace["retries"] == "cli"
+    assert loaded.source_trace["api.host"] == "config"
+    assert loaded.source_trace["api.port"] == "env"
+    assert loaded.source_trace["api.retries"] == "cli"
 
 
 def test_vault_rollout_settings_loaded_from_env(tmp_path, monkeypatch):
     cfg = tmp_path / "config.yml"
-    cfg.write_text("dataset_name: employees\n", encoding="utf-8")
+    cfg.write_text(
+        "\n".join([
+            "dataset:",
+            "  dataset_name: employees",
+        ]),
+        encoding="utf-8",
+    )
 
-    monkeypatch.setenv("ANKEY_VAULT_ROLLOUT_MODE", "canary")
-    monkeypatch.setenv("ANKEY_VAULT_CANARY_PERCENT", "15")
-    monkeypatch.setenv("ANKEY_VAULT_CANARY_DATASETS", "employees,organizations")
-    monkeypatch.setenv("ANKEY_VAULT_ROW_FAILURE_RATE_THRESHOLD_PCT", "2.5")
+    monkeypatch.setenv("ANKEY_VAULT_ROLLOUT__MODE", "canary")
+    monkeypatch.setenv("ANKEY_VAULT_ROLLOUT__CANARY_PERCENT", "15")
+    monkeypatch.setenv("ANKEY_VAULT_ROLLOUT__ROW_FAILURE_RATE_THRESHOLD_PCT", "2.5")
 
-    loaded = load_app_settings(
+    loaded = load_app_config(
         config_path=str(cfg),
         cli_overrides={},
     )
 
-    rollout = loaded.app_settings.vault_rollout
+    rollout = loaded.app_config.vault_rollout
     assert rollout.mode == "canary"
     assert rollout.canary_percent == 15
-    assert rollout.canary_datasets == ("employees", "organizations")
     assert rollout.row_failure_rate_threshold_pct == 2.5

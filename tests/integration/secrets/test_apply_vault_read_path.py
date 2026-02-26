@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from connector.config.models import AppConfig
+from connector.config.projections import to_vault_db_config
 import sqlite3
 from pathlib import Path
 
@@ -14,7 +16,6 @@ from connector.domain.ports.target.execution import ExecutionResult, RequestExec
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
-from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite
@@ -111,7 +112,7 @@ def _write_vault_secret(
 ) -> None:
     _set_master_key(monkeypatch)
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         _vault_db_path(tmp_path),
     )
     try:
@@ -137,7 +138,7 @@ def _run_apply(
     plan: Plan,
 ) -> tuple[ApplyResult, _DummyExecutor]:
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         _vault_db_path(tmp_path),
     )
     try:
