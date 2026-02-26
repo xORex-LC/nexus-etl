@@ -77,7 +77,7 @@ class PlanningPipeline:
         row_source: Any,
         catalog: ErrorCatalog,
         dataset_spec: Any,
-        app_settings: Any,
+        app_config: Any,
     ) -> None:
         self._composer = composer
         self._plan_hooks = plan_hooks
@@ -87,7 +87,7 @@ class PlanningPipeline:
         self._row_source = row_source
         self._catalog = catalog
         self._dataset_spec = dataset_spec
-        self._app_settings = app_settings
+        self._app_config = app_config
 
     @contextmanager
     def open(
@@ -109,7 +109,7 @@ class PlanningPipeline:
         """
         self._dedup_store.reset()
 
-        app = self._app_settings
+        app = self._app_config
         dataset_name = self._dataset_spec.dataset_name
 
         extractor = Extractor(self._row_source, catalog=self._catalog)
@@ -119,8 +119,8 @@ class PlanningPipeline:
         resolve_usecase = ResolveUseCase(
             report_items_limit=report_items_limit,
             include_resolved_items=False,
-            batch_size=app.matching_runtime.resolve_batch_size,
-            flush_interval_ms=app.matching_runtime.resolve_flush_interval_ms,
+            batch_size=app.resolver.resolve_batch_size,
+            flush_interval_ms=app.resolver.resolve_flush_interval_ms,
         )
         resolved = iter_ok(
             resolve_usecase.iter_resolved(

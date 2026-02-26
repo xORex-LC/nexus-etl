@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar
 import logging
 
-from connector.config.app_settings import AppSettings
+from connector.config.models import AppConfig
 from connector.domain.diagnostics.catalog import ErrorCatalog
 
 if TYPE_CHECKING:
@@ -40,7 +40,7 @@ class CommandContext(Generic[TContainer]):
     run_id: str
     catalog: ErrorCatalog
     strict: bool
-    app_settings: AppSettings
+    app_config: AppConfig
     container: TContainer
     paths: CommandPaths | None = None
     extra: dict[str, Any] | None = None

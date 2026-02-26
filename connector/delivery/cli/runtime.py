@@ -12,8 +12,8 @@ from typing import Any, Callable
 import typer
 
 from connector.common.time import getDurationMs
-from connector.config.app_settings import AppSettings
 from connector.config.config import SettingsLoadError
+from connector.config.models import AppConfig
 from connector.config.diagnostics import translate_settings_load_error
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -67,9 +67,9 @@ def run_with_report(
         - завершает процесс через typer.Exit
     """
 
-    app_settings = _require_app_settings(ctx)
-    paths = app_settings.paths
-    observability = app_settings.observability
+    app_config = _require_app_settings(ctx)
+    paths = app_config.paths
+    observability = app_config.observability
     run_id = ctx.run_id
 
     start_monotonic = time.monotonic()
@@ -92,7 +92,7 @@ def run_with_report(
         report_items_limit = observability.report_items_limit
     report.set_meta(items_limit=report_items_limit)
 
-    dataset = _resolve_dataset_opt(opts, app_settings)
+    dataset = _resolve_dataset_opt(opts, app_config)
     if dataset is not None:
         report.set_meta(dataset=dataset)
 
@@ -114,7 +114,7 @@ def run_with_report(
         _validate_requirements(ctx, opts, requirements)
 
         container = AppContainer()
-        container.app_settings.override(app_settings)
+        container.app_config.override(app_config)
         api_transport = _get_opt(opts, ("api_transport",))
         if api_transport is not None:
             container.target.transport.override(api_transport)
@@ -227,9 +227,9 @@ def run_without_report(
         Унифицированная обвязка выполнения команд без формирования отчёта.
     """
 
-    app_settings = _require_app_settings(ctx)
-    paths = app_settings.paths
-    observability = app_settings.observability
+    app_config = _require_app_settings(ctx)
+    paths = app_config.paths
+    observability = app_config.observability
     run_id = ctx.run_id
 
     start_monotonic = time.monotonic()
@@ -259,7 +259,7 @@ def run_without_report(
         _validate_requirements(ctx, opts, requirements)
 
         container = AppContainer()
-        container.app_settings.override(app_settings)
+        container.app_config.override(app_config)
         api_transport = _get_opt(opts, ("api_transport",))
         if api_transport is not None:
             container.target.transport.override(api_transport)
@@ -336,7 +336,7 @@ def _bind_context_with_container(ctx: UnboundCommandContext, *, container: AppCo
         run_id=ctx.run_id,
         catalog=ctx.catalog,
         strict=ctx.strict,
-        app_settings=ctx.app_settings,
+        app_config=ctx.app_config,
         container=container,
         paths=ctx.paths,
         extra=ctx.extra,
@@ -425,17 +425,17 @@ def _validate_requirements(ctx: CommandContext[Any], opts: Any, requirements: Re
         Быстрые и предсказуемые проверки требований команды.
     """
 
-    app_settings = _require_app_settings(ctx)
+    app_config = _require_app_settings(ctx)
 
     if requirements.requires_api:
-        _require_api(app_settings)
+        _require_api(app_config)
 
     dataset: str | None = None
     if requirements.requires_dataset or requirements.requires_source:
-        dataset = _resolve_dataset_opt(opts, app_settings)
+        dataset = _resolve_dataset_opt(opts, app_config)
 
     if requirements.requires_cache:
-        _require_cache(app_settings)
+        _require_cache(app_config)
 
     if requirements.requires_secrets:
         vault_mode = _get_opt(opts, ("vault_mode",))
@@ -474,8 +474,8 @@ def _require_source(dataset: str | None) -> None:
             raise RuntimeErrorWithCode(f"Source file not found: {location}", exit_code=2)
 
 
-def _require_api(app_settings: AppSettings) -> None:
-    api = app_settings.api
+def _require_api(app_config: AppConfig) -> None:
+    api = app_config.api
     missing = []
     if not api.host:
         missing.append("host")
@@ -489,8 +489,8 @@ def _require_api(app_settings: AppSettings) -> None:
         raise RuntimeErrorWithCode(f"Missing API settings: {', '.join(missing)}", exit_code=2)
 
 
-def _require_cache(app_settings: AppSettings) -> None:
-    cache_dir = Path(app_settings.paths.cache_dir)
+def _require_cache(app_config: AppConfig) -> None:
+    cache_dir = Path(app_config.paths.cache_dir)
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -587,11 +587,11 @@ def _exit_code_from_result(result: Any) -> int:
     return 2
 
 
-def _resolve_dataset_opt(opts: Any, app_settings: AppSettings) -> str | None:
+def _resolve_dataset_opt(opts: Any, app_config: AppConfig) -> str | None:
     dataset = _get_opt(opts, ("dataset", "dataset_name"))
     if dataset is None:
-        return app_settings.dataset.dataset_name
-    return resolve_dataset_name(dataset, app_settings.dataset.dataset_name)
+        return app_config.dataset.dataset_name
+    return resolve_dataset_name(dataset, app_config.dataset.dataset_name)
 
 
 def _get_opt(opts: Any, names: tuple[str, ...]) -> Any:
@@ -607,8 +607,8 @@ def _config_sources(ctx: CommandContext[Any]) -> list[str]:
     return list(sources) if sources else []
 
 
-def _require_app_settings(ctx: CommandContext[Any]) -> AppSettings:
-    return ctx.app_settings
+def _require_app_settings(ctx: CommandContext[Any]) -> AppConfig:
+    return ctx.app_config
 
 
 def _echo_command_diagnostics(prefix: str, diagnostics: list[Any]) -> None:

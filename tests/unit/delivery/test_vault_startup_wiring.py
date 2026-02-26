@@ -6,17 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from connector.config.app_settings import (
-    ApiSettings,
-    AppSettings,
-    DatasetSettings,
-    ExecutionSettings,
-    MatchingRuntimeSettings,
-    ObservabilitySettings,
-    PathsSettings,
-    RefreshSettings,
-)
-from connector.domain.transform.resolver.resolve_deps import ResolverSettings
+from connector.config.models import AppConfig
 from connector.delivery.cli.context import CommandContext
 from connector.delivery.commands import enrich as enrich_command
 from connector.delivery.commands import import_apply as import_apply_command
@@ -35,59 +25,19 @@ class _DummyReport:
         _ = (key, value)
 
 
-def _app_settings(tmp_path) -> AppSettings:
-    return AppSettings(
-        api=ApiSettings(
-            host="http://localhost",
-            port=443,
-            username="u",
-            password="p",
-            tls_skip_verify=False,
-            ca_file=None,
-            timeout_seconds=20.0,
-            retries=1,
-            retry_backoff_seconds=0.1,
-            resource_exists_retries=1,
-        ),
-        paths=PathsSettings(
-            cache_dir=str(tmp_path / "cache"),
-            log_dir=str(tmp_path / "logs"),
-            report_dir=str(tmp_path / "reports"),
-        ),
-        observability=ObservabilitySettings(
-            log_level="INFO",
-            log_json=False,
-            report_format="json",
-            report_items_limit=100,
-            report_include_skipped=True,
-            diagnostics_strict=True,
-        ),
-        dataset=DatasetSettings(
-            dataset_name="employees",
-            csv_has_header=True,
-            include_deleted=False,
-        ),
-        execution=ExecutionSettings(
-            stop_on_first_error=False,
-            max_actions=None,
-            dry_run=True,
-        ),
-        refresh=RefreshSettings(page_size=100, max_pages=1),
-        matching_runtime=MatchingRuntimeSettings(
-            match_batch_size=100,
-            match_flush_interval_ms=100,
-            resolve_batch_size=100,
-            resolve_flush_interval_ms=100,
-        ),
-        resolver=ResolverSettings(
-            pending_ttl_seconds=120,
-            pending_max_attempts=5,
-            pending_sweep_interval_seconds=60,
-            pending_on_expire="error",
-            pending_allow_partial=False,
-            pending_retention_days=14,
-        ),
-    )
+def _app_config(tmp_path) -> AppConfig:
+    return AppConfig.model_validate({
+        "api": {"host": "http://localhost", "port": 443, "username": "u", "password": "p",
+                "retries": 1, "retry_backoff_seconds": 0.1, "resource_exists_retries": 1},
+        "paths": {"cache_dir": str(tmp_path / "cache"), "log_dir": str(tmp_path / "logs"),
+                  "report_dir": str(tmp_path / "reports")},
+        "observability": {"log_level": "INFO", "report_items_limit": 100, "diagnostics_strict": True},
+        "dataset": {"dataset_name": "employees", "csv_has_header": True},
+        "execution": {"dry_run": True},
+        "refresh": {"page_size": 100, "max_pages": 1},
+        "matching_runtime": {"match_batch_size": 100, "match_flush_interval_ms": 100},
+        "resolver": {"resolve_batch_size": 100, "resolve_flush_interval_ms": 100},
+    })
 
 
 def _ctx(tmp_path) -> CommandContext:
@@ -96,7 +46,7 @@ def _ctx(tmp_path) -> CommandContext:
         run_id="test-run",
         catalog=build_catalog(None, strict=True),
         strict=True,
-        app_settings=_app_settings(tmp_path),
+        app_config=_app_config(tmp_path),
         container=None,
     )
 

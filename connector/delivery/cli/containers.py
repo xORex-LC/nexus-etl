@@ -33,15 +33,12 @@ from typing import Any, Iterator
 
 from dependency_injector import containers, providers
 
-from connector.config.app_settings import (
-    ApiSettings,
-    AppSettings,
-    DatasetSettings,
-    DictionaryRuntimeSettings,
-    SqliteSettings,
-    build_cache_db_config,
-    build_identity_db_config,
-    build_vault_db_config,
+from connector.config.models import ApiConfig, AppConfig, DatasetConfig, SqliteConfig
+from connector.config.projections import (
+    to_cache_db_config,
+    to_identity_db_config,
+    to_resolver_settings,
+    to_vault_db_config,
 )
 from connector.domain.transform.matcher.match_deps import MatchBatchSettings, MatchScopeService
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
@@ -111,15 +108,15 @@ def _cache_db_path(cache_dir: str) -> str:
     return str(Path(cache_dir) / "ankey_cache.sqlite3")
 
 
-def _vault_db_path(cache_dir: str, settings: SqliteSettings) -> str:
-    if settings.vault_db_path:
-        return settings.vault_db_path
+def _vault_db_path(cache_dir: str, sqlite: SqliteConfig) -> str:
+    if sqlite.vault_db_path:
+        return sqlite.vault_db_path
     return str(Path(cache_dir) / "ankey_vault.sqlite3")
 
 
-def _identity_db_path(cache_dir: str, settings: SqliteSettings) -> str:
-    if settings.identity_db_path:
-        return settings.identity_db_path
+def _identity_db_path(cache_dir: str, sqlite: SqliteConfig) -> str:
+    if sqlite.identity_db_path:
+        return sqlite.identity_db_path
     return str(Path(cache_dir) / "identity.sqlite3")
 
 
@@ -128,16 +125,16 @@ def _identity_db_path(cache_dir: str, settings: SqliteSettings) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _make_cache_engine(settings: SqliteSettings, cache_dir: str) -> SqliteEngine:
-    return open_sqlite(build_cache_db_config(settings), _cache_db_path(cache_dir))
+def _make_cache_engine(app_config: AppConfig, cache_dir: str) -> SqliteEngine:
+    return open_sqlite(to_cache_db_config(app_config), _cache_db_path(cache_dir))
 
 
-def _make_vault_engine(settings: SqliteSettings, cache_dir: str) -> SqliteEngine:
-    return open_sqlite(build_vault_db_config(settings), _vault_db_path(cache_dir, settings))
+def _make_vault_engine(app_config: AppConfig, cache_dir: str) -> SqliteEngine:
+    return open_sqlite(to_vault_db_config(app_config), _vault_db_path(cache_dir, app_config.sqlite))
 
 
-def _make_identity_engine(settings: SqliteSettings, cache_dir: str) -> SqliteEngine:
-    return open_sqlite(build_identity_db_config(settings), _identity_db_path(cache_dir, settings))
+def _make_identity_engine(app_config: AppConfig, cache_dir: str) -> SqliteEngine:
+    return open_sqlite(to_identity_db_config(app_config), _identity_db_path(cache_dir, app_config.sqlite))
 
 
 def vault_startup_resource(engine: SqliteEngine) -> Iterator[None]:
@@ -196,30 +193,30 @@ class SqliteContainer(containers.DeclarativeContainer):
         container.shutdown_resources() — закрывает все engine.
 
     Использование:
-        settings = providers.Dependency(instance_of=SqliteSettings)
+        app_config = providers.Dependency(instance_of=AppConfig)
         cache_dir = providers.Dependency(instance_of=str)
         Оба прокидываются при инстанциировании или через override().
     """
 
-    settings = providers.Dependency(instance_of=SqliteSettings)
+    app_config = providers.Dependency(instance_of=AppConfig)
     cache_dir = providers.Dependency(instance_of=str)
     cache_specs = providers.Dependency(instance_of=list)
 
     cache_engine = providers.Singleton(
         _make_cache_engine,
-        settings=settings,
+        app_config=app_config,
         cache_dir=cache_dir,
     )
 
     vault_engine = providers.Singleton(
         _make_vault_engine,
-        settings=settings,
+        app_config=app_config,
         cache_dir=cache_dir,
     )
 
     identity_engine = providers.Singleton(
         _make_identity_engine,
-        settings=settings,
+        app_config=app_config,
         cache_dir=cache_dir,
     )
 
@@ -364,7 +361,7 @@ class CacheContainer(containers.DeclarativeContainer):
 
 
 def target_runtime_resource(
-    api_settings: ApiSettings,
+    api_settings: ApiConfig,
     transport: object | None,
 ) -> Iterator[TargetRuntimeBuildResult]:
     """
@@ -400,7 +397,7 @@ class TargetContainer(containers.DeclarativeContainer):
         - runtime.close() гарантированно вызывается при shutdown_resources().
     """
 
-    api_settings = providers.Dependency(instance_of=ApiSettings)
+    api_settings = providers.Dependency(instance_of=ApiConfig)
     transport = providers.Dependency()
 
     runtime = providers.Resource(
@@ -495,7 +492,7 @@ class PipelineContainer(containers.DeclarativeContainer):
     # ── External dependencies (overridden per-command) ────────────────────────
 
     dataset_spec = providers.Dependency(instance_of=object)
-    app_settings = providers.Dependency(instance_of=object)
+    app_config = providers.Dependency(instance_of=object)
     cache_roles = providers.Dependency(instance_of=object)
     catalog = providers.Dependency(instance_of=object)
     csv_has_header = providers.Dependency(instance_of=bool)
@@ -520,8 +517,8 @@ class PipelineContainer(containers.DeclarativeContainer):
     )
 
     resolver_settings = providers.Factory(
-        lambda s: getattr(s, "resolver", None),
-        s=app_settings,
+        to_resolver_settings,
+        config=app_config,
     )
 
     # ── Build options (I/O at wiring boundary) ────────────────────────────────
@@ -587,10 +584,10 @@ class PipelineContainer(containers.DeclarativeContainer):
     match_batch_settings = providers.Singleton(
         MatchBatchSettings,
         batch_size=providers.Factory(
-            lambda s: s.matching_runtime.match_batch_size, s=app_settings
+            lambda s: s.matching_runtime.match_batch_size, s=app_config
         ),
         flush_interval_ms=providers.Factory(
-            lambda s: s.matching_runtime.match_flush_interval_ms, s=app_settings
+            lambda s: s.matching_runtime.match_flush_interval_ms, s=app_config
         ),
     )
 
@@ -740,7 +737,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         row_source=row_source,
         catalog=catalog,
         dataset_spec=dataset_spec,
-        app_settings=app_settings,
+        app_config=app_config,
     )
 
 
@@ -762,24 +759,23 @@ class AppContainer(containers.DeclarativeContainer):
         - Не содержит бизнес-логики — только сборка графа зависимостей.
 
     Контракт:
-        - app_settings должен быть проброшен через override() до init.
+        - app_config должен быть проброшен через override() до init.
         - _init_container_for_requirements() инициализирует нужные ресурсы
           на основе Requirements команды.
     """
 
-    app_settings = providers.Dependency(instance_of=AppSettings)
+    app_config = providers.Dependency(instance_of=AppConfig)
 
-    _sqlite_cfg = providers.Singleton(SqliteSettings)
-    _dictionary_cfg = providers.Singleton(DictionaryRuntimeSettings)
-    _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_settings)
-    _api_settings = providers.Callable(lambda s: s.api, s=app_settings)
+    _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_config)
+    _api_settings = providers.Callable(lambda s: s.api, s=app_config)
+    _dictionary_cfg = providers.Callable(lambda s: s.dictionary, s=app_config)
 
     cache_dsl = providers.Singleton(load_cache_dsl_runtime)
     _cache_specs = providers.Callable(lambda b: list(b.cache_specs), b=cache_dsl)
 
     sqlite = providers.Container(
         SqliteContainer,
-        settings=_sqlite_cfg,
+        app_config=app_config,
         cache_dir=_cache_dir,
         cache_specs=_cache_specs,
     )
@@ -810,7 +806,7 @@ class AppContainer(containers.DeclarativeContainer):
 
     pipeline = providers.Container(
         PipelineContainer,
-        app_settings=app_settings,
+        app_config=app_config,
         cache_roles=cache.roles,
     )
 
@@ -864,7 +860,7 @@ def build_diagnostics_catalog(dataset: str | None, *, strict: bool):
 
 def build_dataset_spec(
     dataset: str | None,
-    dataset_settings: DatasetSettings,
+    dataset_settings: DatasetConfig,
     *,
     secrets: SecretProviderProtocol | None = None,
 ):

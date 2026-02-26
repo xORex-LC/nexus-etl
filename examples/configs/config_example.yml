@@ -1,36 +1,86 @@
-host: "10.10.10.10"
-port: 473
-api_username: "Username"
-api_password: "Password"
+api:
+  host: "10.10.10.10"
+  port: 473
+  username: "Username"
+  password: "Password"
+  tls_skip_verify: true
+  ca_file: null
+  timeout_seconds: 20.0
+  retries: 3
+  retry_backoff_seconds: 0.5
+  resource_exists_retries: 3
 
-cache_dir: "./cache"
-log_dir: "./logs"
-report_dir: "./reports"
+paths:
+  cache_dir: "./cache"
+  log_dir: "./logs"
+  report_dir: "./reports"
 
-tls_skip_verify: true
-ca_file: null
+observability:
+  log_level: "DEBUG"
+  log_json: false
+  report_format: "json"
+  report_items_limit: 20
+  report_include_skipped: true
+  diagnostics_strict: false
 
-log_level: "DEBUG"
-log_json: false
-report_format: "json"
+dataset:
+  dataset_name: employees
+  csv_has_header: false
+  include_deleted: false
 
-page_size: 200
-max_pages: null
-timeout_seconds: 20.0
-retries: 3
-retry_backoff_seconds: 0.5
-include_deleted: false
-dataset_name: employees
-report_items_limit: 20
-report_include_skipped: true
-resource_exists_retries: 3
-csv_has_header: false
-stop_on_first_error: false
-max_actions: null
-dry_run: false
-pending_ttl_seconds: 120
-pending_max_attempts: 5
-pending_sweep_interval_seconds: 60
-pending_on_expire: error
-pending_allow_partial: false
-pending_retention_days: 14
+execution:
+  stop_on_first_error: false
+  max_actions: null
+  dry_run: false
+
+refresh:
+  page_size: 200
+  max_pages: null
+
+matching_runtime:
+  match_batch_size: 500
+  match_flush_interval_ms: 500
+
+resolver:
+  pending_ttl_seconds: 120
+  pending_max_attempts: 5
+  pending_sweep_interval_seconds: 60
+  pending_on_expire: error
+  pending_allow_partial: false
+  pending_retention_days: 14
+  resolve_batch_size: 500
+  resolve_flush_interval_ms: 500
+
+sqlite:
+  journal_mode: "WAL"
+  synchronous: "NORMAL"
+  busy_timeout_ms: 5000
+  wal_autocheckpoint: 1000
+  # vault_db_path: null        # default: cache_dir/ankey_vault.sqlite3
+  vault_transaction_mode: "immediate"
+  # vault_journal_mode: null   # default: journal_mode
+  # vault_busy_timeout_ms: null  # default: busy_timeout_ms
+  vault_schema_retry_count: 2
+  # cache_db_path: null        # default: cache_dir/ankey_cache.sqlite3
+  cache_transaction_mode: "deferred"
+  # cache_journal_mode: null   # default: journal_mode
+  # cache_busy_timeout_ms: null  # default: busy_timeout_ms
+  # identity_db_path: null     # default: cache_dir/identity.sqlite3
+
+dictionary:
+  load_strategy: "eager"
+  fingerprint_salt: "dictionary-runtime-v1"
+  fingerprint_salt_version: "v1"
+  lookup_hit_sample_percent: 1
+  lookup_miss_sample_percent: 10
+
+vault_rollout:
+  mode: "full"
+  canary_percent: 100
+  canary_datasets: []
+  canary_seed: "vault-rollout-v1"
+  row_failure_rate_threshold_pct: 5.0
+  error_rate_threshold_pct: 5.0
+  latency_regression_threshold_pct: 15.0
+  busy_timeout_rate_threshold_pct: 0.0
+  schema_changed_rate_threshold_pct: 0.0

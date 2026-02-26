@@ -67,7 +67,7 @@ class ResolveCore:
         link_rules: LinkRules | None = None,
         *,
         cache_gateway: ResolveRuntimePort | None = None,
-        settings: ResolverSettings | None = None,
+        settings: ResolverSettings,
         catalog: ErrorCatalog,
         sink_spec: SinkSpec | None = None,
         codec: IPendingCodec,
@@ -585,19 +585,14 @@ def _lookup_candidates(
     return cache_gateway.find_candidates(dataset, lookup_key)
 
 
-def _build_expires_at(settings: ResolverSettings | None) -> str | None:
-    if settings is None:
-        ttl = 120
-    else:
-        ttl = settings.pending_ttl_seconds
+def _build_expires_at(settings: ResolverSettings) -> str | None:
+    ttl = settings.pending_ttl_seconds
     if ttl <= 0:
         return None
     return (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
 
 
-def _allow_partial(settings: ResolverSettings | None) -> bool:
-    if settings is None:
-        return False
+def _allow_partial(settings: ResolverSettings) -> bool:
     return settings.pending_allow_partial
 
 
@@ -610,9 +605,7 @@ def _coerce_resolved(resolved_id: str, rule: LinkFieldRule) -> Any:
     return resolved_id
 
 
-def _max_attempts(settings: ResolverSettings | None) -> int:
-    if settings is None:
-        return 0
+def _max_attempts(settings: ResolverSettings) -> int:
     return settings.pending_max_attempts
 
 

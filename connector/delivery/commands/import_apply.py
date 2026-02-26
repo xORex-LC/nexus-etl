@@ -26,14 +26,12 @@ from connector.domain.secrets.errors import (
     VaultStartupStorageReadonlyError,
     VaultStartupUninitializedReadonlyError,
 )
-from connector.domain.secrets.policy.rollout_metrics import (
-    VaultRolloutThresholds,
-    build_vault_operational_metrics,
+from connector.domain.secrets.policy.rollout_metrics import build_vault_operational_metrics
+from connector.config.projections import (
+    to_vault_rollout_policy_settings,
+    to_vault_rollout_thresholds,
 )
-from connector.domain.secrets.policy.rollout_policy import (
-    VaultRolloutPolicySettings,
-    evaluate_vault_rollout,
-)
+from connector.domain.secrets.policy.rollout_policy import evaluate_vault_rollout
 from connector.domain.secrets.policy.runtime_mode_policy import (
     RUNTIME_REASON_INVALID_MODE,
     VAULT_RUNTIME_MODE_OFF,
@@ -74,9 +72,9 @@ def _runtime_context(build_result) -> dict[str, str]:
 
 def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     """Собрать runtime/deps и выполнить apply use-case для указанного плана."""
-    app_settings = ctx.app_settings
-    if app_settings is None:
-        raise ValueError("App settings are not initialized")
+    app_config = ctx.app_config
+    if app_config is None:
+        raise ValueError("App config is not initialized")
     run_id = ctx.run_id
 
     if not opts.plan_path:
@@ -86,15 +84,15 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     report_items_limit = (
         opts.report_items_limit
         if opts.report_items_limit is not None
-        else app_settings.observability.report_items_limit
+        else app_config.observability.report_items_limit
     )
     stop_on_first_error = (
         opts.stop_on_first_error
         if opts.stop_on_first_error is not None
-        else app_settings.execution.stop_on_first_error
+        else app_config.execution.stop_on_first_error
     )
-    max_actions = opts.max_actions if opts.max_actions is not None else app_settings.execution.max_actions
-    configured_dry_run = opts.dry_run if opts.dry_run is not None else app_settings.execution.dry_run
+    max_actions = opts.max_actions if opts.max_actions is not None else app_config.execution.max_actions
+    configured_dry_run = opts.dry_run if opts.dry_run is not None else app_config.execution.dry_run
 
     try:
         plan = readPlanFile(opts.plan_path or "")
@@ -118,7 +116,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         return result_with(SystemErrorCode.INTERNAL_ERROR)
 
     rollout_decision = evaluate_vault_rollout(
-        settings=_rollout_settings(app_settings),
+        settings=to_vault_rollout_policy_settings(app_config),
         requested_vault=runtime_mode_decision.requested_vault,
         dataset=plan.meta.dataset,
         run_id=plan.meta.run_id or run_id,
@@ -147,7 +145,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     dataset_name = plan.meta.dataset
     catalog = ctx.catalog or build_diagnostics_catalog(
         dataset_name,
-        strict=app_settings.observability.diagnostics_strict,
+        strict=app_config.observability.diagnostics_strict,
     )
 
     cache_roles = ctx.container.cache.roles()
@@ -174,8 +172,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
             "max_actions": max_actions,
             "dry_run": dry_run,
             "configured_dry_run": configured_dry_run,
-            "retries": app_settings.api.retries,
-            "retry_backoff_seconds": app_settings.api.retry_backoff_seconds,
+            "retries": app_config.api.retries,
+            "retry_backoff_seconds": app_config.api.retry_backoff_seconds,
             "vault_rollout": {
                 "vault_runtime": runtime_mode_decision.to_context(),
                 **rollout_decision.to_context(),
@@ -186,7 +184,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         "apply_target",
         {
             "endpoint": endpoint,
-            "user": app_settings.api.username,
+            "user": app_config.api.username,
             "target_runtime_mode": build_result.effective_mode,
         },
     )
@@ -244,7 +242,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     operational_metrics = build_vault_operational_metrics(
         summary=apply_result.summary,
         startup_guard_passed=startup_guard_passed,
-        thresholds=_rollout_thresholds(app_settings),
+        thresholds=to_vault_rollout_thresholds(app_config),
     )
     runtime_context: dict = {
         "retries_used": runtime.stats().retries_total,
@@ -271,16 +269,6 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     return result
 
 
-def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:
-    rollout = app_settings.vault_rollout
-    return VaultRolloutPolicySettings(
-        mode=rollout.mode,
-        canary_percent=rollout.canary_percent,
-        canary_datasets=rollout.canary_datasets,
-        canary_seed=rollout.canary_seed,
-    )
-
-
 def _plan_requires_vault(plan) -> bool:
     """Назначение:
         Определить необходимость vault-path для apply по содержимому import plan.
@@ -289,17 +277,6 @@ def _plan_requires_vault(plan) -> bool:
         if item.secret_fields:
             return True
     return False
-
-
-def _rollout_thresholds(app_settings) -> VaultRolloutThresholds:
-    rollout = app_settings.vault_rollout
-    return VaultRolloutThresholds(
-        row_failure_rate_threshold_pct=rollout.row_failure_rate_threshold_pct,
-        vault_error_rate_threshold_pct=rollout.vault_error_rate_threshold_pct,
-        latency_regression_threshold_pct=rollout.latency_regression_threshold_pct,
-        busy_timeout_rate_threshold_pct=rollout.busy_timeout_rate_threshold_pct,
-        schema_changed_rate_threshold_pct=rollout.schema_changed_rate_threshold_pct,
-    )
 
 
 __all__ = ["handler", "Options"]

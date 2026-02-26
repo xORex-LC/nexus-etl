@@ -18,7 +18,7 @@ from typing import Iterator
 import yaml
 from dependency_injector import containers, providers
 
-from connector.config.app_settings import DictionaryRuntimeSettings
+from connector.config.models import DictionaryConfig
 from connector.domain.dictionary_dsl import (
     DictionaryRegistrySpec,
     DictionarySpec,
@@ -153,16 +153,16 @@ def _build_csv_loader(
     )
 
 
-def _build_dictionary_telemetry(*, settings: DictionaryRuntimeSettings) -> DictionaryTelemetry:
+def _build_dictionary_telemetry(*, settings: DictionaryConfig) -> DictionaryTelemetry:
     """
     Назначение:
         Собрать telemetry-объект словарного runtime из Pydantic settings.
     """
-    _ = settings.dictionary_fingerprint_salt_version  # reserved for report/version surface in later stages
+    _ = settings.fingerprint_salt_version  # reserved for report/version surface in later stages
     return DictionaryTelemetry(
-        fingerprint_salt=settings.dictionary_fingerprint_salt,
-        lookup_hit_sample_percent=settings.dictionary_lookup_hit_sample_percent,
-        lookup_miss_sample_percent=settings.dictionary_lookup_miss_sample_percent,
+        fingerprint_salt=settings.fingerprint_salt,
+        lookup_hit_sample_percent=settings.lookup_hit_sample_percent,
+        lookup_miss_sample_percent=settings.lookup_miss_sample_percent,
     )
 
 
@@ -170,7 +170,7 @@ def dictionary_backend_resource(
     *,
     dsl_runtime_bundle: DictionaryDslRuntimeBundle | None,
     csv_loader: CsvDictionaryLoader,
-    settings: DictionaryRuntimeSettings,
+    settings: DictionaryConfig,
     telemetry: DictionaryTelemetry,
 ) -> Iterator[PolarsDictionaryBackend | None]:
     """
@@ -184,7 +184,7 @@ def dictionary_backend_resource(
         - Ошибки DSL/CSV/fingerprint/schema validation пробрасываются как `DslLoadError`.
         - Teardown no-op: runtime read-only in-memory, отдельного close() не требуется.
     """
-    load_strategy = settings.dictionary_load_strategy
+    load_strategy = settings.load_strategy
     if dsl_runtime_bundle is None:
         telemetry.record_runtime_initialized(
             enabled=False,
@@ -239,7 +239,7 @@ class DictionaryContainer(containers.DeclarativeContainer):
         - Не является composition root; монтируется в `AppContainer`.
     """
 
-    settings = providers.Dependency(instance_of=DictionaryRuntimeSettings)
+    settings = providers.Dependency(instance_of=DictionaryConfig)
     datasets_root = providers.Dependency()
 
     dsl_runtime_bundle = providers.Singleton(
