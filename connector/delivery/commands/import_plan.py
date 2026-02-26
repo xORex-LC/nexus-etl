@@ -25,10 +25,8 @@ from connector.domain.secrets.errors import (
     VaultStartupStorageReadonlyError,
     VaultStartupUninitializedReadonlyError,
 )
-from connector.domain.secrets.policy.rollout_policy import (
-    VaultRolloutPolicySettings,
-    evaluate_vault_rollout,
-)
+from connector.config.projections import to_vault_rollout_policy_settings
+from connector.domain.secrets.policy.rollout_policy import evaluate_vault_rollout
 from connector.domain.secrets.policy.runtime_mode_policy import (
     RUNTIME_REASON_INVALID_MODE,
     VAULT_RUNTIME_MODE_OFF,
@@ -61,13 +59,13 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
     Назначение:
         Запустить сценарий import-plan через CLI handler.
     """
-    app_settings = ctx.app_settings
-    if app_settings is None:
-        raise ValueError("App settings are not initialized")
+    app_config = ctx.app_config
+    if app_config is None:
+        raise ValueError("App config is not initialized")
     run_id = ctx.run_id
 
     try:
-        dataset_name, _spec = build_dataset_spec(opts.dataset, app_settings.dataset)
+        dataset_name, _spec = build_dataset_spec(opts.dataset, app_config.dataset)
         runtime_mode_decision = resolve_vault_runtime_mode(
             mode=opts.vault_mode,
             requires_vault=_dataset_requires_vault(_spec),
@@ -83,7 +81,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
             return result_with(SystemErrorCode.INTERNAL_ERROR)
 
         rollout_decision = evaluate_vault_rollout(
-            settings=_rollout_settings(app_settings),
+            settings=to_vault_rollout_policy_settings(app_config),
             requested_vault=runtime_mode_decision.requested_vault,
             dataset=dataset_name,
             run_id=run_id,
@@ -105,20 +103,20 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
             secret_store = ctx.container.vault.write_service()
 
         include_deleted_value = (
-            opts.include_deleted if opts.include_deleted is not None else app_settings.dataset.include_deleted
+            opts.include_deleted if opts.include_deleted is not None else app_config.dataset.include_deleted
         )
         report_items_limit_value = (
             opts.report_items_limit
             if opts.report_items_limit is not None
-            else app_settings.observability.report_items_limit
+            else app_config.observability.report_items_limit
         )
         csv_has_header_value = (
-            opts.csv_has_header if opts.csv_has_header is not None else app_settings.dataset.csv_has_header
+            opts.csv_has_header if opts.csv_has_header is not None else app_config.dataset.csv_has_header
         )
 
         catalog = build_diagnostics_catalog(
             dataset_name,
-            strict=app_settings.observability.diagnostics_strict,
+            strict=app_config.observability.diagnostics_strict,
         )
 
         pipeline = ctx.container.pipeline
@@ -148,7 +146,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
                 plan_items=plan_result.items,
                 summary=plan_result.summary_as_dict(),
                 meta=plan_meta,
-                report_dir=app_settings.paths.report_dir,
+                report_dir=app_config.paths.report_dir,
                 run_id=run_id,
                 generated_at=generated_at,
             )
@@ -168,16 +166,6 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
         logEvent(ctx.logger, logging.ERROR, run_id, "plan", f"Import plan failed: {exc}")
         typer.echo("ERROR: import plan failed (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
-
-
-def _rollout_settings(app_settings) -> VaultRolloutPolicySettings:
-    rollout = app_settings.vault_rollout
-    return VaultRolloutPolicySettings(
-        mode=rollout.mode,
-        canary_percent=rollout.canary_percent,
-        canary_datasets=rollout.canary_datasets,
-        canary_seed=rollout.canary_seed,
-    )
 
 
 def _dataset_requires_vault(dataset_spec) -> bool:

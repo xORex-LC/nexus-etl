@@ -5,8 +5,8 @@ from typing import Any
 
 import typer
 
-from connector.config.app_settings import load_app_settings
 from connector.config.config import SettingsLoadError
+from connector.config.loader import load_app_config
 from connector.config.diagnostics import translate_settings_load_error
 from connector.common.run_id import generate_run_id
 from connector.delivery.cli.context import CommandPaths, CommandContext, UnboundCommandContext
@@ -50,10 +50,10 @@ def _build_ctx(
     *,
     command_key: str | None = None,
 ) -> UnboundCommandContext:
-    app_settings = ctx.obj.get("app_settings")
-    if app_settings is None:
-        raise RuntimeError("App settings are not initialized")
-    catalog = build_diagnostics_catalog(dataset, strict=app_settings.observability.diagnostics_strict)
+    app_config = ctx.obj.get("app_config")
+    if app_config is None:
+        raise RuntimeError("App config is not initialized")
+    catalog = build_diagnostics_catalog(dataset, strict=app_config.observability.diagnostics_strict)
     extra: dict[str, Any] = {"sources": ctx.obj.get("sources")}
     if command_key:
         usecase_name = COMMAND_TO_USECASE.get(command_key)
@@ -67,10 +67,10 @@ def _build_ctx(
         logger=ctx.obj["logger"],
         run_id=ctx.obj["runId"],
         catalog=catalog,
-        strict=app_settings.observability.diagnostics_strict,
-        app_settings=app_settings,
+        strict=app_config.observability.diagnostics_strict,
+        app_config=app_config,
         container=None,
-        paths=CommandPaths(report_dir=app_settings.paths.report_dir, work_dir=None),
+        paths=CommandPaths(report_dir=app_config.paths.report_dir, work_dir=None),
         extra=extra,
     )
 
@@ -126,31 +126,30 @@ def main(
         runId = generate_run_id()
 
     cliOverrides = {
-        "host": host,
-        "port": port,
-        "api_username": apiUsername,
-        "api_password": apiPassword,
-        "log_level": logLevel,
-        "log_json": logJson,
-        "log_dir": logDir,
-        "report_dir": reportDir,
-        "cache_dir": cacheDir,
-        "tls_skip_verify": tlsSkipVerify,
-        "ca_file": caFile,
-        "page_size": pageSize,
-        "max_pages": maxPages,
-        "timeout_seconds": timeoutSeconds,
-        "retries": retries,
-        "retry_backoff_seconds": retryBackoffSeconds,
-        "match_batch_size": matchBatchSize,
-        "match_flush_interval_ms": matchFlushIntervalMs,
-        "resolve_batch_size": resolveBatchSize,
-        "resolve_flush_interval_ms": resolveFlushIntervalMs,
-        "report_include_skipped": None,
-        "diagnostics_strict": strictDiagnostics,
+        "api.host": host,
+        "api.port": port,
+        "api.username": apiUsername,
+        "api.password": apiPassword,
+        "observability.log_level": logLevel,
+        "observability.log_json": logJson,
+        "paths.log_dir": logDir,
+        "paths.report_dir": reportDir,
+        "paths.cache_dir": cacheDir,
+        "api.tls_skip_verify": tlsSkipVerify,
+        "api.ca_file": caFile,
+        "refresh.page_size": pageSize,
+        "refresh.max_pages": maxPages,
+        "api.timeout_seconds": timeoutSeconds,
+        "api.retries": retries,
+        "api.retry_backoff_seconds": retryBackoffSeconds,
+        "matching_runtime.match_batch_size": matchBatchSize,
+        "matching_runtime.match_flush_interval_ms": matchFlushIntervalMs,
+        "resolver.resolve_batch_size": resolveBatchSize,
+        "resolver.resolve_flush_interval_ms": resolveFlushIntervalMs,
+        "observability.diagnostics_strict": strictDiagnostics,
     }
     try:
-        loaded_app = load_app_settings(config_path=config, cli_overrides=cliOverrides)
+        loaded_app = load_app_config(config, cli_overrides=cliOverrides)
     except SettingsLoadError as exc:
         catalog = build_diagnostics_catalog(None, strict=False)
         diagnostics = translate_settings_load_error(
@@ -164,14 +163,14 @@ def main(
             field = f" ({diag.field})" if diag.field else ""
             typer.echo(f"- [{diag.code}]{field} {diag.message}", err=True)
         raise typer.Exit(code=2) from exc
-    _ensure_dir(loaded_app.app_settings.paths.log_dir)
-    _ensure_dir(loaded_app.app_settings.paths.report_dir)
-    _ensure_dir(loaded_app.app_settings.paths.cache_dir)
+    _ensure_dir(loaded_app.app_config.paths.log_dir)
+    _ensure_dir(loaded_app.app_config.paths.report_dir)
+    _ensure_dir(loaded_app.app_config.paths.cache_dir)
 
     ctx.obj = {
         "runId": runId,
-        "app_settings": loaded_app.app_settings,
-        "sources": list(loaded_app.sources_used),
+        "app_config": loaded_app.app_config,
+        "sources": sorted({v for v in loaded_app.source_trace.values() if v != "default"}),
         "settings_source_trace": loaded_app.source_trace,
         "configPath": config,
         "logger": None,
@@ -429,12 +428,12 @@ def cacheRefresh(
     ),
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
 ):
-    app_settings = ctx.obj.get("app_settings")
-    if app_settings is None:
-        raise RuntimeError("App settings are not initialized")
+    app_config = ctx.obj.get("app_config")
+    if app_config is None:
+        raise RuntimeError("App config is not initialized")
     opts = cache_refresh_command.Options(
-        page_size=pageSize if pageSize is not None else app_settings.refresh.page_size,
-        max_pages=maxPages if maxPages is not None else app_settings.refresh.max_pages,
+        page_size=pageSize if pageSize is not None else app_config.refresh.page_size,
+        max_pages=maxPages if maxPages is not None else app_config.refresh.max_pages,
         timeout_seconds=timeoutSeconds,
         retries=retries,
         retry_backoff_seconds=retryBackoffSeconds,

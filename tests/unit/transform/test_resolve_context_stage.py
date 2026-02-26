@@ -301,9 +301,9 @@ class TestPlanningPipelineResetsDedup:
         row_source.open.return_value.__enter__ = MagicMock(return_value=MagicMock())
         row_source.open.return_value.__exit__ = MagicMock(return_value=False)
 
-        app_settings = MagicMock()
-        app_settings.matching_runtime.resolve_batch_size = 10
-        app_settings.matching_runtime.resolve_flush_interval_ms = 100
+        app_config = MagicMock()
+        app_config.resolver.resolve_batch_size = 10
+        app_config.resolver.resolve_flush_interval_ms = 100
 
         dataset_spec = MagicMock()
         dataset_spec.dataset_name = "employees"
@@ -321,7 +321,7 @@ class TestPlanningPipelineResetsDedup:
             row_source=row_source,
             catalog=catalog,
             dataset_spec=dataset_spec,
-            app_settings=app_settings,
+            app_config=app_config,
         )
 
         # open() вызывает dedup_store.reset() перед pipeline;
