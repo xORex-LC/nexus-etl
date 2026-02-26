@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from connector.config.models import AppConfig
+from connector.config.projections import to_vault_db_config
 from pathlib import Path
 
 from cryptography.fernet import Fernet
 import pytest
 
-from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.domain.secrets.errors import (
     VaultStartupKeyValidationError,
     VaultStartupProbeCorruptedError,
@@ -34,7 +35,7 @@ class _ReadonlyStorageProbe:
 
 def _build_repo(tmp_path: Path) -> tuple[SqliteEngine, SqliteVaultRepository]:
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         str(tmp_path / "cache" / "ankey_vault.sqlite3"),
     )
     return engine, SqliteVaultRepository(engine)

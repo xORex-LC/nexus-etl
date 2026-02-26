@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from connector.config.models import AppConfig
+from connector.config.projections import to_vault_db_config
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,7 +17,6 @@ from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.enrich import EnricherEngine
 from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
@@ -57,7 +58,7 @@ def _build_store(tmp_path: Path):
     cipher = FernetEnvelopeCipher()
     locator = SecretLocatorService()
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         str(tmp_path / "cache" / "ankey_vault.sqlite3"),
     )
     repository = SqliteVaultRepository(engine)

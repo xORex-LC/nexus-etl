@@ -19,7 +19,7 @@ import yaml
 
 pytest.importorskip("polars")
 
-from connector.config.app_settings import DictionaryRuntimeSettings
+from connector.config.models import DictionaryConfig
 from connector.delivery.cli.dictionaries_container import DictionaryContainer
 from connector.domain.dictionary_dsl.specs import DictionarySpec
 from connector.domain.dsl.issues import DslLoadError
@@ -150,11 +150,11 @@ def _make_container(
     )
     container = DictionaryContainer()
     container.settings.override(
-        DictionaryRuntimeSettings(
-            dictionary_load_strategy=load_strategy,
-            dictionary_fingerprint_salt="test-salt",
-            dictionary_lookup_hit_sample_percent=0,
-            dictionary_lookup_miss_sample_percent=0,
+        DictionaryConfig(
+            load_strategy=load_strategy,
+            fingerprint_salt="test-salt",
+            lookup_hit_sample_percent=0,
+            lookup_miss_sample_percent=0,
         )
     )
     container.datasets_root.override(datasets_root)
@@ -221,10 +221,10 @@ def test_dictionary_container_empty_items_registry_is_valid_empty_runtime(tmp_pa
 def test_dictionary_container_bootstrap_fixtures_from_repo_init_success() -> None:
     container = DictionaryContainer()
     container.settings.override(
-        DictionaryRuntimeSettings(
-            dictionary_fingerprint_salt="repo-fixture-test",
-            dictionary_lookup_hit_sample_percent=0,
-            dictionary_lookup_miss_sample_percent=0,
+        DictionaryConfig(
+            fingerprint_salt="repo-fixture-test",
+            lookup_hit_sample_percent=0,
+            lookup_miss_sample_percent=0,
         )
     )
     # datasets_root=None -> canonical repo datasets/ path.

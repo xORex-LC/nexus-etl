@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from connector.config.app_settings import ApiSettings
+from connector.config.models import ApiConfig as ApiSettings
 from connector.infra.target.core.registry import TargetProviderRegistry
 from connector.infra.target.providers.ankey_rest import AnkeyTargetProvider
 

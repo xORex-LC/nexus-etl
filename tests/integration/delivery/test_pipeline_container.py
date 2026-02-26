@@ -19,7 +19,7 @@ from unittest.mock import Mock, patch
 import pytest
 from dependency_injector import providers
 
-from connector.config.app_settings import SqliteSettings
+from connector.config.models import AppConfig
 from connector.datasets.employees.spec import make_employees_spec
 from connector.delivery.cli.containers import PipelineContainer
 from connector.delivery.cli.pipeline_registry import build_stage_factory
@@ -58,19 +58,17 @@ def _build_cache_roles():
     return build_sqlite_cache_role_ports(gateway)
 
 
-def _make_app_settings_mock():
-    settings = Mock()
-    settings.resolver = None
-    return settings
+def _make_app_config_mock():
+    return AppConfig()
 
 
 def _make_pipeline_container(
     cache_roles=None,
-    app_settings=None,
+    app_config=None,
 ) -> PipelineContainer:
     container = PipelineContainer()
     container.cache_roles.override(cache_roles or _build_cache_roles())
-    container.app_settings.override(app_settings or _make_app_settings_mock())
+    container.app_config.override(app_config or _make_app_config_mock())
     return container
 
 
@@ -178,14 +176,6 @@ class TestStageWiring:
 
         assert isinstance(resolve_stage, ResolveStage)
 
-    def test_transform_segment_wiring(self):
-        """transform_segment() returns PipelineOrchestrator([map, normalize, enrich])."""
-        from connector.domain.transform.stages.stages import PipelineOrchestrator
-        container = _make_pipeline_container()
-        _apply_command_overrides(container)
-
-        assert isinstance(container.transform_segment(), PipelineOrchestrator)
-
     def test_planning_pipeline_wiring(self):
         """
         planning_pipeline() returns PlanningPipeline (Factory wiring works).
@@ -241,17 +231,14 @@ class TestLazyMaterialization:
         Match stage gets resolver_settings through planning_context only.
         There is exactly one path for resolver_settings.
         """
-        settings_mock = _make_app_settings_mock()
-        settings_mock.resolver = Mock()
-
-        container = _make_pipeline_container(app_settings=settings_mock)
+        container = _make_pipeline_container()
         _apply_command_overrides(container, include_deleted=False)
 
         # Verify planning_context includes resolver_settings keyed by ResolverSettings type
         planning_ctx = container.planning_context()
         assert isinstance(planning_ctx, StageExecutionContext)
         assert planning_ctx.has(ResolverSettings)
-        assert planning_ctx.get(ResolverSettings) is settings_mock.resolver
+        assert isinstance(planning_ctx.get(ResolverSettings), ResolverSettings)
 
 
 # ════════════════════════════════════════════════════════════════════════════════

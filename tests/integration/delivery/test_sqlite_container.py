@@ -20,7 +20,7 @@ from typing import Iterator
 import pytest
 from dependency_injector import providers
 
-from connector.config.app_settings import SqliteSettings
+from connector.config.models import AppConfig
 from connector.delivery.cli.containers import SqliteContainer
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.sqlite.engine import SqliteEngine
@@ -37,11 +37,11 @@ def _make_container(tmp_path: Path) -> SqliteContainer:
     Создать SqliteContainer с реальными DB-файлами и заглушкой для vault_ready.
     """
     cache_dir = str(tmp_path / "dbs")
-    settings = SqliteSettings()
+    app_config = AppConfig()
     cache_specs = list(load_cache_dsl_runtime().cache_specs)
 
     container = SqliteContainer()
-    container.settings.override(settings)
+    container.app_config.override(app_config)
     container.cache_dir.override(cache_dir)
     container.cache_specs.override(cache_specs)
     # Заглушка vault startup resource (нет vault key material в тесте)

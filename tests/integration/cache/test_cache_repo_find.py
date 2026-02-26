@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from connector.config.models import AppConfig
+from connector.config.projections import to_cache_db_config
 from pathlib import Path
 
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
-from connector.config.app_settings import SqliteSettings, build_cache_db_config
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
@@ -12,7 +13,7 @@ from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 def _build_repo(tmp_path: Path) -> SqliteCacheRepository:
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), db_path)
+    engine = open_sqlite(to_cache_db_config(AppConfig()), db_path)
     cache_specs = list(load_cache_dsl_runtime().cache_specs)
     ensure_cache_ready(engine, cache_specs)
     return SqliteCacheRepository(engine, cache_specs)

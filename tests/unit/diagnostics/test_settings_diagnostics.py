@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from connector.config.config import SettingsIssue, SettingsParseError
+from connector.config.config import SettingsIssue, SettingsLoadError
 from connector.config.diagnostics import translate_settings_load_error, translate_settings_warnings
 from connector.domain.diagnostics import build_catalog
 from connector.domain.models import DiagnosticSeverity, DiagnosticStage
@@ -8,7 +8,7 @@ from connector.domain.models import DiagnosticSeverity, DiagnosticStage
 
 def test_translate_settings_load_error_to_diagnostics() -> None:
     catalog = build_catalog(None, strict=True)
-    err = SettingsParseError(
+    err = SettingsLoadError(
         "invalid settings",
         [
             SettingsIssue(

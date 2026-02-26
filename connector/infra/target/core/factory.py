@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from connector.config.app_settings import ApiSettings
+from connector.config.models import ApiConfig as ApiSettings
 from connector.infra.target.core.runtime import TargetRuntime
 from connector.infra.target.providers.registry import (
     build_default_target_provider_registry,

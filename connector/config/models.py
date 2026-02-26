@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ApiConfig(BaseModel):
@@ -146,8 +146,16 @@ class VaultRolloutConfig(BaseModel):
     # "staging_dry_run" обязателен: поддерживается evaluate_vault_rollout()
     mode: Literal["full", "canary", "staging_dry_run", "off"] = "full"
     canary_percent: int = Field(default=100, ge=0, le=100)
-    # tuple[str, ...]: Pydantic v2 автоматически coerce-ит YAML-list → tuple
+    # tuple[str, ...]: Pydantic v2 coerce-ит YAML-list → tuple;
+    # field_validator обрабатывает comma-separated строки из ENV vars.
     canary_datasets: tuple[str, ...] = ()
+
+    @field_validator("canary_datasets", mode="before")
+    @classmethod
+    def _coerce_datasets_string(cls, v: object) -> object:
+        if isinstance(v, str):
+            return tuple(s.strip() for s in v.split(",") if s.strip())
+        return v
     # дефолт совпадает с доменным VaultRolloutPolicySettings.canary_seed
     canary_seed: str = "vault-rollout-v1"
     # дефолты выровнены по текущим VaultRolloutThresholds (regression guard)

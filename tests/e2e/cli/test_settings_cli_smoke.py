@@ -17,10 +17,11 @@ def test_check_api_smoke_works_with_slice_wiring(tmp_path: Path, monkeypatch) ->
     cfg.write_text(
         "\n".join(
             [
-                'host: "1.1.1.1"',
-                "port: 1111",
-                'api_username: "cfg_user"',
-                'api_password: "cfg_pass"',
+                "api:",
+                '  host: "1.1.1.1"',
+                "  port: 1111",
+                '  username: "cfg_user"',
+                '  password: "cfg_pass"',
             ]
         ),
         encoding="utf-8",

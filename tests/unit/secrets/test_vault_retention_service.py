@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from connector.config.models import AppConfig
+from connector.config.projections import to_vault_db_config
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -7,7 +9,6 @@ from cryptography.fernet import Fernet
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
-from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
@@ -19,7 +20,7 @@ def _new_key() -> str:
 
 def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, SqliteEngine]:
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         str(tmp_path / "cache" / "ankey_vault.sqlite3"),
     )
     return SqliteVaultRepository(engine), engine

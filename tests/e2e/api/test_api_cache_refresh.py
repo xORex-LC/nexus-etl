@@ -5,8 +5,9 @@ from typing import Callable
 import httpx
 from typer.testing import CliRunner
 
+from connector.config.loader import load_app_config
+from connector.config.projections import to_cache_db_config, to_identity_db_config
 from connector.infra.sqlite.engine import open_sqlite
-from connector.config.app_settings import SqliteSettings, build_cache_db_config
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.main import app
@@ -196,7 +197,7 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
 
     assert result.exit_code == 0
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), db_path)
+    engine = open_sqlite(to_cache_db_config(load_app_config().app_config), db_path)
     try:
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         repo = SqliteCacheRepository(engine, cache_specs)

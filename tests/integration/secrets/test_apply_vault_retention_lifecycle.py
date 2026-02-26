@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from connector.config.models import AppConfig
+from connector.config.projections import to_vault_db_config
 from pathlib import Path
 
 from cryptography.fernet import Fernet
 
-from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.datasets.employees.spec import make_employees_spec
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -94,7 +95,7 @@ def _plan(*, lifecycle: dict[str, object] | None) -> Plan:
 
 def _write_secret(tmp_path: Path) -> None:
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         _vault_db_path(tmp_path),
     )
     try:
@@ -116,7 +117,7 @@ def _write_secret(tmp_path: Path) -> None:
 
 def _read_secret_exists(tmp_path: Path) -> bool:
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         _vault_db_path(tmp_path),
     )
     try:
@@ -140,7 +141,7 @@ def _read_secret_exists(tmp_path: Path) -> bool:
 
 def _run_apply(tmp_path: Path, *, lifecycle: dict[str, object] | None, exec_ok: bool):
     db_path = _vault_db_path(tmp_path)
-    engine = open_sqlite(build_vault_db_config(SqliteSettings()), db_path)
+    engine = open_sqlite(to_vault_db_config(AppConfig()), db_path)
     try:
         repo = SqliteVaultRepository(engine)
         cipher = FernetEnvelopeCipher()

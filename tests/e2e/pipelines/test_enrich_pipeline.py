@@ -4,8 +4,9 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
+from connector.config.loader import load_app_config
+from connector.config.projections import to_cache_db_config, to_identity_db_config, to_vault_db_config
 from connector.infra.sqlite.engine import open_sqlite
-from connector.config.app_settings import SqliteSettings, build_cache_db_config
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
@@ -57,7 +58,7 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
 
 
 def _build_repo(db_path: str) -> SqliteCacheRepository:
-    engine = open_sqlite(build_cache_db_config(SqliteSettings()), db_path)
+    engine = open_sqlite(to_cache_db_config(load_app_config().app_config), db_path)
     cache_specs = list(load_cache_dsl_runtime().cache_specs)
     ensure_cache_ready(engine, cache_specs)
     return SqliteCacheRepository(engine, cache_specs)
@@ -329,7 +330,7 @@ def test_enrich_respects_report_items_limit(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    env = {"ANKEY_REPORT_ITEMS_LIMIT": "1"}
+    env = {"ANKEY_OBSERVABILITY__REPORT_ITEMS_LIMIT": "1"}
     result, report_path = run_enrich(tmp_path, csv_path, run_id="limit", env=env)
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from connector.config.app_settings import ApiSettings
+from connector.config.models import ApiConfig as ApiSettings
 from connector.infra.target.core.factory import (
     build_target_runtime,
     build_target_runtime_with_info,

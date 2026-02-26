@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from connector.config.app_settings import ApiSettings
+from connector.config.models import ApiConfig as ApiSettings
 from connector.infra.target.core.mutations import TargetMutationRegistry
 from connector.infra.target.core.gateway import TargetGateway
 from connector.infra.target.core.kernel import TargetKernel

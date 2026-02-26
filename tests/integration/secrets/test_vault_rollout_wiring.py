@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from connector.config.models import AppConfig
+from connector.config.projections import to_vault_db_config
 import json
 from pathlib import Path
 
@@ -8,7 +10,6 @@ from typer.testing import CliRunner
 
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
-from connector.config.app_settings import SqliteSettings, build_vault_db_config
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite
@@ -101,7 +102,7 @@ def _write_ephemeral_plan(path: Path, *, run_id: str) -> None:
 
 def _seed_vault_secret(*, tmp_path: Path, run_id: str) -> None:
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         str(tmp_path / "cache" / "ankey_vault.sqlite3"),
     )
     try:
@@ -123,7 +124,7 @@ def _seed_vault_secret(*, tmp_path: Path, run_id: str) -> None:
 
 def _vault_secret_exists(*, tmp_path: Path, run_id: str) -> bool:
     engine = open_sqlite(
-        build_vault_db_config(SqliteSettings()),
+        to_vault_db_config(AppConfig()),
         str(tmp_path / "cache" / "ankey_vault.sqlite3"),
     )
     try:
@@ -178,7 +179,7 @@ def test_import_apply_staging_rollout_forces_dry_run(tmp_path: Path) -> None:
         ],
         env={
             "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
-            "ANKEY_VAULT_ROLLOUT_MODE": "staging_dry_run",
+            "ANKEY_VAULT_ROLLOUT__MODE": "staging_dry_run",
         },
     )
     assert result.exit_code == 0
@@ -277,7 +278,7 @@ def test_import_apply_staging_dry_run_keeps_ephemeral_secret(tmp_path: Path, mon
         ],
         env={
             "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}",
-            "ANKEY_VAULT_ROLLOUT_MODE": "staging_dry_run",
+            "ANKEY_VAULT_ROLLOUT__MODE": "staging_dry_run",
         },
     )
     assert result.exit_code == 0
@@ -326,9 +327,9 @@ def test_import_apply_canary_percent_zero_blocks_requested_vault(tmp_path: Path)
         ],
         env={
             "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
-            "ANKEY_VAULT_ROLLOUT_MODE": "canary",
-            "ANKEY_VAULT_CANARY_PERCENT": "0",
-            "ANKEY_VAULT_CANARY_DATASETS": "employees",
+            "ANKEY_VAULT_ROLLOUT__MODE": "canary",
+            "ANKEY_VAULT_ROLLOUT__CANARY_PERCENT": "0",
+            "ANKEY_VAULT_ROLLOUT__CANARY_DATASETS": "employees",
         },
     )
     assert result.exit_code == 2

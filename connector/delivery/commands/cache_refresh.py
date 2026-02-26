@@ -45,8 +45,8 @@ def _runtime_context(build_result) -> dict[str, str]:
 
 def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     """Собрать runtime/deps и запустить cache refresh use-case."""
-    app_settings = ctx.app_settings
-    if app_settings is None:
+    app_config = ctx.app_config
+    if app_config is None:
         raise ValueError("App settings are not initialized")
     run_id = ctx.run_id
 
@@ -85,8 +85,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         )
         service = CacheCommandService(cache_roles.cache_admin, cache_refresh)
         return service.refresh(
-            page_size=opts.page_size or app_settings.refresh.page_size,
-            max_pages=opts.max_pages or app_settings.refresh.max_pages,
+            page_size=opts.page_size or app_config.refresh.page_size,
+            max_pages=opts.max_pages or app_config.refresh.max_pages,
             logger=ctx.logger,
             report=report,
             run_id=run_id,
@@ -97,11 +97,11 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                 else runtime_policy.refresh_with_deps_default
             ),
             report_items_limit=(
-                opts.report_items_limit or app_settings.observability.report_items_limit
+                opts.report_items_limit or app_config.observability.report_items_limit
             ),
             api_base_url=endpoint,
-            retries=opts.retries or app_settings.api.retries,
-            retry_backoff_seconds=opts.retry_backoff_seconds or app_settings.api.retry_backoff_seconds,
+            retries=opts.retries or app_config.api.retries,
+            retry_backoff_seconds=opts.retry_backoff_seconds or app_config.api.retry_backoff_seconds,
             dataset=opts.dataset,
             catalog=ctx.catalog,
         )

@@ -9,8 +9,8 @@ using real EmployeesSpec, real cache, and real stage factory.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import Mock
 
+from connector.config.models import AppConfig
 from connector.datasets.employees.spec import make_employees_spec
 from connector.delivery.cli.containers import PipelineContainer
 from connector.domain.diagnostics.catalog import build_catalog
@@ -58,12 +58,9 @@ def _build_container(monkeypatch, csv_path: Path):
     catalog = build_catalog("employees", strict=False)
     cache_roles = _build_cache_roles()
 
-    settings_mock = Mock()
-    settings_mock.resolver = None
-
     container = PipelineContainer()
     container.cache_roles.override(cache_roles)
-    container.app_settings.override(settings_mock)
+    container.app_config.override(AppConfig())
     container.dataset_spec.override(dataset_spec)
     container.run_id.override("e2e-test-run")
     container.csv_has_header.override(True)
