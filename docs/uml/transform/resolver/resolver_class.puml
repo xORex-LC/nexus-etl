@@ -1,19 +1,53 @@
 @startuml
 title Resolver Stage - Class Diagram (Current)
 set namespaceSeparator none
+left to right direction
+hide empty members
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
-skinparam classBorderThickness 2
 skinparam class {
   BackgroundColor #f7e9dc
   BorderColor #d9c2a8
 }
 
+class PlanningPipeline {
+  - _resolve_stage: ResolveStage
+  - _pending_expiry: IPendingExpiryService
+  + open(...): Iterator[Iterable[TransformResult]]
+}
+
+class ResolveUseCase {
+  + iter_resolved(...): Iterable[TransformResult]
+  + run(...): CommandResult
+  - _iter_resolved(...): Iterable[TransformResult]
+}
+
+class PlanningPipelineHooks {
+  - _pending_expiry: IPendingExpiryService
+  + plan_hooks(): PipelineHooks
+}
+
+class PipelineOrchestrator {
+  + run(source): Iterable[TransformResult]
+}
+
+class ResolveContextStage {
+  - _batch_index: IBatchIndexService
+  - _resolver: ResolveProcessor
+  + run(source): Iterable[TransformResult]
+}
+
 class ResolveStage {
-  - resolver: ResolveCore
+  - resolver: ResolveProcessor
   - catalog: ErrorCatalog
-  + run(source, dataset): Iterable[TransformResult]
+  - _batch_index: IBatchIndexService
+  + run(source): Iterable[TransformResult]
+}
+
+class PipelineRunContext {
+  + dedup_store: ISourceDedupStore
+  + batch_index: IBatchIndexService
 }
 
 class ResolveEngine {
@@ -21,173 +55,96 @@ class ResolveEngine {
   - resolve_rules: ResolveRules
   - link_rules: LinkRules
   - core: ResolveCore
-  + __init__(spec, identity_repo, pending_repo, settings, catalog, sink_spec, dsl)
+  + __init__(spec, ctx, ..., codec)
+  + build_batch_index(matched_rows): dict[str, list[str]]
   + resolve(matched, target_id_map, meta, batch_index)
-  + build_batch_index(matched_rows, dataset)
-  + drain_expired()
+}
+
+class ResolveCore {
+  - resolve_rules: ResolveRules
+  - link_rules: LinkRules
+  - cache_gateway: ResolveRuntimePort?
+  - settings: ResolverSettings
+  - catalog: ErrorCatalog
+  - sink_spec: SinkSpec?
+  - _codec: IPendingCodec
+  + build_batch_index(matched_rows): dict[str, list[str]]
+  + resolve(matched, target_id_map, meta, batch_index)
+  - _resolve_links(...)
+  - _validate_sink_mutations(...)
 }
 
 class ResolveDsl {
   + compile(spec: ResolveSpec, sink_spec: SinkSpec?): CompiledResolveRules
 }
 
-class CompiledResolveRules {
-  + resolve_rules: ResolveRules
-  + link_rules: LinkRules
+class InMemoryBatchIndexService {
+  - _index: dict[str, list[str]]?
+  + set_index(index): None
+  + get(): dict[str, list[str]]
 }
 
-class ResolveSpec {
-  + dataset: str
-  + resolve: ResolveBlock
+class PendingExpiryService {
+  - _cache_gateway: ResolveRuntimePort
+  - _settings: ResolverSettings?
+  - _last_sweep_at: datetime?
+  - _expired: list[PendingLink]
+  + sweep(): None
+  + drain_expired(): list[PendingLink]
 }
 
-class ResolveBlock {
-  + desired_state: ResolveDesiredStateSpec
-  + source_ref: ResolveSourceRefSpec?
-  + diff: ResolveDiffSpec
-  + merge: ResolveMergeSpec?
-  + secrets: ResolveSecretsSpec?
-  + links: ResolveLinkSpec[*]
+class PendingCodecAdapter {
+  + serialize(matched, desired_state, meta): str
+  + deserialize(pending_rows): PendingLoadResult
 }
 
-class ResolveDesiredStateSpec {
-  + mode: project_fields
-  + fields: str[*]
-  + drop_fields: str[*]
+class IdentityIndexSyncer {
+  - runtime: ApplyRuntimePort
+  + sync(dataset, resolved_id, key_values): None
 }
 
-class ResolveSourceRefSpec {
-  + mode: from_identity
-  + fields: str[*]
-  + include_primary: bool
-}
-
-class ResolveDiffSpec {
-  + mode: compare_fields
-  + fields: ResolveDiffFieldSpec[*]
-  + ignore_fields: str[*]
-  + from_sink: FromSinkSpec
-}
-
-class FromSinkSpec {
-  + enabled: bool
-  + exclude_fields: str[*]
-  + normalize_by_type: bool
-}
-
-class ResolveDiffFieldSpec {
-  + field: str
-  + existing: str?
-  + output: str?
-  + normalize: none|text|bool
-}
-
-class ResolveMergeSpec {
-  + mode: none|fill_empty_from_existing
-  + fields: ResolveMergeFieldSpec[*]
-}
-
-class ResolveMergeFieldSpec {
-  + field: str
-  + existing: str?
-  + normalize: none|text|bool
-}
-
-class ResolveSecretsSpec {
-  + mode: none|by_op
-  + create: str[*]
-  + update: str[*]
-}
-
-class ResolveLinkSpec {
-  + field: str
-  + target_dataset: str
-  + resolve_keys: ResolveLinkKeySpec[*]
-  + dedup_rules: str[*][*]
-  + target_id_field: str
-  + coerce: int|str?
-  + on_unresolved: pending|hard_error
-}
-
-class ResolveLinkKeySpec {
-  + name: str
-  + field: str
-}
-
-class ResolveCore {
-  - resolve_rules: ResolveRules
-  - link_rules: LinkRules
-  - identity_repo: IdentityRepository
-  - pending_repo: PendingLinksRepository
-  - settings: ResolverSettings
-  - sink_spec: SinkSpec
+class ResolveProcessor <<protocol>> {
+  + build_batch_index(matched_rows): dict[str, list[str]]
   + resolve(matched, target_id_map, meta, batch_index)
-  + build_batch_index(matched_rows, dataset)
-  + drain_expired()
 }
 
-class ResolveRules {
-  + build_desired_state
-  + build_source_ref
-  + diff_policy
-  + merge_policy
-  + secret_fields_for_op
+class IBatchIndexService <<protocol>> {
+  + set_index(index): None
+  + get(): dict[str, list[str]]
 }
 
-class LinkRules {
-  + fields: LinkFieldRule[*]
+class IPendingExpiryService <<protocol>> {
+  + sweep(): None
+  + drain_expired(): list[PendingLink]
 }
 
-class LinkFieldRule {
-  + field: str
-  + target_dataset: str
-  + resolve_keys: LinkKeyRule[*]
-  + dedup_rules: tuple
-  + target_id_field: str
-  + coerce: str
-  + on_unresolved: str
+class IPendingCodec <<protocol>> {
+  + serialize(...): str
+  + deserialize(...): PendingLoadResult
 }
 
-class LinkKeyRule {
-  + name: str
-  + field: str
+class ResolveRuntimePort <<protocol>> {
+  + transaction()
+  + find_candidates(dataset, identity_key): list[str]
+  + add_pending(...): int
+  + list_pending_rows(dataset): list[PendingRow]
+  + touch_attempt(pending_id): int
+  + mark_conflict(pending_id, reason): None
+  + mark_resolved_for_source(source_row_id): None
+  + sweep_expired(now, reason): list[PendingLink]
+  + purge_stale(cutoff, statuses): int
 }
 
-class MatchedRow {
-  + row_ref: RowRef
-  + identity: Identity
-  + desired_state: dict[str, Any]
-  + existing: dict[str, Any]?
-  + fingerprint: str
-  + fingerprint_fields: tuple[str, ...]
-  + match_decision: MatchDecision
-  + source_links: dict[str, Identity]
-  + target_id: str?
+class ApplyRuntimePort <<protocol>> {
+  + upsert_identity(dataset, identity_key, resolved_id): None
+  + list_pending_for_key(dataset, lookup_key): list[PendingLink]
+  + mark_resolved(pending_id): None
 }
 
-class ResolvedRow {
-  + row_ref: RowRef
-  + identity: Identity
-  + op: str
-  + desired_state: dict[str, Any]
-  + changes: dict[str, Any]
-  + existing: dict[str, Any]?
-  + target_id: str?
-  + source_ref: dict[str, Any]?
-  + secret_fields: str[*]
-}
-
-class IdentityRepository <<protocol>> {
-  + find_candidates(dataset, identity_key)
-}
-
-class PendingLinksRepository <<protocol>> {
-  + add_pending(...)
-  + touch_attempt(pending_id)
-  + mark_conflict(pending_id, reason)
-  + mark_resolved_for_source(source_row_id)
-  + sweep_expired(now_iso, reason)
-  + purge_stale(cutoff_iso)
+class StageExecutionContext {
+  + metadata: PipelineMetadata
+  + get(port_type)
+  + require(port_type)
 }
 
 class ResolverSettings {
@@ -199,57 +156,88 @@ class ResolverSettings {
   + pending_retention_days: int
 }
 
-class TransformResult<T> {
-  + record
-  + row
-  + row_ref
-  + match_key
-  + meta
-  + errors
-  + warnings
-}
+class ResolveSpec
+class ResolveRules
+class LinkRules
+class SinkSpec
+class ErrorCatalog
+class MatchedRow
+class ResolvedRow
+class "TransformResult<T>" as TransformResultT
 
-ResolveStage --> ResolveCore
+' Delivery/use-case touchpoints
+PlanningPipeline --> ResolveUseCase : resolve pass orchestration
+PlanningPipeline --> ResolveStage : injects stage into use-case
+PlanningPipeline --> IPendingExpiryService : open().finally drain_expired()
+PlanningPipeline ..> ResolveContextStage : pre-resolve checkpoint includes stage pair
+PlanningPipelineHooks --> IPendingExpiryService : on_stage_complete("resolve") -> sweep()
+ResolveUseCase --> PipelineOrchestrator : [ResolveStage] + hooks per micro-batch
+ResolveUseCase --> ResolveStage : execute resolve stage
+ResolveUseCase --> ResolveRuntimePort : pending replay + tx scope
+
+' Stage pair and per-run batch index
+ResolveContextStage ..> ResolveProcessor : build_batch_index(all_records)
+ResolveContextStage --> IBatchIndexService : set_index(index)
+ResolveStage --> IBatchIndexService : get() (lazy, once per run)
+ResolveStage ..> ResolveProcessor : resolve(..., batch_index)
+ResolveStage --> ErrorCatalog : diagnostic_boundary(RESOLVE)
+PipelineRunContext o-- IBatchIndexService : shared per-run singleton
+PipelineRunContext ..> ResolveContextStage : DI shared state
+PipelineRunContext ..> ResolveStage : DI shared state
+
+' Engine / core mechanics
+ResolveEngine ..|> ResolveProcessor
 ResolveEngine --> ResolveDsl
 ResolveEngine --> ResolveCore
-ResolveEngine --> ResolveRules
-ResolveEngine --> LinkRules
-ResolveDsl --> ResolveSpec
-ResolveDsl --> CompiledResolveRules
-ResolveSpec --> ResolveBlock
-ResolveBlock --> ResolveDesiredStateSpec
-ResolveBlock --> ResolveSourceRefSpec
-ResolveBlock --> ResolveDiffSpec
-ResolveDiffSpec --> FromSinkSpec
-ResolveBlock --> ResolveMergeSpec
-ResolveBlock --> ResolveSecretsSpec
-ResolveBlock --> ResolveLinkSpec
-ResolveLinkSpec --> ResolveLinkKeySpec
-ResolveCore --> ResolveRules
-ResolveCore --> LinkRules
-ResolveCore --> IdentityRepository
-ResolveCore --> PendingLinksRepository
+ResolveEngine --> StageExecutionContext : compile + extract capabilities
+ResolveEngine --> ResolveSpec
+ResolveEngine --> IPendingCodec : injected codec
+ResolveCore --> ResolveRuntimePort : identity + pending lifecycle ops
+ResolveCore --> IPendingCodec : serialize pending payload
 ResolveCore --> ResolverSettings
+ResolveCore --> ErrorCatalog
+ResolveCore --> SinkSpec : validate mutated fields
 ResolveCore ..> MatchedRow
 ResolveCore ..> ResolvedRow
-TransformResult <|-- "TransformResult[MatchedRow]"
-TransformResult <|-- "TransformResult[ResolvedRow]"
-LinkRules o-- LinkFieldRule
-LinkFieldRule o-- LinkKeyRule
 
-note right of ResolveDsl
-Single compile path:
-ResolveSpec (v2)
--> ResolveRules + LinkRules
-No strategy registry.
+' Services / ports
+InMemoryBatchIndexService ..|> IBatchIndexService
+PendingExpiryService ..|> IPendingExpiryService
+PendingExpiryService --> ResolveRuntimePort : sweep_expired()
+PendingExpiryService --> ResolverSettings : interval guard
+PendingCodecAdapter ..|> IPendingCodec
+IdentityIndexSyncer --> ApplyRuntimePort : close pending after apply
+
+' Stream types (simplified)
+ResolveContextStage ..> TransformResultT : pass-through matched stream
+ResolveStage ..> TransformResultT : matched -> resolved stream
+
+' Layout helpers
+PlanningPipeline -[hidden]-> ResolveContextStage
+ResolveContextStage -[hidden]-> ResolveEngine
+ResolveEngine -[hidden]-> ResolveCore
+ResolveCore -[hidden]-> ResolveRuntimePort
+PlanningPipelineHooks -[hidden]-> PendingExpiryService
+IdentityIndexSyncer -[hidden]-> ApplyRuntimePort
+
+note right of ResolveEngine
+ResolveEngine is a thin wrapper:
+- compiles ResolveSpec via ResolveDsl
+- builds ResolveCore
+- uses StageExecutionContext for runtime ports/settings/catalog/sink_spec
+- shares one instance between ResolveContextStage and ResolveStage (DI)
 end note
 
-note right of ResolveCore
-Resolver-core only:
-1) merge desired_state
-2) resolve links + pending policy
-3) decide op (create/update/skip)
-4) targeted sink validation
+note right of ResolveUseCase
+Resolve mechanics outside ResolveCore:
+- pending replay (list_pending_rows + decode)
+- micro-batching + transaction scope
+- hooks-driven sweep via PlanningPipelineHooks/PendingExpiryService
+end note
+
+note bottom of IdentityIndexSyncer
+Adjacent layer touchpoint (post-apply / cache refresh):
+marks pending rows as resolved after identity index sync.
 end note
 
 @enduml

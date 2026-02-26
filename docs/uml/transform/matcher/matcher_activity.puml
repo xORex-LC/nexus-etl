@@ -3,62 +3,67 @@ title Matcher Stage - Activity Diagram (Current)
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
-skinparam activityBorderThickness 2
 skinparam activity {
   BackgroundColor #f7e9dc
   BorderColor #d9c2a8
 }
 
 start
-:Input TransformResult[enriched];
-:MatchStage enters diagnostic_boundary(MATCH);
-:MatchEngine.match_with_source_dedup(enriched);
+:MatchUseCase.run() consumes MATCH checkpoint pipeline\n(via PipelineOrchestrator);
+note right
+Planning path (adjacent flow):
+PlanningPipeline.open() resets dedup_store before each run.
+MatchStage / MatchCore do not own reset().
+end note
 
-if (matched is None?) then (yes)
-  :append boundary errors;
-  :set row=None;
-  stop
-endif
+:PipelineOrchestrator invokes MatchStage.run(enriched_stream);
 
-:MatchCore.match(enriched);
-if (row is None or identity missing?) then (yes)
-  :emit MATCH_IDENTITY_MISSING;
-  :return TransformResult[row=None];
-  stop
-endif
+repeat
+  :Collect micro-batch in MatchStage\n(iter_micro_batches using IMatchBatchSettings);
 
-:Identity candidate generation by rules;
-if (exact candidate found?) then (yes)
-  :status = MATCHED;
-  :reason = identity_exact;
-else (no)
-  if (fuzzy.enabled?) then (yes)
-    :collect candidates by blocking_keys;
-    :rank via scoring (weights+comparators);
-    if (tie or review-range?) then (yes)
-      :status = AMBIGUOUS;
-    elseif (score >= accept_threshold?) then (yes)
-      :status = MATCHED;
+  repeat
+    if (enriched.row is None?) then (yes)
+      :Pass through TransformResult unchanged;
     else (no)
-      :status = NOT_FOUND;
+      :Enter diagnostic_boundary(MATCH);
+      :MatchEngine.match_with_source_dedup(enriched);
+      :MatchCore.match_with_source_dedup(...);
+
+      note right
+        MatchCore.match(...) summary:
+        - build MatchContext from TransformResult
+        - identity exact lookup by MatchingRules.identity_rules
+        - if no exact and fuzzy.enabled: collect blocking candidates
+          + rank_candidates() + is_tie() + threshold decision
+        - build desired_state via ResolveRules.build_desired_state(...)
+        - build fingerprint + MatchDecision + MatchedRow
+      end note
+
+      if (match() returned row=None?) then (yes)
+        :Emit TransformResult[row=None]\n(identity missing / target conflict / other match error);
+      else (no)
+        if (source_dedup enabled AND dedup_key exists?) then (yes)
+          :dedup_store.check_and_register(dedup_key, fingerprint);
+          if (DedupResult.is_first?) then (yes)
+            :Emit TransformResult[MatchedRow];
+          elseif (is_duplicate?) then (yes)
+            :Drop row; set meta.match_drop_reason=duplicate_source;\nadd MATCH_DUPLICATE_SOURCE warning;
+            :Emit TransformResult[row=None];
+          else (conflict)
+            :Drop row; set meta.match_drop_reason=conflict_source;\nadd MATCH_CONFLICT_SOURCE warn/error by policy;
+            :Emit TransformResult[row=None];
+          endif
+        else (no)
+          :Emit TransformResult[MatchedRow];
+        endif
+      endif
     endif
-  else (disabled)
-    :status = NOT_FOUND;
-  endif
-endif
+  repeat while (More items in current micro-batch?) is (yes)
 
-:build desired_state + fingerprint + links;
-:build typed MatchDecision;
-:apply source-dedup policy;
-if (duplicate/conflict source?) then (yes)
-  :drop row for downstream;
-  :keep diagnostics/report context;
-else (no)
-  :emit MatchedRow;
-endif
+repeat while (More micro-batches?) is (yes)
 
-:append boundary errors (if any);
-:return TransformResult[MatchedRow];
+:PipelineHooks.on_stage_complete("match")\n(only on full stage consumption);
+:PlanningPipelineHooks -> match_scope.clear_scope();
 stop
 
 @enduml

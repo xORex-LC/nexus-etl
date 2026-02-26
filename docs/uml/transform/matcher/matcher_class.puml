@@ -1,100 +1,120 @@
 @startuml
 title Matcher Stage - Class Diagram (Current)
 set namespaceSeparator none
+left to right direction
+hide empty members
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
-skinparam classBorderThickness 2
 skinparam class {
   BackgroundColor #f7e9dc
   BorderColor #d9c2a8
 }
 
-class MatchStage {
-  - matcher: MatchProcessor
-  - catalog: ErrorCatalog
+class PipelineContainer {
+  + planning_pipeline(): PlanningPipeline
+  + match_stage(): MatchStage
+}
+
+class PlanningPipeline {
+  - _dedup_store: ISourceDedupStore
+  + open(...): Iterator[Iterable[TransformResult]]
+}
+
+class MatchUseCase {
+  + run(row_source, pipeline, dataset, report, catalog): CommandResult
+}
+
+class PlanningPipelineHooks {
+  - _match_scope: IMatchScopeService
+  + plan_hooks(): PipelineHooks
+}
+
+class PipelineOrchestrator {
   + run(source): Iterable[TransformResult]
 }
 
-interface MatchProcessor <<protocol>> {
-  + match(enriched): TransformResult[MatchedRow]
-  + match_with_source_dedup(enriched): TransformResult[MatchedRow]
-  + reset_source_dedup(): None
-  + bind_runtime_scope(scope): None
+class MatchStage {
+  - matcher: MatchProcessor
+  - catalog: ErrorCatalog
+  - _batch_settings: IMatchBatchSettings
+  + run(source): Iterable[TransformResult]
 }
 
 class MatchEngine {
   - dsl: MatchDsl
   - matching_rules: MatchingRules
   - core: MatchCore
-  + __init__(spec, dataset, cache_repo, resolve_rules, include_deleted, catalog, identity_repo)
+  + __init__(spec, resolve_rules, include_deleted, ..., dedup_store)
+  + match(enriched): TransformResult
+  + match_with_source_dedup(enriched): TransformResult
+}
+
+class MatchCore {
+  - dataset: str
+  - cache_gateway: MatchRuntimePort
+  - matching_rules: MatchingRules
+  - resolve_rules: ResolveRules
+  - include_deleted: bool
+  - catalog: ErrorCatalog
+  - _dedup_store: ISourceDedupStore
   + match(enriched): TransformResult[MatchedRow]
   + match_with_source_dedup(enriched): TransformResult[MatchedRow]
-  + match_stream(enriched_source): Iterable[TransformResult[MatchedRow]]
+  + match_stream(source): Iterable[TransformResult[MatchedRow]]
+  - _match_identity(...)
+  - _match_with_fuzzy(...)
 }
 
 class MatchDsl {
   + compile(spec: MatchSpec): MatchingRules
 }
 
-class MatchCore {
-  - dataset: str
-  - cache_repo: CacheRepositoryProtocol
-  - identity_repo: IdentityRepository
-  - matching_rules: MatchingRules
-  - resolve_rules: ResolveRules
-  + match(enriched): TransformResult[MatchedRow]
-  + match_with_source_dedup(enriched): TransformResult[MatchedRow]
-  + match_stream(enriched_source): Iterable[TransformResult[MatchedRow]]
+class MatchScopeService {
+  - _match_runtime: MatchRuntimePort
+  - _run_id: str
+  + clear_scope(): None
 }
 
-class MatchSpec {
-  + dataset: str
-  + match: MatchBlock
+class MatchBatchSettings {
+  + batch_size: int
+  + flush_interval_ms: int
 }
 
-class MatchBlock {
-  + identity_rules: MatchRule[*]
-  + ignored_fields: str[*]
-  + source_dedup: SourceDedupSpec
-  + fuzzy: FuzzySpec
+class LocalSourceDedupStore {
+  - _seen: dict[str, str]
+  + check_and_register(key, fingerprint): DedupResult
+  + reset(): None
 }
 
-class MatchRule {
-  + name: str
-  + fields: str[*]
-  + primary: str?
+class ScopedSourceDedupStore {
+  - _cache_gateway: MatchRuntimePort
+  - _scope: str
+  - _dataset: str
+  - _seen: dict[str, str]
+  + check_and_register(key, fingerprint): DedupResult
+  + reset(): None
 }
 
-class SourceDedupSpec {
-  + enabled: bool
-  + on_duplicate: warn|error
-  + on_conflict: warn|error
+class MatcherScoring {
+  + rank_candidates(...): list[CandidateScore]
+  + is_tie(ranked, tie_delta): bool
 }
 
-class FuzzySpec {
-  + enabled: bool
-  + blocking_keys: str[*]
-  + comparators: dict[str, exact|casefold|similarity]
-  + weights: dict[str, float]
-  + accept_threshold: float
-  + review_threshold: float
-  + tie_delta: float
-  + max_candidates: int
-  + top_k: int
-  + score_round: int
+class PipelineRunContext {
+  + dedup_store: ISourceDedupStore
+  + batch_index: IBatchIndexService
+}
+
+class ResolveRules {
+  + build_desired_state(...)
 }
 
 class MatchingRules {
-  + identity_rules: IdentityRule[*]
+  + identity_rules: tuple[IdentityRule, ...]
+  + ignored_fields: set[str]
+  + build_links: BuildLinks?
   + source_dedup: SourceDedupRules
   + fuzzy: FuzzyScoringRules
-  + ignored_fields: set[str]
-}
-
-class IdentityRule {
-  + name: str
-  + build_identity
 }
 
 class SourceDedupRules {
@@ -105,7 +125,7 @@ class SourceDedupRules {
 
 class FuzzyScoringRules {
   + enabled: bool
-  + blocking_keys: str[*]
+  + blocking_keys: tuple[str, ...]
   + comparators: dict[str, str]
   + weights: dict[str, float]
   + accept_threshold: float
@@ -116,12 +136,12 @@ class FuzzyScoringRules {
   + score_round: int
 }
 
-class ResolveRules {
-  + build_desired_state
-  + build_source_ref
-  + diff_policy
-  + secret_fields_for_op
-  + merge_policy
+class MatchDecision {
+  + status: MatchDecisionStatus
+  + reason_code: str
+  + selected: MatchCandidate?
+  + candidates: tuple[MatchCandidate, ...]
+  + score: float?
 }
 
 class MatchDecisionStatus <<enum>> {
@@ -129,24 +149,6 @@ class MatchDecisionStatus <<enum>> {
   NOT_FOUND
   AMBIGUOUS
   CONFLICT_SOURCE
-}
-
-class MatchDecision {
-  + status: MatchDecisionStatus
-  + reason_code: str
-  + message: str?
-  + selected: MatchCandidate?
-  + candidates: MatchCandidate[*]
-  + score: float?
-  + meta: dict[str, Any]
-}
-
-class MatchCandidate {
-  + target_id: str?
-  + identity: str?
-  + score: float?
-  + match_mode: str
-  + evidence: dict[str, Any]?
 }
 
 class MatchedRow {
@@ -161,62 +163,128 @@ class MatchedRow {
   + target_id: str?
 }
 
-class CacheRepositoryProtocol <<protocol>> {
-  + find(dataset, filters, include_deleted, mode)
+class MatchProcessor <<protocol>> {
+  + match(enriched): TransformResult[MatchedRow]
+  + match_with_source_dedup(enriched): TransformResult[MatchedRow]
 }
 
-class IdentityRepository <<protocol>> {
-  + get_runtime_state(scope, dataset, key)
-  + set_runtime_state(scope, dataset, key, value)
+class ISourceDedupStore <<protocol>> {
+  + check_and_register(key, fingerprint): DedupOutcome
+  + reset(): None
 }
 
-class TransformResult<T> {
-  + record
-  + row
-  + row_ref
-  + match_key
-  + meta
-  + errors
-  + warnings
+class IMatchBatchSettings <<protocol>> {
+  + batch_size: int
+  + flush_interval_ms: int
 }
 
+class IMatchScopeService <<protocol>> {
+  + clear_scope(): None
+}
+
+class MatchRuntimePort <<protocol>> {
+  + find(dataset, filters, include_deleted, mode): list[dict]
+  + set_runtime_state(scope, dataset, state_key, state_value): None
+  + get_runtime_state(scope, dataset, state_key): str?
+  + clear_runtime_scope(scope): None
+}
+
+class StageExecutionContext {
+  + metadata: PipelineMetadata
+  + require(port_type)
+  + get(port_type)
+}
+
+class ErrorCatalog
+class MatchSpec
+class "TransformResult<T>" as TransformResultT
+class IBatchIndexService <<protocol>>
+
+' Entry / boundary touchpoints
+PipelineContainer --> MatchEngine : Singleton (planning path)
+PipelineContainer --> MatchStage : Singleton
+PipelineContainer --> LocalSourceDedupStore : per-run singleton
+PipelineContainer --> PlanningPipeline : Factory
+PipelineContainer --> MatchScopeService : Singleton
+PipelineContainer ..> PipelineRunContext : contains dedup_store
+
+PlanningPipeline --> ISourceDedupStore : open() -> reset() before run
+PlanningPipeline ..> MatchStage : pre-resolve checkpoint includes match
+MatchUseCase --> PipelineOrchestrator : MATCH checkpoint pipeline
+PipelineOrchestrator --> MatchStage : run(enriched stream)
+PlanningPipelineHooks --> IMatchScopeService : on_stage_complete("match")
+MatchScopeService ..|> IMatchScopeService
+MatchScopeService --> MatchRuntimePort : clear_runtime_scope("run:<id>")
+
+' Stage / engine / core
 MatchStage --> MatchProcessor
-MatchProcessor <|.. MatchEngine
+MatchStage --> IMatchBatchSettings
+MatchStage --> ErrorCatalog : diagnostic_boundary
+MatchEngine ..|> MatchProcessor
 MatchEngine --> MatchDsl
-MatchEngine --> MatchCore
+MatchEngine --> MatchCore : delegates
+MatchEngine --> StageExecutionContext : ctx.require(MatchRuntimePort)
+MatchEngine --> ResolveRules : injected compiled rules
+MatchEngine --> ISourceDedupStore : injected dedup_store
+MatchEngine --> MatchSpec
 MatchDsl --> MatchSpec
-MatchSpec --> MatchBlock
-MatchBlock --> MatchRule
-MatchBlock --> SourceDedupSpec
-MatchBlock --> FuzzySpec
-MatchDsl --> MatchingRules
-MatchingRules o-- IdentityRule
+MatchDsl --> MatchingRules : compile()
+
+MatchCore --> MatchRuntimePort : exact + fuzzy cache lookups
+MatchCore --> MatchingRules
+MatchCore --> ResolveRules : build_desired_state(...)
+MatchCore --> ISourceDedupStore : source-dedup check/register
+MatchCore --> MatcherScoring : rank_candidates()/is_tie()
+MatchCore --> ErrorCatalog
+MatchCore ..> MatchedRow
+MatchCore ..> MatchDecision
+MatchCore ..> MatchDecisionStatus
+MatchCore ..> TransformResultT
+
+' Compiled rules and runtime services
 MatchingRules o-- SourceDedupRules
 MatchingRules o-- FuzzyScoringRules
-MatchCore --> MatchingRules
-MatchCore --> ResolveRules
-MatchCore --> CacheRepositoryProtocol
-MatchCore --> IdentityRepository
+MatchBatchSettings ..|> IMatchBatchSettings
+LocalSourceDedupStore ..|> ISourceDedupStore
+ScopedSourceDedupStore ..|> ISourceDedupStore
+ScopedSourceDedupStore --> MatchRuntimePort : get/set runtime_state
+PipelineRunContext o-- ISourceDedupStore : dedup_store
 MatchedRow --> MatchDecision
 MatchDecision --> MatchDecisionStatus
-MatchDecision --> MatchCandidate
-MatchCore ..> TransformResult
-MatchCore ..> MatchedRow
 
-note right of MatchDsl
-Compile path:
-datasets/<dataset>.match.yaml
--> MatchSpec
--> MatchDsl.compile()
--> MatchingRules
-end note
+' Layout helpers
+PipelineContainer -[hidden]-> PlanningPipeline
+PlanningPipeline -[hidden]-> MatchUseCase
+MatchUseCase -[hidden]-> MatchStage
+MatchStage -[hidden]-> MatchEngine
+MatchEngine -[hidden]-> MatchCore
+MatchCore -[hidden]-> MatchRuntimePort
+PlanningPipelineHooks -[hidden]-> MatchScopeService
+LocalSourceDedupStore -[hidden]-> ScopedSourceDedupStore
 
 note right of MatchCore
-Single matcher-core runtime:
-1) identity exact-first
-2) fuzzy fallback + scoring
-3) source-dedup inside core
-4) typed MatchDecision output
+Core matcher mechanics:
+- identity exact lookup (cache)
+- fuzzy fallback + scoring + thresholds/tie handling
+- desired_state/fingerprint/MatchDecision build
+- source-dedup via ISourceDedupStore (drop row + diagnostics on duplicate/conflict)
+end note
+
+note bottom of PlanningPipeline
+Planning path lifecycle touchpoint:
+`open()` resets dedup_store before each run.
+Matcher core/stage do not own dedup_store lifecycle.
+end note
+
+note bottom of PlanningPipelineHooks
+Match runtime scope cleanup is hook-driven:
+`on_stage_complete("match") -> match_scope.clear_scope()`.
+This is separate from LocalSourceDedupStore reset.
+end note
+
+note bottom of ScopedSourceDedupStore
+Alternative implementation for cross-run scoped dedup via MatchRuntimePort.
+Current PipelineContainer wiring uses LocalSourceDedupStore.
 end note
 
 @enduml

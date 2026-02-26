@@ -3,47 +3,85 @@ title Matcher Stage - State Machine Diagram (Current)
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
-skinparam stateBorderThickness 2
 skinparam state {
   BackgroundColor #f7e9dc
   BorderColor #d9c2a8
 }
 
-[*] --> Input
+[*] --> MatchStageInput : MatchStage receives TransformResult[enriched]
 
-Input --> BoundaryFailed : runtime boundary error
-Input --> ValidateInput : boundary success
+MatchStageInput --> UpstreamPassthrough : enriched.row is None
+MatchStageInput --> BoundaryExecution : enriched.row exists
 
-ValidateInput --> MissingInput : row/identity invalid
-ValidateInput --> ExactMatch : identity candidates
+BoundaryExecution --> BoundaryFailed : diagnostic_boundary error\nor matcher returns None
+BoundaryExecution --> MatchCoreRun : MatchEngine.match_with_source_dedup()
 
-ExactMatch --> Matched : one exact candidate
-ExactMatch --> FuzzyFallback : no exact candidate
-ExactMatch --> ConflictTarget : multiple exact candidates
+state MatchCoreRun {
+  [*] --> BuildMatchContext
 
-FuzzyFallback --> Matched : score >= accept_threshold
-FuzzyFallback --> Ambiguous : review-range or tie
-FuzzyFallback --> NotFound : score < review_threshold
+  BuildMatchContext --> MatchFailed : empty row / identity missing
+  BuildMatchContext --> ExactLookup : iterate identity_rules + cache find()
 
-Matched --> BuildResult
-Ambiguous --> BuildResult
-NotFound --> BuildResult
+  ExactLookup --> MatchFailed : >1 exact candidates\n(MATCH_CONFLICT_TARGET)
+  ExactLookup --> StatusMatched : exact candidate found
+  ExactLookup --> FuzzyLookup : no exact && fuzzy.enabled
+  ExactLookup --> StatusNotFound : no exact && fuzzy.disabled
 
-BuildResult --> SourceDedup
-SourceDedup --> DuplicateSourceDrop : duplicate fingerprint
-SourceDedup --> ConflictSourceDrop : conflicting fingerprint
-SourceDedup --> Output : pass-through
+  FuzzyLookup --> StatusMatched : fuzzy.accept_threshold reached
+  FuzzyLookup --> StatusAmbiguous : fuzzy tie/review range
+  FuzzyLookup --> StatusNotFound : fuzzy reject / no candidates / no ranked
 
-DuplicateSourceDrop --> Output
-ConflictSourceDrop --> Output
-MissingInput --> Output
-ConflictTarget --> Output
+  StatusMatched : MatchDecision.status=MATCHED
+  StatusAmbiguous : MatchDecision.status=AMBIGUOUS
+  StatusNotFound : MatchDecision.status=NOT_FOUND
+
+  StatusMatched --> BuildMatchedRow
+  StatusAmbiguous --> BuildMatchedRow
+  StatusNotFound --> BuildMatchedRow
+
+  BuildMatchedRow : build desired_state + fingerprint\n+ MatchDecision + MatchedRow
+  BuildMatchedRow --> SourceDedupGate
+
+  state SourceDedupGate {
+    [*] --> DedupDecision
+    DedupDecision --> PassThrough : source_dedup disabled\nor dedup_key missing
+    DedupDecision --> CheckDedup : source_dedup enabled\n&& dedup_key present
+    CheckDedup --> PassThrough : check_and_register() -> is_first
+    CheckDedup --> DroppedDuplicate : is_duplicate\n+ MATCH_DUPLICATE_SOURCE warning
+    CheckDedup --> DroppedConflictWarn : is_conflict && on_conflict=warn\n+ MATCH_CONFLICT_SOURCE warning
+    CheckDedup --> DroppedConflictError : is_conflict && on_conflict=error\n+ MATCH_CONFLICT_SOURCE error
+
+    PassThrough --> [*]
+    DroppedDuplicate --> [*]
+    DroppedConflictWarn --> [*]
+    DroppedConflictError --> [*]
+  }
+
+  SourceDedupGate --> [*]
+  MatchFailed --> [*]
+}
+
+MatchCoreRun --> MatchedOutput : row=MatchedRow\n(status MATCHED / AMBIGUOUS / NOT_FOUND)
+MatchCoreRun --> DroppedOutput : row=None + meta.match_drop_reason\n(duplicate_source / conflict_source)
+MatchCoreRun --> MatchFailedOutput : row=None + errors
+
+UpstreamPassthrough --> Output
 BoundaryFailed --> Output
+MatchedOutput --> Output
+DroppedOutput --> Output
+MatchFailedOutput --> Output
 Output --> [*]
 
-note right of Ambiguous
-Typed status AMBIGUOUS is preserved
-for downstream resolve/plan handling.
+note right of MatchCoreRun
+`CONFLICT_SOURCE` in MatchDecisionStatus is a downstream-consumed typed status,
+but source conflicts in current match flow are represented as row drop outcomes
+(`match_drop_reason=conflict_source`) with MATCH_CONFLICT_SOURCE diagnostics.
+end note
+
+note left of MatchStageInput
+Run-level housekeeping is external to MatchCore/MatchStage:
+- PlanningPipeline.open() -> dedup_store.reset() before run (planning path)
+- PipelineHooks.on_stage_complete("match") -> MatchScopeService.clear_scope()
 end note
 
 @enduml
