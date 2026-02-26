@@ -1,5 +1,7 @@
 @startuml
 title Matcher Stage - Sequence Diagram (Current)
+autonumber
+hide footbox
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
@@ -8,53 +10,101 @@ skinparam sequence {
   LifeLineBorderColor #9ca3af
 }
 
-actor Caller
-participant MatchStage
-participant MatchEngine
-participant MatchDsl
-participant MatchCore
-participant "IdentityRule" as Rule
-participant CacheRepository
-participant Scoring
-participant IdentityRepository
+actor "MatchUseCase.run()" as Caller
+participant "PipelineOrchestrator\n(checkpoint MATCH)" as Pipeline
+participant "MatchStage" as MatchStage
+participant "MatchEngine" as MatchEngine
+participant "MatchCore" as MatchCore
+participant "MatchRuntimePort" as MatchRuntime
+participant "matcher.scoring" as Scoring
+participant "ISourceDedupStore" as DedupStore
+participant "PlanningPipelineHooks" as Hooks
+participant "MatchScopeService" as MatchScope
 
-Caller -> MatchStage: run(stream)
-loop each enriched item
-  MatchStage -> MatchStage: diagnostic_boundary(MATCH)
-  MatchStage -> MatchEngine: match_with_source_dedup(enriched)
-  MatchEngine -> MatchCore: match_with_source_dedup(enriched)
-  MatchCore -> MatchCore: match(enriched)
-  loop each identity rule
-    MatchCore -> Rule: build_identity(row, match_context)
-    MatchCore -> CacheRepository: find(dataset, identity)
+Caller -> Pipeline: run(extractor.run())
+Pipeline -> MatchStage: run(enriched_stream)
+
+loop each micro-batch (iter_micro_batches in MatchStage)
+  loop each enriched TransformResult in batch
+    alt enriched.row is None
+      MatchStage --> Pipeline: passthrough TransformResult (row=None)
+    else enriched.row present
+      MatchStage -> MatchStage: diagnostic_boundary(MATCH)
+      MatchStage -> MatchEngine: match_with_source_dedup(enriched)
+      MatchEngine -> MatchCore: match_with_source_dedup(enriched)
+      activate MatchCore
+
+      MatchCore -> MatchCore: match(enriched)
+      MatchCore -> MatchCore: _build_match_context(...)
+
+      loop each identity rule (exact lookup)
+        MatchCore -> MatchRuntime: find(dataset, {identity.primary: value}, include_deleted)
+        MatchRuntime --> MatchCore: candidates
+      end
+
+      alt multiple exact candidates
+        MatchCore -> MatchCore: build MATCH_CONFLICT_TARGET error
+        MatchCore --> MatchEngine: TransformResult[row=None, errors]
+      else exact candidate found
+        MatchCore -> MatchCore: decision_status = MATCHED (identity_exact)
+        MatchCore -> MatchCore: build desired_state via ResolveRules\n+ fingerprint + MatchDecision + MatchedRow
+      else no exact and fuzzy enabled
+        loop each blocking key
+          MatchCore -> MatchRuntime: find(dataset, {blocking_key: value}, include_deleted)
+          MatchRuntime --> MatchCore: blocking candidates
+        end
+        MatchCore -> Scoring: rank_candidates(source_values, candidates, ...)
+        Scoring --> MatchCore: ranked candidates
+        MatchCore -> Scoring: is_tie(ranked, tie_delta)
+        Scoring --> MatchCore: true/false
+        MatchCore -> MatchCore: threshold decision\n(MATCHED / AMBIGUOUS / NOT_FOUND)
+        MatchCore -> MatchCore: build desired_state + fingerprint + MatchDecision + MatchedRow
+      else no exact and fuzzy disabled
+        MatchCore -> MatchCore: decision_status = NOT_FOUND
+        MatchCore -> MatchCore: build desired_state + fingerprint + MatchDecision + MatchedRow
+      end
+
+      alt matched.row is None
+        MatchCore --> MatchEngine: TransformResult[row=None]
+      else source_dedup disabled OR dedup_key missing
+        MatchCore --> MatchEngine: TransformResult[MatchedRow]
+      else source_dedup enabled
+        MatchCore -> DedupStore: check_and_register(dedup_key, fingerprint)
+        DedupStore --> MatchCore: DedupResult
+        alt is_first
+          MatchCore --> MatchEngine: TransformResult[MatchedRow]
+        else is_duplicate
+          MatchCore -> MatchCore: drop row + meta.match_drop_reason=duplicate_source\n+ MATCH_DUPLICATE_SOURCE warning
+          MatchCore --> MatchEngine: TransformResult[row=None, warnings]
+        else is_conflict
+          MatchCore -> MatchCore: drop row + meta.match_drop_reason=conflict_source\n+ MATCH_CONFLICT_SOURCE warn/error
+          MatchCore --> MatchEngine: TransformResult[row=None, warnings/errors]
+        end
+      end
+
+      deactivate MatchCore
+      MatchEngine --> MatchStage: matched TransformResult
+      MatchStage --> Pipeline: TransformResult[MatchedRow | None]
+    end
   end
-
-  alt exact matched
-    MatchCore -> MatchCore: decision = MATCHED(identity_exact)
-  else exact not found and fuzzy enabled
-    MatchCore -> CacheRepository: find(dataset, blocking_keys...)
-    MatchCore -> Scoring: rank_candidates(source, candidates)
-    Scoring --> MatchCore: ranked + top_k
-    MatchCore -> MatchCore: threshold/tie decision
-  else exact not found and fuzzy disabled
-    MatchCore -> MatchCore: decision = NOT_FOUND
-  end
-
-  MatchCore -> MatchCore: build desired_state + fingerprint + MatchDecision
-  MatchCore -> IdentityRepository: get/set runtime_state(scope,dataset,key)
-  MatchCore --> MatchEngine: TransformResult[MatchedRow]
-  MatchEngine --> MatchStage: matched result
-  MatchStage --> Caller: TransformResult
 end
 
-note right of MatchDsl
-Compile once at wiring:
-MatchSpec -> MatchDsl.compile() -> MatchingRules
+Pipeline -> Hooks: on_stage_complete("match", duration_ms, stats) [full consumption]
+Hooks -> MatchScope: clear_scope()
+MatchScope -> MatchRuntime: clear_runtime_scope("run:<id>")
+
+note over MatchStage, DedupStore
+Planning path touchpoint (outside this sequence entry):
+PlanningPipeline.open() resets dedup_store before each run.
+MatchStage/MatchCore do not call reset().
 end note
 
 note right of MatchCore
-MatchCore is the only place for:
-exact/fuzzy/scoring/source-dedup decisions.
+MatchCore owns match mechanics only:
+- exact identity lookup
+- fuzzy fallback + scoring
+- typed MatchDecision / MatchedRow build
+- source-dedup policy application via ISourceDedupStore
 end note
 
 @enduml

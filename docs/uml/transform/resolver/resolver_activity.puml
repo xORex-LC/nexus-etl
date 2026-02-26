@@ -1,81 +1,81 @@
 @startuml
-title Resolver Stage - Activity Diagram (Current)
+title Resolver Mechanics - Activity Flow (Planning Path, Current)
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
 skinparam activity {
   BackgroundColor #f7e9dc
   BorderColor #d9c2a8
-  FontColor #1f1f1f
 }
 
 start
-:maybe_sweep_expired();
+:PlanningPipeline.open();
+:dedup_store.reset();
+:Build lazy `contextualized` stream\nvia checkpoint RESOLVE_CONTEXT\n(... -> match -> ResolveContextStage);
+:ResolveUseCase.iter_resolved(\nmatched_source=contextualized,\nresolve_stage, pending_replay, resolve_hooks);
 
-if (match_decision.status in\n{AMBIGUOUS, CONFLICT_SOURCE}?) then (yes)
-  :append RESOLVE_AMBIGUOUS/RESOLVE_CONFLICT;
-  stop
-endif
-
-:desired_state = matched.desired_state;
-if (merge_policy configured?) then (yes)
-  :desired_state = merge_policy(existing, desired_state);
+if (pending replay enabled?) then (yes)
+  :pending_replay.list_pending_rows(dataset);
+  :Decode pending payloads\n(pending_codec.load_pending_rows);
+  :Append decoded pending rows to matched_source;
+else (no)
+  :Use matched_source as-is;
 endif
 
 repeat
-  :take next LinkFieldRule;
-  if (field absent or value None?) then (skip)
-    :continue;
-  else (process)
-    :extract key_values\n(meta overrides + desired_state);
-    :lookup candidates\n(batch_index -> identity_repo);
-    if (single candidate?) then (yes)
-      :coerce candidate id;
-      :write desired_state[field];
+  :Open ResolveRuntimePort transaction\nif resolver.cache_gateway supports it;
+  :Collect next resolve micro-batch\n(iter_micro_batches over chained source);
+
+  if (First pull from contextualized stream in this run?) then (yes)
+    :ResolveContextStage buffers full upstream matched stream;
+    :resolver.build_batch_index(all_records);
+    :IBatchIndexService.set_index(flat batch_index);
+    :ResolveContextStage yields buffered records unchanged;
+  else (no)
+    :Continue consuming buffered/contextualized rows;
+  endif
+
+  :Run micro-batch through\nPipelineOrchestrator([ResolveStage], hooks);
+
+  repeat
+    if (TransformResult.row is None?) then (yes)
+      :ResolveStage passes item through unchanged;
     else (no)
-      if (on_unresolved == hard_error?) then (yes)
-        :append RESOLVE_CONFLICT;
-        stop
-      else (pending)
-        :add pending + touch_attempt;
-        if (attempts >= max?) then (yes)
-          :mark conflict;
-          :append RESOLVE_MAX_ATTEMPTS;
-          stop
-        else (no)
-          :append RESOLVE_PENDING warning;
-          if (allow_partial?) then (yes)
-            :continue;
-          else (no)
-            stop
-          endif
-        endif
+      if (ResolveStage already loaded batch_index?) then (yes)
+        :Reuse cached batch_index in ResolveStage.run();
+      else (no)
+        :IBatchIndexService.get()\n(lazy, once per ResolveStage.run);
+      endif
+
+      :ResolveStage enters diagnostic_boundary(RESOLVE)\nand calls resolver.resolve(..., batch_index);
+      note right
+        ResolveCore.resolve() owns business mechanics:
+        - match conflict guard (AMBIGUOUS / CONFLICT_SOURCE)
+        - optional merge_policy (preserve explicit source values)
+        - FK/link resolution per LinkRules
+          * batch_index lookup first
+          * cache_gateway.find_candidates() fallback
+          * dedup rules narrowing
+          * unresolved -> hard_error OR pending(add_pending/touch_attempt)
+          * max attempts -> mark_conflict
+        - sink validation for mutated fields (SinkSpec)
+        - target_id resolution and op decision (create/update/skip)
+        - ResolvedRow build + mark_resolved_for_source() when no pending
+      end note
+
+      if (resolver.resolve() returned ResolvedRow?) then (yes)
+        :Emit TransformResult[ResolvedRow];
+      else (no)
+        :Emit TransformResult with row=None\n+ resolve diagnostics (errors/warnings);
       endif
     endif
-  endif
-repeat while (more rules?) is (yes)
+  repeat while (More items in current resolve micro-batch?) is (yes)
 
-if (sink_spec configured and\nmutated_fields not empty?) then (yes)
-  :validate_sink_fields(mutated_fields);
-  if (sink issues?) then (yes)
-    :append diagnostics from sink issues;
-    stop
-  endif
-endif
+  :PipelineHooks.on_stage_complete("resolve")\n(after full batch consumption);
+  :PlanningPipelineHooks -> pending_expiry.sweep()\n(interval guarded);
+repeat while (More resolve micro-batches?) is (yes)
 
-:target_id = resolve_target_id();
-if (target_id missing?) then (yes)
-  :append RESOLVE_TARGET_ID_MISSING;
-  stop
-endif
-
-:op, changes = decide_op();
-:source_ref = build_source_ref(identity);
-:secret_fields = secrets_policy(op);
-:build ResolvedRow;
-if (pending_created == false?) then (yes)
-  :mark_resolved_for_source(row_id);
-endif
+:Expired pending handling stays outside stage internals:\nResolveUseCase.run() drains/reports,\nPlanningPipeline.open() drains in finally for cleanup;
 stop
 
 @enduml

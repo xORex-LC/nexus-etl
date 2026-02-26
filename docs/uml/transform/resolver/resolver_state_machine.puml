@@ -1,31 +1,93 @@
 @startuml
-title ResolveCore - State Machine Diagram
+title Resolver Mechanics - Record and Pending Lifecycle (Current)
+hide empty description
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
 
-[*] --> Matched
+[*] --> MatchOutput : MatchStage emits\nTransformResult[MatchedRow]
 
-Matched --> Failed : conflict
-Matched --> Pending : no candidates / multi candidates
-Matched --> Resolved : resolved links OK
+MatchOutput --> BufferedByResolveContext : first pull of contextualized stream
+BufferedByResolveContext : ResolveContextStage buffers full upstream\nmatched stream for checkpoint run
+BufferedByResolveContext --> BatchIndexPublished : resolver.build_batch_index()\n+ IBatchIndexService.set_index()
+BatchIndexPublished : flat index {lookup_key -> [resolved_id]}\n(per-run lifecycle, shared via PipelineRunContext)
 
-Pending --> Resolved : candidate found in later run
-Pending --> Failed : max_attempts
-Pending --> Failed : expired (TTL)
+BatchIndexPublished --> ResolveStageStarted : ResolveStage.run(batch) starts
+ResolveStageStarted --> ResolvingRecord : first non-empty pull\nIBatchIndexService.get()
+ResolveStageStarted : ResolveStage remains lazy\n(no internal buffering)
 
-Resolved --> Planned : op=create/update
-Resolved --> Skipped : op=skip (no diff)
+state ResolvingRecord {
+  [*] --> DecisionGuard
+  DecisionGuard --> LocalFailed : match conflict\n(AMBIGUOUS / CONFLICT_SOURCE)
+  DecisionGuard --> LinkResolution : match outcome is resolvable
 
-Failed --> [*]
-Planned --> [*]
-Skipped --> [*]
+  state LinkResolution {
+    [*] --> LookupCandidates
+    LookupCandidates : lookup order:\n1) batch_index\n2) cache_gateway.find_candidates()
+    LookupCandidates --> HardErrorStop : on_unresolved=hard_error\nand no single candidate
+    LookupCandidates --> PendingStored : on_unresolved=pending\nand unresolved candidate(s)
+    LookupCandidates --> LinksResolved : all required links resolved
+    PendingStored --> [*]
+    HardErrorStop --> [*]
+    LinksResolved --> [*]
+  }
 
-note right of Pending
-Pending stored in pending_links
-Report status = PENDING
+  LinkResolution --> LocalFailed : hard error / sink validation / target_id missing\n/ max attempts conflict
+  LinkResolution --> LocalPendingOutcome : pending created and partial not allowed
+  LinkResolution --> LocalResolvedBuilt : ResolvedRow built\n(or partial pending allowed + row still buildable)
+
+  LocalPendingOutcome --> [*]
+  LocalResolvedBuilt --> [*]
+  LocalFailed --> [*]
+}
+
+ResolvingRecord --> FailedResult : resolver returns row=None + errors
+ResolvingRecord --> PendingOnlyResult : resolver returns row=None + RESOLVE_PENDING warning
+ResolvingRecord --> ResolvedRowResult : resolver returns ResolvedRow
+
+ResolvedRowResult --> PlannedOperation : op=create / update
+ResolvedRowResult --> SkippedOperation : op=skip
+
+PlannedOperation --> [*]
+SkippedOperation --> [*]
+FailedResult --> [*]
+PendingOnlyResult --> [*]
+
+state PendingStored {
+  [*] --> Pending
+  Pending : status=pending\nattempts incremented via touch_attempt()
+
+  Pending --> Conflict : mark_conflict()\n(max attempts reached)
+  Pending --> Expired : PendingExpiryService.sweep()\nvia hooks.on_stage_complete("resolve")\n-> cache_gateway.sweep_expired()
+  Pending --> Resolved : post-apply identity sync closes pending\n(ApplyRuntimePort.mark_resolved)
+  Pending --> Pending : replayed and still unresolved\n(next run add_pending/touch_attempt)
+
+  Conflict --> Purged : ResolveUseCase._purge_pending()\ncache_gateway.purge_stale(cutoff)
+  Expired --> BufferedForReport : pending_expiry buffer\nuntil drain_expired()
+  BufferedForReport --> ReportedOrDropped : drain_expired() + mode\n(error / report_only / skip)
+  ReportedOrDropped --> Purged : optional purge_stale() later
+  Resolved --> Purged : optional purge_stale() later
+
+  Purged --> [*]
+}
+
+PendingOnlyResult --> PendingStored : unresolved link persisted
+
+note right of PendingStored
+This lifecycle is outside ResolveCore-only ownership:
+- ResolveCore creates/touches pending and can mark conflict on max attempts
+- PlanningPipelineHooks + PendingExpiryService perform periodic expiry sweep
+- ResolveUseCase drains/reports expired entries and purges stale terminal rows
+- Post-apply identity sync (IdentityIndexSyncer) can mark pending as resolved
 end note
 
-note right of Failed
-Report status = FAILED
-codes: RESOLVE_MAX_ATTEMPTS / RESOLVE_EXPIRED / RESOLVE_CONFLICT
+note left of BufferedByResolveContext
+ResolveContextStage is the precondition for in-batch linking:
+it publishes batch_index before ResolveStage reads it.
 end note
 
 @enduml
