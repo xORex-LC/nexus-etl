@@ -1,12 +1,31 @@
 @startuml
 title Enrich Stage - Class Diagram (Current)
 set namespaceSeparator none
+left to right direction
+hide empty members
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
 skinparam class {
   BackgroundColor #f7e9dc
   BorderColor #d9c2a8
+}
+
+class PipelineContainer {
+  + enrich_stage(): EnrichStage
+  + pipeline_composer(): PipelineComposer
+}
+
+class StageFactory {
+  + create(stage_type, spec, ctx, **kwargs)
+}
+
+class PipelineOrchestrator {
+  + run(source): Iterable[TransformResult]
+}
+
+class EnrichUseCase {
+  + run(row_source, pipeline, dataset, logger, run_id, report, catalog): CommandResult
 }
 
 class EnrichStage {
@@ -17,6 +36,7 @@ class EnrichStage {
 
 class EnricherEngine {
   - core: EnricherCore
+  + __init__(spec, ctx, ..., providers, options, sink_spec, run_id)
   + enrich(result): TransformResult
 }
 
@@ -28,73 +48,241 @@ class EnricherDsl {
 
 class EnricherCore {
   - spec: EnricherSpec
-  - deps: TransformProviderDeps
-  - secret_store: SecretStoreProtocol
+  - deps: object
+  - secret_store: SecretStoreProtocol?
+  - dataset: str
+  - catalog: ErrorCatalog
+  - sink_spec: SinkSpec?
+  - run_id: str?
   - conflict_resolver: ConflictResolver
   - merge_engine: MergeEngine
-  + enrich(input): TransformResult
+  + enrich(result): TransformResult
+  - _execute_operation(...): OperationReport
+  - _collect_candidates(...)
+  - _apply_candidates(...): OperationReport
+  - _store_secrets(...): None
 }
 
-class EnrichSpec {
-  + enrich: EnrichRules
+class ConflictResolver {
+  + decide(candidates): CandidateDecision
 }
 
-class EnrichRules {
-  + match_key: MatchKeySpec
-  + secrets: SecretsSpec
-  + generate: EnrichRule[*]
-  + lookup: EnrichRule[*]
+class MergeEngine {
+  - authoritative_sources: set[str]
+  + should_apply(current, candidate, policy): bool
+}
+
+class _FieldMutationTracker {
+  + has_writer(field): bool
+  + register(field, op_name): None
+}
+
+class EnricherReport {
+  + operations_total: int
+  + outcomes: dict[str, int]
+  + updated_fields: int
+  + record(report): None
+  + as_dict(): dict[str, Any]
+}
+
+class ProviderGateway {
+  + with_defaults(): ProviderGateway
+  + lookup(name, deps, value, args): list[dict[str, Any]]
+  + exists(name, deps, value, args): Any|None
+}
+
+class OperationRegistry
+
+class EnricherSpec {
+  + operations: tuple[EnrichmentOperation, ...]
+  + key_registry: KeyRegistry
+  + source_priorities: dict[str, int]
+  + default_merge_policy: MergePolicy
+  + default_strictness: StrictnessPolicy
+  + authoritative_sources: set[str]
+  + is_fatal_error: callable?
+  + stop_on_failed: bool
 }
 
 class EnrichmentOperation {
   + name: str
   + op_type: EnrichOperationType
-  + targets: tuple[str]
+  + targets: tuple[str, ...]
+  + required_keys: tuple[str, ...]
+  + providers: tuple[CandidateProvider, ...]
+  + merge_policy: MergePolicy?
+  + strictness: StrictnessPolicy?
   + run_when_errors: RunWhenErrors
-  + strictness: StrictnessPolicy
-  + merge_policy: MergePolicy
 }
 
-class ProviderGateway {
-  + lookup(name, deps, key, args): list[dict]
-  + exists(name, deps, value, args): dict|None
-  + with_defaults(): ProviderGateway
+class EnrichContext {
+  + dataset: str
+  + run_id: str?
+  + as_of: Any?
 }
 
-class TransformProviderDeps {
-  + cache_repo: CacheRepositoryProtocol
-  + dictionaries: DictionaryProviderProtocol
+class CandidateProvider <<protocol>> {
+  + fetch(ctx, result, deps, key_values): list[CandidateValue]
 }
 
-class OperationRegistry
+class CandidateValue {
+  + field: str
+  + value: Any
+  + source: str
+  + priority: int?
+  + confidence: float?
+}
+
+class CandidateDecision {
+  + status: str
+  + selected: CandidateValue?
+  + candidates: list[CandidateValue]
+}
+
+class OperationReport {
+  + op: str
+  + outcome: EnrichOutcome
+  + events: list[EnrichEvent]
+  + resolve_hints: list[ResolveHint]
+  + warnings: list[DiagnosticItem]
+  + errors: list[DiagnosticItem]
+}
+
+class ResolveHint {
+  + field: str
+  + lookup_key: dict[str, Any]
+  + reason: str
+  + candidates: list[dict[str, Any]]
+}
+
+class EnrichEvent {
+  + op: str
+  + field: str
+  + before: Any
+  + after: Any
+  + source: str
+  + decision: str
+  + outcome: str
+}
+
+class EnrichOutcome <<enum>> {
+  APPLIED
+  SKIPPED
+  WARNED
+  FAILED
+  NEEDS_RESOLVE
+}
+
+class RunWhenErrors <<enum>> {
+  NEVER
+  ONLY_NON_FATAL
+  ALWAYS
+}
+
+class EnrichOperationType <<enum>> {
+  COMPUTE
+  FILL_MISSING
+  LOOKUP
+  GENERATE
+  MEMBERSHIP
+}
+
+class MergePolicy
+class StrictnessPolicy
+class EnrichSpec
+class SinkSpec
+class StageExecutionContext
+class ErrorCatalog
+class EnrichLookupPort <<protocol>>
+class DictionaryProviderPort <<protocol>>
 class SecretStoreProtocol <<protocol>>
-class CandidateValue
-class OperationReport
-class EnricherReport
-class TransformResult<T>
+class "TransformResult<T>" as TransformResultT
 
+' Entry / boundary touchpoints
+PipelineContainer --> StageFactory : enrich stage created via create(...)
+PipelineContainer --> EnrichUseCase : enrich command path
+PipelineContainer --> ProviderGateway : shared default providers
+EnrichUseCase --> PipelineOrchestrator : ENRICH checkpoint pipeline
+PipelineOrchestrator --> EnrichStage : run(stream)
+
+' Stage / engine / core
 EnrichStage --> EnricherEngine
-EnricherEngine --> EnricherCore
-EnricherEngine ..> EnricherDsl : compile once
-EnricherDsl --> EnrichSpec
+EnrichStage --> ErrorCatalog : diagnostic_boundary(ENRICH)
+EnricherEngine --> EnricherDsl : compile EnrichSpec -> EnricherSpec
+EnricherEngine --> EnricherCore : delegates runtime enrich
+EnricherEngine --> StageExecutionContext : ctx.get(...) / metadata
+EnricherEngine --> EnrichSpec
+EnricherEngine --> SinkSpec
+
+' DSL compile path and compiled models
 EnricherDsl --> OperationRegistry
 EnricherDsl --> ProviderGateway
-EnricherDsl --> EnrichmentOperation
+EnricherDsl --> EnrichSpec
+EnricherDsl --> EnricherSpec
+EnricherSpec o-- EnrichmentOperation
+EnrichmentOperation --> CandidateProvider
+EnrichmentOperation --> MergePolicy
+EnrichmentOperation --> StrictnessPolicy
+EnrichmentOperation --> EnrichOperationType
+EnrichmentOperation --> RunWhenErrors
+
+' Core enrich mechanics
 EnricherCore --> EnricherSpec
-EnricherCore --> TransformProviderDeps
-EnricherCore --> SecretStoreProtocol
 EnricherCore --> ConflictResolver
 EnricherCore --> MergeEngine
-EnricherCore --> EnricherReport
-EnricherCore ..> CandidateValue
+EnricherCore ..> _FieldMutationTracker : per-record mutation tracking
+EnricherCore ..> EnricherReport : per-record summary
+EnricherCore ..> EnrichContext : per-record runtime context
 EnricherCore ..> OperationReport
-EnricherCore ..> TransformResult
+EnricherCore ..> CandidateValue
+EnricherCore ..> CandidateDecision
+EnricherCore ..> ResolveHint : meta.resolve_requests[]
+EnricherCore ..> EnrichEvent : meta.enrich_events[]
+EnricherCore ..> EnrichOutcome
+EnricherCore --> ErrorCatalog
+EnricherCore --> SinkSpec : validate_sink_fields(...)
+EnricherCore --> SecretStoreProtocol : put_many(...)
+EnricherCore ..> EnrichLookupPort : provider-backed lookup via deps.cache_gateway
+EnricherCore ..> DictionaryProviderPort : provider-backed lookup via deps.dictionaries
+EnricherCore ..> TransformResultT
 
-note right of EnricherDsl
-DSL role:
-- compile EnrichSpec to EnricherSpec
-- build provider-backed operations
-- wire match_key/secrets policies
+' Runtime provider and ports
+ProviderGateway ..> EnrichLookupPort : cache.by_field / cache.exists_by_field
+ProviderGateway ..> DictionaryProviderPort : dictionary.* providers
+CandidateProvider ..> ProviderGateway : compiled providers use gateway
+
+' Layout helpers
+PipelineContainer -[hidden]-> EnrichUseCase
+EnrichUseCase -[hidden]-> EnrichStage
+EnrichStage -[hidden]-> EnricherEngine
+EnricherEngine -[hidden]-> EnricherCore
+EnricherCore -[hidden]-> ConflictResolver
+ConflictResolver -[hidden]-> MergeEngine
+EnricherDsl -[hidden]-> ProviderGateway
+ProviderGateway -[hidden]-> EnrichLookupPort
+EnrichLookupPort -[hidden]-> SecretStoreProtocol
+
+note right of EnricherEngine
+EnricherEngine is a thin DSL/runtime wrapper:
+- compiles EnrichSpec into EnricherSpec (EnricherDsl)
+- builds EnricherCore
+- pulls ports/metadata from StageExecutionContext (ctx path)
+- builds a lightweight deps namespace for provider-backed operations
+end note
+
+note right of EnricherCore
+Core owns enrich mechanics only:
+- per-op execution with strictness/run_when_errors
+- candidate collection (compute/generate/provider.fetch)
+- conflict resolution + merge policy + sink validation
+- resolve hints/events/summary in meta
+- secret storage + masking/clearing secret fields
+end note
+
+note bottom of EnricherCore
+Downstream touchpoint:
+ambiguous enrich results are materialized as `meta.resolve_requests`
+for later match/resolve pipeline stages.
 end note
 
 @enduml

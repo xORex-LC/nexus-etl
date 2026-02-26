@@ -1,5 +1,7 @@
 @startuml
 title Enrich Stage - Sequence Diagram (Current)
+autonumber
+hide footbox
 skinparam backgroundColor white
 skinparam linetype ortho
 skinparam defaultFontName Arial
@@ -8,53 +10,128 @@ skinparam sequence {
   LifeLineBorderColor #9ca3af
 }
 
-actor Caller
+actor "EnrichUseCase.run()" as Caller
+participant "PipelineOrchestrator\n(checkpoint ENRICH)" as Pipeline
 participant EnrichStage
 participant EnricherEngine
 participant EnricherCore
-participant EnricherDsl
-participant ProviderGateway
+participant "CandidateProvider(s)" as CandidateProvider
 participant ConflictResolver
 participant MergeEngine
+participant "EnrichLookupPort /\nDictionaryProviderPort" as LookupPorts
 participant SecretStore
 
-Caller -> EnrichStage: run(stream)
-loop each input result
+Caller -> Pipeline: run(extractor.run())
+Pipeline -> EnrichStage: run(input_stream)
+
+loop each TransformResult
   EnrichStage -> EnrichStage: diagnostic_boundary(ENRICH)
-  EnrichStage -> EnricherEngine: enrich(result)
-  EnricherEngine -> EnricherCore: enrich(result)
 
-  loop each EnrichmentOperation
-    EnricherCore -> EnricherCore: check run_when_errors + required keys
-    alt operation uses lookup/exists
-      EnricherCore -> ProviderGateway: lookup/exists(provider.name, args)
-      ProviderGateway --> EnricherCore: candidates/existence
+  alt input.row is None
+    EnrichStage -> EnricherEngine: enrich(result)
+    EnricherEngine -> EnricherCore: enrich(result)
+    EnricherCore --> EnricherEngine: return input (passthrough)
+    EnricherEngine --> EnrichStage: TransformResult
+    EnrichStage --> Pipeline: TransformResult
+  else input.row exists
+    EnrichStage -> EnricherEngine: enrich(result)
+    EnricherEngine -> EnricherCore: enrich(result)
+    activate EnricherCore
+
+    EnricherCore -> EnricherCore: init builder + EnrichContext + tracker + EnricherReport
+    EnricherCore -> EnricherCore: ensure meta.enrich_events / meta.resolve_requests
+
+    loop each EnrichmentOperation in EnricherSpec.operations
+      EnricherCore -> EnricherCore: _should_run_operation(op, builder.errors)
+
+      alt skip by run_when_errors / fatal policy
+        EnricherCore -> EnricherCore: continue
+      else run operation
+        EnricherCore -> EnricherCore: resolve required_keys via key_registry
+
+        alt required key missing
+          EnricherCore -> EnricherCore: _report_by_policy(..., ENRICH_MISSING_KEY)
+        else collect candidates
+          alt op_type == COMPUTE
+            EnricherCore -> EnricherCore: op.compute(result, deps)
+          else op_type == GENERATE
+            EnricherCore -> EnricherCore: op.generator(...), exists(...), allow_if(...)
+          else provider-backed operation (LOOKUP / MEMBERSHIP / etc.)
+            loop each compiled provider in op.providers
+              EnricherCore -> CandidateProvider: fetch(ctx, result, deps, key_values)
+              CandidateProvider -> LookupPorts: lookup/find/exists/canonicalize (if needed)
+              LookupPorts --> CandidateProvider: rows / row / none
+              CandidateProvider --> EnricherCore: CandidateValue[]
+            end
+          end
+
+          alt provider error / target mismatch / no candidates
+            EnricherCore -> EnricherCore: _report_by_policy(...)
+          else have candidates
+            EnricherCore -> ConflictResolver: decide(candidates)
+            ConflictResolver --> EnricherCore: CandidateDecision(status)
+
+            alt decision.status == "AMBIGUOUS"
+              EnricherCore -> EnricherCore: build ResolveHint
+              EnricherCore -> EnricherCore: _report_by_policy(..., ENRICH_AMBIGUOUS)
+              EnricherCore -> EnricherCore: append to meta.resolve_requests
+            else decision.status == "NONE"
+              EnricherCore -> EnricherCore: _report_by_policy(..., ENRICH_NO_CANDIDATES)
+            else decision.status == "SELECTED"
+              EnricherCore -> MergeEngine: should_apply(current, candidate, merge_policy)
+              MergeEngine --> EnricherCore: true/false
+              alt applicable and sink value valid
+                EnricherCore -> EnricherCore: set field / match_key / secret candidate
+                EnricherCore -> EnricherCore: tracker.register(field, op.name)
+                EnricherCore -> EnricherCore: append EnrichEvent(APPLIED/SKIPPED)
+              else sink validation failed or policy skip
+                EnricherCore -> EnricherCore: _report_by_policy(...) or event policy_skip
+              end
+            end
+          end
+        end
+
+        EnricherCore -> EnricherCore: summary.record(op_report)
+        EnricherCore -> EnricherCore: append errors/warnings/events/resolve_hints to builder/meta
+        opt stop_on_failed and op_report.outcome == FAILED
+          EnricherCore -> EnricherCore: break operations loop
+        end
+      end
     end
-    EnricherCore -> ConflictResolver: decide(candidates)
-    alt selected
-      EnricherCore -> MergeEngine: merge(field, candidate, policy)
-      MergeEngine --> EnricherCore: merged value
-      EnricherCore -> EnricherCore: append EnrichEvent
-    else ambiguous
-      EnricherCore -> EnricherCore: append ResolveHint
-    else failed
-      EnricherCore -> EnricherCore: append diagnostics by strictness
+
+    alt builder.secret_candidates is empty
+      EnricherCore -> EnricherCore: skip secret store phase
+    else match_key missing
+      EnricherCore -> EnricherCore: add SECRET_MATCH_KEY_MISSING error
+    else secret_store configured
+      EnricherCore -> SecretStore: put_many(dataset, match_key, secrets, run_id)
+      alt secret_store error
+        SecretStore --> EnricherCore: exception
+        EnricherCore -> EnricherCore: add SECRET_STORE_ERROR
+      else success
+        SecretStore --> EnricherCore: ok
+      end
     end
-  end
 
-  alt secrets present and store configured
-    EnricherCore -> SecretStore: put_many(dataset, match_key, secrets)
+    EnricherCore -> EnricherCore: set meta.secret_fields + clear secret fields in row\n+ clear secret_candidates
+    EnricherCore -> EnricherCore: set meta.enrich_summary = summary.as_dict()
+    EnricherCore --> EnricherEngine: TransformResult[enriched]
+    deactivate EnricherCore
+    EnricherEngine --> EnrichStage: enriched result
+    EnrichStage --> Pipeline: TransformResult
   end
-
-  EnricherCore --> EnricherEngine: TransformResult + meta summary
-  EnricherEngine --> EnrichStage: enriched result
-  EnrichStage --> Caller: TransformResult
 end
 
-note right of EnricherDsl
-Compile time path:
-EnrichSpec + ProviderGateway + registry
--> EnricherSpec for EnricherCore
+note right of EnricherEngine
+Compile-time path (engine initialization):
+EnrichSpec + OperationRegistry + ProviderGateway
+-> EnricherDsl.compile() -> EnricherSpec -> EnricherCore
+end note
+
+note right of EnricherCore
+EnrichStage always calls enricher even when upstream diagnostics exist.
+Per-operation execution is gated inside EnricherCore via run_when_errors
+and optional is_fatal_error classifier.
 end note
 
 @enduml
