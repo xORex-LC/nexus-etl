@@ -58,6 +58,7 @@ def test_load_app_settings_used_only_in_composition_root_and_config_layer():
     allowed = {
         "connector/config/__init__.py",
         "connector/config/app_settings.py",
+        "connector/config/loader.py",  # config-layer: documents what it replaces
         "connector/delivery/cli/app.py",
     }
     violations: list[str] = []
