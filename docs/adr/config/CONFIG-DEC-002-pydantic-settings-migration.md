@@ -109,29 +109,38 @@ class ResolverConfig(BaseModel):
     pending_on_expire: Literal["drop", "keep", "error"] = "drop"
     pending_allow_partial: bool = False
     pending_retention_days: int = Field(default=7, ge=0)
+    # batch-параметры resolver'а (перенесены из MatchingRuntimeConfig)
+    resolve_batch_size: int = Field(default=500, gt=0)
+    resolve_flush_interval_ms: int = Field(default=500, gt=0)
 
 
 class VaultRolloutConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    mode: Literal["full", "canary", "off"] = "full"
+    # "staging_dry_run" обязателен: поддерживается evaluate_vault_rollout()
+    mode: Literal["full", "canary", "staging_dry_run", "off"] = "full"
     canary_percent: int = Field(default=100, ge=0, le=100)
-    canary_datasets: list[str] = []
-    canary_seed: str = ""
-    row_failure_rate_threshold_pct: float = Field(default=10.0, ge=0, le=100)
+    # tuple[str, ...]: Pydantic v2 автоматически coerce-ит YAML-list → tuple
+    canary_datasets: tuple[str, ...] = ()
+    # дефолт совпадает с доменным VaultRolloutPolicySettings.canary_seed
+    canary_seed: str = "vault-rollout-v1"
+    # дефолты выровнены по текущим VaultRolloutThresholds (regression-safe)
+    row_failure_rate_threshold_pct: float = Field(default=5.0, ge=0, le=100)
+    # поле переименовано: убран префикс vault_ (был несогласован в VaultRolloutSettings)
     error_rate_threshold_pct: float = Field(default=5.0, ge=0, le=100)
-    latency_regression_threshold_pct: float = Field(default=50.0, ge=0, le=100)
-    busy_timeout_rate_threshold_pct: float = Field(default=5.0, ge=0, le=100)
-    schema_changed_rate_threshold_pct: float = Field(default=1.0, ge=0, le=100)
+    latency_regression_threshold_pct: float = Field(default=15.0, ge=0, le=100)
+    busy_timeout_rate_threshold_pct: float = Field(default=0.0, ge=0, le=100)
+    schema_changed_rate_threshold_pct: float = Field(default=0.0, ge=0, le=100)
 
 
 class MatchingRuntimeConfig(BaseModel):
+    """Параметры micro-batching для MatchStage.
+    Resolve batch-параметры перенесены в ResolverConfig.
+    """
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     match_batch_size: int = Field(default=500, gt=0)
     match_flush_interval_ms: int = Field(default=500, gt=0)
-    resolve_batch_size: int = Field(default=500, gt=0)
-    resolve_flush_interval_ms: int = Field(default=500, gt=0)
 
 
 class DictionaryConfig(BaseModel):
@@ -237,6 +246,8 @@ def load_app_config(
 
     Приоритет: CLI > ENV > config-file > defaults.
     """
+    warnings: list[SettingsIssue] = []
+
     # 1. Читаем YAML (nested dict)
     raw = read_yaml_config(config_path) if config_path else {}
 
@@ -280,7 +291,7 @@ def load_app_config(
 | `SettingsIssue`, `SettingsLoadError` | `config.py` | Error-contract для диагностик |
 | `read_yaml_config()` | `config.py` | Utility для чтения YAML |
 | `env_get()` | `config.py` | Может использоваться в loader |
-| `LoadedSettings` (→ `LoadedAppConfig`) | `config.py` | Паттерн сохраняется, тип переименуется |
+| `LoadedSettings` (→ `LoadedAppConfig`) | `loader.py` (новый) | Паттерн сохраняется, тип переносится в loader |
 
 ---
 
@@ -327,6 +338,7 @@ def load_app_config(
 | `connector/delivery/cli/context.py` | `app_settings: AppSettings` → `app_config: AppConfig` |
 | `connector/delivery/cli/containers.py` | Удалить автономные `SqliteSettings()` / `DictionaryRuntimeSettings()`, получать секции из `AppConfig` |
 | `connector/delivery/commands/*.py` | Заменить `app_settings.*` → `app_config.*` |
+| `connector/delivery/cli/settings_slice_map.py` | Типы `*Settings` → `*Config`; `ResolverSettings` (domain) → `ResolverConfig` (config) |
 | `examples/configs/config_example.yml` | Переписать в nested формат со всеми секциями |
 
 ### Стратегия миграции
@@ -357,16 +369,93 @@ def load_app_config(
 
 ## 🧪 Валидация решения
 
-**Тесты**:
-- `test_app_config_from_nested_yaml()` — nested YAML корректно парсится в `AppConfig`
-- `test_app_config_env_override()` — `ANKEY_API__HOST` переопределяет YAML-значение
-- `test_app_config_cli_override_beats_env()` — CLI override имеет приоритет над ENV
-- `test_app_config_extra_forbid()` — неизвестный ключ в YAML вызывает `ValidationError`
-- `test_app_config_invalid_literal()` — `ValidationError` при неизвестном значении enum
-- `test_app_config_range_validation()` — `ValidationError` при выходе за диапазон (`Field(ge=..., le=...)`)
-- `test_app_config_coercion()` — `"5000"` из ENV → `int 5000`
-- `test_source_trace_preserved()` — `load_app_config()` корректно отслеживает источник каждого поля
-- `test_app_config_defaults_match_current()` — regression: дефолты `AppConfig` совпадают с текущими `Settings`
+### Тесты: что удаляется
+
+Следующие тест-файлы удаляются вместе с удаляемым кодом:
+
+| Файл | Причина |
+|------|---------|
+| `tests/unit/config/test_settings_validation.py` | Тестирует `_validate_settings()` |
+| `tests/unit/config/test_settings_merge.py` | Тестирует `_apply_source()`, `_build_field_specs()` |
+| `tests/unit/config/test_settings_parsing.py` | Тестирует `_parse_bool()`, `_parse_int()` и т.д. |
+| `tests/unit/config/test_settings_slice_completeness.py` | Тестирует `_SLICE_FIELD_MAP` |
+| `tests/unit/config/test_sqlite_settings.py` | Тестирует `SqliteSettings(BaseSettings)` как standalone |
+
+### Тесты: `tests/unit/config/test_app_config_models.py` (новый)
+
+```
+test_app_config_defaults_all_sections()
+  — AppConfig() без аргументов инициализируется без ошибок
+
+test_api_config_port_range_validation()
+  — port=0 → ValidationError; port=65535 → OK
+
+test_vault_rollout_config_mode_literal()
+  — mode="staging_dry_run" → OK; mode="bad" → ValidationError
+
+test_vault_rollout_config_canary_datasets_coerce()
+  — YAML-list автоматически coerce-ится в tuple[str, ...]
+
+test_vault_rollout_config_canary_seed_default()
+  — default == "vault-rollout-v1"
+
+test_resolver_config_has_resolve_batch_fields()
+  — resolve_batch_size и resolve_flush_interval_ms присутствуют в ResolverConfig
+
+test_matching_runtime_config_has_only_match_fields()
+  — resolve_batch_* отсутствуют в MatchingRuntimeConfig
+
+test_app_config_extra_forbid_unknown_section()
+  — AppConfig(unknown_section=1) → ValidationError
+
+test_api_config_extra_forbid_unknown_field()
+  — ApiConfig(unknown=1) → ValidationError
+
+test_app_config_frozen_immutable()
+  — попытка присвоения поля → FrozenInstanceError
+
+test_app_config_defaults_regression()
+  — snapshot-тест: дефолты критичных полей не меняются тихо
+  — vault_rollout: row=5.0, latency=15.0, busy=0.0, schema=0.0
+  — resolver: pending_max_attempts=5, pending_ttl_seconds=120
+```
+
+### Тесты: `tests/unit/config/test_app_config_loader.py` (новый)
+
+```
+test_load_from_nested_yaml()
+  — корректный nested YAML → LoadedAppConfig без ошибок
+
+test_env_override_nested_naming()
+  — ANKEY_API__HOST=x переопределяет значение из YAML
+
+test_cli_override_dotted_path_beats_env()
+  — cli_overrides={"api.host": "cli"} > ANKEY_API__HOST="env"
+
+test_source_trace_all_origins()
+  — "config" | "env" | "cli" | "default" корректно заполняется per-field
+
+test_unknown_yaml_key_raises_validation_error()
+  — extra="forbid": неизвестный ключ в YAML → ValidationError
+  — нет режима "warn"; всегда ошибка
+
+test_invalid_literal_raises_validation_error()
+  — vault_rollout.mode="bad" → ValidationError
+
+test_field_range_validation()
+  — api.port=0 → ValidationError
+
+test_zero_and_false_values_not_lost()
+  — 0 и False не теряются при merge ENV → config → default
+
+test_missing_config_path_raises_source_error()
+  — несуществующий файл → SettingsSourceError
+
+test_warnings_list_initially_empty()
+  — LoadedAppConfig.warnings == [] при корректной загрузке
+```
+
+**Полная матрица** (delete/update/add для всех тест-файлов) — см. [CONFIG-DEC-003](./CONFIG-DEC-003-settings-taxonomy-and-boundary-adapters.md), раздел «🧪 Валидация решения».
 
 ---
 
@@ -381,6 +470,7 @@ def load_app_config(
 | `connector/config/diagnostics.py` | Прямое | Маппинг `pydantic.ValidationError` → `ConfigurationError` |
 | Все тесты settings | Прямое | Обновить создание/использование конфига |
 | `examples/configs/config_example.yml` | Прямое | Переписать в nested формат |
+| `connector/delivery/cli/settings_slice_map.py` | Прямое | Типы `*Settings` → `*Config`; `ResolverSettings` → `ResolverConfig` |
 | Деплой-скрипты | Прямое | Обновить ENV naming: `ANKEY_HOST` → `ANKEY_API__HOST` |
 
 ---
@@ -399,4 +489,4 @@ def load_app_config(
 | Дата | Событие |
 |------|---------|
 | 2026-02-19 | Решение принято при проектировании SqliteSettings; реализация отложена |
-| 2026-02-26 | Уточнено: `BaseModel` вместо `BaseSettings`; nested YAML (clean break); `AppConfig` заменяет `Settings` + `AppSettings`; ENV naming `ANKEY_{SECTION}__{FIELD}`; unified loader `load_app_config()`; `extra="forbid"` |
+| 2026-02-26 | Уточнено: `BaseModel` вместо `BaseSettings`; nested YAML (clean break); `AppConfig` заменяет `Settings` + `AppSettings`; ENV naming `ANKEY_{SECTION}__{FIELD}`; unified loader `load_app_config()`; `extra="forbid"`; `staging_dry_run` добавлен в `mode` Literal; `canary_datasets: tuple[str, ...]`; `resolve_batch_size`/`resolve_flush_interval_ms` перенесены в `ResolverConfig`; threshold дефолты выровнены по текущим доменным значениям |

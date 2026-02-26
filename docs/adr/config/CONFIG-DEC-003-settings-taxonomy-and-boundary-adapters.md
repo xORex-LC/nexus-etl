@@ -39,7 +39,8 @@
 |--------|-----|-------|--------|
 | `Settings` | flat frozen dataclass | 37+ | → `AppConfig(BaseModel)` |
 | `AppSettings` | nested frozen dataclass | 9 секций | → `AppConfig(BaseModel)` |
-| `ApiSettings`, `PathsSettings`, `ObservabilitySettings`, `DatasetSettings`, `ExecutionSettings`, `RefreshSettings`, `MatchingRuntimeSettings`, `VaultRolloutSettings` | slice dataclasses | разн. | → `*Config(BaseModel)` секции |
+| `ApiSettings`, `PathsSettings`, `ObservabilitySettings`, `DatasetSettings`, `ExecutionSettings`, `RefreshSettings`, `VaultRolloutSettings` | slice dataclasses | разн. | → `*Config(BaseModel)` секции |
+| `MatchingRuntimeSettings` | slice dataclass | 4 | → `MatchingRuntimeConfig` (2 поля: только match); `resolve_batch_size`/`resolve_flush_interval_ms` → `ResolverConfig` |
 | `SqliteSettings(BaseSettings)` | pydantic BaseSettings | 14 | → `SqliteConfig` секция `AppConfig` |
 | `DictionaryRuntimeSettings(BaseSettings)` | pydantic BaseSettings | 5 | → `DictionaryConfig` секция `AppConfig` |
 
@@ -200,21 +201,40 @@ def to_resolver_settings(config: AppConfig) -> ResolverSettings:
 
 
 def to_vault_rollout_policy_settings(config: AppConfig) -> VaultRolloutPolicySettings:
-    """AppConfig.vault_rollout → domain VaultRolloutPolicySettings."""
+    """AppConfig.vault_rollout → domain VaultRolloutPolicySettings.
+
+    canary_datasets: VaultRolloutConfig использует tuple[str, ...] — Pydantic v2
+    автоматически coerce-ит YAML-list → tuple. Передаётся без конвертации.
+    """
     vr = config.vault_rollout
     return VaultRolloutPolicySettings(
-        mode=vr.mode,
+        mode=vr.mode,           # "full"|"canary"|"staging_dry_run"|"off"
         canary_percent=vr.canary_percent,
-        canary_datasets=vr.canary_datasets,
+        canary_datasets=vr.canary_datasets,   # оба уже tuple[str, ...]
         canary_seed=vr.canary_seed,
     )
 
 
 def to_vault_rollout_thresholds(config: AppConfig) -> VaultRolloutThresholds:
-    """AppConfig.vault_rollout → domain VaultRolloutThresholds."""
+    """AppConfig.vault_rollout → domain VaultRolloutThresholds.
+
+    Примечание по именам:
+      VaultRolloutConfig.error_rate_threshold_pct
+        → VaultRolloutThresholds.vault_error_rate_threshold_pct
+    Префикс vault_ в доменной модели унаследован до унификации config-слоя.
+    В VaultRolloutConfig он убран как несогласованный (был vault_error_rate* среди
+    остальных полей без этого префикса).
+
+    Примечание по дефолтам:
+    VaultRolloutThresholds имеет собственные дефолты в домене (row=5.0, latency=15.0
+    и т.д.) — они shadowed этой проекцией. Production defaults живут только в
+    VaultRolloutConfig. В тестах, создающих VaultRolloutThresholds() напрямую,
+    доменные дефолты используются для тест-изоляции, а не как production-values.
+    """
     vr = config.vault_rollout
     return VaultRolloutThresholds(
         row_failure_rate_threshold_pct=vr.row_failure_rate_threshold_pct,
+        # поле переименовано: убран prefix vault_ в config-модели
         vault_error_rate_threshold_pct=vr.error_rate_threshold_pct,
         latency_regression_threshold_pct=vr.latency_regression_threshold_pct,
         busy_timeout_rate_threshold_pct=vr.busy_timeout_rate_threshold_pct,
@@ -223,7 +243,12 @@ def to_vault_rollout_thresholds(config: AppConfig) -> VaultRolloutThresholds:
 
 
 def to_match_batch_settings(config: AppConfig) -> MatchBatchSettings:
-    """AppConfig.matching_runtime → domain MatchBatchSettings."""
+    """AppConfig.matching_runtime → domain MatchBatchSettings (match side only).
+
+    Resolve batch-параметры (resolve_batch_size, resolve_flush_interval_ms) находятся
+    в AppConfig.resolver и доставляются через DI-wiring напрямую — отдельного
+    domain-порта IResolveBatchSettings пока нет.
+    """
     mr = config.matching_runtime
     return MatchBatchSettings(
         batch_size=mr.match_batch_size,
@@ -259,7 +284,11 @@ def to_cache_db_config(config: AppConfig) -> SqliteDbConfig:
 
 
 def to_identity_db_config(config: AppConfig) -> SqliteDbConfig:
-    """AppConfig.sqlite → infra SqliteDbConfig для identity DB."""
+    """AppConfig.sqlite → infra SqliteDbConfig для identity DB.
+
+    schema_retry_count не включён намеренно: identity DB не использует
+    schema migration с retry (в отличие от vault DB).
+    """
     s = config.sqlite
     return SqliteDbConfig(
         journal_mode=s.journal_mode,
@@ -319,12 +348,17 @@ class ResolveCore:
    DI Container                 projections.py
    (consumer only)              (centralized)
    - получает AppConfig         |
-   - НЕ создает settings        +--→ to_resolver_settings()      → ResolverSettings
-   - передает секции             +--→ to_vault_rollout_policy()   → VaultRolloutPolicySettings
-     в субконтейнеры             +--→ to_vault_rollout_thresholds → VaultRolloutThresholds
-            |                    +--→ to_vault_db_config()        → SqliteDbConfig
-            v                    +--→ to_cache_db_config()        → SqliteDbConfig
-   usecases / stages             +--→ to_match_batch_settings()   → MatchBatchSettings
+   - НЕ создает settings        +--→ to_resolver_settings()        → ResolverSettings
+   - передает секции             +--→ to_vault_rollout_policy()     → VaultRolloutPolicySettings
+     в субконтейнеры             +--→ to_vault_rollout_thresholds() → VaultRolloutThresholds
+            |                    +--→ to_vault_db_config()          → SqliteDbConfig
+            |                    +--→ to_cache_db_config()          → SqliteDbConfig
+            |                    +--→ to_match_batch_settings()     → MatchBatchSettings
+            |
+            | DI wiring (без projection — нет domain-порта):
+            +--→ app_config.resolver.resolve_batch_size        → resolver infra
+            v   app_config.resolver.resolve_flush_interval_ms
+   usecases / stages
 ```
 
 ### Когда нужен projection
@@ -458,21 +492,120 @@ thresholds = to_vault_rollout_thresholds(ctx.app_config)
 
 ## 🧪 Валидация решения
 
-**Тесты**:
-- ✅ (план) Architecture test: `load_app_config()` остаётся единственным production entrypoint для user-facing config
-- ✅ (план) Architecture test: запрет автономной инстанциации `BaseSettings` в `containers.py` и command handlers
-- ✅ (план) Architecture test: запрет дублирования projection-функций в command handlers
-- ✅ (план) Unit tests: все projection-функции в `projections.py`
-- ✅ (план) Unit tests: `ResolveCore` требует `settings: ResolverSettings` (non-optional), не принимает `None`
-- ✅ (план) Unit tests: дефолты `ResolverConfig` совпадают с текущими дефолтами `Settings` (regression guard)
-- ✅ (план) Integration tests: `sqlite`/`dictionary` параметры проходят через `CLI > ENV > config > defaults`
-- ✅ (план) Regression tests: поведение `vault_rollout` runtime не меняется после выноса projections
-- ✅ (план) Test: `config_example.yml` содержит все секции (sync с `AppConfig.model_json_schema()`)
+### Полная матрица: delete / update / add
 
-**Метрики успеха**:
-- Количество автономных loader-path для settings в delivery/runtime = 0
-- Количество дублирующих projection-функций в command handlers = 0
-- Нет расхождений между дефолтами config-layer и domain runtime fallback
+#### Удаляются (5 файлов)
+
+| Файл | Причина |
+|------|---------|
+| `tests/unit/config/test_settings_validation.py` | Тестирует `_validate_settings()` → удаляется вместе с функцией |
+| `tests/unit/config/test_settings_merge.py` | Тестирует `_apply_source()`, `_build_field_specs()` → удаляются |
+| `tests/unit/config/test_settings_parsing.py` | Тестирует `_parse_bool()`, `_parse_int()`, `_parse_float()` → удаляются |
+| `tests/unit/config/test_settings_slice_completeness.py` | Тестирует `_SLICE_FIELD_MAP` → удаляется |
+| `tests/unit/config/test_sqlite_settings.py` | Тестирует `SqliteSettings(BaseSettings)` как standalone → удаляется |
+
+#### Обновляются / переписываются (7 файлов)
+
+| Файл | Действие | Ключевые изменения |
+|------|----------|--------------------|
+| `tests/unit/config/test_settings_diagnostics_adapter.py` | Без изменений (KEEP) | `translate_settings_issue()` не меняется |
+| `tests/unit/config/test_runtime_settings_boundary.py` | Переписать | `AppSettings` со slice-конструктором → `AppConfig` с nested секциями |
+| `tests/unit/config/test_config_priority.py` | Переписать | Плоский YAML + `ANKEY_HOST` → nested YAML + `ANKEY_API__HOST`; `load_app_settings()` → `load_app_config()` |
+| `tests/unit/config/test_settings_errors.py` | Переписать | `extra="forbid"` → неизвестный ключ **всегда** `ValidationError` (нет режима "warn"); удалить `test_unknown_keys_warn_by_default` / `test_unknown_keys_error_in_strict_mode`; заменить на `test_unknown_key_always_raises_validation_error` |
+| `tests/architecture/config/test_settings_boundaries.py` | Обновить + добавить guardrails | Добавить 4 новых guardrail (см. ниже) |
+| `tests/integration/config/test_settings_runtime_boundary.py` | Обновить | Плоский YAML `host: "1.1.1.1"` → nested YAML `api:\n  host: "1.1.1.1"` |
+| `tests/e2e/cli/test_settings_cli_smoke.py` | Обновить | Плоский YAML → nested YAML в `cfg.write_text(...)` |
+
+#### Добавляются (3 новых файла)
+
+| Файл | Содержание |
+|------|------------|
+| `tests/unit/config/test_app_config_models.py` | Модели `AppConfig`, `*Config`: defaults, validation, frozen, extra="forbid", Pydantic coerce |
+| `tests/unit/config/test_app_config_loader.py` | `load_app_config()`: nested YAML, ENV override, CLI priority, source trace |
+| `tests/unit/config/test_config_projections.py` | Все projection-функции из `projections.py` |
+
+*(Спецификации `test_app_config_models.py` и `test_app_config_loader.py` — см. [CONFIG-DEC-002](./CONFIG-DEC-002-pydantic-settings-migration.md), раздел «🧪 Валидация решения»)*
+
+### Тесты: `tests/unit/config/test_config_projections.py` (новый)
+
+```
+test_to_resolver_settings_maps_all_fields()
+  — все 6 полей ResolverConfig → ResolverSettings переданы корректно
+
+test_to_resolver_settings_default_values_match_config_defaults()
+  — ResolverConfig() → ResolverSettings: pending_max_attempts=5, pending_ttl_seconds=120
+
+test_to_vault_rollout_policy_settings_mode_literal()
+  — mode="staging_dry_run" → VaultRolloutPolicySettings.mode="staging_dry_run"
+
+test_to_vault_rollout_policy_settings_canary_datasets_tuple()
+  — canary_datasets=("ds1", "ds2") → VaultRolloutPolicySettings.canary_datasets == ("ds1", "ds2")
+
+test_to_vault_rollout_thresholds_renames_error_rate()
+  — VaultRolloutConfig.error_rate_threshold_pct → VaultRolloutThresholds.vault_error_rate_threshold_pct
+
+test_to_vault_rollout_thresholds_default_values()
+  — дефолты из VaultRolloutConfig(): row=5.0, latency=15.0, busy=0.0, schema=0.0 (regression guard)
+
+test_to_match_batch_settings_maps_match_fields()
+  — match_batch_size, match_flush_interval_ms → MatchBatchSettings корректно
+
+test_to_match_batch_settings_no_resolve_fields()
+  — MatchBatchSettings не содержит resolve_batch_size / resolve_flush_interval_ms
+    (они живут в ResolverConfig и доставляются через DI-wiring)
+
+test_to_vault_db_config_uses_vault_override_when_set()
+  — vault_busy_timeout_ms=1234 → SqliteDbConfig.busy_timeout_ms=1234
+
+test_to_vault_db_config_falls_back_to_global()
+  — vault_busy_timeout_ms=None → SqliteDbConfig.busy_timeout_ms = SqliteConfig.busy_timeout_ms
+
+test_to_cache_db_config_deferred_transaction_mode()
+  — SqliteDbConfig.transaction_mode == "deferred"
+
+test_to_identity_db_config_no_schema_retry_field()
+  — SqliteDbConfig для identity не содержит schema_retry_count
+    (Identity DB не использует schema migration с retry)
+
+test_to_identity_db_config_uses_global_defaults_only()
+  — все поля из SqliteConfig глобального уровня (нет per-DB override для identity)
+```
+
+### Architecture guardrails: `tests/architecture/config/test_settings_boundaries.py` (добавить)
+
+К существующим guardrails добавить 4 новых:
+
+```
+test_load_app_config_is_only_production_entrypoint()
+  — containers.py и command handlers не содержат вызовов
+    load_settings_model() / load_app_settings()
+  — разрешён только load_app_config()
+
+test_no_autonomous_base_settings_in_container()
+  — containers.py не инстанцирует SqliteSettings() /
+    DictionaryRuntimeSettings() / BaseSettings напрямую
+
+test_no_duplicate_rollout_projections_in_command_handlers()
+  — enrich.py / import_plan.py / import_apply.py не содержат
+    локальных _rollout_settings() / _rollout_thresholds()
+  — используют to_vault_rollout_policy_settings() /
+    to_vault_rollout_thresholds() из projections.py
+
+test_resolve_core_settings_non_optional()
+  — сигнатура ResolveCore.__init__ содержит settings: ResolverSettings (не Optional)
+  — вспомогательные функции _build_expires_at / _allow_partial /
+    _max_attempts не принимают None
+```
+
+### Метрики успеха
+
+| Метрика | Целевое значение |
+|---------|-----------------|
+| Автономные loader-path для settings в delivery/runtime | **= 0** |
+| Дублирующие projection-функции в command handlers | **= 0** |
+| Расхождения между дефолтами config-layer и domain runtime fallback | **= 0** |
+| Тест-файлы, проверяющие удалённый код | **= 0** (5 файлов удаляются) |
+| Projection-функции, покрытые unit-тестами | **= 100%** (7 функций в `test_config_projections.py`) |
 
 ---
 
@@ -503,7 +636,8 @@ thresholds = to_vault_rollout_thresholds(ctx.app_config)
 | `connector/domain/transform/resolver/*` | Прямое | `ResolverSettings` non-optional; удалить hidden defaults |
 | `connector/delivery/cli/context.py` | Прямое | `app_settings` → `app_config` |
 | `connector/delivery/cli/app.py` | Прямое | Dotted-path CLI overrides |
-| `connector/infra/target/*` | Косвенное | Централизовать сборку `HttpClientSettings` в `projections.py` |
+| `connector/infra/target/*` | Нет | `HttpClientSettings` строится infra-internally в `client_factory.py`; дублирования нет, централизация не нужна |
+| `connector/delivery/cli/settings_slice_map.py` | Прямое | `*Settings` → `*Config`; `ResolverSettings` (domain) → `ResolverConfig` (config) |
 | `examples/configs/config_example.yml` | Прямое | Переписать в nested формат |
 | `tests/` | Прямое | Обновить все тесты settings, добавить architecture guardrails |
 
@@ -534,4 +668,5 @@ thresholds = to_vault_rollout_thresholds(ctx.app_config)
 |------|---------|
 | 2026-02-24 | Решение предложено по итогам архитектурного обзора settings/config границ |
 | 2026-02-24 | Уточнено после обсуждения: единый pipeline + canonical `AppSettings`; projections только при смене смысла |
-| 2026-02-26 | Статус: Принято. Уточнено: `AppConfig(BaseModel)` заменяет `AppSettings`; `ResolverConfig` в config-слое с projection; `SqliteConfig`/`DictionaryConfig` как секции `AppConfig`; централизованные projections в `projections.py`; hidden defaults cleanup; полная инвентаризация settings-моделей; clean break без backward compat |
+| 2026-02-26 | Уточнено: `AppConfig(BaseModel)` заменяет `AppSettings`; `ResolverConfig` в config-слое с projection; `SqliteConfig`/`DictionaryConfig` как секции `AppConfig`; централизованные projections в `projections.py`; hidden defaults cleanup; полная инвентаризация settings-моделей; clean break без backward compat |
+| 2026-02-26 | Исправлено по ревью: `staging_dry_run` в `mode` Literal; `canary_datasets: tuple[str, ...]` (Pydantic coerce); `canary_seed="vault-rollout-v1"`; threshold дефолты выровнены по текущим доменным; `resolve_batch_size`/`resolve_flush_interval_ms` перенесены в `ResolverConfig` (нет domain-порта — доставка через DI-wiring); `HttpClientSettings` остаётся infra-internal; `settings_slice_map.py` добавлен в impact table; причина rename `error_rate_threshold_pct` задокументирована; domain-дефолты `VaultRolloutThresholds` признаны shadowed проекцией |
