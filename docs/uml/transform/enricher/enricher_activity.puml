@@ -9,61 +9,92 @@ skinparam activity {
 }
 
 start
-:Input TransformResult[normalized];
-
-if (row is None?) then (yes)
-  :Return input (no-op);
-  stop
-endif
-
-:EnrichStage enters diagnostic_boundary(ENRICH);
-:EnricherEngine.enrich(input);
-:EnricherCore initializes builder + summary;
+:EnrichUseCase.run() consumes ENRICH checkpoint pipeline\n(via PipelineOrchestrator);
+:PipelineOrchestrator invokes EnrichStage.run(stream);
 
 repeat
-  :Take next EnrichmentOperation;
-  if (run_when_errors allows?) then (yes)
-    :Resolve required keys;
-    if (missing key?) then (yes)
-      :Apply strictness.on_missing_key;
+  :Take next TransformResult;
+  :EnrichStage enters diagnostic_boundary(ENRICH);
+  :EnricherEngine.enrich(result);
+
+  if (row is None?) then (yes)
+    :Return input (passthrough);
+  else (no)
+    :EnricherCore initializes builder + EnrichContext\n+ _FieldMutationTracker + EnricherReport;
+    :Ensure meta arrays: enrich_events / resolve_requests;
+
+    if (builder has errors AND fatal classifier unset\nAND some op uses ONLY_NON_FATAL?) then (yes)
+      :Append ENRICH_FATAL_POLICY_UNSET warning;
+    endif
+
+    repeat
+      :Take next EnrichmentOperation;
+      if (_should_run_operation(op, errors)?) then (yes)
+        :Resolve required_keys via key_registry;
+        if (missing required key?) then (yes)
+          :OperationReport by strictness\n(ENRICH_MISSING_KEY);
+        else (no)
+          :Collect candidates\n(compute / generate / provider.fetch);
+          if (provider error / mismatch / no candidates?) then (yes)
+            :OperationReport by strictness\n(provider/no-candidates code);
+          else (no)
+            :ConflictResolver.decide(candidates);
+            if (AMBIGUOUS?) then (yes)
+              :Append ResolveHint to meta.resolve_requests;
+              :OperationReport by strictness\n(ENRICH_AMBIGUOUS / NEEDS_RESOLVE);
+            elseif (NONE?) then (yes)
+              :OperationReport by strictness\n(ENRICH_NO_CANDIDATES);
+            else (SELECTED)
+              :MergeEngine.should_apply + conflict writer check;
+              if (policy skip?) then (yes)
+                :Append EnrichEvent(SKIPPED);
+              else (no)
+                :Validate sink target type (SinkSpec, optional);
+                if (sink validation failed?) then (yes)
+                  :OperationReport by strictness\n(sink issue as provider_error policy);
+                else (no)
+                  :Write target field/match_key/secret candidate;
+                  :Tracker.register(field, op.name);
+                  :Append EnrichEvent(APPLIED);
+                endif
+              endif
+            endif
+          endif
+        endif
+
+        :Record OperationReport in EnricherReport;
+        :Append diagnostics/events/resolve_hints to builder/meta;
+        if (stop_on_failed && op_report.outcome == FAILED?) then (yes)
+          break
+        endif
+      else (skip)
+        :Skip operation by run_when_errors policy;
+      endif
+    repeat while (more operations?) is (yes)
+
+    if (secret_candidates empty?) then (yes)
+      :Skip secret store phase;
     else (no)
-      :Fetch candidates (provider/generator/compute);
-      if (provider error?) then (yes)
-        :Apply strictness.on_provider_error;
-      elseif (no candidates?) then (yes)
-        :Apply strictness.on_no_candidates;
-      else (has candidates)
-        :ConflictResolver.decide;
-        if (ambiguous?) then (yes)
-          :Outcome NEEDS_RESOLVE;
-          :Append ResolveHint to meta;
-        else (selected)
-          :MergeEngine.merge;
-          :Emit EnrichEvent;
+      if (match_key missing?) then (yes)
+        :Add SECRET_MATCH_KEY_MISSING error;
+      else (no)
+        if (secret_store configured?) then (yes)
+          :secret_store.put_many(...);
+          if (store error?) then (yes)
+            :Add SECRET_STORE_ERROR;
+          endif
         endif
       endif
+      :Set meta.secret_fields;
+      :Mask/clear secret fields in row;
+      :Clear builder.secret_candidates;
     endif
-  else (skip)
-    :Skip operation;
-  endif
 
-  :Update EnricherReport;
-  if (stop_on_failed?) then (yes)
-    break
+    :Set meta.enrich_summary = EnricherReport.as_dict();
+    :Return TransformResult[enriched];
   endif
-repeat while (more operations?)
+repeat while (more input results?) is (yes)
 
-if (secret_store exists AND secrets present?) then (yes)
-  if (match_key missing?) then (yes)
-    :Emit MATCH_KEY_MISSING;
-  else (no)
-    :secret_store.put_many(...);
-  endif
-endif
-
-:Attach summary/events/resolve_requests to meta;
-:Append boundary errors;
-:Return TransformResult[enriched];
 stop
 
 @enduml

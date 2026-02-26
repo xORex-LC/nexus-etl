@@ -8,25 +8,99 @@ skinparam state {
   BorderColor #d9c2a8
 }
 
-[*] --> Input
-Input --> Skipped : row is None
-Input --> ExecuteOps : valid row
+[*] --> InputResult : EnrichStage receives TransformResult
 
-ExecuteOps --> NeedsResolve : ambiguous candidates
-ExecuteOps --> Failed : strictness => FAILED
-ExecuteOps --> Enriched : operations completed
+InputResult --> Passthrough : row is None
+InputResult --> CoreEnrich : row exists
 
-NeedsResolve --> StoreSecrets
-Enriched --> StoreSecrets
-Failed --> Output
-Skipped --> Output
+state CoreEnrich {
+  [*] --> InitRuntime
+  InitRuntime : builder + EnrichContext + tracker + summary
+  InitRuntime --> OpsLoop
 
-StoreSecrets --> Output : stored or skipped with diagnostics
+  state OpsLoop {
+    [*] --> NextOperation
+
+    NextOperation --> OpSkippedPrecheck : _should_run_operation() == False
+    NextOperation --> ResolveKeys : operation selected to run
+
+    OpSkippedPrecheck --> NextOperation : more ops
+    OpSkippedPrecheck --> [*] : no more ops
+
+    ResolveKeys --> OutcomeSkipped : missing required key\n-> _report_by_policy(ENRICH_MISSING_KEY)
+    ResolveKeys --> CollectCandidates : required keys available
+
+    CollectCandidates --> OutcomeWarned : provider error\n(strictness -> WARNED)
+    CollectCandidates --> OutcomeFailed : provider error\n(strictness -> FAILED)
+    CollectCandidates --> OutcomeNeedsResolve : ambiguous via ConflictResolver\n(strictness -> NEEDS_RESOLVE)\n+ ResolveHint appended
+    CollectCandidates --> OutcomeSkipped : no candidates\n(strictness -> SKIPPED)
+    CollectCandidates --> OutcomeWarned : no candidates/ambiguous\n(strictness -> WARNED)
+    CollectCandidates --> ApplySelected : CandidateDecision.status == SELECTED
+
+    ApplySelected --> OutcomeSkipped : merge policy skip / conflict skip
+    ApplySelected --> OutcomeWarned : sink validation mapped by strictness -> WARNED
+    ApplySelected --> OutcomeFailed : sink validation mapped by strictness -> FAILED
+    ApplySelected --> OutcomeApplied : field write succeeded\n(+ EnrichEvent APPLIED)
+
+    OutcomeApplied : EnrichOutcome.APPLIED
+    OutcomeSkipped : EnrichOutcome.SKIPPED
+    OutcomeWarned : EnrichOutcome.WARNED
+    OutcomeFailed : EnrichOutcome.FAILED
+    OutcomeNeedsResolve : EnrichOutcome.NEEDS_RESOLVE
+
+    OutcomeApplied --> RecordReport
+    OutcomeSkipped --> RecordReport
+    OutcomeWarned --> RecordReport
+    OutcomeFailed --> RecordReport
+    OutcomeNeedsResolve --> RecordReport
+
+    RecordReport : summary.record(op_report)\nappend diagnostics/events/resolve_hints
+    RecordReport --> BreakOnFailed : stop_on_failed && outcome == FAILED
+    RecordReport --> NextOperation : more ops
+    RecordReport --> [*] : no more ops
+    BreakOnFailed --> [*]
+  }
+
+  OpsLoop --> SecretPhase
+
+  state SecretPhase {
+    [*] --> NoSecrets
+    NoSecrets --> [*] : secret_candidates empty
+
+    [*] --> NeedMatchKey : secret_candidates present
+    NeedMatchKey --> SecretMatchKeyMissing : match_key missing\n+ SECRET_MATCH_KEY_MISSING
+    NeedMatchKey --> StoreSecrets : match_key present
+
+    StoreSecrets --> SecretStored : SecretStoreProtocol.put_many() ok
+    StoreSecrets --> SecretStoreError : put_many() error\n+ SECRET_STORE_ERROR
+    StoreSecrets --> SecretStored : secret_store not configured\n(skip write)
+
+    SecretMatchKeyMissing --> MaskSecrets
+    SecretStored --> MaskSecrets
+    SecretStoreError --> MaskSecrets
+    MaskSecrets : set meta.secret_fields\nclear secret fields in row\nclear secret_candidates
+    MaskSecrets --> [*]
+  }
+
+  SecretPhase --> FinalizeMeta
+  FinalizeMeta : set meta.enrich_summary\n(meta.enrich_events / resolve_requests already accumulated)
+  FinalizeMeta --> [*]
+}
+
+CoreEnrich --> Output : TransformResult emitted
+Passthrough --> Output
 Output --> [*]
 
-note right of NeedsResolve
-Resolve is NOT done here.
-Enrich emits hints in meta for ResolveStage.
+note right of OutcomeNeedsResolve
+`NEEDS_RESOLVE` is an operation-level outcome.
+EnricherCore materializes it as warning(s) and `meta.resolve_requests`,
+not as a separate stage-level terminal record type.
+end note
+
+note left of CoreEnrich
+EnrichStage wraps EnricherEngine in diagnostic_boundary(ENRICH).
+Boundary errors are appended to the outgoing TransformResult,
+but operation lifecycle is owned by EnricherCore.
 end note
 
 @enduml
