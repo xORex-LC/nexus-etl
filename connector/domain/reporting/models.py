@@ -60,6 +60,7 @@ class ReportDiagnostic:
     field: str | None
     message: str
     rule: str | None = None
+    details: dict[str, Any] | None = None
 
 
 @dataclass

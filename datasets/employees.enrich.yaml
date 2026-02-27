@@ -53,7 +53,7 @@ enrich:
       source: password
       ops:
         - op: trim
-        - op: default_uuid
+        - op: default_password
       merge: fill_only_if_empty
       on_error: warn
   lookup: []

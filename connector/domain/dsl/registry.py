@@ -67,6 +67,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_uuid,
         op_default_uuid,
         op_default_prefixed_uuid,
+        op_default_password,
         op_copy,
         op_const,
         op_coalesce,
@@ -94,6 +95,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("uuid", op_uuid)
     registry.register("default_uuid", op_default_uuid)
     registry.register("default_prefixed_uuid", op_default_prefixed_uuid)
+    registry.register("default_password", op_default_password)
     registry.register("copy", op_copy)
     registry.register("const", op_const)
     registry.register("coalesce", op_coalesce)

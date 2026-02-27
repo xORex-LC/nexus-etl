@@ -53,4 +53,5 @@ def _from_item(item: DiagnosticItem | ReportDiagnostic, fallback_severity: str) 
         field=item.field,
         message=item.message,
         rule=getattr(item, "rule", None),
+        details=getattr(item, "details", None),
     )

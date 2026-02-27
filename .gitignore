@@ -10,7 +10,7 @@ build/
 logs/
 reports/
 /cache/
-config.yml
+config_example_ankey.yml
 .vscode
 .VSCode*
 .coverage
