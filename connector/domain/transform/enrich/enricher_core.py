@@ -432,7 +432,9 @@ class EnricherCore(Generic[T, D]):
             key = field.split("secret:", 1)[1]
             return builder.secret_candidates.get(key)
         row = builder.row
-        return getattr(row, field, None) if row is not None else None
+        if row is None:
+            return None
+        return row.get(field) if isinstance(row, dict) else getattr(row, field, None)
 
     def _set_field_value(self, builder: TransformResultBuilder[T], field: str, value: Any) -> None:
         if field == "match_key":
@@ -446,7 +448,10 @@ class EnricherCore(Generic[T, D]):
             return
         if builder.row is None:
             return
-        setattr(builder.row, field, value)
+        if isinstance(builder.row, dict):
+            builder.row[field] = value
+        else:
+            setattr(builder.row, field, value)
 
     def _build_lookup_key(
         self,

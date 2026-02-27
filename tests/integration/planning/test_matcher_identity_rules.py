@@ -13,7 +13,6 @@ from connector.domain.transform_dsl import load_match_spec_for_dataset
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.ids.match_key import MatchKey
-from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.diagnostics.catalog import build_catalog
 
 CATALOG = build_catalog("employees", strict=True)
@@ -67,24 +66,24 @@ def _make_context(match_key: str, usr_org_tab_num: str | None) -> MatchContext:
     )
 
 
-def _make_transform_result(match_context: MatchContext) -> TransformResult[NormalizedEmployeesRow]:
-    row = NormalizedEmployeesRow(
-        email=None,
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=None,
-        user_name=None,
-        phone=None,
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=None,
-        position=None,
-        avatar_id=None,
-        usr_org_tab_num=match_context.usr_org_tab_num,
-        target_id=None,
-    )
+def _make_transform_result(match_context: MatchContext) -> TransformResult:
+    row = {
+        "email": None,
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": None,
+        "user_name": None,
+        "phone": None,
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": None,
+        "position": None,
+        "avatar_id": None,
+        "usr_org_tab_num": match_context.usr_org_tab_num,
+        "target_id": None,
+    }
     return TransformResult(
         record=SourceRecord(line_no=1, record_id="rec-1", values={}),
         row=row,

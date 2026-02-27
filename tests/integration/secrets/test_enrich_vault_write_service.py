@@ -15,7 +15,6 @@ from connector.domain.secrets.secret_vault_write_service import SecretVaultWrite
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.enrich import EnricherEngine
-from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
@@ -88,24 +87,24 @@ def _build_enricher(secret_store: SecretVaultWriteService) -> EnricherEngine:
     )
 
 
-def _build_result() -> TransformResult[NormalizedEmployeesRow]:
-    row = NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password="TopSecret123",
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-        target_id="RID-1",
-    )
+def _build_result() -> TransformResult:
+    row = {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+111",
+        "password": "TopSecret123",
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": "TAB-100",
+        "target_id": "RID-1",
+    }
     return TransformResult(
         record=SourceRecord(line_no=1, record_id="line:1", values={}),
         row=row,
@@ -126,7 +125,7 @@ def test_enricher_writes_encrypted_secret_to_vault(tmp_path: Path):
         assert result.meta.get("secret_fields") == ["password"]
         assert result.secret_candidates == {}
         assert result.row is not None
-        assert result.row.password is None
+        assert result.row.get("password") is None
 
         locator_hash = locator.build_locator_hash(
             dataset="employees",

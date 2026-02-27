@@ -24,7 +24,6 @@ from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform_dsl import load_enrich_spec_for_dataset
 from connector.domain.transform_dsl import load_sink_spec_for_dataset
 from connector.datasets.employees.spec import make_employees_spec
-from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
@@ -90,8 +89,8 @@ def _build_enricher_from_dsl(
 
 
 def _build_result(
-    row: NormalizedEmployeesRow, secret_candidates: dict[str, str] | None = None
-) -> TransformResult[NormalizedEmployeesRow]:
+    row: dict, secret_candidates: dict[str, str] | None = None
+) -> TransformResult:
     record = SourceRecord(line_no=1, record_id="line:1", values={})
     return TransformResult(
         record=record,
@@ -105,31 +104,31 @@ def _build_result(
 
 
 def test_enricher_builds_match_key_and_generates_values():
-    row = NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num=None,
-        target_id=None,
-    )
+    row = {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+111",
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": None,
+        "target_id": None,
+    }
     enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()))
     result = enricher.enrich(_build_result(row))
 
     assert result.errors == ()
     assert result.match_key is not None
     assert result.match_key.value == "Doe|John|M|100"
-    assert result.row.target_id is not None
-    assert result.row.usr_org_tab_num is not None
+    assert result.row["target_id"] is not None
+    assert result.row["usr_org_tab_num"] is not None
     assert result.secret_candidates == {}
     secret_fields = result.meta.get("secret_fields")
     assert secret_fields == ["password"]
@@ -140,23 +139,23 @@ def test_enricher_builds_match_key_and_generates_values():
 
 
 def test_enricher_reports_missing_match_key():
-    row = NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name=None,
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-        target_id="RID-1",
-    )
+    row = {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": None,
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+111",
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": "TAB-100",
+        "target_id": "RID-1",
+    }
     enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()))
     result = enricher.enrich(_build_result(row))
 
@@ -166,23 +165,23 @@ def test_enricher_reports_missing_match_key():
 
 
 def test_enricher_reports_secret_match_key_missing_when_store_needs_locator():
-    row = NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name=None,
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-        target_id="RID-1",
-    )
+    row = {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": None,
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+111",
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": "TAB-100",
+        "target_id": "RID-1",
+    }
     enricher = _build_enricher_from_dsl(_DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()))
     result = enricher.enrich(_build_result(row, {"password": "secret"}))
 
@@ -192,23 +191,23 @@ def test_enricher_reports_secret_match_key_missing_when_store_needs_locator():
 
 
 def test_enricher_runs_only_allowed_ops_on_error():
-    row = NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num=None,
-        target_id=None,
-    )
+    row = {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+111",
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": None,
+        "target_id": None,
+    }
     result = _build_result(row).with_added_errors(
         [
             DiagnosticItem(
@@ -223,31 +222,31 @@ def test_enricher_runs_only_allowed_ops_on_error():
     enriched = enricher.enrich(result)
 
     assert enriched.match_key is not None
-    assert enriched.row.target_id is None
-    assert enriched.row.usr_org_tab_num is None
+    assert enriched.row.get("target_id") is None
+    assert enriched.row.get("usr_org_tab_num") is None
     summary = enriched.meta.get("enrich_summary")
     assert summary is not None
     assert summary["operations_total"] == 1
 
 
 def test_enricher_writes_secrets_to_store():
-    row = NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-        target_id="RID-1",
-    )
+    row = {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+111",
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": "TAB-100",
+        "target_id": "RID-1",
+    }
     secret_store = _DummySecretStore()
     enricher = _build_enricher_from_dsl(
         _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()),
@@ -266,23 +265,23 @@ def test_enricher_writes_secrets_to_store():
 
 
 def test_enricher_reports_usr_org_tab_conflict():
-    row = NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num=None,
-        target_id=None,
-    )
+    row = {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+111",
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": None,
+        "target_id": None,
+    }
     enricher = _build_enricher_from_dsl(_ConflictingTabDeps(cache_gateway=_ConflictTabCacheRepo()))
     result = enricher.enrich(_build_result(row))
 

@@ -19,7 +19,6 @@ from connector.domain.transform_dsl.compilers.match import (
     MatchingRules,
 )
 from connector.domain.transform_dsl.compilers.resolve import ResolveRules
-from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
 CATALOG = build_catalog("employees", strict=True)
@@ -61,27 +60,27 @@ class FakeCacheRepo:
             del self.runtime[key]
 
 
-def _row(*, email: str, first_name: str = "John") -> NormalizedEmployeesRow:
-    return NormalizedEmployeesRow(
-        email=email,
-        last_name="Doe",
-        first_name=first_name,
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone=None,
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=1,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-        target_id=None,
-    )
+def _row(*, email: str, first_name: str = "John") -> dict:
+    return {
+        "email": email,
+        "last_name": "Doe",
+        "first_name": first_name,
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": None,
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 1,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": "TAB-100",
+        "target_id": None,
+    }
 
 
-def _result(row: NormalizedEmployeesRow) -> TransformResult[NormalizedEmployeesRow]:
+def _result(row: dict) -> TransformResult:
     return TransformResult(
         record=SourceRecord(line_no=1, record_id="rec-1", values={}),
         row=row,
@@ -93,9 +92,9 @@ def _result(row: NormalizedEmployeesRow) -> TransformResult[NormalizedEmployeesR
 def _resolve_rules() -> ResolveRules:
     return ResolveRules(
         build_desired_state=lambda row, _: {
-            "email": row.email,
-            "first_name": row.first_name,
-            "last_name": row.last_name,
+            "email": row["email"],
+            "first_name": row["first_name"],
+            "last_name": row["last_name"],
             "match_key": "mk:missing",
         }
     )
