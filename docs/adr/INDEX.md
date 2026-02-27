@@ -108,6 +108,8 @@ docs/adr/
 | [TRANSFORM-PROBLEM-008](./transform/TRANSFORM-PROBLEM-008-pending-codec-stage-coupling.md) | Problem | pending_codec привязан к стадии resolver — SRP нарушен, будущие consumers получат лишнюю зависимость | ✅ Закрыто | 2026-02-23 |
 | [TRANSFORM-DEC-008](./transform/TRANSFORM-DEC-008-pending-codec-standalone-feature.md) | Decision | Вынести pending_codec в `domain/transform/pending/` — standalone feature без привязки к стадии | ✅ Закрыто | 2026-02-23 |
 | [TRANSFORM-PROBLEM-009](./transform/TRANSFORM-PROBLEM-009-sink-validation-cross-cutting-in-stage-cores.md) | Problem | Sink schema validation — cross-cutting concern внутри всех 4 stage cores | ❌ Открыто (наблюдение, accepted pattern) | 2026-02-24 |
+| [TRANSFORM-PROBLEM-010](./transform/TRANSFORM-PROBLEM-010-stage-diagnostics-no-field-context-and-no-error-policy.md) | Problem | Stage diagnostics не фиксируют поле и значение при ошибке — нет декларативной политики обработки ошибок полей | ✅ Закрыто | 2026-02-27 |
+| [TRANSFORM-DEC-009](./transform/TRANSFORM-DEC-009-field-error-policy-and-diagnostic-enrichment.md) | Decision | Декларативная политика ошибок полей и обогащение диагностики на стадиях трансформации | ✅ Закрыто | 2026-02-27 |
 
 ### Delivery
 
