@@ -36,7 +36,6 @@ from connector.domain.transform_dsl.specs import (
     ResolveSpec,
     SinkSpec,
 )
-from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.infra.sources.csv_reader import CsvRecordSource
 from connector.infra.target.providers.ankey_rest.payloads import (
     build_user_upsert_payload,
@@ -48,8 +47,6 @@ class EmployeesSpec(DatasetSpec):
     Назначение:
         DatasetSpec для employees: DSL specs, record source, report/apply adapters.
     """
-
-    row_builder = NormalizedEmployeesRow
 
     def __init__(
         self,

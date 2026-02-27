@@ -10,28 +10,27 @@ from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.transform_dsl.compilers.match import MatchDsl
 from connector.domain.transform.matcher.match_engine import MatchEngine
 from connector.domain.transform_dsl.compilers.resolve import ResolveRules
-from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.diagnostics.catalog import build_catalog
 
 
-def _sample_row() -> NormalizedEmployeesRow:
-    return NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-        target_id=None,
-    )
+def _sample_row() -> dict:
+    return {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+111",
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": "TAB-100",
+        "target_id": None,
+    }
 
 
 def _sample_context() -> MatchContext:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 from connector.domain.models import Identity
 from connector.domain.transform_dsl import load_resolve_spec_for_dataset
 from connector.domain.transform_dsl import load_sink_spec_for_dataset
@@ -13,24 +12,24 @@ from connector.domain.transform.resolver.resolve_engine import ResolveEngine
 from connector.domain.diagnostics.catalog import build_catalog
 
 
-def _sample_row() -> NormalizedEmployeesRow:
-    return NormalizedEmployeesRow(
-        email="user@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone="+111",
-        password="secret",
-        personnel_number="100",
-        manager_id="777",
-        organization_id=20,
-        position="Engineer",
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-        target_id=None,
-    )
+def _sample_row() -> dict:
+    return {
+        "email": "user@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": "+111",
+        "password": "secret",
+        "personnel_number": "100",
+        "manager_id": "777",
+        "organization_id": 20,
+        "position": "Engineer",
+        "avatar_id": None,
+        "usr_org_tab_num": "TAB-100",
+        "target_id": None,
+    }
 
 
 def test_resolve_dsl_compile_matches_employees_contract():

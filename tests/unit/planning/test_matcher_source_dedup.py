@@ -16,7 +16,6 @@ from connector.domain.transform_dsl.compilers.match import (
     SourceDedupRules,
 )
 from connector.domain.transform_dsl.compilers.resolve import ResolveRules
-from connector.datasets.employees.transform.normalized import NormalizedEmployeesRow
 
 
 CATALOG = build_catalog("employees", strict=True)
@@ -51,27 +50,27 @@ class FakeCacheRepo:
         _ = scope
 
 
-def _row(*, phone: str, position: str = "Engineer") -> NormalizedEmployeesRow:
-    return NormalizedEmployeesRow(
-        email="john@example.com",
-        last_name="Doe",
-        first_name="John",
-        middle_name="M",
-        is_logon_disable=False,
-        user_name="jdoe",
-        phone=phone,
-        password=None,
-        personnel_number="100",
-        manager_id=None,
-        organization_id=1,
-        position=position,
-        avatar_id=None,
-        usr_org_tab_num="TAB-100",
-        target_id=None,
-    )
+def _row(*, phone: str, position: str = "Engineer") -> dict:
+    return {
+        "email": "john@example.com",
+        "last_name": "Doe",
+        "first_name": "John",
+        "middle_name": "M",
+        "is_logon_disable": False,
+        "user_name": "jdoe",
+        "phone": phone,
+        "password": None,
+        "personnel_number": "100",
+        "manager_id": None,
+        "organization_id": 1,
+        "position": position,
+        "avatar_id": None,
+        "usr_org_tab_num": "TAB-100",
+        "target_id": None,
+    }
 
 
-def _result(row: NormalizedEmployeesRow) -> TransformResult[NormalizedEmployeesRow]:
+def _result(row: dict) -> TransformResult:
     return TransformResult(
         record=SourceRecord(line_no=1, record_id="rec-1", values={}),
         row=row,
@@ -84,7 +83,7 @@ def _resolve_rules() -> ResolveRules:
     return ResolveRules(
         build_desired_state=lambda row, _: {
             "match_key": "Doe|John|M|100",
-            "phone": row.phone,
+            "phone": row["phone"],
         }
     )
 
@@ -189,7 +188,7 @@ def test_source_dedup_uses_canonical_key_with_identity_primary():
             IdentityRule(
                 name="variable_primary",
                 build_identity=lambda row, _ctx: Identity(
-                    primary="phone" if row.position == "Engineer" else "personnel_number",
+                    primary="phone" if row["position"] == "Engineer" else "personnel_number",
                     values={
                         "phone": "same-key",
                         "personnel_number": "same-key",
