@@ -6,11 +6,19 @@
 from __future__ import annotations
 
 import re
+import secrets
 import uuid
 from functools import lru_cache
 from typing import Any, Iterable
 
-from connector.domain.transform.common import normalize_text
+
+def _normalize_whitespace(value: object | None, *, empty_to_none: bool = False) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(str(value).split())
+    if empty_to_none and normalized == "":
+        return None
+    return normalized
 
 
 @lru_cache(maxsize=128)
@@ -48,7 +56,7 @@ def op_trim(value: Any, **_: Any) -> str | None:
         Нормализует пробелы и возвращает None для пустых строк.
     """
 
-    return normalize_text(value, empty_to_none=True)
+    return _normalize_whitespace(value, empty_to_none=True)
 
 
 def op_lower(value: Any, **_: Any) -> str | None:
@@ -190,6 +198,22 @@ def op_default_prefixed_uuid(value: Any, *, prefix: str = "") -> Any:
     if value is None or (isinstance(value, str) and value.strip() == ""):
         return f"{prefix}{uuid.uuid4().hex[:8]}"
     return value
+
+
+def op_default_password(value: Any, **_: Any) -> Any:
+    """
+    Назначение:
+        Вернуть случайный пароль, если значение пустое.
+
+    Алгоритм:
+        Генерирует строку вида <буква><uuid_hex>, которая гарантированно
+        начинается с латинской буквы (a–f) — удовлетворяет политике
+        startWithAlphabet при любом результате uuid4().
+    """
+    if value is not None and not (isinstance(value, str) and value.strip() == ""):
+        return value
+    prefix = secrets.choice("abcdef")
+    return prefix + uuid.uuid4().hex
 
 
 def op_copy(value: Any, **_: Any) -> Any:

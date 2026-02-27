@@ -60,7 +60,7 @@ def request_once(client: httpx.Client, req: HttpRequest) -> HttpOutcome:
             params=req.query or None,
             headers=req.headers or None,
             json=req.json,
-            timeout=req.timeout_s,
+            timeout=req.timeout_s if req.timeout_s is not None else httpx.USE_CLIENT_DEFAULT,
         )
     except (httpx.TimeoutException, httpx.TransportError) as exc:
         return HttpOutcome(

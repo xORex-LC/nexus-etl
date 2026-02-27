@@ -272,7 +272,7 @@ class MatchCore:
             fingerprint=fingerprint,
             fingerprint_fields=fingerprint_fields,
             source_links=links,
-            target_id=getattr(row, "target_id", None),
+            target_id=row.get("target_id") if isinstance(row, dict) else getattr(row, "target_id", None),
             match_decision=match_decision,
         )
 

@@ -120,6 +120,13 @@ class TargetGateway:
                 make_error = lambda: self._result_builder.from_response_error(
                     resp, normalized, self._fault_handler.build_resp_details(resp, retry_action)
                 )
+                self._safe_logger.log_response_error(
+                    operation=_OP,
+                    answer_code=resp.answer_code,
+                    fault_kind=normalized.fault_kind,
+                    payload=resp.payload,
+                    content_preview=resp.content_preview,
+                )
 
             try:
                 should_retry, retries_used, current_spec = self._apply_execute_retry(

@@ -60,6 +60,32 @@ class TargetSafeLogger:
             details["response_payload"] = safe_payload
         return details
 
+    def log_response_error(
+        self,
+        *,
+        operation: str,
+        answer_code: int | str | None,
+        fault_kind: str,
+        payload: Any,
+        content_preview: str | None,
+    ) -> None:
+        """Записать warning-лог о неуспешном ответе target (ошибочный статус-код)."""
+        if self._logger is None:
+            return
+        log_data: dict[str, Any] = {
+            "operation": operation,
+            "answer_code": answer_code,
+            "fault_kind": fault_kind,
+        }
+        safe_preview = truncateText(content_preview) if content_preview else None
+        if safe_preview:
+            log_data["content_preview"] = safe_preview
+        if isinstance(payload, (dict, list)):
+            log_data["response_payload"] = self.safe_body(payload)
+        elif isinstance(payload, str):
+            log_data["response_payload"] = truncateText(payload)
+        self._logger.warning("target request failed", **log_data)
+
     def debug_retry(
         self,
         *,
