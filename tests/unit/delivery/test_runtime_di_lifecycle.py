@@ -28,6 +28,7 @@ from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.dsl.issues import DslLoadError
+from connector.domain.reporting.collector import ReportCollector
 from connector.domain.secrets.errors import SecretKeyConfigError
 
 
@@ -253,3 +254,103 @@ def test_initialize_container_resources_reraises_dsl_load_error_from_init_path(
         )
 
     assert exc_info.value.code == "DICT_RUNTIME_INIT_FAILED"
+
+
+def test_apply_result_to_report_materializes_domain_error_without_diagnostics() -> None:
+    report = ReportCollector(run_id="r-apply-domain", command="mapping")
+    result = CommandResult()
+    result.add_code(SystemErrorCode.INTERNAL_ERROR)
+
+    runtime_module._apply_cli_result_to_report(
+        report,
+        result,
+        command_name="mapping",
+        source="unit_test",
+        secondary=False,
+    )
+
+    built = report.build()
+    assert built.summary.rows_blocked == 1
+    assert built.status == "FAILED"
+    assert len(built.items) == 1
+    assert built.items[0].diagnostics[0].code == "INTERNAL_ERROR"
+
+
+def test_apply_result_to_report_skips_synthetic_when_failures_already_materialized() -> None:
+    report = ReportCollector(run_id="r-no-dup", command="mapping")
+    report.add_item(
+        status="FAILED",
+        row_ref=None,
+        payload=None,
+        errors=[],
+        warnings=[],
+        meta={"source": "existing"},
+    )
+    result = CommandResult()
+    result.add_code(SystemErrorCode.INTERNAL_ERROR)
+
+    runtime_module._apply_cli_result_to_report(
+        report,
+        result,
+        command_name="mapping",
+        source="unit_test",
+        secondary=False,
+    )
+
+    assert report.summary.rows_total == 1
+    assert len(report.items) == 1
+
+
+def test_apply_result_to_report_downgrades_secondary_failure_to_warning() -> None:
+    report = ReportCollector(run_id="r-secondary", command="mapping")
+    result = CommandResult()
+    result.add_code(SystemErrorCode.INTERNAL_ERROR)
+
+    runtime_module._apply_cli_result_to_report(
+        report,
+        result,
+        command_name="mapping",
+        source="runtime_shutdown",
+        secondary=True,
+    )
+
+    assert report.summary.rows_blocked == 0
+    assert report.summary.rows_passed == 1
+    assert len(report.items) == 1
+    assert report.items[0].status == "OK"
+    assert report.items[0].diagnostics[0].severity == "warning"
+
+
+def test_run_with_report_materializes_init_failure_into_report(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, ReportCollector] = {}
+
+    def _capture_finalize(**kwargs):
+        captured["report"] = kwargs["report"]
+        return None
+
+    fake = _FakeContainer()
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(
+        runtime_module,
+        "_initialize_container_resources",
+        lambda **_: _result_with(SystemErrorCode.CACHE_ERROR),
+    )
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", _capture_finalize)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_with_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: _result_with(SystemErrorCode.OK),
+            requirements=Requirements(),
+        )
+
+    assert exc_info.value.exit_code == 2
+    built = captured["report"].build()
+    assert built.summary.rows_blocked == 1
+    assert len(built.items) == 1
+    assert built.items[0].meta["source"] == "runtime_init"
