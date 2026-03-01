@@ -10,7 +10,7 @@ from connector.delivery.presenters.apply_report_presenter import ApplyReportPres
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import DiagnosticItem, DiagnosticSeverity, DiagnosticStage
-from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
+from connector.domain.planning.plan_models import Plan, PlanMeta, PlanSummary
 from connector.domain.planning.record_ref import RecordRef
 from connector.domain.reporting.collector import ReportCollector
 from connector.usecases.apply.models import ApplyItemOutcome, ApplyResult, ApplySummary
@@ -101,6 +101,44 @@ def _make_warn_diag(code: str = "FIELD_WARNING") -> DiagnosticItem:
         field="some_field",
         message="test warning",
     )
+
+
+class _SpyWritePort:
+    """Минимальная реализация ReportWritePort для проверки API-only взаимодействия."""
+
+    __slots__ = ("calls", "ctx")
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.ctx: dict[str, dict] = {}
+
+    def set_row_counters(self, **kwargs) -> None:
+        self.calls.append(f"set_row_counters:{kwargs['rows_total']}")
+
+    def add_op(self, name: str, *, ok: int = 0, failed: int = 0, count: int = 0) -> None:
+        self.calls.append(f"add_op:{name}:{ok}:{failed}:{count}")
+
+    def get_context(self, name: str, default=None):
+        return self.ctx.get(name, default)
+
+    def set_context(self, name: str, value: dict) -> None:
+        self.ctx[name] = dict(value)
+        self.calls.append(f"set_context:{name}")
+
+    def merge_op_fields(self, name: str, values: dict[str, int]) -> None:
+        self.calls.append(f"merge_op_fields:{name}:{sorted(values.keys())}")
+
+    def add_item_preaggregated(self, **kwargs) -> None:
+        self.calls.append(f"add_item_preaggregated:{kwargs['status']}")
+
+    def set_items_truncated(self, value: bool = True) -> None:
+        self.calls.append(f"set_items_truncated:{value}")
+
+    def ensure_errors_total_at_least(self, value: int) -> None:
+        self.calls.append(f"ensure_errors_total_at_least:{value}")
+
+    def set_status(self, status: str | None) -> None:
+        self.calls.append(f"set_status:{status}")
 
 
 class TestPresenterSummary:
@@ -350,3 +388,27 @@ class TestPresenterNoPlanSummary:
 
         assert collector.summary.ops["plan"]["planned_create"] == 0
         assert collector.summary.ops["plan"]["planned_update"] == 0
+
+
+class TestPresenterWritePortContract:
+    def test_uses_write_port_api_only(self):
+        port = _SpyWritePort()
+        outcome = ApplyItemOutcome(
+            record_ref=RecordRef(row_id="line:1", line_no=1),
+            op="create",
+            status="FAILED",
+            target_id="id-1",
+            diagnostics=(_make_error_diag(),),
+        )
+        result = _make_result(
+            summary=_make_summary(created=0, updated=0, failed=1, items_total=1, error_stats={"E": 1}),
+            outcomes=(outcome,),
+            outcomes_truncated=True,
+        )
+
+        ApplyReportPresenter.present(result=result, collector=port, plan=_make_plan())
+
+        assert any(call.startswith("set_row_counters:1") for call in port.calls)
+        assert any(call.startswith("add_item_preaggregated:FAILED") for call in port.calls)
+        assert any(call.startswith("set_items_truncated:True") for call in port.calls)
+        assert any(call.startswith("set_status:FAILED") for call in port.calls)
