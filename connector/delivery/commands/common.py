@@ -6,6 +6,7 @@ import typer
 
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.logging.setup import logEvent
 
@@ -92,4 +93,4 @@ def attach_dictionary_report_snapshot_if_available(*, ctx, report) -> None:
 
     snapshot = telemetry.snapshot()
     if isinstance(snapshot, dict):
-        report.set_context("dictionary", snapshot)
+        report.set_context(ReportContextKey.DICTIONARY, snapshot)

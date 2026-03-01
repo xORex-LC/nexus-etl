@@ -19,6 +19,7 @@ from connector.delivery.presenters.apply_report_presenter import ApplyReportPres
 from connector.delivery.telemetry.apply_logging_sink import LoggingApplyTelemetrySink
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
     VaultStartupKeyValidationError,
@@ -164,7 +165,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
 
     report.set_meta(dataset=dataset_name)
     report.set_context(
-        "apply",
+        ReportContextKey.APPLY,
         {
             "plan_path": opts.plan_path or plan.meta.plan_path,
             "include_deleted": plan.meta.include_deleted,
@@ -181,14 +182,14 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         },
     )
     report.set_context(
-        "apply_target",
+        ReportContextKey.APPLY_TARGET,
         {
             "endpoint": endpoint,
             "user": app_config.api.username,
             "target_runtime_mode": build_result.effective_mode,
         },
     )
-    report.set_context("target_runtime", _runtime_context(build_result))
+    report.set_context(ReportContextKey.TARGET_RUNTIME, _runtime_context(build_result))
 
     # Dry-run должен оставаться чистым: retention hooks отключены полностью.
     secret_retention = (

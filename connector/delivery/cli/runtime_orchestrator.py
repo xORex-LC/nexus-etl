@@ -26,6 +26,7 @@ from connector.config.diagnostics import translate_settings_load_error
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.dsl.diagnostics import translate_dsl_load_error
 from connector.domain.dsl.issues import DslLoadError
+from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
@@ -95,7 +96,7 @@ def run_with_report(
     )
     effective_include_skipped_items = report_policy.resolve_include_skipped_items(cli_include_skipped)
     report.set_context(
-        "report_policy",
+        ReportContextKey.REPORT_POLICY,
         report_policy.to_context_payload(
             cli_include_skipped=cli_include_skipped,
             effective_include_skipped_items=effective_include_skipped_items,
@@ -104,7 +105,7 @@ def run_with_report(
 
     csv_path = get_opt(opts, ("csv_path", "csv", "input_csv"))
     if csv_path:
-        report.set_context("input", {"csv_path": Path(csv_path).name})
+        report.set_context(ReportContextKey.INPUT, {"csv_path": Path(csv_path).name})
 
     report_items_limit = get_opt(opts, ("report_items_limit", "items_limit"))
     if report_items_limit is None:

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from connector.domain.reporting.collector import ReportCollector, asdict_report
+from connector.domain.reporting.contracts import ReportContextKey
 
 def createEmptyReport(runId: str, command: str, configSources: list[str]) -> ReportCollector:
     """
@@ -16,7 +17,7 @@ def createEmptyReport(runId: str, command: str, configSources: list[str]) -> Rep
     """
     collector = ReportCollector(run_id=runId, command=command)
     if configSources:
-        collector.set_context("config", {"sources": configSources})
+        collector.set_context(ReportContextKey.CONFIG, {"sources": configSources})
     return collector
 
 def finalizeReport(report: ReportCollector, durationMs: int, logFile: str | None, cacheDir: str, reportDir: str) -> None:
@@ -25,7 +26,7 @@ def finalizeReport(report: ReportCollector, durationMs: int, logFile: str | None
         Финализирует отчёт: время завершения, длительность, пути.
     """
     report.set_context(
-        "runtime",
+        ReportContextKey.RUNTIME,
         {
             "log_file": logFile,
             "cache_dir": cacheDir,

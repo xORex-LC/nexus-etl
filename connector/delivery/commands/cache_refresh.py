@@ -14,6 +14,7 @@ from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import ensure_supported_cache_dataset, result_with
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.reporting.contracts import ReportContextKey
 from connector.datasets.registry import build_identity_index_plan
 from connector.infra.cache.dsl_runtime import build_sync_adapters
 from connector.infra.logging.setup import logEvent
@@ -64,7 +65,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         target_meta = runtime.meta()
         endpoint = target_meta.endpoint
         reader = runtime.reader
-        report.set_context("target_runtime", _runtime_context(build_result))
+        report.set_context(ReportContextKey.TARGET_RUNTIME, _runtime_context(build_result))
 
         adapters = build_sync_adapters(cache_dsl_bundle)
         identity_keys, identity_id_fields = build_identity_index_plan()

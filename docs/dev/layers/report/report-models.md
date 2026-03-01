@@ -51,6 +51,21 @@
 - `connector/domain/reporting/collector.py` — `ReportCollector`, `asdict_report()`
 - `connector/domain/reporting/models.py` — все dataclass-модели
 - `connector/domain/models.py` — `RowRef`, `DiagnosticItem`, `DiagnosticStage`
+- `connector/domain/reporting/contracts.py` — typed contracts `ReportItemStatus`, `ReportContextKey`, `ReportOpKey`
+
+## 🔖 Schema v2 (актуальный контракт)
+
+Начиная с `REPORT-DEC-007` report layer работает по **schema v2**:
+
+- `meta.schema_version = "2.0"` (breaking, dual v1/v2 сериализации нет).
+- `ReportItem.status`: только `OK | FAILED | SKIPPED`.
+- `ReportSummary.rows_skipped`: отдельный счётчик skip-фактов.
+- `RowRef.line_no: int | None`:
+  `None` сохраняется как есть, coercion `None -> 0` запрещён.
+- `meta.items_truncated = true`:
+  выставляется при любом непомещённом `store=True` item (независимо от статуса).
+- top-level namespaces:
+  `context` и `summary.ops` используют typed contracts (`ReportContextKey`, `ReportOpKey`), без magic string на уровне API.
 
 ---
 

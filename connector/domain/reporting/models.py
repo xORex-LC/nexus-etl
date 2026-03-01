@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from connector.domain.models import DiagnosticStage, RowRef
+from connector.domain.reporting.contracts import ReportItemStatus
 
 
 @dataclass
@@ -22,6 +23,7 @@ class ReportMeta:
     dataset: str | None
     command: str
     started_at: str
+    schema_version: Literal["2.0"] = "2.0"
     finished_at: str | None = None
     duration_ms: int | None = None
     items_limit: int | None = None
@@ -40,6 +42,7 @@ class ReportSummary:
     rows_total: int = 0
     rows_passed: int = 0
     rows_blocked: int = 0
+    rows_skipped: int = 0
     rows_with_warnings: int = 0
     errors_total: int = 0
     warnings_total: int = 0
@@ -70,7 +73,7 @@ class ReportItem:
         Единица отчёта, привязанная к конкретной записи.
     """
 
-    status: str
+    status: ReportItemStatus
     row_ref: RowRef | None = None
     payload: Mapping[str, Any] | None = None
     diagnostics: list[ReportDiagnostic] = field(default_factory=list)
@@ -89,4 +92,3 @@ class ReportEnvelope:
     summary: ReportSummary
     items: list[ReportItem]
     context: dict[str, Any] = field(default_factory=dict)
-

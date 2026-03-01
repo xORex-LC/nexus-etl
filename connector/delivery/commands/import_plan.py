@@ -18,6 +18,8 @@ from connector.delivery.commands.common import (
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_builder import PlanBuilder
+from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus
+from connector.domain.reporting.policy import resolve_report_policy
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
     VaultStartupKeyValidationError,
@@ -138,7 +140,32 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
                 planning_runtime=planning_runtime,
                 report_items_limit=report_items_limit_value,
             ) as resolved_rows:
-                plan_result = PlanBuilder().build_from_stream(resolved_rows)
+                effective_include_skipped = _resolve_effective_include_skipped_items(
+                    report=report,
+                    opts=opts,
+                    app_config=app_config,
+                )
+                on_skipped_row = None
+                if report is not None:
+                    def _on_skipped_row(resolved_row) -> None:
+                        _emit_skipped_report_item(
+                            report=report,
+                            row_ref=resolved_row.row_ref,
+                            store=effective_include_skipped,
+                        )
+                    on_skipped_row = _on_skipped_row
+                plan_result = PlanBuilder().build_from_stream(
+                    resolved_rows,
+                    on_skipped_row=on_skipped_row,
+                )
+                if report is not None:
+                    report.set_row_counters(
+                        rows_total=plan_result.summary.rows_total,
+                        rows_passed=plan_result.summary.planned_create + plan_result.summary.planned_update,
+                        rows_blocked=plan_result.summary.failed_rows,
+                        rows_with_warnings=0,
+                        rows_skipped=plan_result.summary.skipped,
+                    )
 
             plan_meta = {
                 "csv_path": None,
@@ -186,6 +213,34 @@ def _dataset_requires_vault(dataset_spec) -> bool:
         if target.startswith("secret:"):
             return True
     return False
+
+
+def _emit_skipped_report_item(*, report, row_ref, store: bool) -> None:
+    report.add_item_preaggregated(
+        status=ReportItemStatus.SKIPPED,
+        row_ref=row_ref,
+        payload=None,
+        errors=[],
+        warnings=[],
+        meta={"op": "skip"},
+        store=store,
+    )
+
+
+def _resolve_effective_include_skipped_items(*, report, opts: Options, app_config) -> bool:
+    if report is None:
+        return False
+    policy_context = report.get_context(ReportContextKey.REPORT_POLICY, {})
+    if isinstance(policy_context, dict):
+        resolved = policy_context.get("effective_include_skipped_items")
+        if isinstance(resolved, bool):
+            return resolved
+    cli_include_skipped = (
+        app_config.observability.report_include_skipped
+        if opts.report_include_skipped is None
+        else bool(opts.report_include_skipped)
+    )
+    return resolve_report_policy(report).resolve_include_skipped_items(cli_include_skipped)
 
 
 __all__ = ["handler", "Options"]

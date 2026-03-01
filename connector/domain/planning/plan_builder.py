@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from connector.domain.planning.plan_models import Operation, PlanItem, PlanSummary
 from connector.domain.transform.core.result import TransformResult
@@ -106,6 +106,8 @@ class PlanBuilder:
     def build_from_stream(
         self,
         resolved_rows: Iterable[TransformResult],
+        *,
+        on_skipped_row: Callable[[ResolvedRow], None] | None = None,
     ) -> PlanBuildResult:
         """
         Назначение:
@@ -124,6 +126,8 @@ class PlanBuilder:
                 continue
             if resolved_row.op == ResolveOp.CONFLICT:
                 continue
+            if resolved_row.op == ResolveOp.SKIP and on_skipped_row is not None:
+                on_skipped_row(resolved_row)
             self.add_resolved(resolved_row)
         return self.build()
 

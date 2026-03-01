@@ -9,6 +9,7 @@ from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import result_with
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.reporting.contracts import ReportContextKey
 from connector.infra.logging.setup import logEvent
 
 
@@ -33,7 +34,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     build_result = ctx.container.target.runtime()
     runtime = build_result.runtime
 
-    report.set_context("target_runtime", _runtime_context(build_result))
+    report.set_context(ReportContextKey.TARGET_RUNTIME, _runtime_context(build_result))
     result = runtime.check()
     target_meta = runtime.meta()
 
@@ -43,7 +44,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
             f"api ok endpoint={target_meta.endpoint} latency_ms={result.latency_ms}",
         )
         report.set_context(
-            "apply_target",
+            ReportContextKey.APPLY_TARGET,
             {
                 "target_type": target_meta.target_type,
                 "transport": target_meta.transport,

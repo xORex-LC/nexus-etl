@@ -129,7 +129,9 @@ class _SpyWritePort:
         self.calls.append(f"merge_op_fields:{name}:{sorted(values.keys())}")
 
     def add_item_preaggregated(self, **kwargs) -> None:
-        self.calls.append(f"add_item_preaggregated:{kwargs['status']}")
+        status = kwargs["status"]
+        status_value = status.value if hasattr(status, "value") else str(status)
+        self.calls.append(f"add_item_preaggregated:{status_value}")
 
     def set_items_truncated(self, value: bool = True) -> None:
         self.calls.append(f"set_items_truncated:{value}")
@@ -152,6 +154,7 @@ class TestPresenterSummary:
         assert collector.summary.rows_total == 6
         assert collector.summary.rows_passed == 5  # создано + обновлено
         assert collector.summary.rows_blocked == 1
+        assert collector.summary.rows_skipped == 5
         assert collector.summary.rows_with_warnings == 1
 
     def test_sets_ops(self):
@@ -263,7 +266,7 @@ class TestPresenterItems:
         assert item.meta["op"] == "create"
         assert item.meta["target_id"] == "id-1"
 
-    def test_converts_record_ref_none_line_no_to_zero(self):
+    def test_preserves_record_ref_none_line_no_as_none(self):
         ref = RecordRef(row_id="line:1", line_no=None)
         outcome = ApplyItemOutcome(
             record_ref=ref, op="create", status="FAILED", target_id="id-1",
@@ -277,7 +280,7 @@ class TestPresenterItems:
 
         ApplyReportPresenter.present(result=result, collector=collector, plan=_make_plan())
 
-        assert collector.items[0].row_ref.line_no == 0
+        assert collector.items[0].row_ref.line_no is None
 
     def test_no_items_when_all_ok(self):
         result = _make_result(summary=_make_summary(created=5))

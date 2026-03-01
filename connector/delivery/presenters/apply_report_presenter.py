@@ -4,6 +4,7 @@ from typing import Any
 
 from connector.domain.models import RowRef
 from connector.domain.planning.plan_models import Plan
+from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus, ReportOpKey
 from connector.domain.reporting.diagnostics import to_report_diagnostics
 from connector.domain.reporting.ports import ReportWritePort
 from connector.usecases.apply.models import ApplyResult
@@ -32,31 +33,32 @@ class ApplyReportPresenter:
             rows_passed=summary.created + summary.updated,
             rows_blocked=summary.failed,
             rows_with_warnings=summary.rows_with_warnings,
+            rows_skipped=summary.skipped,
         )
 
-        collector.add_op("create", ok=summary.created)
-        collector.add_op("update", ok=summary.updated)
-        collector.add_op("skip", count=summary.skipped)
-        collector.add_op("apply_failed", failed=summary.failed)
+        collector.add_op(ReportOpKey.CREATE, ok=summary.created)
+        collector.add_op(ReportOpKey.UPDATE, ok=summary.updated)
+        collector.add_op(ReportOpKey.SKIP, count=summary.skipped)
+        collector.add_op(ReportOpKey.APPLY_FAILED, failed=summary.failed)
 
         # Дополняем существующий context["apply"], чтобы не потерять поля из handler.
-        apply_ctx = dict(collector.get_context("apply", {}))
+        apply_ctx = dict(collector.get_context(ReportContextKey.APPLY, {}))
         apply_ctx["error_stats"] = dict(summary.error_stats)
         apply_ctx["retention_stats"] = dict(summary.retention_stats)
         apply_ctx.update(runtime_context or {})
-        collector.set_context("apply", apply_ctx)
+        collector.set_context(ReportContextKey.APPLY, apply_ctx)
 
         planned_create = plan.summary.planned_create if plan.summary else 0
         planned_update = plan.summary.planned_update if plan.summary else 0
         collector.merge_op_fields(
-            "plan",
+            ReportOpKey.PLAN,
             {"planned_create": planned_create, "planned_update": planned_update},
         )
 
         # Compatibility bridge: row-level summary уже pre-aggregated в ApplySummary.
         for outcome in result.item_outcomes:
             row_ref = RowRef(
-                line_no=outcome.record_ref.line_no or 0,
+                line_no=outcome.record_ref.line_no,
                 row_id=outcome.record_ref.row_id,
                 identity_primary=None,
                 identity_value=None,
@@ -67,7 +69,7 @@ class ApplyReportPresenter:
             report_errors = [d for d in report_diagnostics if d.severity == "error"]
             report_warnings = [d for d in report_diagnostics if d.severity == "warning"]
             collector.add_item_preaggregated(
-                status=outcome.status,
+                status=ReportItemStatus(outcome.status),
                 row_ref=row_ref,
                 payload=None,
                 errors=report_errors,

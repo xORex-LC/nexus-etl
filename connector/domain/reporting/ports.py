@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Mapping, Protocol, runtime_checkable
 
 from connector.domain.models import RowRef
+from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus, ReportOpKey
 from connector.domain.reporting.models import ReportDiagnostic
 
 
@@ -37,13 +38,20 @@ class ReportWritePort(Protocol):
         git_rev: str | None = None,
     ) -> None: ...
 
-    def set_context(self, name: str, value: dict[str, Any]) -> None: ...
+    def set_context(self, name: ReportContextKey | str, value: dict[str, Any]) -> None: ...
 
-    def get_context(self, name: str, default: Any = None) -> Any: ...
+    def get_context(self, name: ReportContextKey | str, default: Any = None) -> Any: ...
 
-    def add_op(self, name: str, *, ok: int = 0, failed: int = 0, count: int = 0) -> None: ...
+    def add_op(
+        self,
+        name: ReportOpKey | str,
+        *,
+        ok: int = 0,
+        failed: int = 0,
+        count: int = 0,
+    ) -> None: ...
 
-    def merge_op_fields(self, name: str, values: Mapping[str, int]) -> None: ...
+    def merge_op_fields(self, name: ReportOpKey | str, values: Mapping[str, int]) -> None: ...
 
     def set_row_counters(
         self,
@@ -52,12 +60,13 @@ class ReportWritePort(Protocol):
         rows_passed: int,
         rows_blocked: int,
         rows_with_warnings: int,
+        rows_skipped: int = 0,
     ) -> None: ...
 
     def add_item(
         self,
         *,
-        status: str,
+        status: ReportItemStatus | str,
         row_ref: RowRef | None = None,
         payload: Mapping[str, Any] | None = None,
         errors: Iterable[ReportDiagnostic] | None = None,
@@ -69,7 +78,7 @@ class ReportWritePort(Protocol):
     def add_item_preaggregated(
         self,
         *,
-        status: str,
+        status: ReportItemStatus | str,
         row_ref: RowRef | None = None,
         payload: Mapping[str, Any] | None = None,
         errors: Iterable[ReportDiagnostic] | None = None,

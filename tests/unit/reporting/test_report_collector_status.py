@@ -18,6 +18,7 @@ def test_status_failed_when_rows_blocked_and_no_passed() -> None:
     assert built.summary.rows_blocked == 1
     assert built.summary.rows_passed == 0
     assert built.status == "FAILED"
+    assert built.meta.schema_version == "2.0"
 
 
 def test_status_partial_when_rows_blocked_and_rows_passed() -> None:
@@ -72,3 +73,22 @@ def test_build_snapshot_mutation_does_not_change_collector_state() -> None:
     assert after.summary.rows_total == 1
     assert "mutated" not in after.context
     assert len(after.items) == 1
+
+
+def test_rows_skipped_counted_even_when_item_storage_disabled() -> None:
+    report = ReportCollector(run_id="r-skipped", command="import-plan")
+    report.add_item(status="SKIPPED", row_ref=None, payload=None, errors=[], warnings=[], meta={}, store=False)
+
+    built = report.build()
+    assert built.summary.rows_total == 1
+    assert built.summary.rows_skipped == 1
+    assert len(built.items) == 0
+
+
+def test_items_truncated_is_set_for_skipped_when_overflow() -> None:
+    report = ReportCollector(run_id="r-truncated-skipped", command="import-plan")
+    report.set_meta(items_limit=0)
+    report.add_item(status="SKIPPED", row_ref=None, payload=None, errors=[], warnings=[], meta={}, store=True)
+
+    built = report.build()
+    assert built.meta.items_truncated is True
