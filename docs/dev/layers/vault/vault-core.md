@@ -928,3 +928,7 @@ CREATE TABLE IF NOT EXISTS vault_meta (
 - [Resolve DSL](../resolver/resolve-dsl.md)
 - [DSL Engine](../dsl/dsl-engine.md)
 - [Dev INDEX](../../INDEX.md)
+
+| Дата | Изменение | Автор |
+|------|-----------|-------|
+| 2026-02-27 | Создан документ Vault Core | xORex-LC |

@@ -1117,4 +1117,4 @@ def test_report_diagnostic_passthrough():
 
 | Дата | Изменение | Автор |
 |------|-----------|-------|
-| 2026-02-27 | Создан документ | xORex-LC |
+| 2026-02-27 | Создан документ Report Pipeline | xORex-LC |

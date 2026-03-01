@@ -1061,3 +1061,7 @@ Fernet выбран потому что:
   `key_version` размещаются в схеме SQLite
 - [vault-delivery.md](vault-delivery.md) — DI-проводка `VaultContainer` и
   поток крипто-валидации `VaultStartupGuard`
+
+| Дата | Изменение | Автор |
+|------|-----------|-------|
+| 2026-02-27 | Создан документ Vault Cryptography | xORex-LC |
