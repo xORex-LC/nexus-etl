@@ -1,3 +1,13 @@
+"""
+Назначение:
+    Оркестрация CLI runtime lifecycle (init -> handler -> report finalize -> shutdown)
+    и единый маппинг результатов выполнения в report items.
+
+Граница ответственности:
+    - Владеет только delivery-оркестрацией и адаптацией runtime/result ошибок в report.
+    - Не содержит бизнес-правил use-case стадий и не управляет их внутренней диагностикой.
+"""
+
 from __future__ import annotations
 
 import inspect
@@ -15,12 +25,14 @@ from connector.common.time import getDurationMs
 from connector.config.config import SettingsLoadError
 from connector.config.models import AppConfig
 from connector.config.diagnostics import translate_settings_load_error
+from connector.domain.diagnostics.catalog import build_error
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.dsl.diagnostics import translate_dsl_load_error
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.reporting.collector import ReportCollector
+from connector.domain.reporting.models import ReportDiagnostic
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
@@ -30,7 +42,7 @@ from connector.delivery.cli.containers import AppContainer, _init_container_for_
 from connector.delivery.cli.context import BoundCommandContext, CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.result import CommandResult as CliCommandResult
-from connector.domain.models import DiagnosticStage
+from connector.domain.models import DiagnosticSeverity, DiagnosticStage
 
 
 ReportHandler = Callable[..., Any]
@@ -126,10 +138,23 @@ def run_with_report(
         )
         if init_result is not None:
             exit_result = init_result
+            _apply_cli_result_to_report(
+                report,
+                exit_result,
+                command_name=command_name,
+                source="runtime_init",
+                secondary=False,
+            )
         else:
             bound_ctx = _bind_context_with_container(ctx, container=container)
             exit_result = _call_handler(handler, bound_ctx, opts, report)
-            _apply_cli_result_to_report(report, exit_result)
+            _apply_cli_result_to_report(
+                report,
+                exit_result,
+                command_name=command_name,
+                source="handler_result",
+                secondary=False,
+            )
 
     except SettingsLoadError as exc:
         stage = _stage_for_command(command_name)
@@ -141,18 +166,16 @@ def run_with_report(
         )
         logEvent(logger, logging.ERROR, run_id, "config", f"Settings error: {exc}")
         _echo_command_diagnostics("ERROR: invalid settings configuration", diags)
-        report_errors, report_warnings = split_report_diagnostics(diags, [])
-        report.add_item(
-            status="FAILED",
-            row_ref=None,
-            payload=None,
-            errors=report_errors,
-            warnings=report_warnings,
-            meta={"exception": "SettingsLoadError"},
-        )
         result = DomainCommandResult()
         result.add_diagnostics(diags, ctx.catalog)
         exit_result = result
+        _apply_cli_result_to_report(
+            report,
+            exit_result,
+            command_name=command_name,
+            source="settings_load_error",
+            secondary=False,
+        )
     except DslLoadError as exc:
         stage = _stage_for_command(command_name)
         diag = translate_dsl_load_error(
@@ -163,26 +186,48 @@ def run_with_report(
         )
         logEvent(logger, logging.ERROR, run_id, "dsl", f"{exc.code}: {exc}")
         typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
-        report_errors, report_warnings = split_report_diagnostics([diag], [])
-        report.add_item(
-            status="FAILED",
-            row_ref=None,
-            payload=None,
-            errors=report_errors,
-            warnings=report_warnings,
-            meta={"exception": "DslLoadError", "code": exc.code},
-        )
         result = DomainCommandResult()
         result.add_diagnostics([diag], ctx.catalog)
         exit_result = result
+        _apply_cli_result_to_report(
+            report,
+            exit_result,
+            command_name=command_name,
+            source="dsl_load_error",
+            secondary=False,
+        )
     except RuntimeErrorWithCode as exc:
         logEvent(logger, logging.ERROR, run_id, "config", str(exc))
         typer.echo(f"ERROR: {exc}", err=True)
-        exit_result = exc.exit_code
+        exit_result = _runtime_error_result(
+            catalog=ctx.catalog,
+            command_name=command_name,
+            message=str(exc),
+            details={"runtime_exit_code": exc.exit_code, "runtime_error": "RuntimeErrorWithCode"},
+        )
+        _apply_cli_result_to_report(
+            report,
+            exit_result,
+            command_name=command_name,
+            source="runtime_validation_error",
+            secondary=False,
+        )
     except Exception as exc:
         logEvent(logger, logging.ERROR, run_id, "core", f"Command failed: {exc}")
         typer.echo("ERROR: command failed (see logs/report)", err=True)
-        exit_result = _exit_code_from_result(_result_with(SystemErrorCode.INTERNAL_ERROR))
+        exit_result = _runtime_error_result(
+            catalog=ctx.catalog,
+            command_name=command_name,
+            message=str(exc),
+            details={"runtime_error": exc.__class__.__name__},
+        )
+        _apply_cli_result_to_report(
+            report,
+            exit_result,
+            command_name=command_name,
+            source="runtime_exception",
+            secondary=False,
+        )
     finally:
         try:
             shutdown_result = _shutdown_container_resources(
@@ -191,6 +236,14 @@ def run_with_report(
                 run_id=run_id,
                 emit_user_error=exit_result is None,
             )
+            if shutdown_result is not None:
+                _apply_cli_result_to_report(
+                    report,
+                    shutdown_result,
+                    command_name=command_name,
+                    source="runtime_shutdown",
+                    secondary=exit_result is not None,
+                )
             if exit_result is None and shutdown_result is not None:
                 exit_result = shutdown_result
 
@@ -204,6 +257,14 @@ def run_with_report(
                 logger=logger,
                 emit_user_error=exit_result is None,
             )
+            if finalize_result is not None:
+                _apply_cli_result_to_report(
+                    report,
+                    finalize_result,
+                    command_name=command_name,
+                    source="runtime_finalize",
+                    secondary=exit_result is not None,
+                )
             if exit_result is None and finalize_result is not None:
                 exit_result = finalize_result
         finally:
@@ -304,11 +365,21 @@ def run_without_report(
     except RuntimeErrorWithCode as exc:
         logEvent(logger, logging.ERROR, run_id, "config", str(exc))
         typer.echo(f"ERROR: {exc}", err=True)
-        exit_result = exc.exit_code
+        exit_result = _runtime_error_result(
+            catalog=ctx.catalog,
+            command_name=command_name,
+            message=str(exc),
+            details={"runtime_exit_code": exc.exit_code, "runtime_error": "RuntimeErrorWithCode"},
+        )
     except Exception as exc:
         logEvent(logger, logging.ERROR, run_id, "core", f"Command failed: {exc}")
         typer.echo("ERROR: command failed (see logs)", err=True)
-        exit_result = _exit_code_from_result(_result_with(SystemErrorCode.INTERNAL_ERROR))
+        exit_result = _runtime_error_result(
+            catalog=ctx.catalog,
+            command_name=command_name,
+            message=str(exc),
+            details={"runtime_error": exc.__class__.__name__},
+        )
     finally:
         try:
             shutdown_result = _shutdown_container_resources(
@@ -530,39 +601,266 @@ def _call_handler(
     return handler(ctx, opts)
 
 
-def _apply_cli_result_to_report(report: ReportCollector, result: Any) -> None:
+def _apply_cli_result_to_report(
+    report: ReportCollector,
+    result: Any,
+    *,
+    command_name: str,
+    source: str,
+    secondary: bool,
+) -> None:
+    """Назначение:
+        Нормализовать runtime/handler результат в report items.
+
+    Контракт:
+        - Поддерживает оба формата результата (`DomainCommandResult` и legacy `CliCommandResult`).
+        - Материализует synthetic diagnostics для non-OK результатов без явной диагностики.
+        - Для secondary-ошибок понижает severity до warning, чтобы primary outcome оставался владельцем exit semantics.
     """
-    Назначение:
-        Преобразует CommandResult (CLI) в элементы отчёта, если handler их вернул.
-    """
-    if not isinstance(result, CliCommandResult):
+    if result is None:
         return
 
+    if isinstance(result, CliCommandResult):
+        _apply_legacy_cli_result(
+            report=report,
+            result=result,
+            source=source,
+            secondary=secondary,
+        )
+        return
+
+    if isinstance(result, DomainCommandResult):
+        _apply_domain_result(
+            report=report,
+            result=result,
+            command_name=command_name,
+            source=source,
+            secondary=secondary,
+        )
+        return
+
+    if isinstance(result, int):
+        if result == 0:
+            return
+        severity = "warning" if secondary else "error"
+        diagnostic = ReportDiagnostic(
+            severity=severity,
+            stage=_stage_for_command(command_name),
+            code=f"EXIT_{result}",
+            field=None,
+            message=f"Command returned non-zero exit code: {result}",
+            details={"exit_code": result},
+        )
+        errors, warnings = _with_secondary_policy(
+            errors=[diagnostic] if severity == "error" else [],
+            warnings=[diagnostic] if severity == "warning" else [],
+            secondary=secondary,
+        )
+        report.add_item(
+            status="FAILED" if errors else "OK",
+            row_ref=None,
+            payload=None,
+            errors=errors,
+            warnings=warnings,
+            meta={"source": source, "secondary": secondary, "synthetic": True},
+        )
+
+
+def _apply_legacy_cli_result(
+    *,
+    report: ReportCollector,
+    result: CliCommandResult,
+    source: str,
+    secondary: bool,
+) -> None:
+    """Назначение:
+        Поддержать legacy delivery `CliCommandResult` в едином runtime report pipeline.
+    """
     for item in result.items:
         report_errors, report_warnings = split_report_diagnostics(item.get("errors"), item.get("warnings"))
+        report_errors, report_warnings = _with_secondary_policy(
+            errors=report_errors,
+            warnings=report_warnings,
+            secondary=secondary,
+        )
+        item_status = "FAILED" if report_errors else ("OK" if secondary else item.get("status", "OK"))
         report.add_item(
-            status=item.get("status", "OK"),
+            status=item_status,
             row_ref=item.get("row_ref"),
             payload=item.get("payload"),
             errors=report_errors,
             warnings=report_warnings,
-            meta=item.get("meta"),
+            meta={
+                **(item.get("meta") or {}),
+                "source": source,
+                "secondary": secondary,
+            },
             store=item.get("store", True),
         )
 
     if result.errors or result.warnings:
         report_errors, report_warnings = split_report_diagnostics(result.errors, result.warnings)
+        report_errors, report_warnings = _with_secondary_policy(
+            errors=report_errors,
+            warnings=report_warnings,
+            secondary=secondary,
+        )
         report.add_item(
-            status="FAILED" if result.errors else "OK",
+            status="FAILED" if report_errors else "OK",
             row_ref=None,
             payload=None,
             errors=report_errors,
             warnings=report_warnings,
-            meta={},
+            meta={"source": source, "secondary": secondary},
         )
 
     if result.stats:
         report.set_context("stats", result.stats)
+
+
+def _apply_domain_result(
+    *,
+    report: ReportCollector,
+    result: DomainCommandResult,
+    command_name: str,
+    source: str,
+    secondary: bool,
+) -> None:
+    """Назначение:
+        Перенести `DomainCommandResult` в report item с учётом synthetic fallback.
+    """
+    stage = _stage_for_command(command_name)
+    errors: list[ReportDiagnostic] = []
+    warnings: list[ReportDiagnostic] = []
+
+    if result.diagnostics:
+        domain_errors, domain_warnings = _split_domain_diagnostics(result.diagnostics)
+        report_errors, report_warnings = split_report_diagnostics(domain_errors, domain_warnings)
+        errors.extend(report_errors)
+        warnings.extend(report_warnings)
+    elif not result.ok and _needs_synthetic_diagnostic(report=report, secondary=secondary):
+        primary_code = result.primary_code()
+        errors.append(
+            ReportDiagnostic(
+                severity="error",
+                stage=stage,
+                code=primary_code.value,
+                field=None,
+                message=f"Command failed with system code: {primary_code.value}",
+                details={
+                    "system_code": primary_code.value,
+                    "system_codes": sorted(code.value for code in result.system_codes),
+                },
+            )
+        )
+
+    if not errors and not warnings:
+        return
+
+    errors, warnings = _with_secondary_policy(errors=errors, warnings=warnings, secondary=secondary)
+    report.add_item(
+        status="FAILED" if errors else "OK",
+        row_ref=None,
+        payload=None,
+        errors=errors,
+        warnings=warnings,
+        meta={
+            "source": source,
+            "secondary": secondary,
+            "synthetic": bool(not result.diagnostics),
+            "system_codes": sorted(code.value for code in result.system_codes),
+        },
+    )
+
+
+def _split_domain_diagnostics(diagnostics: list[Any]) -> tuple[list[Any], list[Any]]:
+    """Назначение:
+        Разделить diagnostics по severity для `split_report_diagnostics()`.
+    """
+    errors: list[Any] = []
+    warnings: list[Any] = []
+    for diagnostic in diagnostics:
+        if _is_warning(diagnostic):
+            warnings.append(diagnostic)
+        else:
+            errors.append(diagnostic)
+    return errors, warnings
+
+
+def _is_warning(diagnostic: Any) -> bool:
+    """Назначение:
+        Определить warning-severity для DiagnosticItem/ReportDiagnostic в tolerant режиме.
+    """
+    severity = getattr(diagnostic, "severity", None)
+    if severity is None:
+        return False
+    if isinstance(severity, DiagnosticSeverity):
+        return severity == DiagnosticSeverity.WARNING
+    if hasattr(severity, "value"):
+        return str(severity.value).lower() == "warning"
+    return str(severity).lower() == "warning"
+
+
+def _with_secondary_policy(
+    *,
+    errors: list[ReportDiagnostic],
+    warnings: list[ReportDiagnostic],
+    secondary: bool,
+) -> tuple[list[ReportDiagnostic], list[ReportDiagnostic]]:
+    """Назначение:
+        Применить политику secondary-error: demote error -> warning.
+    """
+    if not secondary:
+        return errors, warnings
+    downgraded = [*warnings]
+    for diag in errors:
+        downgraded.append(
+            ReportDiagnostic(
+                severity="warning",
+                stage=diag.stage,
+                code=diag.code,
+                field=diag.field,
+                message=diag.message,
+                rule=diag.rule,
+                details=diag.details,
+            )
+        )
+    return [], downgraded
+
+
+def _needs_synthetic_diagnostic(*, report: ReportCollector, secondary: bool) -> bool:
+    """Назначение:
+        Решить, нужен ли synthetic runtime diagnostic для non-OK результата без diagnostics.
+    """
+    if secondary:
+        return True
+    # Если row-level ошибки уже есть в отчёте, не дублируем их synthetic runtime-item.
+    return report.summary.rows_blocked == 0 and report.summary.errors_total == 0
+
+
+def _runtime_error_result(
+    *,
+    catalog,
+    command_name: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> DomainCommandResult:
+    """Назначение:
+        Сконструировать `DomainCommandResult` для runtime-исключений с диагностикой.
+    """
+    stage = _stage_for_command(command_name)
+    diagnostic = build_error(
+        catalog=catalog,
+        stage=stage,
+        code="INTERNAL_ERROR",
+        field=None,
+        message=message,
+        record_ref=None,
+        details=details,
+    )
+    result = DomainCommandResult()
+    result.add_diagnostics([diagnostic], catalog)
+    return result
 
 
 def _result_with(code: SystemErrorCode) -> DomainCommandResult:

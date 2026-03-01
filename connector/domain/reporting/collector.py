@@ -131,7 +131,15 @@ class ReportCollector:
         return len(self.items) < limit
 
     def _derive_status(self) -> str:
-        if self.summary.errors_total == 0:
+        """Назначение:
+            Вывести итоговый статус по агрегированным row-счётчикам.
+
+        Контракт:
+            - `rows_blocked == 0` -> SUCCESS.
+            - Есть и passed, и blocked -> PARTIAL.
+            - Есть blocked и нет passed -> FAILED.
+        """
+        if self.summary.rows_blocked == 0:
             return "SUCCESS"
         if self.summary.rows_passed > 0:
             return "PARTIAL"
