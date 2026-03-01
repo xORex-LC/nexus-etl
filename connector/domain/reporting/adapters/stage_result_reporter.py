@@ -9,7 +9,7 @@ Boundary:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from connector.domain.models import DiagnosticItem, DiagnosticStage, RowRef
 from connector.domain.reporting.adapters.payload_sanitizer import PayloadSanitizer
@@ -18,9 +18,12 @@ from connector.domain.reporting.adapters.stats_accumulator import (
     StageExecutionStats,
 )
 from connector.domain.reporting.adapters.strategies import IStageReportStrategy
+from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.reporting.ports import ReportWritePort
-from connector.domain.transform.core.result import TransformResult
+
+if TYPE_CHECKING:
+    from connector.domain.transform.core.result import TransformResult
 
 
 class StageResultReporter:
@@ -37,6 +40,7 @@ class StageResultReporter:
         self,
         *,
         report: ReportWritePort,
+        report_policy: ReportPolicy,
         include_items: bool,
         context_key: str,
         ok_label: str,
@@ -48,13 +52,16 @@ class StageResultReporter:
         payload_sanitizer: PayloadSanitizer | None = None,
     ) -> None:
         self.report = report
-        self.include_items = include_items
+        self.report_policy = report_policy
+        self.include_items = self.report_policy.resolve_include_ok_items(include_items)
         self.context_key = context_key
         self.ok_label = ok_label
         self.failed_label = failed_label
         self.strategy = strategy
         self.report_stage = report_stage
-        self.include_upstream_diagnostics = include_upstream_diagnostics
+        self.include_upstream_diagnostics = self.report_policy.resolve_include_upstream_diagnostics(
+            include_upstream_diagnostics
+        )
         self._stats = stats_accumulator or ExecutionStatsAccumulator()
         self._payload_sanitizer = payload_sanitizer or PayloadSanitizer()
 
@@ -113,7 +120,10 @@ class StageResultReporter:
                 secret_fields = [str(key) for key in result.secret_candidates.keys() if key]
             self._stats.on_secret_fields(secret_fields)
 
-        should_store = status == "FAILED" or self.include_items
+        should_store = (
+            (status == "FAILED" and self.report_policy.capabilities.include_failed_items)
+            or self.include_items
+        )
         effective_row_ref = row_ref or (result.row_ref if result else None)
         if effective_row_ref is None and result is not None:
             effective_row_ref = RowRef(

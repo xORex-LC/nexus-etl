@@ -9,9 +9,10 @@ Boundary:
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
 
-from connector.domain.transform.core.result import TransformResult
+if TYPE_CHECKING:
+    from connector.domain.transform.core.result import TransformResult
 
 
 class IStageReportStrategy(Protocol):

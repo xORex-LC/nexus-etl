@@ -6,6 +6,7 @@ from connector.domain.models import DiagnosticStage
 from connector.domain.reporting.adapters.result_policy import StageCommandResultResolver
 from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
 from connector.domain.reporting.adapters.strategies import PlanningStageReportStrategy
+from connector.domain.reporting.policy import resolve_report_policy
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.stages.stages import PipelineOrchestrator
@@ -54,8 +55,10 @@ class MatchUseCase:
             MatchStage guard пропускает row=None записи — они попадают в iter_ok
             и отфильтровываются (имеют errors от upstream стадий).
         """
+        report_policy = resolve_report_policy(report)
         reporter = StageResultReporter(
             report=report,
+            report_policy=report_policy,
             include_items=self.include_matched_items,
             context_key="match",
             ok_label="matched_ok",

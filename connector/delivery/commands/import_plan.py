@@ -41,6 +41,7 @@ class Options:
     csv_has_header: bool | None = None
     include_deleted: bool | None = None
     report_items_limit: int | None = None
+    report_include_skipped: bool | None = None
     dataset: str | None = None
     vault_mode: str | None = None
 

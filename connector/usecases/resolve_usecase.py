@@ -12,6 +12,7 @@ from connector.domain.reporting.adapters.result_policy import StageCommandResult
 from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
 from connector.domain.reporting.adapters.strategies import PlanningStageReportStrategy
 from connector.domain.reporting.diagnostics import split_report_diagnostics
+from connector.domain.reporting.policy import resolve_report_policy
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.ports.cache.roles import ResolveRuntimePort
@@ -106,8 +107,10 @@ class ResolveUseCase:
         """
         resolver = resolve_stage.resolver
         _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
+        report_policy = resolve_report_policy(report)
         reporter = StageResultReporter(
             report=report,
+            report_policy=report_policy,
             include_items=self.include_resolved_items,
             context_key="resolve",
             ok_label="resolved_ok",

@@ -26,6 +26,7 @@ from connector.config.diagnostics import translate_settings_load_error
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.dsl.diagnostics import translate_dsl_load_error
 from connector.domain.dsl.issues import DslLoadError
+from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
@@ -85,6 +86,21 @@ def run_with_report(
     ctx = replace(ctx, logger=logger)
 
     report = createEmptyReport(runId=run_id, command=command_name, configSources=config_sources(ctx))
+    report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
+    cli_include_skipped_raw = get_opt(opts, ("report_include_skipped",))
+    cli_include_skipped = (
+        app_config.observability.report_include_skipped
+        if cli_include_skipped_raw is None
+        else bool(cli_include_skipped_raw)
+    )
+    effective_include_skipped_items = report_policy.resolve_include_skipped_items(cli_include_skipped)
+    report.set_context(
+        "report_policy",
+        report_policy.to_context_payload(
+            cli_include_skipped=cli_include_skipped,
+            effective_include_skipped_items=effective_include_skipped_items,
+        ),
+    )
 
     csv_path = get_opt(opts, ("csv_path", "csv", "input_csv"))
     if csv_path:
