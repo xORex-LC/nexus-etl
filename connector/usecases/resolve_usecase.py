@@ -8,14 +8,15 @@ from typing import Iterable
 
 from connector.domain.models import DiagnosticStage, RowRef
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
+from connector.domain.reporting.adapters.result_policy import StageCommandResultResolver
+from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
+from connector.domain.reporting.adapters.strategies import PlanningStageReportStrategy
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.cache.roles import ResolveRuntimePort
 from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.core.result_processor import PlanningResultProcessor
 from connector.domain.transform.resolver import pending_codec
 from connector.domain.transform.resolver.ports import IPendingExpiryService
 from connector.domain.transform.stages.stages import PipelineHooks, PipelineOrchestrator, ResolveStage
@@ -106,14 +107,16 @@ class ResolveUseCase:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         resolver = resolve_stage.resolver
         _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
-        processor = PlanningResultProcessor(
+        reporter = StageResultReporter(
             report=report,
             include_items=self.include_resolved_items,
             context_key="resolve",
             ok_label="resolved_ok",
             failed_label="resolve_failed",
-            meta_builder=lambda r: {"op": r.row.op if r.row else None},
-            should_skip=lambda r: _resolve_status(r) is None and r.row is None,
+            strategy=PlanningStageReportStrategy(
+                meta_builder=lambda r: {"op": r.row.op if r.row else None},
+                should_skip=lambda r: _resolve_status(r) is None and r.row is None,
+            ),
             report_stage=DiagnosticStage.RESOLVE,
             include_upstream_diagnostics=False,
         )
@@ -124,16 +127,15 @@ class ResolveUseCase:
             resolve_hooks=resolve_hooks,
         ):
             _count_special_ops(report, resolved.errors, resolved.warnings)
-            processor.process(resolved)
+            reporter.process(resolved)
             _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
         # Sweep выполняется через resolve_hooks.on_stage_complete после исчерпания
         # micro-batch; отдельный финальный drain нужен, чтобы не потерять последний batch.
         _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
         _purge_pending(resolver)
-        result = processor.finalize()
-        if report.summary.errors_total > 0:
-            result.add_code(SystemErrorCode.CONFLICT)
-        return result
+        stats = reporter.publish_context()
+        has_conflicts = report.summary.errors_total > 0
+        return StageCommandResultResolver().resolve(stats, has_conflicts=has_conflicts)
 
     def _iter_resolved(
         self,
