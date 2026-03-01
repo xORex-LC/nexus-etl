@@ -1,6 +1,6 @@
 # REPORT-PROBLEM-004: Фрагментация модели CommandResult между domain и delivery
 
-> **Статус**: Открыта
+> **Статус**: Закрыто
 > **Дата создания**: 2026-03-02
 > **Затронутые компоненты**: `domain.diagnostics.CommandResult`, `delivery.cli.CommandResult`, `run_with_report`, `runtime result mapping`
 
@@ -97,3 +97,4 @@
 |------|---------|
 | 2026-03-02 | Проблема зафиксирована |
 | 2026-03-02 | Решение принято в REPORT-DEC-004 |
+| 2026-03-02 | Проблема закрыта: compatibility path `CliCommandResult/int` удален, runtime работает на `DomainCommandResult` |

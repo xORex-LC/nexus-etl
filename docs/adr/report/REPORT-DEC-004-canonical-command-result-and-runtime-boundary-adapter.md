@@ -4,6 +4,7 @@
 > **Дата принятия**: 2026-03-02
 > **Решает проблему**: REPORT-PROBLEM-004
 > **Участники решения**: @xORex-LC
+> **Состояние реализации**: Завершено (2026-03-02), compatibility path удалён
 
 ---
 
@@ -21,9 +22,9 @@ Runtime сегодня поддерживает несколько result-кон
 
 1. Канонический результат команды — `connector.domain.diagnostics.command_result.CommandResult`.
 2. Runtime report mapping работает только с canonical domain result.
-3. `CliCommandResult` и `int` поддерживаются только через boundary-адаптер на переходный период.
+3. `CliCommandResult` и `int` поддерживались только через boundary-адаптер в переходный период.
 4. UseCase формирует `CommandResult` через policy-резолверы (в т.ч. `StageCommandResultResolver` из [REPORT-DEC-002](./REPORT-DEC-002-unified-stage-result-reporter-and-result-policy.md)).
-5. После миграционного окна compatibility paths удаляются.
+5. После миграционного окна compatibility paths удаляются (выполнено).
 
 ---
 
@@ -33,12 +34,12 @@ Runtime сегодня поддерживает несколько result-кон
 
 **Новые классы/модули**:
 - `connector/delivery/cli/result_adapter.py`
-  - `to_domain_result(value: DomainCommandResult | CliCommandResult | int | None) -> DomainCommandResult | None`
+  - `result_with(code: SystemErrorCode) -> DomainCommandResult`
+  - `exit_code_from_result(result: DomainCommandResult | None) -> int`
 
 **Изменения в существующих компонентах**:
 - `connector/delivery/cli/runtime.py`
-  - normalizes handler/lifecycle results к `DomainCommandResult` до report mapping;
-  - сохраняет legacy ветки только через адаптер.
+  - использует только canonical `DomainCommandResult` в runtime/report pipeline.
 - `connector/delivery/commands/*`
   - постепенно возвращают `DomainCommandResult` напрямую.
 - `connector/usecases/*`
@@ -47,20 +48,13 @@ Runtime сегодня поддерживает несколько result-кон
 ### Интерфейсы
 
 ```python
-def to_domain_result(
-    value: DomainCommandResult | CliCommandResult | int | None,
-    *,
-    command_name: str,
-    source: str,
-) -> DomainCommandResult | None: ...
+def exit_code_from_result(result: DomainCommandResult | None) -> int: ...
 ```
 
 ### Поток данных
 
 ```
 handler/usecase result
-      ↓
-result_adapter.to_domain_result(...)
       ↓
 DomainCommandResult (canonical)
       ↓
@@ -79,7 +73,6 @@ runtime report mapping + exit-code policy
 
 **Недостатки (компромиссы)**:
 - ⚠️ Нужна этапная миграция delivery handlers.
-- ⚠️ На переходе сохраняется adapter-слой и временная dual-совместимость.
 
 **Альтернативы, которые отклонили**:
 - ❌ **Сохранить dual-model навсегда**: закрепляет техдолг в runtime.
@@ -93,21 +86,22 @@ runtime report mapping + exit-code policy
 
 | Файл | Изменение |
 |------|-----------|
-| `connector/delivery/cli/result_adapter.py` | Новый boundary-адаптер в canonical result |
+| `connector/delivery/cli/result_adapter.py` | Canonical helper для runtime result/exit-code policy |
 | `connector/delivery/cli/runtime.py` | Единый canonical path result->report |
 | `connector/delivery/commands/*` | Возврат `DomainCommandResult` |
 | `tests/unit/delivery/*` | Тесты адаптера и canonical path |
 
 ### Ключевые методы
 
-- `to_domain_result(...)`
+- `exit_code_from_result(...)`
+- `result_with(...)`
 - `_exit_code_from_result(...)` (работает на canonical result)
 - runtime result->report mapper (после normalization)
 
 ### Инварианты
 
 1. **Canonical result model**: внутри runtime/report pipeline используется только `DomainCommandResult`.
-2. **Boundary adaptation only**: legacy формы разрешены только на boundary-адаптере.
+2. **Boundary cleanup complete**: legacy формы удалены из runtime boundary.
 3. **Deterministic exit/report semantics**: одинаковый `DomainCommandResult` даёт одинаковый exit/report outcome.
 
 ---
@@ -115,8 +109,7 @@ runtime report mapping + exit-code policy
 ## 🧪 Валидация решения
 
 **Тесты**:
-- ✅ Unit: `to_domain_result()` корректно нормализует `DomainCommandResult`, `CliCommandResult`, `int`, `None`.
-- ✅ Unit: runtime mapping использует только canonical result после normalization.
+- ✅ Unit: runtime mapping использует только canonical result path.
 - ✅ Unit: synthetic diagnostics формируются детерминированно.
 - ✅ Integration: команды возвращают согласованные report diagnostics и exit codes.
 - ✅ Regression: удаление дублирующих веток обработки после миграции.
@@ -124,11 +117,11 @@ runtime report mapping + exit-code policy
 **Проверка в runtime**:
 1. Прогнать успешные и failing сценарии (`mapping`, `enrich`, `resolve`, `import-apply`).
 2. Сравнить report diagnostics и exit code до/после нормализации.
-3. Подтвердить, что новые handlers не используют `CliCommandResult`.
+3. Подтвердить архитектурными guard-тестами отсутствие legacy result paths.
 
 **Метрики успеха**:
 - Количество runtime-веток result mapping сокращено до canonical path + adapter.
-- Доля команд, возвращающих `CliCommandResult`, стремится к 0.
+- Доля runtime-веток для non-canonical результата равна 0.
 
 ---
 
@@ -142,12 +135,10 @@ runtime report mapping + exit-code policy
 ## ⚠️ Риски и ограничения
 
 **Известные ограничения**:
-- На миграции временно поддерживаются legacy формы результата.
+- Финализация отчёта остаётся в runtime orchestration (`run_with_report()`), без middleware-декомпозиции.
 
 **Риски**:
-- ⚠️ Неполная миграция handler-ов сохранит скрытые compatibility ветки  
-  → **Митигация**: deprecation план + контрактные тесты.
-- ⚠️ Ошибки нормализации в adapter могут изменить exit semantics  
+- ⚠️ Ошибки в runtime result mapper могут изменить exit/report semantics  
   → **Митигация**: unit/e2e тесты на матрицу системных кодов и runtime paths.
 
 ---
@@ -189,3 +180,4 @@ runtime report mapping + exit-code policy
 |------|---------|
 | 2026-03-02 | Решение предложено |
 | 2026-03-02 | Решение принято после обсуждения |
+| 2026-03-02 | Завершен post-window cleanup: runtime принимает только `DomainCommandResult | None`, compatibility path `CliCommandResult/int` удален |

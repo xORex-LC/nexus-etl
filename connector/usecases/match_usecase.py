@@ -7,7 +7,8 @@ from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.adapters.result_policy import StageCommandResultResolver
 from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
 from connector.domain.reporting.adapters.strategies import PlanningStageReportStrategy
-from connector.domain.reporting.policy import resolve_report_policy
+from connector.domain.reporting.policy import ReportPolicy
+from connector.domain.reporting.sink import IReportSink
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.stages.stages import PipelineOrchestrator
@@ -39,7 +40,8 @@ class MatchUseCase:
         row_source,
         pipeline: PipelineOrchestrator,
         dataset: str,
-        report,
+        report_sink: IReportSink,
+        report_policy: ReportPolicy,
         catalog: ErrorCatalog,
     ) -> CommandResult:
         """
@@ -56,9 +58,8 @@ class MatchUseCase:
             MatchStage guard пропускает row=None записи — они попадают в iter_ok
             и отфильтровываются (имеют errors от upstream стадий).
         """
-        report_policy = resolve_report_policy(report)
         reporter = StageResultReporter(
-            report=report,
+            sink=report_sink,
             report_policy=report_policy,
             include_items=self.include_matched_items,
             context_key=ReportContextKey.MATCH,
@@ -79,5 +80,5 @@ class MatchUseCase:
             reporter.process(matched, force_failed=force_failed)
 
         stats = reporter.publish_context()
-        has_conflicts = report.summary.errors_total > 0
+        has_conflicts = stats.failed_rows > 0
         return StageCommandResultResolver().resolve(stats, has_conflicts=has_conflicts)

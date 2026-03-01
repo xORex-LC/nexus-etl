@@ -12,6 +12,8 @@ from connector.delivery.cli.containers import (
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.transform.core.extractor import Extractor
+from connector.domain.reporting.events import SetMetaEvent
+from connector.domain.reporting.policy import ReportPolicy
 from connector.usecases.resolve_usecase import ResolveUseCase
 
 
@@ -24,7 +26,7 @@ class Options:
     include_deleted: bool | None = None
 
 
-def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResult:
     run_id = ctx.run_id
     app_config = ctx.app_config
     if app_config is None:
@@ -50,7 +52,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     include_resolved_items_value = (
         opts.include_resolved_items if opts.include_resolved_items is not None else False
     )
-    report.set_meta(dataset=dataset_name)
+    report_sink.emit(SetMetaEvent(dataset=dataset_name))
+    report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
 
     try:
         pipeline = ctx.container.pipeline
@@ -77,7 +80,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                 matched_source=contextualized,
                 resolve_stage=pipeline.resolve_stage(),
                 dataset=dataset_name,
-                report=report,
+                report_sink=report_sink,
+                report_policy=report_policy,
                 catalog=catalog,
                 pending_expiry=pipeline.pending_expiry(),
                 resolve_hooks=plan_hooks,

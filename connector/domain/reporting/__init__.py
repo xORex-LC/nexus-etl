@@ -4,9 +4,14 @@
 """
 
 from connector.domain.reporting.assembler import CompositeReportEnricher, ReportAssembler
-from connector.domain.reporting.bridge import ReportWritePortBridge
 from connector.domain.reporting.context import IReportContext, InMemoryReportContext
-from connector.domain.reporting.sink import IActivitySink, IReportSink, NullActivitySink, ReportSink
+from connector.domain.reporting.sink import (
+    IActivitySink,
+    IReportSink,
+    NullActivitySink,
+    NullReportSink,
+    ReportSink,
+)
 from connector.domain.reporting.policy import (
     ReportPolicy,
     ReportPolicyCapabilities,
@@ -21,11 +26,11 @@ __all__ = [
     "IReportSink",
     "InMemoryReportContext",
     "NullActivitySink",
+    "NullReportSink",
     "ReportPolicy",
     "ReportPolicyCapabilities",
     "ReportPolicyProfile",
     "ReportAssembler",
     "ReportSink",
-    "ReportWritePortBridge",
     "resolve_report_policy",
 ]

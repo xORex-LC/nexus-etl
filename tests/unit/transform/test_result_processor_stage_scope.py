@@ -5,11 +5,13 @@ from connector.domain.models import (
     DiagnosticSeverity,
     DiagnosticStage,
 )
-from connector.domain.reporting.collector import ReportCollector
-from connector.domain.reporting.contracts import ReportContextKey
+from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
+from connector.domain.reporting.adapters.strategies import TransformStageReportStrategy
+from connector.domain.reporting.assembler import ReportAssembler
+from connector.domain.reporting.context import InMemoryReportContext
 from connector.domain.reporting.policy import ReportPolicy
+from connector.domain.reporting.sink import ReportSink
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.core.result_processor import TransformResultProcessor
 from connector.domain.transform.core.source_record import SourceRecord
 
 
@@ -40,23 +42,30 @@ def _diag(stage: DiagnosticStage, code: str, severity: DiagnosticSeverity) -> Di
     )
 
 
+def _make_runtime() -> tuple[ReportSink, ReportAssembler]:
+    context = InMemoryReportContext(run_id="run", command="normalize")
+    return ReportSink(context), ReportAssembler(context=context)
+
+
 def test_stage_scoped_report_filters_upstream_diagnostics_and_uses_stage_only_status() -> None:
-    report = ReportCollector(run_id="run-1", command="normalize")
-    processor = TransformResultProcessor(
-        report=report,
+    sink, assembler = _make_runtime()
+    reporter = StageResultReporter(
+        sink=sink,
+        report_policy=ReportPolicy.standard(),
         include_items=True,
         context_key="normalize",
         ok_label="normalized_ok",
         failed_label="normalize_failed",
+        strategy=TransformStageReportStrategy(),
         report_stage=DiagnosticStage.NORMALIZE,
         include_upstream_diagnostics=False,
     )
     upstream_error = _diag(DiagnosticStage.MAP, "MAP_ERR", DiagnosticSeverity.ERROR)
     upstream_warning = _diag(DiagnosticStage.MAP, "MAP_WARN", DiagnosticSeverity.WARNING)
-    processor.process(_make_result(errors=(upstream_error,), warnings=(upstream_warning,)))
-    processor.finalize()
+    reporter.process(_make_result(errors=(upstream_error,), warnings=(upstream_warning,)))
+    reporter.publish_context()
 
-    envelope = report.build()
+    envelope = assembler.assemble()
     assert envelope.summary.rows_blocked == 0
     assert envelope.summary.rows_passed == 1
     assert envelope.summary.errors_total == 0
@@ -69,13 +78,15 @@ def test_stage_scoped_report_filters_upstream_diagnostics_and_uses_stage_only_st
 
 
 def test_stage_scoped_report_keeps_only_current_stage_diagnostics() -> None:
-    report = ReportCollector(run_id="run-2", command="normalize")
-    processor = TransformResultProcessor(
-        report=report,
+    sink, assembler = _make_runtime()
+    reporter = StageResultReporter(
+        sink=sink,
+        report_policy=ReportPolicy.standard(),
         include_items=True,
         context_key="normalize",
         ok_label="normalized_ok",
         failed_label="normalize_failed",
+        strategy=TransformStageReportStrategy(),
         report_stage=DiagnosticStage.NORMALIZE,
         include_upstream_diagnostics=False,
     )
@@ -84,15 +95,15 @@ def test_stage_scoped_report_keeps_only_current_stage_diagnostics() -> None:
     map_warning = _diag(DiagnosticStage.MAP, "MAP_WARN", DiagnosticSeverity.WARNING)
     normalize_warning = _diag(DiagnosticStage.NORMALIZE, "NORM_WARN", DiagnosticSeverity.WARNING)
 
-    processor.process(
+    reporter.process(
         _make_result(
             errors=(map_error, normalize_error),
             warnings=(map_warning, normalize_warning),
         )
     )
-    processor.finalize()
+    reporter.publish_context()
 
-    envelope = report.build()
+    envelope = assembler.assemble()
     assert envelope.summary.errors_total == 1
     assert envelope.summary.warnings_total == 1
     assert envelope.summary.by_stage == {
@@ -105,29 +116,24 @@ def test_stage_scoped_report_keeps_only_current_stage_diagnostics() -> None:
 
 
 def test_include_upstream_diagnostics_keeps_full_chain() -> None:
-    report = ReportCollector(run_id="run-3", command="normalize")
-    report.set_context(
-        ReportContextKey.REPORT_POLICY,
-        ReportPolicy.debug().to_context_payload(
-            cli_include_skipped=True,
-            effective_include_skipped_items=True,
-        ),
-    )
-    processor = TransformResultProcessor(
-        report=report,
+    sink, assembler = _make_runtime()
+    reporter = StageResultReporter(
+        sink=sink,
+        report_policy=ReportPolicy.debug(),
         include_items=True,
         context_key="normalize",
         ok_label="normalized_ok",
         failed_label="normalize_failed",
+        strategy=TransformStageReportStrategy(),
         report_stage=DiagnosticStage.NORMALIZE,
         include_upstream_diagnostics=True,
     )
     map_error = _diag(DiagnosticStage.MAP, "MAP_ERR", DiagnosticSeverity.ERROR)
     normalize_error = _diag(DiagnosticStage.NORMALIZE, "NORM_ERR", DiagnosticSeverity.ERROR)
-    processor.process(_make_result(errors=(map_error, normalize_error)))
-    processor.finalize()
+    reporter.process(_make_result(errors=(map_error, normalize_error)))
+    reporter.publish_context()
 
-    envelope = report.build()
+    envelope = assembler.assemble()
     assert envelope.summary.errors_total == 2
     assert envelope.summary.by_stage["MAP"]["errors_total"] == 1
     assert envelope.summary.by_stage["NORMALIZE"]["errors_total"] == 1

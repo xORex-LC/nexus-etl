@@ -10,7 +10,8 @@ from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.adapters.result_policy import StageCommandResultResolver
 from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
 from connector.domain.reporting.adapters.strategies import TransformStageReportStrategy
-from connector.domain.reporting.policy import resolve_report_policy
+from connector.domain.reporting.policy import ReportPolicy
+from connector.domain.reporting.sink import IReportSink
 from connector.domain.transform.stages.stages import PipelineOrchestrator
 
 
@@ -35,12 +36,12 @@ class NormalizeUseCase:
         dataset: str,
         logger: logging.Logger,
         run_id: str,
-        report,
+        report_sink: IReportSink,
+        report_policy: ReportPolicy,
         catalog: ErrorCatalog,
     ) -> CommandResult:
-        report_policy = resolve_report_policy(report)
         reporter = StageResultReporter(
-            report=report,
+            sink=report_sink,
             report_policy=report_policy,
             include_items=self.include_normalized_items,
             context_key=ReportContextKey.NORMALIZE,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from connector.domain.reporting.assembler import ReportAssembler
-from connector.domain.reporting.bridge import ReportWritePortBridge
 from connector.domain.reporting.context import InMemoryReportContext, asdict_envelope
 from connector.domain.reporting.events import AddItemEvent, FinishEvent, SetContextEvent, SetMetaEvent
 from connector.domain.reporting.sink import IReportSink, ReportSink
@@ -17,22 +16,28 @@ class _SpySink(IReportSink):
         self._context.append(event)
 
 
-def test_bridge_uses_sink_emit_as_single_ingestion_entrypoint() -> None:
+def test_sink_emit_is_single_ingestion_entrypoint() -> None:
     context = InMemoryReportContext(run_id="run-emit", command="mapping")
     sink = _SpySink(context)
-    assembler = ReportAssembler(context=context)
-    bridge = ReportWritePortBridge(sink=sink, context=context, assembler=assembler)
-
-    bridge.set_meta(items_limit=3)
-    bridge.set_context("runtime", {"log_file": "test.log"})
-    bridge.add_op("create", ok=1, count=1)
-    bridge.add_item(status="OK", row_ref=None, payload=None, errors=[], warnings=[], meta={"k": "v"}, store=True)
-    bridge.finish(duration_ms=12)
+    sink.emit(SetMetaEvent(items_limit=3))
+    sink.emit(SetContextEvent(name="runtime", value={"log_file": "test.log"}))
+    sink.emit(
+        AddItemEvent(
+            status="OK",
+            row_ref=None,
+            payload=None,
+            errors=(),
+            warnings=(),
+            meta={"k": "v"},
+            store=True,
+            preaggregated=False,
+        )
+    )
+    sink.emit(FinishEvent(duration_ms=12))
 
     assert sink.events == [
         "SetMetaEvent",
         "SetContextEvent",
-        "AddOpEvent",
         "AddItemEvent",
         "FinishEvent",
     ]

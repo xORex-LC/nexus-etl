@@ -1,6 +1,6 @@
 # REPORT-PROBLEM-008: Уровни ReportPolicy (`minimal/standard/debug`) не формализованы как контракт
 
-> **Статус**: Открыта
+> **Статус**: Закрыто
 > **Дата создания**: 2026-03-02
 > **Затронутые компоненты**: `ReportAssembler`, `ReportPolicy`, `runtime/usecase event producers`, report consumers
 
@@ -94,3 +94,4 @@
 |------|---------|
 | 2026-03-02 | Проблема зафиксирована |
 | 2026-03-02 | Решение принято в REPORT-DEC-008 |
+| 2026-03-02 | Проблема закрыта: capability-based policy contract и profile matrix закреплены и применены |

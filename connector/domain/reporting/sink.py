@@ -51,6 +51,16 @@ class ReportSink(IReportSink, IActivitySink):
         self.emit(ActivityMetricEvent(name=name, payload=dict(payload)))
 
 
+class NullReportSink(IReportSink):
+    """
+    Назначение:
+        No-op sink для runtime-сценариев без отчёта.
+    """
+
+    def emit(self, event: ReportEvent) -> None:
+        return None
+
+
 class NullActivitySink(IActivitySink):
     """
     Назначение:

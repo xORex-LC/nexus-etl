@@ -6,7 +6,17 @@ from connector.domain.models import RowRef
 from connector.domain.planning.plan_models import Plan
 from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus, ReportOpKey
 from connector.domain.reporting.diagnostics import to_report_diagnostics
-from connector.domain.reporting.ports import ReportWritePort
+from connector.domain.reporting.events import (
+    AddItemEvent,
+    AddOpEvent,
+    EnsureErrorsTotalAtLeastEvent,
+    MergeOpFieldsEvent,
+    SetContextEvent,
+    SetItemsTruncatedEvent,
+    SetRowCountersEvent,
+    SetStatusEvent,
+)
+from connector.domain.reporting.sink import IReportSink
 from connector.usecases.apply.models import ApplyResult
 
 
@@ -15,44 +25,48 @@ class ApplyReportPresenter:
         Преобразовать `ApplyResult` в report write calls на delivery-границе.
 
     Boundary:
-        - Не мутирует внутренние структуры collector напрямую.
-        - Пишет только через `ReportWritePort` API (DEC-003).
+        - Пишет только через `IReportSink.emit(...)`.
+        - Не читает текущее состояние report context.
     """
 
     @staticmethod
     def present(
         result: ApplyResult,
-        collector: ReportWritePort,
+        sink: IReportSink,
         plan: Plan,
+        apply_context: dict[str, Any] | None = None,
         runtime_context: dict[str, Any] | None = None,
     ) -> None:
         summary = result.summary
 
-        collector.set_row_counters(
-            rows_total=summary.items_total,
-            rows_passed=summary.created + summary.updated,
-            rows_blocked=summary.failed,
-            rows_with_warnings=summary.rows_with_warnings,
-            rows_skipped=summary.skipped,
+        sink.emit(
+            SetRowCountersEvent(
+                rows_total=summary.items_total,
+                rows_passed=summary.created + summary.updated,
+                rows_blocked=summary.failed,
+                rows_with_warnings=summary.rows_with_warnings,
+                rows_skipped=summary.skipped,
+            )
         )
 
-        collector.add_op(ReportOpKey.CREATE, ok=summary.created)
-        collector.add_op(ReportOpKey.UPDATE, ok=summary.updated)
-        collector.add_op(ReportOpKey.SKIP, count=summary.skipped)
-        collector.add_op(ReportOpKey.APPLY_FAILED, failed=summary.failed)
+        sink.emit(AddOpEvent(name=ReportOpKey.CREATE, ok=summary.created))
+        sink.emit(AddOpEvent(name=ReportOpKey.UPDATE, ok=summary.updated))
+        sink.emit(AddOpEvent(name=ReportOpKey.SKIP, count=summary.skipped))
+        sink.emit(AddOpEvent(name=ReportOpKey.APPLY_FAILED, failed=summary.failed))
 
-        # Дополняем существующий context["apply"], чтобы не потерять поля из handler.
-        apply_ctx = dict(collector.get_context(ReportContextKey.APPLY, {}))
+        apply_ctx = dict(apply_context or {})
         apply_ctx["error_stats"] = dict(summary.error_stats)
         apply_ctx["retention_stats"] = dict(summary.retention_stats)
         apply_ctx.update(runtime_context or {})
-        collector.set_context(ReportContextKey.APPLY, apply_ctx)
+        sink.emit(SetContextEvent(name=ReportContextKey.APPLY, value=apply_ctx))
 
         planned_create = plan.summary.planned_create if plan.summary else 0
         planned_update = plan.summary.planned_update if plan.summary else 0
-        collector.merge_op_fields(
-            ReportOpKey.PLAN,
-            {"planned_create": planned_create, "planned_update": planned_update},
+        sink.emit(
+            MergeOpFieldsEvent(
+                name=ReportOpKey.PLAN,
+                values={"planned_create": planned_create, "planned_update": planned_update},
+            )
         )
 
         # Compatibility bridge: row-level summary уже pre-aggregated в ApplySummary.
@@ -68,30 +82,33 @@ class ApplyReportPresenter:
             report_diagnostics = to_report_diagnostics(errors_diags, warn_diags)
             report_errors = [d for d in report_diagnostics if d.severity == "error"]
             report_warnings = [d for d in report_diagnostics if d.severity == "warning"]
-            collector.add_item_preaggregated(
-                status=ReportItemStatus(outcome.status),
-                row_ref=row_ref,
-                payload=None,
-                errors=report_errors,
-                warnings=report_warnings,
-                meta={"op": outcome.op, "target_id": outcome.target_id},
-                store=True,
+            sink.emit(
+                AddItemEvent(
+                    status=ReportItemStatus(outcome.status),
+                    row_ref=row_ref,
+                    payload=None,
+                    errors=tuple(report_errors),
+                    warnings=tuple(report_warnings),
+                    meta={"op": outcome.op, "target_id": outcome.target_id},
+                    store=True,
+                    preaggregated=True,
+                )
             )
 
-        collector.set_items_truncated(result.outcomes_truncated)
+        sink.emit(SetItemsTruncatedEvent(value=result.outcomes_truncated))
 
         # Если outcomes усечены до нуля, по items нельзя надёжно вывести статус.
         # В этом случае используем summary как источник истины.
         if summary.failed > 0:
-            collector.ensure_errors_total_at_least(summary.failed)
+            sink.emit(EnsureErrorsTotalAtLeastEvent(value=summary.failed))
 
         passed = summary.created + summary.updated
         if summary.failed == 0:
-            collector.set_status("SUCCESS")
+            sink.emit(SetStatusEvent(status="SUCCESS"))
         elif passed > 0:
-            collector.set_status("PARTIAL")
+            sink.emit(SetStatusEvent(status="PARTIAL"))
         else:
-            collector.set_status("FAILED")
+            sink.emit(SetStatusEvent(status="FAILED"))
 
 
 def _is_error(diag) -> bool:

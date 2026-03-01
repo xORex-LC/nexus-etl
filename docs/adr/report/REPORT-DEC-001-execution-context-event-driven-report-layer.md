@@ -4,6 +4,7 @@
 > **Дата принятия**: 2026-03-01
 > **Решает проблему**: REPORT-PROBLEM-001
 > **Участники решения**: @xORex-LC
+> **Состояние реализации**: Завершено (2026-03-02), compatibility windows закрыты
 
 ---
 
@@ -33,8 +34,8 @@ Report layer накопил смешение ролей между runtime orche
 - разделить **Raw Events** и **Derived Report**;
 - зафиксировать правило подключения подсистем: бизнес-контекстные события публикуются явным `sink.emit(...)` из usecase, инфраструктурные метрики допускаются через decorator/facade;
 - использовать command scope DI вместо отдельного sub-container.
-- lifecycle финализации остаётся в `run_with_report()` на первом этапе; middleware/decorator-вариант — отдельный этап runtime-декомпозиции.
-- `ReportWritePort` из `REPORT-DEC-003` трактуется как переходный compatibility bridge; конечный ingestion boundary для продюсеров — `IReportSink.emit(event)`.
+- lifecycle финализации остаётся в `run_with_report()`; middleware/decorator-вариант остаётся отдельным этапом runtime-декомпозиции.
+- migration-window `ReportWritePort` (из `REPORT-DEC-003`) закрыт в post-window cleanup; конечный ingestion boundary для продюсеров — `IReportSink.emit(event)`.
 
 ---
 
@@ -61,8 +62,8 @@ Report layer накопил смешение ролей между runtime orche
 
 **Изменения в существующих компонентах**:
 - `connector/delivery/cli/runtime.py` — orchestration + вызов sink/assembler/renderer, без форматной логики отчёта.
-- `connector/delivery/presenters/*` — переход от прямых мутаций collector к публикации событий в sink.
-- `connector/domain/reporting/collector.py` — статус `legacy adapter` на переходный период.
+- `connector/delivery/presenters/*` — переведены с прямых мутаций collector на публикацию событий в sink.
+- `connector/domain/reporting/collector.py` — сохранён как внутренний компонент event-driven сборки, без legacy write-веток.
 
 ### Интерфейсы
 
@@ -134,7 +135,7 @@ Runtime/UseCase/Adapters
 
 ### Lifecycle интеграция
 
-- На первом этапе сборка/финализация отчёта остаётся внутри текущего `run_with_report()` (`try/finally`).
+- Сборка/финализация отчёта выполняется внутри текущего `run_with_report()` (`try/finally`).
 - Введение middleware/decorator-паттерна для финализации не является частью данного решения и относится к runtime-декомпозиции (`REPORT-DEC-005`).
 
 ---
@@ -150,7 +151,7 @@ Runtime/UseCase/Adapters
 
 **Недостатки (компромиссы)**:
 - ⚠️ Появляется дополнительный архитектурный слой (events/context/assembler).
-- ⚠️ Переходный период требует совместимости с legacy `ReportCollector`.
+- ⚠️ Переход от collector-centric write-path к event-driven ingestion потребовал этапной миграции компонентов.
 - ⚠️ Нужна дисциплина схемы событий (versioning, typed payload).
 
 **Альтернативы, которые отклонили**:
@@ -239,15 +240,12 @@ payload = JsonReportRenderer().render(envelope)
 ## ⚠️ Риски и ограничения
 
 **Известные ограничения**:
-- На первом этапе сохраняется legacy bridge к `ReportCollector`.
 - Структура событий требует версионирования (`schema_version`) при эволюции.
-- Middleware/decorator финализация не вводится на первом этапе, чтобы не смешивать с event-driven migration.
+- Middleware/decorator финализация пока не вводилась, чтобы не смешивать с runtime-декомпозицией.
 
 **Риски**:
 - ⚠️ Рост memory footprint при больших запусках  
   → **Митигация**: streaming aggregation + bounded sample policy (без хранения полного row event-log).
-- ⚠️ Параллельное существование старого и нового API в миграции  
-  → **Митигация**: адаптер совместимости и поэтапный перевод команд.
 
 ---
 
@@ -267,7 +265,7 @@ payload = JsonReportRenderer().render(envelope)
 
 **Обновлена документация**:
 - ✅ [Report issues registry](../../dev/layers/report/report-architecture-issues.md)
-- 🔄 Нужно обновить: `report-models.md`, `report-pipeline.md`, `report-delivery.md` после реализации фаз миграции
+- ✅ `docs/dev/layers/report/*` синхронизированы с event-driven моделью и schema v2.
 
 ---
 
@@ -295,3 +293,4 @@ payload = JsonReportRenderer().render(envelope)
 | 2026-03-02 | Уточнены границы `IReportSink/IActivitySink/IReportContext`, гибридное правило подключения подсистем и lifecycle-фаза через `run_with_report()` |
 | 2026-03-02 | Зафиксирована production memory-strategy: streaming-агрегация row-events + bounded sample вместо полного raw row-log в памяти |
 | 2026-03-02 | Зафиксировано, что `ReportWritePort` — переходный bridge; целевой ingestion API для продюсеров — `IReportSink.emit(event)` |
+| 2026-03-02 | Завершен event-driven cutover: bridge-совместимость удалена, canonical producer API — только `IReportSink.emit(event)` |

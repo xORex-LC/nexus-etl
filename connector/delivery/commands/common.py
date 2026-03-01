@@ -7,6 +7,7 @@ import typer
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.reporting.contracts import ReportContextKey
+from connector.domain.reporting.events import SetContextEvent
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.logging.setup import logEvent
 
@@ -62,17 +63,17 @@ def ensure_supported_cache_dataset(cache_admin, dataset: str | None) -> CommandR
     return result_with(SystemErrorCode.CACHE_ERROR)
 
 
-def attach_dictionary_report_snapshot_if_available(*, ctx, report) -> None:
+def attach_dictionary_report_snapshot_if_available(*, ctx, report_sink) -> None:
     """
     Назначение:
-        Best-effort записать snapshot dictionary telemetry в `report.context`.
+        Best-effort записать snapshot dictionary telemetry в report context.
 
     Граница ответственности:
         - Читает telemetry через DI container (`ctx.container.dictionary.telemetry()`).
         - Не расширяет `DictionaryProviderPort` ради отчётности.
         - Безопасно no-op, если report/container/dictionary telemetry недоступны.
     """
-    if report is None:
+    if report_sink is None:
         return
 
     container = getattr(ctx, "container", None)
@@ -93,4 +94,4 @@ def attach_dictionary_report_snapshot_if_available(*, ctx, report) -> None:
 
     snapshot = telemetry.snapshot()
     if isinstance(snapshot, dict):
-        report.set_context(ReportContextKey.DICTIONARY, snapshot)
+        report_sink.emit(SetContextEvent(name=ReportContextKey.DICTIONARY, value=snapshot))

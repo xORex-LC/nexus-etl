@@ -11,6 +11,7 @@ from connector.delivery.commands.common import (
     sqlite_cache_error_result,
 )
 from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.reporting.events import SetMetaEvent
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
 from connector.usecases.cache_command_service import CacheCommandService
 
@@ -21,7 +22,7 @@ class Options:
     cascade: bool | None = None
 
 
-def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResult:
     app_config = ctx.app_config
     if app_config is None:
         raise ValueError("App settings are not initialized")
@@ -34,13 +35,13 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         if unsupported_result is not None:
             return unsupported_result
         if opts.dataset is not None:
-            report.set_meta(dataset=opts.dataset)
+            report_sink.emit(SetMetaEvent(dataset=opts.dataset))
         cache_clear = CacheClearUseCase(cache_roles.cache_admin)
         service = CacheCommandService(cache_roles.cache_admin, cache_clear=cache_clear)
         runtime_policy = cache_dsl_bundle.runtime.policy
         result = service.clear(
             ctx.logger,
-            report,
+            report_sink,
             run_id,
             dataset=opts.dataset,
             cascade=opts.cascade if opts.cascade is not None else runtime_policy.clear_cascade_default,

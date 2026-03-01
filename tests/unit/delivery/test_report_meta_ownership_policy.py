@@ -22,6 +22,8 @@ from connector.delivery.cli.context import CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli import runtime as runtime_module
 from connector.domain.diagnostics import build_catalog
+from connector.domain.reporting.assembler import ReportAssembler
+from connector.domain.reporting.events import SetMetaEvent
 
 
 @dataclass
@@ -78,7 +80,7 @@ def _run_and_build_report(
     captured: dict[str, object] = {}
 
     def _capture_finalize(**kwargs):
-        captured["report"] = kwargs["report"]
+        captured["report_assembler"] = kwargs["report_assembler"]
         return None
 
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: _FakeContainer())
@@ -94,9 +96,9 @@ def _run_and_build_report(
         requirements=Requirements(),
     )
 
-    report = captured.get("report")
-    assert report is not None
-    return report.build()
+    assembler = captured.get("report_assembler")
+    assert isinstance(assembler, ReportAssembler)
+    return assembler.assemble()
 
 
 def test_runtime_is_owner_of_items_limit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -130,8 +132,8 @@ def test_dataset_aware_handler_owns_dataset_meta(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    def _dataset_handler(_ctx, _opts, report):
-        report.set_meta(dataset="employees")
+    def _dataset_handler(_ctx, _opts, report_sink):
+        report_sink.emit(SetMetaEvent(dataset="employees"))
         return None
 
     built = _run_and_build_report(
@@ -160,12 +162,12 @@ def test_architecture_guards_report_meta_ownership() -> None:
             usecase_violations.append(str(path.relative_to(project_root)))
 
     for path in commands_root.rglob("*.py"):
-        for call in _iter_report_set_meta_calls(path):
+        for call in _iter_set_meta_event_calls(path):
             if _call_has_kw(call, "items_limit"):
                 command_items_limit_violations.append(str(path.relative_to(project_root)))
                 break
 
-    for call in _iter_report_set_meta_calls(runtime_file):
+    for call in _iter_set_meta_event_calls(runtime_file):
         if _call_has_kw(call, "items_limit"):
             runtime_items_limit_calls += 1
 
@@ -193,6 +195,15 @@ def _iter_report_set_meta_calls(path: Path):
             yield node
 
 
+def _iter_set_meta_event_calls(path: Path):
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == "SetMetaEvent":
+            yield node
+
+
 def _call_has_kw(call: ast.Call, name: str) -> bool:
     return any(keyword.arg == name for keyword in call.keywords)
-

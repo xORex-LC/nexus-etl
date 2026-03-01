@@ -4,6 +4,7 @@
 > **Дата принятия**: 2026-03-02
 > **Решает проблему**: REPORT-PROBLEM-005
 > **Участники решения**: @xORex-LC
+> **Состояние реализации**: Завершено (2026-03-02), compatibility paths удалены
 
 ---
 
@@ -18,15 +19,15 @@
 Принять следующие правила:
 
 1. Убрать reflection dispatch (`inspect.signature`) из runtime.
-2. Зафиксировать единый handler contract: `handler(ctx, opts, report_port)`.
-   - `report_port` на этом этапе — переходный bridge (`ReportWritePort`) к конечной event-driven записи через `IReportSink` (`REPORT-DEC-001`/`REPORT-DEC-003`).
+2. Зафиксировать единый handler contract: `handler(ctx, opts, report_sink)`.
+   - `report_sink` реализует canonical event-driven ingestion через `IReportSink.emit(...)`.
 3. Декомпозировать runtime orchestration на отдельные ответственности:
    - lifecycle orchestration;
    - handler invocation;
    - result normalization/report mapping;
    - finalization/shutdown policy.
 4. Оставить canonical path на `DomainCommandResult`.
-5. Поддерживать `CliCommandResult` и `int` только через boundary adapter в окно совместимости 1 релиз, затем удалить.
+5. Поддерживать canonical path только на `DomainCommandResult`; compatibility windows для `CliCommandResult`/`int` удалены после release+1.
 
 ---
 
@@ -43,7 +44,7 @@
 - `connector/delivery/cli/runtime_result_mapper.py`
   - mapping normalized result -> report items
 - `connector/delivery/cli/result_adapter.py`
-  - canonical boundary adapter (legacy result normalization)
+  - canonical runtime helpers для `DomainCommandResult` и exit-code policy
 
 **Изменения в существующих компонентах**:
 - `connector/delivery/cli/runtime.py`
@@ -59,17 +60,12 @@ class CommandHandler(Protocol):
         self,
         ctx: BoundCommandContext,
         opts: Any,
-        report_port: ReportWritePort,  # transition bridge to IReportSink
+        report_sink: IReportSink,
     ) -> DomainCommandResult | None: ...
 ```
 
 ```python
-def to_domain_result(
-    value: DomainCommandResult | CliCommandResult | int | None,
-    *,
-    command_name: str,
-    source: str,
-) -> DomainCommandResult | None: ...
+def exit_code_from_result(result: DomainCommandResult | None) -> int: ...
 ```
 
 ### Поток данных
@@ -77,8 +73,7 @@ def to_domain_result(
 ```
 run_with_report()
   -> runtime_orchestrator
-  -> invoke CommandHandler(ctx, opts, report_port)
-  -> result_adapter.to_domain_result(...)
+  -> invoke CommandHandler(ctx, opts, report_sink)
   -> runtime_result_mapper.apply(...)
   -> finalize/shutdown policy
   -> exit-code policy
@@ -92,11 +87,10 @@ run_with_report()
 - ✅ Runtime становится предсказуемым orchestration boundary.
 - ✅ Явный контракт handlers без reflection.
 - ✅ Canonical result pipeline упрощает диагностику и testing.
-- ✅ Compatibility-path локализован в boundary adapter.
+- ✅ Runtime boundary использует только canonical `DomainCommandResult`.
 
 **Недостатки (компромиссы)**:
 - ⚠️ Переход требует миграции runtime tests и handler wiring.
-- ⚠️ Временное coexistence legacy adapter path до удаления.
 
 **Альтернативы, которые отклонили**:
 - ❌ **Сохранить `inspect.signature` dispatch**: оставляет неявный контракт.
@@ -114,7 +108,7 @@ run_with_report()
 | `connector/delivery/cli/runtime_contracts.py` | Явный `CommandHandler` protocol |
 | `connector/delivery/cli/runtime_orchestrator.py` | Разделение lifecycle шагов |
 | `connector/delivery/cli/runtime_result_mapper.py` | Изолированный mapping result -> report |
-| `connector/delivery/cli/result_adapter.py` | Legacy normalization window |
+| `connector/delivery/cli/result_adapter.py` | Canonical helper для `DomainCommandResult`/exit code |
 | `tests/unit/delivery/test_runtime_*` | Контрактные и regression тесты |
 
 ### Ключевые методы
@@ -122,7 +116,8 @@ run_with_report()
 - `run_with_report(...)`
 - `run_without_report(...)`
 - `invoke_handler(...)`
-- `to_domain_result(...)`
+- `exit_code_from_result(...)`
+- `result_with(...)`
 - `apply_domain_result_to_report(...)`
 
 ### Инварианты
@@ -130,8 +125,8 @@ run_with_report()
 1. Runtime вызывает только 3-arg handlers.
 2. Reflection dispatch отсутствует.
 3. Основной pipeline результата — `DomainCommandResult`.
-4. Legacy result формы обрабатываются только в adapter-слое.
-5. `report_port` в handler-контракте является bridge-only зависимостью до завершения migration-window и не отменяет целевой `IReportSink` boundary.
+4. Legacy result формы отсутствуют в runtime boundary.
+5. Handler-контракт использует только `report_sink: IReportSink`.
 
 ---
 
@@ -140,13 +135,13 @@ run_with_report()
 **Тесты**:
 - ✅ Runtime вызывает только 3-arg handlers.
 - ✅ `inspect.signature` dispatch удалён.
-- ✅ `CliCommandResult` и `int` проходят только через boundary adapter.
+- ✅ Runtime boundary не принимает `CliCommandResult`/`int`.
 - ✅ Main path всегда работает на `DomainCommandResult`.
 
 **Проверка в runtime**:
 1. Прогнать `mapping`, `normalize`, `enrich`, `match`, `resolve`, `import-plan`, `import-apply`.
 2. Проверить parity report/exit-code до и после декомпозиции.
-3. Убедиться, что compatibility window ограничен 1 релизом.
+3. Подтвердить архитектурными guard-тестами отсутствие legacy runtime paths.
 
 **Метрики успеха**:
 - Количество branching-веток в runtime для result-dispatch сокращено до canonical + adapter path.
@@ -165,14 +160,11 @@ run_with_report()
 ## ⚠️ Риски и ограничения
 
 **Известные ограничения**:
-- В migration window сохраняется legacy adapter path.
-- В migration window `CommandHandler` сохраняет `ReportWritePort` как compatibility-bridge.
+- Финализация отчёта остаётся в `run_with_report()` (`try/finally`) и не вынесена в middleware/decorator.
 
 **Риски**:
-- ⚠️ Неодновременная миграция handlers может временно ломать contract tests.
-  - **Митигация**: feature-branch migration, общий contract test suite.
-- ⚠️ Ошибки нормализации legacy результата могут повлиять на exit semantics.
-  - **Митигация**: таблица parity-тестов по system codes.
+- ⚠️ Ошибки в runtime result mapper могут повлиять на report/exit parity.
+  - **Митигация**: unit/e2e regression suite на canonical result path.
 
 ---
 
@@ -182,7 +174,7 @@ run_with_report()
 |-----------|---------|---------------------|
 | `connector/delivery/commands/*` | Высокое | Унифицировать handler contract |
 | `connector/delivery/cli/runtime.py` | Высокое | Декомпозировать ответственности |
-| `connector/delivery/cli/result_adapter.py` | Среднее | Локализовать compatibility-path |
+| `connector/delivery/cli/result_adapter.py` | Среднее | Поддерживать canonical helper-функции runtime result/exit policy |
 | `tests/unit/delivery/*` | Высокое | Добавить contract + parity tests |
 
 ---
@@ -214,3 +206,4 @@ run_with_report()
 |------|---------|
 | 2026-03-02 | Решение предложено |
 | 2026-03-02 | Решение принято после обсуждения |
+| 2026-03-02 | Завершен post-window cleanup: удалены compatibility paths (`CliCommandResult/int`) и bridge-контракт `ReportWritePort` |

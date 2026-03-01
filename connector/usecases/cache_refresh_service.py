@@ -15,6 +15,7 @@ from connector.domain.cache_core import CacheDependencyGraph, CacheRefreshPlanne
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.models import DiagnosticStage
 from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus
+from connector.domain.reporting.events import AddItemEvent, SetContextEvent
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.reporting.diagnostics import split_report_diagnostics
@@ -68,7 +69,7 @@ class CacheRefreshUseCase:
         page_size: int,
         max_pages: int | None,
         logger,
-        report,
+        report_sink,
         run_id: str,
         *,
         catalog: ErrorCatalog,
@@ -160,17 +161,20 @@ class CacheRefreshUseCase:
                                         pass
                                     else:
                                         stats["skipped"] += 1
-                                        report.add_item(
-                                            status=ReportItemStatus.SKIPPED,
-                                            row_ref=None,
-                                            payload=None,
-                                            errors=[],
-                                            warnings=[],
-                                            meta={
-                                                "dataset": adapter.dataset,
-                                                "key": key,
-                                            },
-                                            store=True,
+                                        report_sink.emit(
+                                            AddItemEvent(
+                                                status=ReportItemStatus.SKIPPED,
+                                                row_ref=None,
+                                                payload=None,
+                                                errors=(),
+                                                warnings=(),
+                                                meta={
+                                                    "dataset": adapter.dataset,
+                                                    "key": key,
+                                                },
+                                                store=True,
+                                                preaggregated=False,
+                                            )
                                         )
                                         continue
 
@@ -187,18 +191,21 @@ class CacheRefreshUseCase:
                                         resolved_id=mapped.get(id_field),
                                         key_values=mapped,
                                     )
-                                report.add_item(
-                                    status=ReportItemStatus.OK,
-                                    row_ref=None,
-                                    payload=None,
-                                    errors=[],
-                                    warnings=[],
-                                    meta={
-                                        "dataset": adapter.dataset,
-                                        "key": key,
-                                        "result": result.value,
-                                    },
-                                    store=False,
+                                report_sink.emit(
+                                    AddItemEvent(
+                                        status=ReportItemStatus.OK,
+                                        row_ref=None,
+                                        payload=None,
+                                        errors=(),
+                                        warnings=(),
+                                        meta={
+                                            "dataset": adapter.dataset,
+                                            "key": key,
+                                            "result": result.value,
+                                        },
+                                        store=False,
+                                        preaggregated=False,
+                                    )
                                 )
                             except Exception as exc:
                                 stats["failed"] += 1
@@ -217,17 +224,20 @@ class CacheRefreshUseCase:
                                     ],
                                     [],
                                 )
-                                report.add_item(
-                                    status=ReportItemStatus.FAILED,
-                                    row_ref=None,
-                                    payload=None,
-                                    errors=report_errors,
-                                    warnings=report_warnings,
-                                    meta={
-                                        "dataset": adapter.dataset,
-                                        "key": key,
-                                    },
-                                    store=True,
+                                report_sink.emit(
+                                    AddItemEvent(
+                                        status=ReportItemStatus.FAILED,
+                                        row_ref=None,
+                                        payload=None,
+                                        errors=tuple(report_errors),
+                                        warnings=tuple(report_warnings),
+                                        meta={
+                                            "dataset": adapter.dataset,
+                                            "key": key,
+                                        },
+                                        store=True,
+                                        preaggregated=False,
+                                    )
                                 )
 
                 now_iso = getNowIso()
@@ -266,22 +276,24 @@ class CacheRefreshUseCase:
         if api_base_url:
             target_id = hashlib.sha256(api_base_url.encode("utf-8")).hexdigest()
 
-        report.set_context(
-            ReportContextKey.CACHE_REFRESH,
-            {
-                "target_id": target_id,
-                "target_type": "http" if api_base_url else None,
-                "page_size": page_size,
-                "max_pages": max_pages,
-                "retries": retries,
-                "retry_backoff_seconds": retry_backoff_seconds,
-                "include_deleted": include_deleted,
-                "include_dependencies": include_dependencies,
-                "retries_used": retries_used,
-                "by_dataset": stats_by_dataset,
-                "total": totals,
-                "error_stats": error_stats,
-            },
+        report_sink.emit(
+            SetContextEvent(
+                name=ReportContextKey.CACHE_REFRESH,
+                value={
+                    "target_id": target_id,
+                    "target_type": "http" if api_base_url else None,
+                    "page_size": page_size,
+                    "max_pages": max_pages,
+                    "retries": retries,
+                    "retry_backoff_seconds": retry_backoff_seconds,
+                    "include_deleted": include_deleted,
+                    "include_dependencies": include_dependencies,
+                    "retries_used": retries_used,
+                    "by_dataset": stats_by_dataset,
+                    "total": totals,
+                    "error_stats": error_stats,
+                },
+            )
         )
 
         duration_ms = int((time.monotonic() - start_monotonic) * 1000)

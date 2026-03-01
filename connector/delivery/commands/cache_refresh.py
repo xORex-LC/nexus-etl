@@ -15,6 +15,7 @@ from connector.delivery.commands.common import ensure_supported_cache_dataset, r
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.reporting.contracts import ReportContextKey
+from connector.domain.reporting.events import SetContextEvent, SetMetaEvent
 from connector.datasets.registry import build_identity_index_plan
 from connector.infra.cache.dsl_runtime import build_sync_adapters
 from connector.infra.logging.setup import logEvent
@@ -44,7 +45,7 @@ def _runtime_context(build_result) -> dict[str, str]:
     }
 
 
-def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResult:
     """Собрать runtime/deps и запустить cache refresh use-case."""
     app_config = ctx.app_config
     if app_config is None:
@@ -58,14 +59,14 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         if unsupported_result is not None:
             return unsupported_result
         if opts.dataset is not None:
-            report.set_meta(dataset=opts.dataset)
+            report_sink.emit(SetMetaEvent(dataset=opts.dataset))
 
         build_result = ctx.container.target.runtime()
         runtime = build_result.runtime
         target_meta = runtime.meta()
         endpoint = target_meta.endpoint
         reader = runtime.reader
-        report.set_context(ReportContextKey.TARGET_RUNTIME, _runtime_context(build_result))
+        report_sink.emit(SetContextEvent(name=ReportContextKey.TARGET_RUNTIME, value=_runtime_context(build_result)))
 
         adapters = build_sync_adapters(cache_dsl_bundle)
         identity_keys, identity_id_fields = build_identity_index_plan()
@@ -91,7 +92,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
             page_size=opts.page_size or app_config.refresh.page_size,
             max_pages=opts.max_pages or app_config.refresh.max_pages,
             logger=ctx.logger,
-            report=report,
+            report_sink=report_sink,
             run_id=run_id,
             include_deleted=opts.include_deleted,
             include_dependencies=(

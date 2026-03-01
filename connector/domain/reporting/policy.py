@@ -13,9 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
 
-from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.policy_matrix import REPORT_POLICY_PROFILE_MATRIX
-from connector.domain.reporting.ports import ReportWritePort
 
 
 class ReportPolicyProfile(str, Enum):
@@ -120,7 +118,7 @@ class ReportPolicy:
 
 
 def resolve_report_policy(
-    report: ReportWritePort,
+    policy_context: Mapping[str, Any] | None = None,
     report_policy: ReportPolicy | None = None,
 ) -> ReportPolicy:
     """Назначение:
@@ -128,12 +126,11 @@ def resolve_report_policy(
 
     Контракт:
         - `StageResultReporter` получает уже разрешенный policy и не читает context.
-        - Если явный policy не передан, используется `report.context["report_policy"]`.
+        - Если явный policy не передан, используется `policy_context`.
         - При отсутствии context применяется профиль `standard`.
     """
     if report_policy is not None:
         return report_policy
-    policy_context = report.get_context(ReportContextKey.REPORT_POLICY, None)
     return ReportPolicy.from_context(policy_context)
 
 
