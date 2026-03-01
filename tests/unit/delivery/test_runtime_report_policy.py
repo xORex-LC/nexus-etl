@@ -13,6 +13,7 @@ from connector.delivery.cli import runtime as runtime_module
 from connector.delivery.cli.context import CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.domain.diagnostics import build_catalog
+from connector.domain.reporting.assembler import ReportAssembler
 
 
 @dataclass
@@ -74,7 +75,7 @@ def _run_with_capture(
     captured: dict[str, object] = {}
 
     def _capture_finalize(**kwargs):
-        captured["report"] = kwargs["report"]
+        captured["report_assembler"] = kwargs["report_assembler"]
         return None
 
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: _FakeContainer())
@@ -89,8 +90,9 @@ def _run_with_capture(
         handler=lambda _ctx, _opts, _report: None,
         requirements=Requirements(),
     )
-    report = captured["report"]
-    return report.build().context["report_policy"]
+    assembler = captured["report_assembler"]
+    assert isinstance(assembler, ReportAssembler)
+    return assembler.assemble().context["report_policy"]
 
 
 @pytest.mark.parametrize(
@@ -144,4 +146,3 @@ def _has_profile_literal_comparison(path: Path, profile_literals: set[str]) -> b
                 if operand.value in profile_literals:
                     return True
     return False
-

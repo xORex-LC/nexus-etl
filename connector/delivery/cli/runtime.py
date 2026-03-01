@@ -8,7 +8,7 @@ Boundary:
 
 Compatibility:
     Приватные helper-имена сохранены как facade wrappers, чтобы поддержать
-    текущие тесты и переходное окно совместимости DEC-004/005.
+    текущие тесты без legacy compatibility-веток runtime результата.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from connector.delivery.cli.runtime_result_mapper import (
     build_runtime_error_result,
     stage_for_command,
 )
+from connector.domain.reporting.context import IReportContext
 
 
 ReportHandler = CommandHandler
@@ -132,7 +133,8 @@ def _shutdown_container_resources(
 
 def _finalize_report_artifacts(
     *,
-    report,
+    report_sink,
+    report_assembler,
     start_monotonic: float,
     paths,
     log_file_path: str,
@@ -145,7 +147,8 @@ def _finalize_report_artifacts(
         Compatibility facade для report finalization.
     """
     return runtime_orchestrator.finalize_report_artifacts(
-        report=report,
+        report_sink=report_sink,
+        report_assembler=report_assembler,
         start_monotonic=start_monotonic,
         paths=paths,
         log_file_path=log_file_path,
@@ -187,19 +190,20 @@ def _call_handler(
     handler: ReportHandler,
     ctx: BoundCommandContext,
     opts: Any,
-    report_port,
+    report_sink,
 ) -> RuntimeExecutionResult:
     """Purpose:
         Compatibility helper для явного 3-arg handler contract.
 
     Contract:
-        Reflection dispatch удален; runtime всегда вызывает handler(ctx, opts, report_port).
+        Reflection dispatch удален; runtime всегда вызывает handler(ctx, opts, report_sink).
     """
-    return handler(ctx, opts, report_port)
+    return handler(ctx, opts, report_sink)
 
 
 def _apply_cli_result_to_report(
-    report,
+    report_sink,
+    report_context: IReportContext,
     result: Any,
     *,
     command_name: str,
@@ -208,12 +212,10 @@ def _apply_cli_result_to_report(
 ) -> None:
     """Purpose:
         Compatibility facade: runtime result -> report mapping.
-
-    Compatibility:
-        Поддержка `CliCommandResult`/`int` сохранена временно через result adapter.
     """
     apply_runtime_result_to_report(
-        report,
+        report_sink,
+        report_context,
         result,
         command_name=command_name,
         source=source,

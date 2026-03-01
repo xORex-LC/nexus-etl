@@ -7,6 +7,7 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.cache.roles import CacheAdminPort
 from connector.domain.reporting.contracts import ReportContextKey, ReportOpKey
+from connector.domain.reporting.events import AddOpEvent, SetContextEvent
 
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_status_usecase import CacheStatusUseCase
@@ -36,7 +37,7 @@ class CacheCommandService:
         page_size: int,
         max_pages: int,
         logger,
-        report,
+        report_sink,
         run_id: str,
         include_deleted: bool | None = None,
         include_dependencies: bool = False,
@@ -53,7 +54,7 @@ class CacheCommandService:
             page_size=page_size,
             max_pages=max_pages,
             logger=logger,
-            report=report,
+            report_sink=report_sink,
             run_id=run_id,
             include_deleted=include_deleted,
             include_dependencies=include_dependencies,
@@ -67,11 +68,13 @@ class CacheCommandService:
 
         total = summary.get("total", {})
         failed = int(total.get("failed", 0))
-        report.add_op(
-            ReportOpKey.CACHE_REFRESH,
-            ok=int(total.get("inserted", 0)) + int(total.get("updated", 0)),
-            failed=failed,
-            count=sum(total.values()),
+        report_sink.emit(
+            AddOpEvent(
+                name=ReportOpKey.CACHE_REFRESH,
+                ok=int(total.get("inserted", 0)) + int(total.get("updated", 0)),
+                failed=failed,
+                count=sum(total.values()),
+            )
         )
 
         result = CommandResult(summary=summary)
@@ -79,12 +82,10 @@ class CacheCommandService:
             result.add_code(SystemErrorCode.DATA_INVALID)
         return result
 
-    def status(
-        self, logger, report, run_id: str, dataset: str | None = None
-    ) -> CommandResult:
+    def status(self, logger, report_sink, run_id: str, dataset: str | None = None) -> CommandResult:
         try:
             status = self.cache_status.status(dataset=dataset)
-            report.set_context(ReportContextKey.CACHE_STATUS, {"status": status})
+            report_sink.emit(SetContextEvent(name=ReportContextKey.CACHE_STATUS, value={"status": status}))
             return CommandResult(summary=status)
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache status failed: {exc}")
@@ -95,7 +96,7 @@ class CacheCommandService:
     def clear(
         self,
         logger,
-        report,
+        report_sink,
         run_id: str,
         dataset: str | None = None,
         *,
@@ -112,7 +113,7 @@ class CacheCommandService:
                 "cache",
                 f"cache clear: {cleared}",
             )
-            report.set_context(ReportContextKey.CACHE_CLEAR, {"cleared": cleared})
+            report_sink.emit(SetContextEvent(name=ReportContextKey.CACHE_CLEAR, value={"cleared": cleared}))
             return CommandResult(summary=cleared)
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache clear failed: {exc}")

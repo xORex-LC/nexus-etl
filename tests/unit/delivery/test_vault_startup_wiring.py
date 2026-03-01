@@ -18,11 +18,8 @@ from connector.domain.secrets.errors import VaultStartupKeyValidationError
 
 
 class _DummyReport:
-    def set_meta(self, **kwargs) -> None:
-        _ = kwargs
-
-    def set_context(self, key, value) -> None:
-        _ = (key, value)
+    def emit(self, event) -> None:
+        _ = event
 
 
 def _app_config(tmp_path) -> AppConfig:

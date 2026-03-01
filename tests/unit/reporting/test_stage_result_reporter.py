@@ -4,7 +4,6 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import (
     DiagnosticItem,
     DiagnosticSeverity,
@@ -17,10 +16,11 @@ from connector.domain.reporting.adapters.strategies import (
     PlanningStageReportStrategy,
     TransformStageReportStrategy,
 )
-from connector.domain.reporting.collector import ReportCollector
+from connector.domain.reporting.assembler import ReportAssembler
+from connector.domain.reporting.context import InMemoryReportContext
 from connector.domain.reporting.policy import ReportPolicy
+from connector.domain.reporting.sink import ReportSink
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.core.result_processor import TransformResultProcessor
 from connector.domain.transform.core.source_record import SourceRecord
 
 
@@ -52,10 +52,17 @@ def _make_result(
     )
 
 
+def _make_runtime() -> tuple[InMemoryReportContext, ReportSink, ReportAssembler]:
+    context = InMemoryReportContext(run_id="run", command="normalize")
+    sink = ReportSink(context)
+    assembler = ReportAssembler(context=context)
+    return context, sink, assembler
+
+
 def test_stage_result_reporter_snapshot_is_immutable() -> None:
-    report = ReportCollector(run_id="run-immutable", command="normalize")
+    _context, sink, _assembler = _make_runtime()
     reporter = StageResultReporter(
-        report=report,
+        sink=sink,
         report_policy=ReportPolicy.standard(),
         include_items=True,
         context_key="normalize",
@@ -72,13 +79,13 @@ def test_stage_result_reporter_snapshot_is_immutable() -> None:
 
 
 def test_planning_strategy_skip_prevents_row_aggregation() -> None:
-    report = ReportCollector(run_id="run-skip", command="resolve")
+    _context, sink, assembler = _make_runtime()
     strategy = PlanningStageReportStrategy(
         meta_builder=lambda _r: {"op": "noop"},
         should_skip=lambda _r: True,
     )
     reporter = StageResultReporter(
-        report=report,
+        sink=sink,
         report_policy=ReportPolicy.standard(),
         include_items=True,
         context_key="resolve",
@@ -92,7 +99,7 @@ def test_planning_strategy_skip_prevents_row_aggregation() -> None:
     snapshot = reporter.snapshot()
 
     assert snapshot.rows_total == 0
-    assert report.build().summary.rows_total == 0
+    assert assembler.assemble().summary.rows_total == 0
 
 
 def test_payload_sanitizer_masks_declared_secret_fields() -> None:
@@ -105,52 +112,11 @@ def test_payload_sanitizer_masks_declared_secret_fields() -> None:
     assert sanitized["plain"] == "***"
 
 
-def test_alias_transform_processor_matches_canonical_reporter_behavior() -> None:
-    error = _diag(DiagnosticStage.NORMALIZE, "NORM_ERR", DiagnosticSeverity.ERROR)
-    row_result = _make_result(errors=(error,))
-
-    report_alias = ReportCollector(run_id="run-alias", command="normalize")
-    alias = TransformResultProcessor(
-        report=report_alias,
-        include_items=True,
-        context_key="normalize",
-        ok_label="normalized_ok",
-        failed_label="normalize_failed",
-        report_stage=DiagnosticStage.NORMALIZE,
-        include_upstream_diagnostics=False,
-    )
-    alias.process(row_result)
-    alias_result = alias.finalize()
-    alias_envelope = report_alias.build()
-
-    report_new = ReportCollector(run_id="run-canonical", command="normalize")
-    reporter = StageResultReporter(
-        report=report_new,
-        report_policy=ReportPolicy.standard(),
-        include_items=True,
-        context_key="normalize",
-        ok_label="normalized_ok",
-        failed_label="normalize_failed",
-        strategy=TransformStageReportStrategy(),
-        report_stage=DiagnosticStage.NORMALIZE,
-        include_upstream_diagnostics=False,
-    )
-    reporter.process(row_result)
-    stats = reporter.publish_context()
-    canonical_result = StageCommandResultResolver().resolve(stats)
-    canonical_envelope = report_new.build()
-
-    assert alias_envelope.summary == canonical_envelope.summary
-    assert alias_envelope.items[0].status == canonical_envelope.items[0].status
-    assert alias_envelope.items[0].diagnostics[0].code == canonical_envelope.items[0].diagnostics[0].code
-    assert alias_result.system_codes == canonical_result.system_codes == {SystemErrorCode.DATA_INVALID}
-
-
 def test_stage_result_reporter_uses_explicit_policy_for_include_ok_items() -> None:
-    report = ReportCollector(run_id="run-policy-min", command="normalize")
+    _context, sink, assembler = _make_runtime()
     policy = ReportPolicy.minimal()
     reporter = StageResultReporter(
-        report=report,
+        sink=sink,
         report_policy=policy,
         include_items=True,
         context_key="normalize",
@@ -161,16 +127,16 @@ def test_stage_result_reporter_uses_explicit_policy_for_include_ok_items() -> No
     )
     reporter.process(_make_result())
 
-    built = report.build()
+    built = assembler.assemble()
     assert built.summary.rows_total == 1
     assert len(built.items) == 0
 
 
 def test_stage_result_reporter_stores_failed_items_even_when_ok_items_disabled() -> None:
-    report = ReportCollector(run_id="run-policy-failed", command="normalize")
+    _context, sink, assembler = _make_runtime()
     policy = ReportPolicy.minimal()
     reporter = StageResultReporter(
-        report=report,
+        sink=sink,
         report_policy=policy,
         include_items=True,
         context_key="normalize",
@@ -181,7 +147,10 @@ def test_stage_result_reporter_stores_failed_items_even_when_ok_items_disabled()
     )
     error = _diag(DiagnosticStage.NORMALIZE, "NORM_ERR", DiagnosticSeverity.ERROR)
     reporter.process(_make_result(errors=(error,)))
+    stats = reporter.publish_context()
+    result = StageCommandResultResolver().resolve(stats)
 
-    built = report.build()
+    built = assembler.assemble()
     assert built.summary.rows_blocked == 1
     assert len(built.items) == 1
+    assert result.ok is False

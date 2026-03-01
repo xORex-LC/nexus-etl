@@ -175,22 +175,22 @@ docs/adr/
 
 | ID | Тип | Название | Статус | Дата |
 |----|-----|----------|--------|------|
-| [REPORT-PROBLEM-001](./report/REPORT-PROBLEM-001-report-layer-mixed-responsibilities-and-missing-execution-context.md) | Problem | Report layer смешивает ответственности и не имеет единого Execution Context | ❌ Открыто | 2026-03-01 |
-| [REPORT-DEC-001](./report/REPORT-DEC-001-execution-context-event-driven-report-layer.md) | Decision | Execution Context + event-driven сборка отчёта в Report Layer | ✅ Принято | 2026-03-01 |
-| [REPORT-PROBLEM-002](./report/REPORT-PROBLEM-002-result-processor-duplication-and-boundary-leak.md) | Problem | Дублирование ResultProcessor и утечка report-адаптера в transform/core | ❌ Открыто | 2026-03-01 |
-| [REPORT-DEC-002](./report/REPORT-DEC-002-unified-stage-result-reporter-and-result-policy.md) | Decision | Единый StageResultReporter и политика stage-result/CommandResult | ✅ Принято | 2026-03-01 |
-| [REPORT-PROBLEM-003](./report/REPORT-PROBLEM-003-collector-encapsulation-and-write-port-gap.md) | Problem | Отсутствие инкапсуляции Collector и единого ReportWritePort | ❌ Открыто | 2026-03-02 |
-| [REPORT-DEC-003](./report/REPORT-DEC-003-report-write-port-and-collector-encapsulation.md) | Decision | ReportWritePort и инкапсуляция ReportCollector | ✅ Принято | 2026-03-02 |
-| [REPORT-PROBLEM-004](./report/REPORT-PROBLEM-004-command-result-model-fragmentation.md) | Problem | Фрагментация модели CommandResult между domain и delivery | ❌ Открыто | 2026-03-02 |
-| [REPORT-DEC-004](./report/REPORT-DEC-004-canonical-command-result-and-runtime-boundary-adapter.md) | Decision | Канонический DomainCommandResult и boundary-адаптер runtime | ✅ Принято | 2026-03-02 |
-| [REPORT-PROBLEM-005](./report/REPORT-PROBLEM-005-runtime-orchestrator-overload-and-implicit-handler-contract.md) | Problem | Перегруженный runtime orchestrator и неявный контракт command handlers | ❌ Открыто | 2026-03-02 |
-| [REPORT-DEC-005](./report/REPORT-DEC-005-runtime-orchestrator-decomposition-and-explicit-handler-contract.md) | Decision | Декомпозиция runtime orchestrator и явный контракт handlers | ✅ Принято | 2026-03-02 |
-| [REPORT-PROBLEM-006](./report/REPORT-PROBLEM-006-report-meta-ownership-drift-and-dataset-semantics.md) | Problem | Дрейф владения report meta и неявная семантика dataset | ❌ Открыто | 2026-03-02 |
-| [REPORT-DEC-006](./report/REPORT-DEC-006-report-meta-ownership-policy-and-dataset-boundary.md) | Decision | Политика владения report meta и dataset boundary | ✅ Принято | 2026-03-02 |
-| [REPORT-PROBLEM-007](./report/REPORT-PROBLEM-007-report-schema-v2-typed-context-and-skipped-contract-gap.md) | Problem | Report schema contract gap (v2), typed context и skipped-reporting | ❌ Открыто | 2026-03-02 |
-| [REPORT-DEC-007](./report/REPORT-DEC-007-report-schema-v2-typed-context-rowref-nullable-and-import-plan-skipped-reporting.md) | Decision | Report schema v2, typed context, nullable RowRef.line_no и skipped-reporting для import-plan | ✅ Принято | 2026-03-02 |
-| [REPORT-PROBLEM-008](./report/REPORT-PROBLEM-008-report-policy-levels-not-formalized.md) | Problem | Уровни ReportPolicy (`minimal/standard/debug`) не формализованы как контракт | ❌ Открыто | 2026-03-02 |
-| [REPORT-DEC-008](./report/REPORT-DEC-008-report-policy-capability-profiles-and-contract.md) | Decision | Capability-based `ReportPolicy` и фиксированные profile-presets | ✅ Принято | 2026-03-02 |
+| [REPORT-PROBLEM-001](./report/REPORT-PROBLEM-001-report-layer-mixed-responsibilities-and-missing-execution-context.md) | Problem | Report layer смешивает ответственности и не имеет единого Execution Context | ✅ Закрыто | 2026-03-01 |
+| [REPORT-DEC-001](./report/REPORT-DEC-001-execution-context-event-driven-report-layer.md) | Decision | Execution Context + event-driven сборка отчёта в Report Layer | ✅ Закрыто | 2026-03-01 |
+| [REPORT-PROBLEM-002](./report/REPORT-PROBLEM-002-result-processor-duplication-and-boundary-leak.md) | Problem | Дублирование ResultProcessor и утечка report-адаптера в transform/core | ✅ Закрыто | 2026-03-01 |
+| [REPORT-DEC-002](./report/REPORT-DEC-002-unified-stage-result-reporter-and-result-policy.md) | Decision | Единый StageResultReporter и политика stage-result/CommandResult | ✅ Закрыто | 2026-03-01 |
+| [REPORT-PROBLEM-003](./report/REPORT-PROBLEM-003-collector-encapsulation-and-write-port-gap.md) | Problem | Отсутствие инкапсуляции Collector и единого ReportWritePort | ✅ Закрыто | 2026-03-02 |
+| [REPORT-DEC-003](./report/REPORT-DEC-003-report-write-port-and-collector-encapsulation.md) | Decision | ReportWritePort и инкапсуляция ReportCollector | ✅ Закрыто | 2026-03-02 |
+| [REPORT-PROBLEM-004](./report/REPORT-PROBLEM-004-command-result-model-fragmentation.md) | Problem | Фрагментация модели CommandResult между domain и delivery | ✅ Закрыто | 2026-03-02 |
+| [REPORT-DEC-004](./report/REPORT-DEC-004-canonical-command-result-and-runtime-boundary-adapter.md) | Decision | Канонический DomainCommandResult и boundary-адаптер runtime | ✅ Закрыто | 2026-03-02 |
+| [REPORT-PROBLEM-005](./report/REPORT-PROBLEM-005-runtime-orchestrator-overload-and-implicit-handler-contract.md) | Problem | Перегруженный runtime orchestrator и неявный контракт command handlers | ✅ Закрыто | 2026-03-02 |
+| [REPORT-DEC-005](./report/REPORT-DEC-005-runtime-orchestrator-decomposition-and-explicit-handler-contract.md) | Decision | Декомпозиция runtime orchestrator и явный контракт handlers | ✅ Закрыто | 2026-03-02 |
+| [REPORT-PROBLEM-006](./report/REPORT-PROBLEM-006-report-meta-ownership-drift-and-dataset-semantics.md) | Problem | Дрейф владения report meta и неявная семантика dataset | ✅ Закрыто | 2026-03-02 |
+| [REPORT-DEC-006](./report/REPORT-DEC-006-report-meta-ownership-policy-and-dataset-boundary.md) | Decision | Политика владения report meta и dataset boundary | ✅ Закрыто | 2026-03-02 |
+| [REPORT-PROBLEM-007](./report/REPORT-PROBLEM-007-report-schema-v2-typed-context-and-skipped-contract-gap.md) | Problem | Report schema contract gap (v2), typed context и skipped-reporting | ✅ Закрыто | 2026-03-02 |
+| [REPORT-DEC-007](./report/REPORT-DEC-007-report-schema-v2-typed-context-rowref-nullable-and-import-plan-skipped-reporting.md) | Decision | Report schema v2, typed context, nullable RowRef.line_no и skipped-reporting для import-plan | ✅ Закрыто | 2026-03-02 |
+| [REPORT-PROBLEM-008](./report/REPORT-PROBLEM-008-report-policy-levels-not-formalized.md) | Problem | Уровни ReportPolicy (`minimal/standard/debug`) не формализованы как контракт | ✅ Закрыто | 2026-03-02 |
+| [REPORT-DEC-008](./report/REPORT-DEC-008-report-policy-capability-profiles-and-contract.md) | Decision | Capability-based `ReportPolicy` и фиксированные profile-presets | ✅ Закрыто | 2026-03-02 |
 
 ### Observability
 

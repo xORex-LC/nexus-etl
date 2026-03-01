@@ -4,6 +4,7 @@
 > **Дата принятия**: 2026-03-01
 > **Решает проблему**: REPORT-PROBLEM-002
 > **Участники решения**: @xORex-LC
+> **Состояние реализации**: Завершено (2026-03-02), legacy alias удалены
 
 ---
 
@@ -27,7 +28,7 @@
    - `ExecutionStatsAccumulator`;
    - `PayloadSanitizer`;
    - `IStageReportStrategy`.
-3. `PlanningResultProcessor` и `TransformResultProcessor` оставить как thin alias на 1 релиз, затем удалить.
+3. `PlanningResultProcessor` и `TransformResultProcessor` использовались как thin alias в migration-window и удалены после release+1.
 4. Зафиксировать policy статуса как `stage-only`.
 5. Формировать `CommandResult` на уровне usecase через `StageCommandResultResolver`.
 6. Новый canonical owner: `connector/domain/reporting/adapters/*`.
@@ -54,7 +55,7 @@
 
 **Изменения в существующих компонентах**:
 - `connector/domain/transform/core/result_processor.py`
-  - legacy alias-экспорт на переходный период (1 релиз).
+  - legacy alias-экспорт использовался в окно совместимости и удалён после release+1.
 - `connector/usecases/*`
   - переход на canonical reporter + `StageCommandResultResolver`.
 
@@ -132,7 +133,7 @@ CommandResult
 | `connector/domain/reporting/adapters/payload_sanitizer.py` | выделение masking/security логики |
 | `connector/domain/reporting/adapters/strategies.py` | strategy-контракты для stage различий |
 | `connector/domain/reporting/result_policy.py` | `StageCommandResultResolver` |
-| `connector/domain/transform/core/result_processor.py` | thin alias на 1 релиз |
+| `connector/domain/transform/core/result_processor.py` | legacy alias (удалён после release+1) |
 | `connector/usecases/*` | применение canonical reporter и resolver |
 
 ### Ключевые методы
@@ -146,14 +147,14 @@ CommandResult
 1. **Single processing algorithm**: алгоритм row-processing существует в одном canonical processor.
 2. **Stage-only status policy**: `item.status` и `rows_blocked` зависят только от stage-local ошибок.
 3. **Immutable stats/context contract**: snapshot и stage-context не мутируются после фиксации.
-4. **No business logic in aliases**: legacy aliases только делегируют в canonical processor.
+4. **No business logic in aliases**: в migration-window aliases только делегировали в canonical processor.
 
 ### Принятые assumptions/defaults
 
 1. Фиксация выполняется отдельной новой парой ADR (`REPORT-PROBLEM-002` + `REPORT-DEC-002`).
 2. Стратегия реализации — композиция + стратегии, не наследование как основной механизм.
 3. `CommandResult` рассчитывается в usecase через resolver.
-4. Legacy alias window ограничено 1 релизом.
+4. Legacy alias window был ограничен 1 релизом и закрыт.
 
 ---
 
@@ -167,7 +168,7 @@ CommandResult
 - ✅ Unit: `StageCommandResultResolver` одинаково вычисляет коды для старых и новых сценариев.
 - ✅ Integration: parity отчётов для `normalize/mapping/enrich/match/resolve`.
 - ✅ Regression: отсутствие дублирования `process()`-правил в двух классах.
-- ✅ Compatibility: старые импорты `PlanningResultProcessor/TransformResultProcessor` работают в окно 1 релиз.
+- ✅ Compatibility-window закрыт: старые импорты `PlanningResultProcessor/TransformResultProcessor` удалены после release+1.
 
 **Проверка в runtime**:
 1. Прогнать команды `normalize`, `mapping`, `enrich`, `match`, `resolve`.
@@ -207,14 +208,14 @@ result = stage_result_resolver.resolve(stats, has_conflicts=report.summary.error
 ## ⚠️ Риски и ограничения
 
 **Известные ограничения**:
-- На переходном этапе одновременно существуют canonical processor и legacy aliases.
+- Переходный этап завершён: в кодовой базе остался только canonical processor.
 - Новая unified context schema требует синхронизации с потребителями отчёта.
 
 **Риски**:
 - ⚠️ Риск несовместимости consumer-ов context schema  
   → **Митигация**: заранее зафиксировать schema contract и обновить docs/consumers.
 - ⚠️ Риск затяжного coexistence legacy aliases  
-  → **Митигация**: зафиксировать removal window = 1 релиз.
+  → **Митигация**: removal window был ограничен 1 релизом и исполнен в post-window cleanup.
 
 ---
 
@@ -223,7 +224,7 @@ result = stage_result_resolver.resolve(stats, has_conflicts=report.summary.error
 | Компонент | Влияние | Требуемые изменения |
 |-----------|---------|---------------------|
 | `connector/usecases/*` | Высокое | Переход на canonical reporter + `StageCommandResultResolver` |
-| `connector/domain/transform/core` | Среднее | Удаление report-адаптерной логики, legacy alias only |
+| `connector/domain/transform/core` | Среднее | Удаление report-адаптерной логики и legacy alias-слоя |
 | `connector/domain/reporting/*` | Высокое | Новый owner adapter-логики row-result -> report item |
 | `docs/dev/layers/report/*` | Среднее | Обновление contract/flow описаний под новую модель |
 
@@ -257,3 +258,4 @@ result = stage_result_resolver.resolve(stats, has_conflicts=report.summary.error
 |------|---------|
 | 2026-03-01 | Решение предложено |
 | 2026-03-01 | Решение принято после обсуждения |
+| 2026-03-02 | Завершен post-window cleanup: `TransformResultProcessor/PlanningResultProcessor` удалены, canonical path остался только через `StageResultReporter` |

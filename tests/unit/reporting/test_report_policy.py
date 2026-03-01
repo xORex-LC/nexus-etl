@@ -6,7 +6,6 @@ from connector.domain.reporting.policy import (
     ReportPolicyProfile,
     resolve_report_policy,
 )
-from connector.domain.reporting.collector import ReportCollector
 
 
 def test_report_policy_profiles_match_fixed_matrix() -> None:
@@ -67,32 +66,24 @@ def test_cli_override_cannot_expand_policy_capability() -> None:
 
 
 def test_resolve_report_policy_uses_context_when_explicit_not_passed() -> None:
-    report = ReportCollector(run_id="r-policy", command="mapping")
     policy = ReportPolicy.minimal()
-    report.set_context(
-        "report_policy",
-        policy.to_context_payload(
-            cli_include_skipped=True,
-            effective_include_skipped_items=False,
-        ),
+    policy_context = policy.to_context_payload(
+        cli_include_skipped=True,
+        effective_include_skipped_items=False,
     )
 
-    resolved = resolve_report_policy(report)
+    resolved = resolve_report_policy(policy_context)
 
     assert resolved.profile == ReportPolicyProfile.MINIMAL
 
 
 def test_resolve_report_policy_prefers_explicit_policy() -> None:
-    report = ReportCollector(run_id="r-policy-explicit", command="mapping")
-    report.set_context(
-        "report_policy",
-        ReportPolicy.minimal().to_context_payload(
-            cli_include_skipped=True,
-            effective_include_skipped_items=False,
-        ),
+    policy_context = ReportPolicy.minimal().to_context_payload(
+        cli_include_skipped=True,
+        effective_include_skipped_items=False,
     )
     explicit = ReportPolicy.debug()
 
-    resolved = resolve_report_policy(report, explicit)
+    resolved = resolve_report_policy(policy_context, explicit)
 
     assert resolved.profile == ReportPolicyProfile.DEBUG

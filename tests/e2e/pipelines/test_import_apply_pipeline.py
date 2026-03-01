@@ -12,7 +12,10 @@ from connector.infra.target.providers.ankey_rest.payloads import (
     build_user_upsert_payload,
 )
 from connector.domain.planning.plan_builder import PlanBuilder
-from connector.domain.reporting.collector import ReportCollector
+from connector.domain.reporting.assembler import ReportAssembler
+from connector.domain.reporting.context import InMemoryReportContext
+from connector.domain.reporting.events import SetMetaEvent
+from connector.domain.reporting.sink import ReportSink
 from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
 from connector.datasets.employees.spec import make_employees_spec
 from connector.main import app
@@ -223,9 +226,11 @@ def test_import_apply_stop_on_first_error():
     assert apply_result.primary_code != SystemErrorCode.OK
     assert apply_result.summary.failed == 1
 
-    report = ReportCollector(run_id="r", command="import-apply")
-    ApplyReportPresenter.present(apply_result, report, plan)
-    assert report.build().summary.ops.get("apply_failed", {}).get("failed") == 1
+    context = InMemoryReportContext(run_id="r", command="import-apply")
+    sink = ReportSink(context)
+    assembler = ReportAssembler(context=context)
+    ApplyReportPresenter.present(apply_result, sink, plan)
+    assert assembler.assemble().summary.ops.get("apply_failed", {}).get("failed") == 1
 
 def test_import_apply_max_actions_limits_requests():
     items = [
@@ -532,9 +537,11 @@ def test_apply_report_items_include_dataset():
     )
     assert apply_result.primary_code != SystemErrorCode.OK
 
-    report = ReportCollector(run_id="r", command="import-apply")
-    report.set_meta(dataset=dataset)
-    ApplyReportPresenter.present(apply_result, report, plan)
-    built = report.build()
+    context = InMemoryReportContext(run_id="r", command="import-apply")
+    sink = ReportSink(context)
+    assembler = ReportAssembler(context=context)
+    sink.emit(SetMetaEvent(dataset=dataset))
+    ApplyReportPresenter.present(apply_result, sink, plan)
+    built = assembler.assemble()
     assert built.meta.dataset == dataset
     assert built.items

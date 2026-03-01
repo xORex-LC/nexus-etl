@@ -2,7 +2,10 @@ import logging
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform_dsl import load_mapping_spec_for_dataset
-from connector.infra.artifacts.report_writer import createEmptyReport
+from connector.domain.reporting.assembler import ReportAssembler
+from connector.domain.reporting.context import InMemoryReportContext
+from connector.domain.reporting.policy import ReportPolicy
+from connector.domain.reporting.sink import ReportSink
 from connector.usecases.mapping_usecase import MappingUseCase
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.transform.stages.stages import MapStage, PipelineOrchestrator
@@ -21,7 +24,8 @@ def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:
 
 def _run_mapping(records: list[SourceRecord]):
     usecase = MappingUseCase(report_items_limit=50, include_mapped_items=True)
-    report = createEmptyReport(runId="run-1", command="mapping", configSources=[])
+    context = InMemoryReportContext(run_id="run-1", command="mapping")
+    sink = ReportSink(context)
     map_stage = MapStage(MapperEngine.from_dataset(catalog=CATALOG, dataset="employees"), CATALOG)
     pipeline = PipelineOrchestrator([map_stage])
     row_source = records
@@ -31,10 +35,11 @@ def _run_mapping(records: list[SourceRecord]):
         dataset="employees",
         logger=logging.getLogger("mapping-test"),
         run_id="run-1",
-        report=report,
+        report_sink=sink,
+        report_policy=ReportPolicy.standard(),
         catalog=CATALOG,
     )
-    return result, report
+    return result, ReportAssembler(context=context).assemble()
 
 
 def test_mapping_reports_missing_match_key():

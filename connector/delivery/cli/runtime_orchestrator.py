@@ -27,11 +27,11 @@ from connector.domain.diagnostics.command_result import CommandResult as DomainC
 from connector.domain.dsl.diagnostics import translate_dsl_load_error
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.reporting.assembler import ReportAssembler
-from connector.domain.reporting.bridge import ReportWritePortBridge
 from connector.domain.reporting.context import InMemoryReportContext
 from connector.domain.reporting.contracts import ReportContextKey
+from connector.domain.reporting.events import FinishEvent, SetContextEvent, SetMetaEvent
 from connector.domain.reporting.policy import ReportPolicy
-from connector.domain.reporting.sink import ReportSink
+from connector.domain.reporting.sink import NullReportSink, ReportSink
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.artifacts.report_renderer import JsonReportRenderer
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
@@ -42,7 +42,6 @@ from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.containers import AppContainer
 from connector.delivery.cli.runtime_contracts import (
     CommandHandler,
-    NullReportWritePort,
     RuntimeErrorWithCode,
     RuntimeExecutionResult,
 )
@@ -73,7 +72,7 @@ def run_with_report(
         Унифицированная обвязка выполнения команд с report lifecycle.
 
     Contract:
-        - Handler вызывается строго с тремя аргументами `(ctx, opts, report_port)`.
+        - Handler вызывается строго с тремя аргументами `(ctx, opts, report_sink)`.
         - Result-to-report mapping выполняется через injected mapper.
     """
     app_config = require_app_settings(ctx)
@@ -93,16 +92,9 @@ def run_with_report(
     report_context = InMemoryReportContext(run_id=run_id, command=command_name)
     report_sink = ReportSink(report_context)
     report_assembler = ReportAssembler(context=report_context)
-    # Совместимость: до полного cutover producers продолжают работать через
-    # ReportWritePortBridge, который транслирует legacy API в sink.emit(event).
-    report = ReportWritePortBridge(
-        sink=report_sink,
-        context=report_context,
-        assembler=report_assembler,
-    )
     sources = config_sources(ctx)
     if sources:
-        report.set_context(ReportContextKey.CONFIG, {"sources": sources})
+        report_sink.emit(SetContextEvent(name=ReportContextKey.CONFIG, value={"sources": sources}))
     report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
     cli_include_skipped_raw = get_opt(opts, ("report_include_skipped",))
     cli_include_skipped = (
@@ -111,22 +103,24 @@ def run_with_report(
         else bool(cli_include_skipped_raw)
     )
     effective_include_skipped_items = report_policy.resolve_include_skipped_items(cli_include_skipped)
-    report.set_context(
-        ReportContextKey.REPORT_POLICY,
-        report_policy.to_context_payload(
-            cli_include_skipped=cli_include_skipped,
-            effective_include_skipped_items=effective_include_skipped_items,
-        ),
+    report_sink.emit(
+        SetContextEvent(
+            name=ReportContextKey.REPORT_POLICY,
+            value=report_policy.to_context_payload(
+                cli_include_skipped=cli_include_skipped,
+                effective_include_skipped_items=effective_include_skipped_items,
+            ),
+        )
     )
 
     csv_path = get_opt(opts, ("csv_path", "csv", "input_csv"))
     if csv_path:
-        report.set_context(ReportContextKey.INPUT, {"csv_path": Path(csv_path).name})
+        report_sink.emit(SetContextEvent(name=ReportContextKey.INPUT, value={"csv_path": Path(csv_path).name}))
 
     report_items_limit = get_opt(opts, ("report_items_limit", "items_limit"))
     if report_items_limit is None:
         report_items_limit = observability.report_items_limit
-    report.set_meta(items_limit=report_items_limit)
+    report_sink.emit(SetMetaEvent(items_limit=report_items_limit))
 
     original_stdout = sys.stdout
     original_stderr = sys.stderr
@@ -159,7 +153,8 @@ def run_with_report(
         if init_result is not None:
             exit_result = init_result
             apply_result_to_report(
-                report,
+                report_sink,
+                report_context,
                 exit_result,
                 command_name=command_name,
                 source="runtime_init",
@@ -167,9 +162,10 @@ def run_with_report(
             )
         else:
             bound_ctx = bind_context_with_container(ctx, container=container)
-            exit_result = handler(bound_ctx, opts, report)
+            exit_result = handler(bound_ctx, opts, report_sink)
             apply_result_to_report(
-                report,
+                report_sink,
+                report_context,
                 exit_result,
                 command_name=command_name,
                 source="handler_result",
@@ -190,7 +186,8 @@ def run_with_report(
         result.add_diagnostics(diags, ctx.catalog)
         exit_result = result
         apply_result_to_report(
-            report,
+            report_sink,
+            report_context,
             exit_result,
             command_name=command_name,
             source="settings_load_error",
@@ -210,7 +207,8 @@ def run_with_report(
         result.add_diagnostics([diag], ctx.catalog)
         exit_result = result
         apply_result_to_report(
-            report,
+            report_sink,
+            report_context,
             exit_result,
             command_name=command_name,
             source="dsl_load_error",
@@ -226,7 +224,8 @@ def run_with_report(
             details={"runtime_exit_code": exc.exit_code, "runtime_error": "RuntimeErrorWithCode"},
         )
         apply_result_to_report(
-            report,
+            report_sink,
+            report_context,
             exit_result,
             command_name=command_name,
             source="runtime_validation_error",
@@ -242,7 +241,8 @@ def run_with_report(
             details={"runtime_error": exc.__class__.__name__},
         )
         apply_result_to_report(
-            report,
+            report_sink,
+            report_context,
             exit_result,
             command_name=command_name,
             source="runtime_exception",
@@ -258,7 +258,8 @@ def run_with_report(
             )
             if shutdown_result is not None:
                 apply_result_to_report(
-                    report,
+                    report_sink,
+                    report_context,
                     shutdown_result,
                     command_name=command_name,
                     source="runtime_shutdown",
@@ -268,7 +269,8 @@ def run_with_report(
                 exit_result = shutdown_result
 
             finalize_result = finalize_report_artifacts(
-                report=report,
+                report_sink=report_sink,
+                report_assembler=report_assembler,
                 start_monotonic=start_monotonic,
                 paths=paths,
                 log_file_path=log_file_path,
@@ -279,7 +281,8 @@ def run_with_report(
             )
             if finalize_result is not None:
                 apply_result_to_report(
-                    report,
+                    report_sink,
+                    report_context,
                     finalize_result,
                     command_name=command_name,
                     source="runtime_finalize",
@@ -311,7 +314,7 @@ def run_without_report(
         Унифицированная обвязка выполнения команд без рендеринга report.
 
     Contract:
-        Handler вызывается по тому же 3-arg контракту с `NullReportWritePort`.
+        Handler вызывается по тому же 3-arg контракту с `NullReportSink`.
     """
     app_config = require_app_settings(ctx)
     paths = app_config.paths
@@ -359,7 +362,7 @@ def run_without_report(
             exit_result = init_result
         else:
             bound_ctx = bind_context_with_container(ctx, container=container)
-            exit_result = handler(bound_ctx, opts, NullReportWritePort())
+            exit_result = handler(bound_ctx, opts, NullReportSink())
 
     except SettingsLoadError as exc:
         stage = stage_for_command(command_name)
@@ -497,7 +500,8 @@ def shutdown_container_resources(
 
 def finalize_report_artifacts(
     *,
-    report,
+    report_sink,
+    report_assembler: ReportAssembler,
     start_monotonic: float,
     paths,
     log_file_path: str,
@@ -511,16 +515,18 @@ def finalize_report_artifacts(
     """
     try:
         duration_ms = getDurationMs(start_monotonic, time.monotonic())
-        report.set_context(
-            ReportContextKey.RUNTIME,
-            {
-                "log_file": log_file_path,
-                "cache_dir": paths.cache_dir,
-                "report_dir": paths.report_dir,
-            },
+        report_sink.emit(
+            SetContextEvent(
+                name=ReportContextKey.RUNTIME,
+                value={
+                    "log_file": log_file_path,
+                    "cache_dir": paths.cache_dir,
+                    "report_dir": paths.report_dir,
+                },
+            )
         )
-        report.finish(duration_ms=duration_ms)
-        envelope = report.build()
+        report_sink.emit(FinishEvent(duration_ms=duration_ms))
+        envelope = report_assembler.assemble()
         report_path = JsonReportRenderer().render(
             envelope=envelope,
             report_dir=paths.report_dir,

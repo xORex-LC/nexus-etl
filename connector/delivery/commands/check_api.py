@@ -10,6 +10,7 @@ from connector.delivery.commands.common import result_with
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.reporting.contracts import ReportContextKey
+from connector.domain.reporting.events import SetContextEvent
 from connector.infra.logging.setup import logEvent
 
 
@@ -25,7 +26,7 @@ def _runtime_context(build_result) -> dict[str, str]:
     }
 
 
-def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResult:
     app_config = ctx.app_config
     if app_config is None:
         raise ValueError("App settings are not initialized")
@@ -34,7 +35,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     build_result = ctx.container.target.runtime()
     runtime = build_result.runtime
 
-    report.set_context(ReportContextKey.TARGET_RUNTIME, _runtime_context(build_result))
+    report_sink.emit(SetContextEvent(name=ReportContextKey.TARGET_RUNTIME, value=_runtime_context(build_result)))
     result = runtime.check()
     target_meta = runtime.meta()
 
@@ -43,13 +44,15 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
             ctx.logger, logging.INFO, run_id, "api",
             f"api ok endpoint={target_meta.endpoint} latency_ms={result.latency_ms}",
         )
-        report.set_context(
-            ReportContextKey.APPLY_TARGET,
-            {
-                "target_type": target_meta.target_type,
-                "transport": target_meta.transport,
-                "target_runtime_mode": build_result.effective_mode,
-            },
+        report_sink.emit(
+            SetContextEvent(
+                name=ReportContextKey.APPLY_TARGET,
+                value={
+                    "target_type": target_meta.target_type,
+                    "transport": target_meta.transport,
+                    "target_runtime_mode": build_result.effective_mode,
+                },
+            )
         )
         return result_with(SystemErrorCode.OK)
 

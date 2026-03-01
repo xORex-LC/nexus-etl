@@ -1,6 +1,6 @@
 # REPORT-PROBLEM-005: Перегруженный runtime orchestrator и неявный контракт command handlers
 
-> **Статус**: Открыта
+> **Статус**: Закрыто
 > **Дата создания**: 2026-03-02
 > **Затронутые компоненты**: `connector/delivery/cli/runtime.py`, command handlers, `CliCommandResult`, `DomainCommandResult`
 
@@ -101,3 +101,4 @@
 |------|---------|
 | 2026-03-02 | Проблема зафиксирована |
 | 2026-03-02 | Решение принято в REPORT-DEC-005 |
+| 2026-03-02 | Проблема закрыта: runtime декомпозирован, reflection dispatch удален, контракт handler зафиксирован |

@@ -1,6 +1,6 @@
 # REPORT-PROBLEM-007: Report schema contract gap (v2), typed context и skipped-reporting
 
-> **Статус**: Открыта
+> **Статус**: Закрыто
 > **Дата создания**: 2026-03-02
 > **Затронутые компоненты**: `ReportMeta`, `ReportSummary`, `ReportItem`, `RowRef`, `import_plan`, `ReportCollector`
 
@@ -101,3 +101,4 @@
 |------|---------|
 | 2026-03-02 | Проблема зафиксирована |
 | 2026-03-02 | Решение принято в REPORT-DEC-007 |
+| 2026-03-02 | Проблема закрыта: schema v2 внедрена, skipped-contract и typed context реализованы |

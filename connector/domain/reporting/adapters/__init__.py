@@ -4,8 +4,7 @@
 Boundary:
     - Модуль владеет адаптацией `TransformResult -> report item/context stats`.
     - Не владеет orchestration команд и не управляет runtime lifecycle.
-    - Legacy wrappers в `transform/core/result_processor.py` должны только
-      делегировать в этот пакет (DEC-002 compatibility window).
+    - Является единственным владельцем stage-level report адаптации.
 """
 
 from connector.domain.reporting.adapters.payload_sanitizer import PayloadSanitizer

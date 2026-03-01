@@ -1,6 +1,6 @@
 # REPORT-PROBLEM-002: Дублирование ResultProcessor и утечка report-адаптера в transform/core
 
-> **Статус**: Открыта
+> **Статус**: Закрыто
 > **Дата создания**: 2026-03-01
 > **Затронутые компоненты**: `TransformResultProcessor`, `PlanningResultProcessor`, `MatchUseCase`, `ResolveUseCase`, `ReportCollector`
 
@@ -103,3 +103,4 @@
 |------|---------|
 | 2026-03-01 | Проблема зафиксирована |
 | 2026-03-01 | Решение принято в REPORT-DEC-002 |
+| 2026-03-02 | Проблема закрыта: legacy alias удалены, canonical StageResultReporter остался единственным путем |

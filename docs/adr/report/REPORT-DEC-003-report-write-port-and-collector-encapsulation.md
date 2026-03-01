@@ -4,6 +4,7 @@
 > **Дата принятия**: 2026-03-02
 > **Решает проблему**: REPORT-PROBLEM-003
 > **Участники решения**: @xORex-LC
+> **Состояние реализации**: Завершено (2026-03-02), bridge удалён после release+1
 
 ---
 
@@ -11,7 +12,7 @@
 
 `ReportCollector` используется как центральный аккумулятор отчёта, но часть компонентов обновляет его напрямую, обходя инварианты.  
 Для надёжной изоляции report-слоя нужен единый write-boundary и запрет bypass-мутаций.
-Этот шаг фиксируется как переходный слой совместимости до полного event-driven ingestion через `IReportSink` (`REPORT-DEC-001`).
+Этот шаг был зафиксирован как переходный слой совместимости до полного event-driven ingestion через `IReportSink` (`REPORT-DEC-001`); окно совместимости закрыто в post-window cleanup.
 
 ---
 
@@ -24,7 +25,7 @@
 3. Перевести `ApplyReportPresenter` и другие внешние writers на этот контракт.
 4. Возвращать из `ReportCollector.build()` snapshot, исключающий пост-фактум мутацию собранного отчёта.
 5. Добавить архитектурные guardrails (tests/lint rules) на запрет direct mutation вне `collector.py`.
-6. Явно зафиксировать `ReportWritePort` как переходный bridge: целевой публичный API пополнения отчёта — `IReportSink.emit(...)`, а `ReportWritePort` удаляется после migration-window.
+6. Явно зафиксировать `ReportWritePort` как переходный bridge: целевой публичный API пополнения отчёта — `IReportSink.emit(...)`; после migration-window bridge удаляется.
 
 ---
 
@@ -34,7 +35,7 @@
 
 **Новые классы/модули**:
 - `connector/domain/reporting/ports.py`
-  - `ReportWritePort` (Protocol, transition bridge)
+  - `ReportWritePort` (Protocol, transition bridge; удалён после release+1)
 - `connector/domain/reporting/snapshots.py`
   - snapshot helpers для safe-build (или эквивалентная реализация внутри collector)
 
@@ -43,7 +44,7 @@
   - явная инкапсуляция write-операций;
   - `build()` возвращает snapshot, не “живые” mutable ссылки.
 - `connector/delivery/presenters/apply_report_presenter.py`
-  - работает через `ReportWritePort`, без прямой мутации `collector.summary/items/status/context`.
+  - migration-этап: через `ReportWritePort`; итоговый этап: через `IReportSink`, без прямой мутации `collector.summary/items/status/context`.
 
 ### Интерфейсы
 
@@ -94,9 +95,9 @@ UseCase / Presenter / Runtime
 
 | Файл | Изменение |
 |------|-----------|
-| `connector/domain/reporting/ports.py` | Новый `ReportWritePort` |
+| `connector/domain/reporting/ports.py` | Исторический bridge-контракт `ReportWritePort` (удалён после release+1) |
 | `connector/domain/reporting/collector.py` | Инкапсуляция write-path и snapshot build |
-| `connector/delivery/presenters/apply_report_presenter.py` | Миграция на `ReportWritePort` |
+| `connector/delivery/presenters/apply_report_presenter.py` | Миграция с direct mutation -> bridge -> canonical `IReportSink` |
 | `tests/unit/reporting/*` | Тесты инвариантов и snapshot-поведения |
 | `tests/unit/delivery/*` | Тесты presenter без direct mutation |
 
@@ -120,7 +121,7 @@ UseCase / Presenter / Runtime
 **Тесты**:
 - ✅ Unit: `ReportCollector` сохраняет консистентность summary/status только через свой API.
 - ✅ Unit: `build()` возвращает snapshot, изоляция от последующих мутаций writer-состояния.
-- ✅ Unit: `ApplyReportPresenter` пишет через `ReportWritePort`.
+- ✅ Unit: `ApplyReportPresenter` не выполняет direct mutation и пишет через canonical write boundary.
 - ✅ Regression: устранение direct mutation паттернов в delivery presenters.
 
 **Проверка в runtime**:
@@ -145,8 +146,7 @@ UseCase / Presenter / Runtime
 ## ⚠️ Риски и ограничения
 
 **Известные ограничения**:
-- На переходе возможен coexistence старых и новых путей до полного перевода.
-- До завершения миграции сохраняется bridge-контракт `ReportWritePort`.
+- Решение носило переходный характер до полного event-driven cutover.
 
 **Риски**:
 - ⚠️ Legacy код может снова добавить bypass-мутации  
@@ -196,3 +196,4 @@ UseCase / Presenter / Runtime
 |------|---------|
 | 2026-03-02 | Решение предложено |
 | 2026-03-02 | Решение принято после обсуждения |
+| 2026-03-02 | Завершен post-window cleanup: `ReportWritePort` bridge удалён, canonical ingestion работает через `IReportSink.emit(...)` |

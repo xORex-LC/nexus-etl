@@ -1,5 +1,5 @@
 """Purpose:
-    Canonical adapter `TransformResult -> ReportWritePort` для stage-reporting.
+    Canonical adapter `TransformResult -> ReportEvent` для stage-reporting.
 
 Boundary:
     - Владеет row-level адаптацией и stage counters.
@@ -19,9 +19,10 @@ from connector.domain.reporting.adapters.stats_accumulator import (
 )
 from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus
 from connector.domain.reporting.adapters.strategies import IStageReportStrategy
+from connector.domain.reporting.events import AddItemEvent, SetContextEvent
 from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.reporting.diagnostics import split_report_diagnostics
-from connector.domain.reporting.ports import ReportWritePort
+from connector.domain.reporting.sink import IReportSink
 
 if TYPE_CHECKING:
     from connector.domain.transform.core.result import TransformResult
@@ -33,14 +34,14 @@ class StageResultReporter:
 
     Contract:
         - Применяет stage policy фильтрации diagnostics.
-        - Записывает row-items только через ReportWritePort.
+        - Записывает row-items только через IReportSink.
         - Публикует stage context через `publish_context()`.
     """
 
     def __init__(
         self,
         *,
-        report: ReportWritePort,
+        sink: IReportSink,
         report_policy: ReportPolicy,
         include_items: bool,
         context_key: ReportContextKey | str,
@@ -52,7 +53,7 @@ class StageResultReporter:
         stats_accumulator: ExecutionStatsAccumulator | None = None,
         payload_sanitizer: PayloadSanitizer | None = None,
     ) -> None:
-        self.report = report
+        self._sink = sink
         self.report_policy = report_policy
         self.include_items = self.report_policy.resolve_include_ok_items(include_items)
         self.context_key = context_key
@@ -82,7 +83,7 @@ class StageResultReporter:
             1) Применить skip-policy strategy.
             2) Отфильтровать diagnostics до stage scope.
             3) Посчитать статус по stage-local ошибкам (stage-only policy).
-            4) Обновить counters и записать item через ReportWritePort.
+            4) Обновить counters и записать item через IReportSink.
         """
         if self.strategy.should_skip(result):
             return
@@ -150,14 +151,17 @@ class StageResultReporter:
         )
 
         report_errors, report_warnings = split_report_diagnostics(eff_errors, eff_warnings)
-        self.report.add_item(
-            status=status,
-            row_ref=effective_row_ref,
-            payload=row_payload,
-            errors=report_errors,
-            warnings=report_warnings,
-            meta=meta,
-            store=should_store,
+        self._sink.emit(
+            AddItemEvent(
+                status=status,
+                row_ref=effective_row_ref,
+                payload=row_payload,
+                errors=tuple(report_errors),
+                warnings=tuple(report_warnings),
+                meta=meta,
+                store=should_store,
+                preaggregated=False,
+            )
         )
 
     def snapshot(self) -> StageExecutionStats:
@@ -171,12 +175,14 @@ class StageResultReporter:
             Записать stage counters в report.context и вернуть snapshot.
         """
         snapshot = self.snapshot()
-        self.report.set_context(
-            self.context_key,
-            snapshot.to_context_payload(
-                ok_label=self.ok_label,
-                failed_label=self.failed_label,
-            ),
+        self._sink.emit(
+            SetContextEvent(
+                name=self.context_key,
+                value=snapshot.to_context_payload(
+                    ok_label=self.ok_label,
+                    failed_label=self.failed_label,
+                ),
+            )
         )
         return snapshot
 

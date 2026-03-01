@@ -19,7 +19,8 @@ from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus
-from connector.domain.reporting.policy import resolve_report_policy
+from connector.domain.reporting.events import AddItemEvent, SetMetaEvent, SetRowCountersEvent
+from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
     VaultStartupKeyValidationError,
@@ -57,7 +58,7 @@ _STARTUP_ERRORS = (
 )
 
 
-def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> CommandResult:
     """
     Назначение:
         Запустить сценарий import-plan через CLI handler.
@@ -121,8 +122,9 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
             dataset_name,
             strict=app_config.observability.diagnostics_strict,
         )
-        if report is not None:
-            report.set_meta(dataset=dataset_name)
+        report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
+        if report_sink is not None:
+            report_sink.emit(SetMetaEvent(dataset=dataset_name))
 
         pipeline = ctx.container.pipeline
         with pipeline.dataset_spec.override(_spec), \
@@ -141,15 +143,15 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
                 report_items_limit=report_items_limit_value,
             ) as resolved_rows:
                 effective_include_skipped = _resolve_effective_include_skipped_items(
-                    report=report,
                     opts=opts,
                     app_config=app_config,
+                    report_policy=report_policy,
                 )
                 on_skipped_row = None
-                if report is not None:
+                if report_sink is not None:
                     def _on_skipped_row(resolved_row) -> None:
                         _emit_skipped_report_item(
-                            report=report,
+                            report_sink=report_sink,
                             row_ref=resolved_row.row_ref,
                             store=effective_include_skipped,
                         )
@@ -158,13 +160,15 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
                     resolved_rows,
                     on_skipped_row=on_skipped_row,
                 )
-                if report is not None:
-                    report.set_row_counters(
-                        rows_total=plan_result.summary.rows_total,
-                        rows_passed=plan_result.summary.planned_create + plan_result.summary.planned_update,
-                        rows_blocked=plan_result.summary.failed_rows,
-                        rows_with_warnings=0,
-                        rows_skipped=plan_result.summary.skipped,
+                if report_sink is not None:
+                    report_sink.emit(
+                        SetRowCountersEvent(
+                            rows_total=plan_result.summary.rows_total,
+                            rows_passed=plan_result.summary.planned_create + plan_result.summary.planned_update,
+                            rows_blocked=plan_result.summary.failed_rows,
+                            rows_with_warnings=0,
+                            rows_skipped=plan_result.summary.skipped,
+                        )
                     )
 
             plan_meta = {
@@ -183,7 +187,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
             logEvent(ctx.logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
             result = CommandResult()
             result.add_code(SystemErrorCode.OK)
-            attach_dictionary_report_snapshot_if_available(ctx=ctx, report=report)
+            attach_dictionary_report_snapshot_if_available(ctx=ctx, report_sink=report_sink)
             return result
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
@@ -215,32 +219,33 @@ def _dataset_requires_vault(dataset_spec) -> bool:
     return False
 
 
-def _emit_skipped_report_item(*, report, row_ref, store: bool) -> None:
-    report.add_item_preaggregated(
-        status=ReportItemStatus.SKIPPED,
-        row_ref=row_ref,
-        payload=None,
-        errors=[],
-        warnings=[],
-        meta={"op": "skip"},
-        store=store,
+def _emit_skipped_report_item(*, report_sink, row_ref, store: bool) -> None:
+    report_sink.emit(
+        AddItemEvent(
+            status=ReportItemStatus.SKIPPED,
+            row_ref=row_ref,
+            payload=None,
+            errors=(),
+            warnings=(),
+            meta={"op": "skip"},
+            store=store,
+            preaggregated=True,
+        )
     )
 
 
-def _resolve_effective_include_skipped_items(*, report, opts: Options, app_config) -> bool:
-    if report is None:
-        return False
-    policy_context = report.get_context(ReportContextKey.REPORT_POLICY, {})
-    if isinstance(policy_context, dict):
-        resolved = policy_context.get("effective_include_skipped_items")
-        if isinstance(resolved, bool):
-            return resolved
+def _resolve_effective_include_skipped_items(
+    *,
+    opts: Options,
+    app_config,
+    report_policy: ReportPolicy,
+) -> bool:
     cli_include_skipped = (
         app_config.observability.report_include_skipped
         if opts.report_include_skipped is None
         else bool(opts.report_include_skipped)
     )
-    return resolve_report_policy(report).resolve_include_skipped_items(cli_include_skipped)
+    return report_policy.resolve_include_skipped_items(cli_include_skipped)
 
 
 __all__ = ["handler", "Options"]
