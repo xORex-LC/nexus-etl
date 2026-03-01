@@ -162,7 +162,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     target_meta = runtime.meta()
     endpoint = target_meta.endpoint
 
-    report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
+    report.set_meta(dataset=dataset_name)
     report.set_context(
         "apply",
         {

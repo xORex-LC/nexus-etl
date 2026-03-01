@@ -49,6 +49,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     include_matched_items_value = (
         opts.include_matched_items if opts.include_matched_items is not None else False
     )
+    report.set_meta(dataset=dataset_name)
 
     try:
         pipeline = ctx.container.pipeline

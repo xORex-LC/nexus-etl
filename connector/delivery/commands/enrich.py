@@ -114,7 +114,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         dataset_name,
         strict=app_config.observability.diagnostics_strict,
     )
-    report.set_meta(dataset=dataset_name, items_limit=report_items_limit_value)
+    report.set_meta(dataset=dataset_name)
     report.set_context(
         "vault_rollout",
         {

@@ -36,8 +36,6 @@ class EnrichUseCase:
         report,
         catalog: ErrorCatalog,
     ) -> CommandResult:
-        report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
-
         reporter = StageResultReporter(
             report=report,
             include_items=self.include_enriched_items,

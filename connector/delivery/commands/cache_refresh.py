@@ -56,6 +56,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
         if unsupported_result is not None:
             return unsupported_result
+        if opts.dataset is not None:
+            report.set_meta(dataset=opts.dataset)
 
         build_result = ctx.container.target.runtime()
         runtime = build_result.runtime

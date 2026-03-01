@@ -118,6 +118,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report=None) -> CommandResu
             dataset_name,
             strict=app_config.observability.diagnostics_strict,
         )
+        if report is not None:
+            report.set_meta(dataset=dataset_name)
 
         pipeline = ctx.container.pipeline
         with pipeline.dataset_spec.override(_spec), \

@@ -95,10 +95,6 @@ def run_with_report(
         report_items_limit = observability.report_items_limit
     report.set_meta(items_limit=report_items_limit)
 
-    dataset = resolve_dataset_opt(opts, app_config)
-    if dataset is not None:
-        report.set_meta(dataset=dataset)
-
     original_stdout = sys.stdout
     original_stderr = sys.stderr
 
