@@ -48,7 +48,6 @@ class CacheCommandService:
     ) -> CommandResult:
         if self.cache_refresh is None:
             raise ValueError("Cache refresh usecase is not configured")
-        report.set_meta(dataset=dataset, items_limit=report_items_limit)
         summary = self.cache_refresh.refresh(
             page_size=page_size,
             max_pages=max_pages,
@@ -84,7 +83,6 @@ class CacheCommandService:
     ) -> CommandResult:
         try:
             status = self.cache_status.status(dataset=dataset)
-            report.set_meta(dataset=dataset)
             report.set_context("cache_status", {"status": status})
             return CommandResult(summary=status)
         except Exception as exc:
@@ -113,7 +111,6 @@ class CacheCommandService:
                 "cache",
                 f"cache clear: {cleared}",
             )
-            report.set_meta(dataset=dataset)
             report.set_context("cache_clear", {"cleared": cleared})
             return CommandResult(summary=cleared)
         except Exception as exc:

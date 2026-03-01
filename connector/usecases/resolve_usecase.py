@@ -104,7 +104,6 @@ class ResolveUseCase:
             - resolve_hooks должен триггерить pending_expiry.sweep() после
               завершения каждого micro-batch resolve-стадии.
         """
-        report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         resolver = resolve_stage.resolver
         _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
         reporter = StageResultReporter(

@@ -54,7 +54,6 @@ class MatchUseCase:
             MatchStage guard пропускает row=None записи — они попадают в iter_ok
             и отфильтровываются (имеют errors от upstream стадий).
         """
-        report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         reporter = StageResultReporter(
             report=report,
             include_items=self.include_matched_items,

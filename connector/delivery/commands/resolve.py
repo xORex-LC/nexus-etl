@@ -50,6 +50,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     include_resolved_items_value = (
         opts.include_resolved_items if opts.include_resolved_items is not None else False
     )
+    report.set_meta(dataset=dataset_name)
 
     try:
         pipeline = ctx.container.pipeline

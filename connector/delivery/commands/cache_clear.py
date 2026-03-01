@@ -33,6 +33,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
         if unsupported_result is not None:
             return unsupported_result
+        if opts.dataset is not None:
+            report.set_meta(dataset=opts.dataset)
         cache_clear = CacheClearUseCase(cache_roles.cache_admin)
         service = CacheCommandService(cache_roles.cache_admin, cache_clear=cache_clear)
         runtime_policy = cache_dsl_bundle.runtime.policy
