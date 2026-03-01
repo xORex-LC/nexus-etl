@@ -26,10 +26,14 @@ from connector.config.diagnostics import translate_settings_load_error
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.dsl.diagnostics import translate_dsl_load_error
 from connector.domain.dsl.issues import DslLoadError
+from connector.domain.reporting.assembler import ReportAssembler
+from connector.domain.reporting.bridge import ReportWritePortBridge
+from connector.domain.reporting.context import InMemoryReportContext
 from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.policy import ReportPolicy
+from connector.domain.reporting.sink import ReportSink
 from connector.domain.secrets.errors import VaultDomainError
-from connector.infra.artifacts.report_writer import createEmptyReport, finalizeReport, writeReportJson
+from connector.infra.artifacts.report_renderer import JsonReportRenderer
 from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve_source_location
@@ -86,7 +90,19 @@ def run_with_report(
     )
     ctx = replace(ctx, logger=logger)
 
-    report = createEmptyReport(runId=run_id, command=command_name, configSources=config_sources(ctx))
+    report_context = InMemoryReportContext(run_id=run_id, command=command_name)
+    report_sink = ReportSink(report_context)
+    report_assembler = ReportAssembler(context=report_context)
+    # Совместимость: до полного cutover producers продолжают работать через
+    # ReportWritePortBridge, который транслирует legacy API в sink.emit(event).
+    report = ReportWritePortBridge(
+        sink=report_sink,
+        context=report_context,
+        assembler=report_assembler,
+    )
+    sources = config_sources(ctx)
+    if sources:
+        report.set_context(ReportContextKey.CONFIG, {"sources": sources})
     report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
     cli_include_skipped_raw = get_opt(opts, ("report_include_skipped",))
     cli_include_skipped = (
@@ -490,19 +506,26 @@ def finalize_report_artifacts(
     logger: logging.Logger,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
-    """Purpose:
+    """Назначение:
         Финализировать report envelope и записать JSON artifact.
     """
     try:
         duration_ms = getDurationMs(start_monotonic, time.monotonic())
-        finalizeReport(
-            report=report,
-            durationMs=duration_ms,
-            logFile=log_file_path,
-            cacheDir=paths.cache_dir,
-            reportDir=paths.report_dir,
+        report.set_context(
+            ReportContextKey.RUNTIME,
+            {
+                "log_file": log_file_path,
+                "cache_dir": paths.cache_dir,
+                "report_dir": paths.report_dir,
+            },
         )
-        report_path = writeReportJson(report, paths.report_dir, f"report_{command_name}_{run_id}")
+        report.finish(duration_ms=duration_ms)
+        envelope = report.build()
+        report_path = JsonReportRenderer().render(
+            envelope=envelope,
+            report_dir=paths.report_dir,
+            file_base_name=f"report_{command_name}_{run_id}",
+        )
         logEvent(logger, logging.INFO, run_id, "report", f"Report written: {report_path}")
     except Exception as exc:
         logEvent(logger, logging.ERROR, run_id, "report", f"Report finalization failed: {exc}")

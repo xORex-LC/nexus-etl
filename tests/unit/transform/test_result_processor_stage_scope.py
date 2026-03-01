@@ -6,6 +6,8 @@ from connector.domain.models import (
     DiagnosticStage,
 )
 from connector.domain.reporting.collector import ReportCollector
+from connector.domain.reporting.contracts import ReportContextKey
+from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.result_processor import TransformResultProcessor
 from connector.domain.transform.core.source_record import SourceRecord
@@ -104,6 +106,13 @@ def test_stage_scoped_report_keeps_only_current_stage_diagnostics() -> None:
 
 def test_include_upstream_diagnostics_keeps_full_chain() -> None:
     report = ReportCollector(run_id="run-3", command="normalize")
+    report.set_context(
+        ReportContextKey.REPORT_POLICY,
+        ReportPolicy.debug().to_context_payload(
+            cli_include_skipped=True,
+            effective_include_skipped_items=True,
+        ),
+    )
     processor = TransformResultProcessor(
         report=report,
         include_items=True,

@@ -5,6 +5,10 @@ Boundary:
     - Владеет внутренним mutable state отчёта.
     - Предоставляет только API-методы записи (инкапсуляция DEC-003).
     - Не отвечает за runtime orchestration и не рендерит артефакт.
+
+Совместимость:
+    - Начиная с DEC-001 не является canonical owner ingestion-пайплайна.
+    - Сохраняется как legacy-адаптерный путь для обратной совместимости.
 """
 
 from __future__ import annotations

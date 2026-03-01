@@ -7,6 +7,10 @@ from typing import Any
 from connector.domain.reporting.collector import ReportCollector, asdict_report
 from connector.domain.reporting.contracts import ReportContextKey
 
+# Совместимость:
+#   Legacy writer поверх ReportCollector сохранён на переходный период DEC-001.
+#   Canonical event-driven рендеринг выполняется через `report_renderer.py`.
+
 def createEmptyReport(runId: str, command: str, configSources: list[str]) -> ReportCollector:
     """
     Назначение:
