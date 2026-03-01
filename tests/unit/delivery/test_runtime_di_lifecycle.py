@@ -24,6 +24,9 @@ from connector.config.models import AppConfig
 from connector.delivery.cli.context import CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli import runtime as runtime_module
+from connector.delivery.cli.runtime_contracts import NullReportWritePort
+from connector.delivery.cli import runtime_result_mapper as runtime_result_mapper_module
+from connector.delivery.cli.result import CommandResult as CliCommandResult
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -159,6 +162,51 @@ def test_run_without_report_sets_internal_error_on_teardown_only_failure(
     tmp_path: Path,
 ):
     fake = _FakeContainer(shutdown_exc=RuntimeError("shutdown failed"))
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_without_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: None,
+            requirements=Requirements(),
+        )
+
+    assert exc_info.value.exit_code == 2
+
+
+def test_run_without_report_passes_null_report_port_to_handler(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake = _FakeContainer()
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
+
+    def _handler(_ctx, _opts, report_port):
+        observed["report_port"] = report_port
+        return None
+
+    runtime_module.run_without_report(
+        ctx=_ctx(tmp_path),
+        command_name="mapping",
+        opts=SimpleNamespace(),
+        handler=_handler,
+        requirements=Requirements(),
+    )
+
+    assert isinstance(observed.get("report_port"), NullReportWritePort)
+
+
+def test_run_without_report_enforces_three_arg_handler_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake = _FakeContainer()
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
     monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
 
@@ -319,6 +367,50 @@ def test_apply_result_to_report_downgrades_secondary_failure_to_warning() -> Non
     assert len(report.items) == 1
     assert report.items[0].status == "OK"
     assert report.items[0].diagnostics[0].severity == "warning"
+
+
+def test_apply_result_to_report_legacy_paths_go_through_result_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = ReportCollector(run_id="r-adapter", command="mapping")
+    calls: list[str] = []
+
+    original_adapter = runtime_result_mapper_module.adapt_runtime_result
+
+    def _spy_adapter(value):
+        calls.append(type(value).__name__)
+        return original_adapter(value)
+
+    monkeypatch.setattr(runtime_result_mapper_module, "adapt_runtime_result", _spy_adapter)
+
+    runtime_module._apply_cli_result_to_report(
+        report,
+        CliCommandResult(status="error"),
+        command_name="mapping",
+        source="unit_test",
+        secondary=False,
+    )
+    runtime_module._apply_cli_result_to_report(
+        report,
+        2,
+        command_name="mapping",
+        source="unit_test",
+        secondary=False,
+    )
+
+    assert calls == ["CommandResult", "int"]
+
+
+def test_exit_code_from_result_supports_canonical_and_legacy_paths() -> None:
+    canonical_ok = CommandResult()
+    canonical_ok.add_code(SystemErrorCode.OK)
+    canonical_fail = CommandResult()
+    canonical_fail.add_code(SystemErrorCode.INTERNAL_ERROR)
+
+    assert runtime_module._exit_code_from_result(canonical_ok) == 0
+    assert runtime_module._exit_code_from_result(canonical_fail) == 2
+    assert runtime_module._exit_code_from_result(CliCommandResult(status="warn")) == 1
+    assert runtime_module._exit_code_from_result(3) == 3
 
 
 def test_run_with_report_materializes_init_failure_into_report(
