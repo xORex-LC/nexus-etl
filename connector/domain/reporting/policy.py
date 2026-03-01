@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
 
+from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.policy_matrix import REPORT_POLICY_PROFILE_MATRIX
 from connector.domain.reporting.ports import ReportWritePort
 
@@ -132,7 +133,7 @@ def resolve_report_policy(
     """
     if report_policy is not None:
         return report_policy
-    policy_context = report.get_context("report_policy", None)
+    policy_context = report.get_context(ReportContextKey.REPORT_POLICY, None)
     return ReportPolicy.from_context(policy_context)
 
 

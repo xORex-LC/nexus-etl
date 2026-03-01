@@ -14,6 +14,7 @@ from connector.common.time import getNowIso
 from connector.domain.cache_core import CacheDependencyGraph, CacheRefreshPlanner
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.models import DiagnosticStage
+from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error
 from connector.domain.reporting.diagnostics import split_report_diagnostics
@@ -160,7 +161,7 @@ class CacheRefreshUseCase:
                                     else:
                                         stats["skipped"] += 1
                                         report.add_item(
-                                            status="SKIPPED",
+                                            status=ReportItemStatus.SKIPPED,
                                             row_ref=None,
                                             payload=None,
                                             errors=[],
@@ -187,7 +188,7 @@ class CacheRefreshUseCase:
                                         key_values=mapped,
                                     )
                                 report.add_item(
-                                    status="OK",
+                                    status=ReportItemStatus.OK,
                                     row_ref=None,
                                     payload=None,
                                     errors=[],
@@ -217,7 +218,7 @@ class CacheRefreshUseCase:
                                     [],
                                 )
                                 report.add_item(
-                                    status="FAILED",
+                                    status=ReportItemStatus.FAILED,
                                     row_ref=None,
                                     payload=None,
                                     errors=report_errors,
@@ -266,7 +267,7 @@ class CacheRefreshUseCase:
             target_id = hashlib.sha256(api_base_url.encode("utf-8")).hexdigest()
 
         report.set_context(
-            "cache_refresh",
+            ReportContextKey.CACHE_REFRESH,
             {
                 "target_id": target_id,
                 "target_type": "http" if api_base_url else None,

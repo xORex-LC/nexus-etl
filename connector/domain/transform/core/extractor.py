@@ -47,7 +47,7 @@ class Extractor:
                 )
         except Exception as exc:  # noqa: BLE001
             row_ref = RowRef(
-                line_no=0,
+                line_no=None,
                 row_id="source",
                 identity_primary=None,
                 identity_value=None,

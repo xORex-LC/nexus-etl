@@ -7,6 +7,7 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.transform.stages.stages import PipelineOrchestrator
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.models import DiagnosticStage
+from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.adapters.result_policy import StageCommandResultResolver
 from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
 from connector.domain.reporting.adapters.strategies import TransformStageReportStrategy
@@ -42,7 +43,7 @@ class MappingUseCase:
             report=report,
             report_policy=report_policy,
             include_items=self.include_mapped_items,
-            context_key="mapping",
+            context_key=ReportContextKey.MAPPING,
             ok_label="mapped_ok",
             failed_label="mapping_failed",
             strategy=TransformStageReportStrategy(),

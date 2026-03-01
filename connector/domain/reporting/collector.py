@@ -15,6 +15,14 @@ from typing import Any, Iterable, Mapping
 
 from connector.common.time import getNowIso
 from connector.domain.models import DiagnosticStage, RowRef
+from connector.domain.reporting.contracts import (
+    ReportContextKey,
+    ReportItemStatus,
+    ReportOpKey,
+    normalize_context_key,
+    normalize_item_status,
+    normalize_op_key,
+)
 from connector.domain.reporting.models import (
     ReportDiagnostic,
     ReportEnvelope,
@@ -100,34 +108,38 @@ class ReportCollector:
         if git_rev is not None:
             self._meta.git_rev = git_rev
 
-    def set_context(self, name: str, value: dict[str, Any]) -> None:
+    def set_context(self, name: ReportContextKey | str, value: dict[str, Any]) -> None:
         """Purpose:
             Установить namespaced context block.
         """
-        self._context[name] = deepcopy(value)
+        key = normalize_context_key(name)
+        self._context[key] = deepcopy(value)
 
-    def get_context(self, name: str, default: Any = None) -> Any:
+    def get_context(self, name: ReportContextKey | str, default: Any = None) -> Any:
         """Purpose:
             Получить snapshot context block без утечки mutable ссылок.
         """
-        if name not in self._context:
+        key = normalize_context_key(name)
+        if key not in self._context:
             return deepcopy(default)
-        return deepcopy(self._context[name])
+        return deepcopy(self._context[key])
 
-    def add_op(self, name: str, *, ok: int = 0, failed: int = 0, count: int = 0) -> None:
+    def add_op(self, name: ReportOpKey | str, *, ok: int = 0, failed: int = 0, count: int = 0) -> None:
         """Purpose:
             Инкрементировать стандартные counters операции.
         """
-        entry = self._summary.ops.setdefault(name, {"ok": 0, "failed": 0, "count": 0})
+        op_name = normalize_op_key(name)
+        entry = self._summary.ops.setdefault(op_name, {"ok": 0, "failed": 0, "count": 0})
         entry["ok"] += ok
         entry["failed"] += failed
         entry["count"] += count
 
-    def merge_op_fields(self, name: str, values: Mapping[str, int]) -> None:
+    def merge_op_fields(self, name: ReportOpKey | str, values: Mapping[str, int]) -> None:
         """Purpose:
             Merge произвольных op-полей без прямой мутации summary.ops снаружи.
         """
-        entry = self._summary.ops.setdefault(name, {})
+        op_name = normalize_op_key(name)
+        entry = self._summary.ops.setdefault(op_name, {})
         for key, value in values.items():
             entry[str(key)] = int(value)
 
@@ -138,6 +150,7 @@ class ReportCollector:
         rows_passed: int,
         rows_blocked: int,
         rows_with_warnings: int,
+        rows_skipped: int = 0,
     ) -> None:
         """Purpose:
             Compatibility bridge для pre-aggregated сценариев (import-apply).
@@ -149,12 +162,13 @@ class ReportCollector:
         self._summary.rows_total = int(rows_total)
         self._summary.rows_passed = int(rows_passed)
         self._summary.rows_blocked = int(rows_blocked)
+        self._summary.rows_skipped = int(rows_skipped)
         self._summary.rows_with_warnings = int(rows_with_warnings)
 
     def add_item(
         self,
         *,
-        status: str,
+        status: ReportItemStatus | str,
         row_ref: RowRef | None = None,
         payload: Mapping[str, Any] | None = None,
         errors: Iterable[ReportDiagnostic] | None = None,
@@ -170,14 +184,17 @@ class ReportCollector:
             - Обновляет счётчики по статусу/diagnostics.
             - Учитывает items_limit и выставляет items_truncated.
         """
+        normalized_status = normalize_item_status(status)
         error_list = list(errors or [])
         warning_list = list(warnings or [])
 
         self._summary.rows_total += 1
-        if status == "FAILED":
+        if normalized_status == ReportItemStatus.FAILED:
             self._summary.rows_blocked += 1
-        elif status == "OK":
+        elif normalized_status == ReportItemStatus.OK:
             self._summary.rows_passed += 1
+        elif normalized_status == ReportItemStatus.SKIPPED:
+            self._summary.rows_skipped += 1
         if warning_list:
             self._summary.rows_with_warnings += 1
 
@@ -185,20 +202,20 @@ class ReportCollector:
 
         if store and self._should_store_item():
             self._append_item(
-                status=status,
+                status=normalized_status,
                 row_ref=row_ref,
                 payload=payload,
                 error_list=error_list,
                 warning_list=warning_list,
                 meta=meta,
             )
-        elif store and status in ("FAILED", "OK"):
+        elif store:
             self._meta.items_truncated = True
 
     def add_item_preaggregated(
         self,
         *,
-        status: str,
+        status: ReportItemStatus | str,
         row_ref: RowRef | None = None,
         payload: Mapping[str, Any] | None = None,
         errors: Iterable[ReportDiagnostic] | None = None,
@@ -217,15 +234,17 @@ class ReportCollector:
         error_list = list(errors or [])
         warning_list = list(warnings or [])
         self._count_diagnostics(error_list, warning_list)
-        if store:
+        if store and self._should_store_item():
             self._append_item(
-                status=status,
+                status=normalize_item_status(status),
                 row_ref=row_ref,
                 payload=payload,
                 error_list=error_list,
                 warning_list=warning_list,
                 meta=meta,
             )
+        elif store:
+            self._meta.items_truncated = True
 
     def set_items_truncated(self, value: bool = True) -> None:
         """Purpose:
@@ -293,7 +312,7 @@ class ReportCollector:
     def _append_item(
         self,
         *,
-        status: str,
+        status: ReportItemStatus,
         row_ref: RowRef | None,
         payload: Mapping[str, Any] | None,
         error_list: list[ReportDiagnostic],
@@ -342,7 +361,7 @@ def asdict_report(envelope: ReportEnvelope) -> dict[str, Any]:
         "summary": asdict(envelope.summary),
         "items": [
             {
-                "status": item.status,
+                "status": item.status.value,
                 "row_ref": asdict(item.row_ref) if item.row_ref else None,
                 "payload": item.payload,
                 "diagnostics": [asdict(diag) for diag in item.diagnostics],

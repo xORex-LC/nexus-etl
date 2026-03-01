@@ -15,6 +15,7 @@ from connector.domain.diagnostics.catalog import build_error
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.models import DiagnosticSeverity, DiagnosticStage
 from connector.domain.reporting.collector import ReportCollector
+from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus, normalize_item_status
 from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.reporting.models import ReportDiagnostic
 
@@ -140,7 +141,7 @@ def _apply_legacy_exit_code(
         secondary=secondary,
     )
     report.add_item(
-        status="FAILED" if errors else "OK",
+        status=ReportItemStatus.FAILED if errors else ReportItemStatus.OK,
         row_ref=None,
         payload=None,
         errors=errors,
@@ -166,7 +167,9 @@ def _apply_legacy_cli_result(
             warnings=report_warnings,
             secondary=secondary,
         )
-        item_status = "FAILED" if report_errors else ("OK" if secondary else item.get("status", "OK"))
+        item_status = ReportItemStatus.FAILED if report_errors else (
+            ReportItemStatus.OK if secondary else normalize_item_status(item.get("status", "OK"))
+        )
         report.add_item(
             status=item_status,
             row_ref=item.get("row_ref"),
@@ -189,7 +192,7 @@ def _apply_legacy_cli_result(
             secondary=secondary,
         )
         report.add_item(
-            status="FAILED" if report_errors else "OK",
+            status=ReportItemStatus.FAILED if report_errors else ReportItemStatus.OK,
             row_ref=None,
             payload=None,
             errors=report_errors,
@@ -198,7 +201,7 @@ def _apply_legacy_cli_result(
         )
 
     if result.stats:
-        report.set_context("stats", result.stats)
+        report.set_context(ReportContextKey.STATS, result.stats)
 
 
 def _apply_domain_result(
@@ -242,7 +245,7 @@ def _apply_domain_result(
 
     errors, warnings = _with_secondary_policy(errors=errors, warnings=warnings, secondary=secondary)
     report.add_item(
-        status="FAILED" if errors else "OK",
+        status=ReportItemStatus.FAILED if errors else ReportItemStatus.OK,
         row_ref=None,
         payload=None,
         errors=errors,

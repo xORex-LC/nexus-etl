@@ -7,6 +7,7 @@ from itertools import chain
 from typing import Iterable
 
 from connector.domain.models import DiagnosticStage, RowRef
+from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus, ReportOpKey
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.reporting.adapters.result_policy import StageCommandResultResolver
 from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
@@ -112,7 +113,7 @@ class ResolveUseCase:
             report=report,
             report_policy=report_policy,
             include_items=self.include_resolved_items,
-            context_key="resolve",
+            context_key=ReportContextKey.RESOLVE,
             ok_label="resolved_ok",
             failed_label="resolve_failed",
             strategy=PlanningStageReportStrategy(
@@ -213,7 +214,7 @@ def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
             field=item.field,
             message=item.reason or "pending link expired",
             record_ref=RowRef(
-                line_no=0,
+                line_no=None,
                 row_id=item.source_row_id,
                 identity_primary=None,
                 identity_value=None,
@@ -225,7 +226,7 @@ def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
         )
         if mode == "report_only":
             report.add_item(
-                status="OK",
+                status=ReportItemStatus.OK,
                 row_ref=diag.record_ref,
                 payload=None,
                 errors=report_errors,
@@ -236,10 +237,10 @@ def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
                 },
                 store=True,
             )
-            report.add_op("resolve_expired", ok=1, count=1)
+            report.add_op(ReportOpKey.RESOLVE_EXPIRED, ok=1, count=1)
             continue
         report.add_item(
-            status="FAILED",
+            status=ReportItemStatus.FAILED,
             row_ref=diag.record_ref,
             payload=None,
             errors=report_errors,
@@ -250,14 +251,14 @@ def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
             },
             store=True,
         )
-        report.add_op("resolve_expired", failed=1, count=1)
+        report.add_op(ReportOpKey.RESOLVE_EXPIRED, failed=1, count=1)
 
 
 def _count_special_ops(report, errors, warnings) -> None:
     if any(err.code == "RESOLVE_MAX_ATTEMPTS" for err in errors or []):
-        report.add_op("resolve_max_attempts", failed=1, count=1)
+        report.add_op(ReportOpKey.RESOLVE_MAX_ATTEMPTS, failed=1, count=1)
     if any(warn.code == "RESOLVE_PENDING" for warn in warnings or []):
-        report.add_op("resolve_pending", ok=1, count=1)
+        report.add_op(ReportOpKey.RESOLVE_PENDING, ok=1, count=1)
 
 
 def _resolve_transaction(resolve_stage: ResolveStage):

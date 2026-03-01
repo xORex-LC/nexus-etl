@@ -17,6 +17,7 @@ from connector.domain.reporting.adapters.stats_accumulator import (
     ExecutionStatsAccumulator,
     StageExecutionStats,
 )
+from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus
 from connector.domain.reporting.adapters.strategies import IStageReportStrategy
 from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.reporting.diagnostics import split_report_diagnostics
@@ -42,7 +43,7 @@ class StageResultReporter:
         report: ReportWritePort,
         report_policy: ReportPolicy,
         include_items: bool,
-        context_key: str,
+        context_key: ReportContextKey | str,
         ok_label: str,
         failed_label: str,
         strategy: IStageReportStrategy,
@@ -108,7 +109,7 @@ class StageResultReporter:
 
         # Stage-only policy: статус определяется только diagnostics текущей stage.
         has_errors = force_failed or bool(eff_errors)
-        status = "FAILED" if has_errors else "OK"
+        status = ReportItemStatus.FAILED if has_errors else ReportItemStatus.OK
         self._stats.on_row(has_errors=has_errors, has_warnings=bool(eff_warnings))
 
         secret_fields: list[str] = []
@@ -121,7 +122,7 @@ class StageResultReporter:
             self._stats.on_secret_fields(secret_fields)
 
         should_store = (
-            (status == "FAILED" and self.report_policy.capabilities.include_failed_items)
+            (status == ReportItemStatus.FAILED and self.report_policy.capabilities.include_failed_items)
             or self.include_items
         )
         effective_row_ref = row_ref or (result.row_ref if result else None)

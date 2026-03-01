@@ -19,6 +19,7 @@ from connector.delivery.cli.containers import (
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
     VaultStartupKeyValidationError,
@@ -116,7 +117,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     )
     report.set_meta(dataset=dataset_name)
     report.set_context(
-        "vault_rollout",
+        ReportContextKey.VAULT_ROLLOUT,
         {
             "vault_runtime": runtime_mode_decision.to_context(),
             **rollout_decision.to_context(),

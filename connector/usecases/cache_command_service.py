@@ -6,6 +6,7 @@ from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.cache.roles import CacheAdminPort
+from connector.domain.reporting.contracts import ReportContextKey, ReportOpKey
 
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_status_usecase import CacheStatusUseCase
@@ -67,7 +68,7 @@ class CacheCommandService:
         total = summary.get("total", {})
         failed = int(total.get("failed", 0))
         report.add_op(
-            "cache_refresh",
+            ReportOpKey.CACHE_REFRESH,
             ok=int(total.get("inserted", 0)) + int(total.get("updated", 0)),
             failed=failed,
             count=sum(total.values()),
@@ -83,7 +84,7 @@ class CacheCommandService:
     ) -> CommandResult:
         try:
             status = self.cache_status.status(dataset=dataset)
-            report.set_context("cache_status", {"status": status})
+            report.set_context(ReportContextKey.CACHE_STATUS, {"status": status})
             return CommandResult(summary=status)
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache status failed: {exc}")
@@ -111,7 +112,7 @@ class CacheCommandService:
                 "cache",
                 f"cache clear: {cleared}",
             )
-            report.set_context("cache_clear", {"cleared": cleared})
+            report.set_context(ReportContextKey.CACHE_CLEAR, {"cleared": cleared})
             return CommandResult(summary=cleared)
         except Exception as exc:
             logEvent(logger, logging.ERROR, run_id, "cache", f"Cache clear failed: {exc}")

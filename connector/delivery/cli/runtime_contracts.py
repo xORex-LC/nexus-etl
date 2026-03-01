@@ -15,6 +15,7 @@ from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.cli.result import CommandResult as CliCommandResult
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.models import RowRef
+from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus, ReportOpKey
 from connector.domain.reporting.models import ReportDiagnostic
 from connector.domain.reporting.ports import ReportWritePort
 
@@ -69,16 +70,16 @@ class NullReportWritePort(ReportWritePort):
     ) -> None:
         return None
 
-    def set_context(self, name: str, value: dict[str, Any]) -> None:
+    def set_context(self, name: ReportContextKey | str, value: dict[str, Any]) -> None:
         return None
 
-    def get_context(self, name: str, default: Any = None) -> Any:
+    def get_context(self, name: ReportContextKey | str, default: Any = None) -> Any:
         return default
 
-    def add_op(self, name: str, *, ok: int = 0, failed: int = 0, count: int = 0) -> None:
+    def add_op(self, name: ReportOpKey | str, *, ok: int = 0, failed: int = 0, count: int = 0) -> None:
         return None
 
-    def merge_op_fields(self, name: str, values: Mapping[str, int]) -> None:
+    def merge_op_fields(self, name: ReportOpKey | str, values: Mapping[str, int]) -> None:
         return None
 
     def set_row_counters(
@@ -88,13 +89,14 @@ class NullReportWritePort(ReportWritePort):
         rows_passed: int,
         rows_blocked: int,
         rows_with_warnings: int,
+        rows_skipped: int = 0,
     ) -> None:
         return None
 
     def add_item(
         self,
         *,
-        status: str,
+        status: ReportItemStatus | str,
         row_ref: RowRef | None = None,
         payload: Mapping[str, Any] | None = None,
         errors: Iterable[ReportDiagnostic] | None = None,
@@ -107,7 +109,7 @@ class NullReportWritePort(ReportWritePort):
     def add_item_preaggregated(
         self,
         *,
-        status: str,
+        status: ReportItemStatus | str,
         row_ref: RowRef | None = None,
         payload: Mapping[str, Any] | None = None,
         errors: Iterable[ReportDiagnostic] | None = None,
