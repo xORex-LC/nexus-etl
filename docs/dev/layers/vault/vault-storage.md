@@ -1072,3 +1072,7 @@ repository.upsert_dek(new_record)
   семантика версий ключей
 - [vault-delivery.md](vault-delivery.md) — DI-проводка: `SqliteContainer`, `VaultContainer`
   и то, как `vault_startup_resource` оркестрирует schema + guard
+
+| Дата | Изменение | Автор |
+|------|-----------|-------|
+| 2026-02-27 | Создан документ Vault Storage | xORex-LC |

@@ -1089,3 +1089,7 @@ secret = svc.get_secret(dataset="hr", field="pw", source_ref={"match_key":"emp"}
   внутри сервисов
 - [vault-storage.md](vault-storage.md) — Что происходит внутри вызовов `repository.*`:
   SQL-запросы, область видимости run_id, маппинг ошибок
+
+| Дата | Изменение | Автор |
+|------|-----------|-------|
+| 2026-02-27 | Создан документ Vault Delivery | xORex-LC |

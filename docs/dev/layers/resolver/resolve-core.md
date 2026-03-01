@@ -2015,9 +2015,9 @@ batch_index = resolver.build_batch_index(
 
 ## 📝 История изменений
 
-| Дата | Изменение |
-|------|-----------|
-| 2026-02-11 | Создана документация Resolve Core |
-| 2026-02-11 | Добавлены алгоритмы для 5 ключевых методов |
-| 2026-02-11 | Добавлены benchmark данные и performance notes |
-| 2026-02-11 | Добавлены failure modes и troubleshooting |
+| Дата | Изменение | Автор |
+|------|-----------|-------|
+| 2026-02-11 | Создана документация Resolve Core | xORex-LC |
+| 2026-02-11 | Добавлены алгоритмы для 5 ключевых методов | xORex-LC |
+| 2026-02-11 | Добавлены benchmark данные и performance notes | xORex-LC |
+| 2026-02-11 | Добавлены failure modes и troubleshooting | xORex-LC |

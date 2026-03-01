@@ -794,8 +794,8 @@ if requirements.requires_source:
 
 | Дата | Изменение | Автор |
 |------|-----------|-------|
-| 2026-02-12 | Добавлен слой `AppSettings` со срезами | xorex |
-| 2026-02-12 | Введён канонический API `load_app_settings` | xorex |
-| 2026-02-12 | Добавлены typed settings errors и diagnostics adapter | xorex |
-| 2026-02-12 | Границы закреплены архитектурными тестами | xorex |
-| 2026-02-12 | Документация слоя синхронизирована с текущим кодом | xorex |
+| 2026-02-12 | Добавлен слой `AppSettings` со срезами | xORex-LC |
+| 2026-02-12 | Введён канонический API `load_app_settings` | xORex-LC |
+| 2026-02-12 | Добавлены typed settings errors и diagnostics adapter | xORex-LC |
+| 2026-02-12 | Границы закреплены архитектурными тестами | xORex-LC |
+| 2026-02-12 | Документация слоя синхронизирована с текущим кодом | xORex-LC |
