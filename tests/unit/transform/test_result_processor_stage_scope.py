@@ -38,7 +38,7 @@ def _diag(stage: DiagnosticStage, code: str, severity: DiagnosticSeverity) -> Di
     )
 
 
-def test_stage_scoped_report_filters_upstream_diagnostics_but_keeps_failed_status() -> None:
+def test_stage_scoped_report_filters_upstream_diagnostics_and_uses_stage_only_status() -> None:
     report = ReportCollector(run_id="run-1", command="normalize")
     processor = TransformResultProcessor(
         report=report,
@@ -55,11 +55,12 @@ def test_stage_scoped_report_filters_upstream_diagnostics_but_keeps_failed_statu
     processor.finalize()
 
     envelope = report.build()
-    assert envelope.summary.rows_blocked == 1
+    assert envelope.summary.rows_blocked == 0
+    assert envelope.summary.rows_passed == 1
     assert envelope.summary.errors_total == 0
     assert envelope.summary.warnings_total == 0
     assert len(envelope.items) == 1
-    assert envelope.items[0].status == "FAILED"
+    assert envelope.items[0].status == "OK"
     assert envelope.items[0].diagnostics == []
     assert envelope.items[0].meta["upstream_errors_count"] == 1
     assert envelope.items[0].meta["upstream_warnings_count"] == 1

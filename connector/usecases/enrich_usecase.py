@@ -6,7 +6,9 @@ from connector.domain.transform.core.extractor import Extractor
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.models import DiagnosticStage
-from connector.domain.transform.core.result_processor import TransformResultProcessor
+from connector.domain.reporting.adapters.result_policy import StageCommandResultResolver
+from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
+from connector.domain.reporting.adapters.strategies import TransformStageReportStrategy
 from connector.domain.transform.stages.stages import PipelineOrchestrator
 
 
@@ -36,18 +38,20 @@ class EnrichUseCase:
     ) -> CommandResult:
         report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
 
-        processor = TransformResultProcessor(
+        reporter = StageResultReporter(
             report=report,
             include_items=self.include_enriched_items,
             context_key="enrich",
             ok_label="enriched_ok",
             failed_label="enrich_failed",
+            strategy=TransformStageReportStrategy(),
             report_stage=DiagnosticStage.ENRICH,
             include_upstream_diagnostics=False,
         )
 
         extractor = Extractor(row_source, catalog=catalog)
         for map_result in pipeline.run(extractor.run()):
-            processor.process(map_result)
+            reporter.process(map_result)
 
-        return processor.finalize()
+        stats = reporter.publish_context()
+        return StageCommandResultResolver().resolve(stats)
