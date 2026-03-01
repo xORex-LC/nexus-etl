@@ -18,6 +18,7 @@ from connector.domain.reporting.adapters.strategies import (
     TransformStageReportStrategy,
 )
 from connector.domain.reporting.collector import ReportCollector
+from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.result_processor import TransformResultProcessor
 from connector.domain.transform.core.source_record import SourceRecord
@@ -55,6 +56,7 @@ def test_stage_result_reporter_snapshot_is_immutable() -> None:
     report = ReportCollector(run_id="run-immutable", command="normalize")
     reporter = StageResultReporter(
         report=report,
+        report_policy=ReportPolicy.standard(),
         include_items=True,
         context_key="normalize",
         ok_label="normalized_ok",
@@ -77,6 +79,7 @@ def test_planning_strategy_skip_prevents_row_aggregation() -> None:
     )
     reporter = StageResultReporter(
         report=report,
+        report_policy=ReportPolicy.standard(),
         include_items=True,
         context_key="resolve",
         ok_label="resolved_ok",
@@ -123,6 +126,7 @@ def test_alias_transform_processor_matches_canonical_reporter_behavior() -> None
     report_new = ReportCollector(run_id="run-canonical", command="normalize")
     reporter = StageResultReporter(
         report=report_new,
+        report_policy=ReportPolicy.standard(),
         include_items=True,
         context_key="normalize",
         ok_label="normalized_ok",
@@ -140,3 +144,44 @@ def test_alias_transform_processor_matches_canonical_reporter_behavior() -> None
     assert alias_envelope.items[0].status == canonical_envelope.items[0].status
     assert alias_envelope.items[0].diagnostics[0].code == canonical_envelope.items[0].diagnostics[0].code
     assert alias_result.system_codes == canonical_result.system_codes == {SystemErrorCode.DATA_INVALID}
+
+
+def test_stage_result_reporter_uses_explicit_policy_for_include_ok_items() -> None:
+    report = ReportCollector(run_id="run-policy-min", command="normalize")
+    policy = ReportPolicy.minimal()
+    reporter = StageResultReporter(
+        report=report,
+        report_policy=policy,
+        include_items=True,
+        context_key="normalize",
+        ok_label="normalized_ok",
+        failed_label="normalize_failed",
+        strategy=TransformStageReportStrategy(),
+        report_stage=DiagnosticStage.NORMALIZE,
+    )
+    reporter.process(_make_result())
+
+    built = report.build()
+    assert built.summary.rows_total == 1
+    assert len(built.items) == 0
+
+
+def test_stage_result_reporter_stores_failed_items_even_when_ok_items_disabled() -> None:
+    report = ReportCollector(run_id="run-policy-failed", command="normalize")
+    policy = ReportPolicy.minimal()
+    reporter = StageResultReporter(
+        report=report,
+        report_policy=policy,
+        include_items=True,
+        context_key="normalize",
+        ok_label="normalized_ok",
+        failed_label="normalize_failed",
+        strategy=TransformStageReportStrategy(),
+        report_stage=DiagnosticStage.NORMALIZE,
+    )
+    error = _diag(DiagnosticStage.NORMALIZE, "NORM_ERR", DiagnosticSeverity.ERROR)
+    reporter.process(_make_result(errors=(error,)))
+
+    built = report.build()
+    assert built.summary.rows_blocked == 1
+    assert len(built.items) == 1

@@ -20,6 +20,7 @@ from connector.domain.reporting.adapters.strategies import (
     PlanningStageReportStrategy,
     TransformStageReportStrategy,
 )
+from connector.domain.reporting.policy import resolve_report_policy
 from connector.domain.transform.core.result import TransformResult
 
 
@@ -45,8 +46,10 @@ class TransformResultProcessor:
         report_stage: DiagnosticStage | None = None,
         include_upstream_diagnostics: bool = False,
     ) -> None:
+        report_policy = resolve_report_policy(report)
         self._reporter = StageResultReporter(
             report=report,
+            report_policy=report_policy,
             include_items=include_items,
             context_key=context_key,
             ok_label=ok_label,
@@ -139,8 +142,10 @@ class PlanningResultProcessor(TransformResultProcessor):
         report_stage: DiagnosticStage | None = None,
         include_upstream_diagnostics: bool = False,
     ) -> None:
+        report_policy = resolve_report_policy(report)
         self._reporter = StageResultReporter(
             report=report,
+            report_policy=report_policy,
             include_items=include_items,
             context_key=context_key,
             ok_label=ok_label,
