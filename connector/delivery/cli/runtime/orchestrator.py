@@ -41,18 +41,18 @@ from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve
 from connector.delivery.cli.context import BoundCommandContext, CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.containers import AppContainer
-from connector.delivery.cli.runtime_contracts import (
+from .contracts import (
     CommandHandler,
     RuntimeErrorWithCode,
     RuntimeExecutionResult,
 )
-from connector.delivery.cli.runtime_result_mapper import (
+from .result_mapper import (
     build_runtime_error_result,
     stage_for_command,
 )
 
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.delivery.cli.result_adapter import result_with
+from .result_adapter import result_with
 
 
 def run_with_report(

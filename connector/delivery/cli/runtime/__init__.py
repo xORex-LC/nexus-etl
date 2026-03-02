@@ -3,9 +3,9 @@
     Thin facade для CLI runtime orchestration и runtime result adapters.
 
 Граница ответственности:
-    - Делегирует orchestration в `runtime_orchestrator`.
-    - Делегирует mapping результата в `runtime_result_mapper`.
-    - Делегирует boundary result adaptation в `result_adapter`.
+    - Делегирует orchestration в `runtime.orchestrator`.
+    - Делегирует mapping результата в `runtime.result_mapper`.
+    - Делегирует boundary result adaptation в `runtime.result_adapter`.
 
 Обратная совместимость:
     Приватные helper-имена сохранены как facade wrappers, чтобы поддержать
@@ -20,14 +20,14 @@ from typing import Any
 from connector.delivery.cli.containers import AppContainer, _init_container_for_requirements
 from connector.delivery.cli.context import BoundCommandContext, CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
-from connector.delivery.cli.runtime_contracts import (
+from .contracts import (
     CommandHandler,
     RuntimeErrorWithCode,
     RuntimeExecutionResult,
 )
-from connector.delivery.cli import runtime_orchestrator
-from connector.delivery.cli.result_adapter import exit_code_from_result, result_with
-from connector.delivery.cli.runtime_result_mapper import (
+from connector.delivery.cli.runtime import orchestrator as runtime_orchestrator
+from .result_adapter import exit_code_from_result, result_with
+from .result_mapper import (
     apply_runtime_result_to_report,
     build_runtime_error_result,
     stage_for_command,

@@ -127,7 +127,7 @@ def test_runtime_policy_effective_include_skipped_follows_capability_and_overrid
 
 def test_runtime_and_reporting_do_not_compare_profile_literals_inline() -> None:
     project_root = Path(__file__).resolve().parents[3]
-    runtime_path = project_root / "connector" / "delivery" / "cli" / "runtime_orchestrator.py"
+    runtime_path = project_root / "connector" / "delivery" / "cli" / "runtime" / "orchestrator.py"
     reporter_path = project_root / "connector" / "domain" / "reporting" / "adapters" / "stage_result_reporter.py"
     profile_literals = {"minimal", "standard", "debug"}
 

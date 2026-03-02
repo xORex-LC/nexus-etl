@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.context import BoundCommandContext
-from connector.delivery.cli.pipeline_config import CheckpointName
+from connector.delivery.cli.stages import CheckpointName
 from connector.delivery.commands.common import (
     attach_dictionary_report_snapshot_if_available,
     result_with,

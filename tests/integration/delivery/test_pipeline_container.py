@@ -22,7 +22,7 @@ from dependency_injector import providers
 from connector.config.models import AppConfig
 from connector.datasets.employees.spec import make_employees_spec
 from connector.delivery.cli.containers import PipelineContainer
-from connector.delivery.cli.pipeline_registry import build_stage_factory
+from connector.delivery.cli.stages import build_stage_factory
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.transform.context import PipelineMetadata, StageExecutionContext
 from connector.domain.transform.providers import ProviderGateway

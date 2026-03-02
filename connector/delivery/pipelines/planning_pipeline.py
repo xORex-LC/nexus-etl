@@ -31,8 +31,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any, Iterable, Iterator
 
-from connector.delivery.cli.pipeline_config import CheckpointName
-from connector.delivery.cli.pipeline_composer import PipelineComposer
+from connector.delivery.cli.stages import CheckpointName
+from connector.delivery.cli.stages import PipelineComposer
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.core.extractor import Extractor
