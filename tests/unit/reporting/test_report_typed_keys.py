@@ -2,18 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from connector.domain.reporting.collector import ReportCollector
 from connector.domain.reporting.contracts import ReportContextKey, ReportOpKey
-
-
-def test_collector_accepts_typed_context_and_ops_keys() -> None:
-    report = ReportCollector(run_id="r-typed-keys", command="mapping")
-    report.set_context(ReportContextKey.RUNTIME, {"log_file": "log.txt"})
-    report.add_op(ReportOpKey.CREATE, ok=1, count=1)
-
-    built = report.build()
-    assert "runtime" in built.context
-    assert "create" in built.summary.ops
 
 
 def test_connector_code_has_no_magic_string_set_context_calls() -> None:

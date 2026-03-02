@@ -1,12 +1,13 @@
-"""Purpose:
+"""
+Назначение:
     Thin facade для CLI runtime orchestration и runtime result adapters.
 
-Boundary:
+Граница ответственности:
     - Делегирует orchestration в `runtime_orchestrator`.
     - Делегирует mapping результата в `runtime_result_mapper`.
     - Делегирует boundary result adaptation в `result_adapter`.
 
-Compatibility:
+Обратная совместимость:
     Приватные helper-имена сохранены как facade wrappers, чтобы поддержать
     текущие тесты без legacy compatibility-веток runtime результата.
 """
@@ -45,7 +46,8 @@ def run_with_report(
     handler: ReportHandler,
     requirements: Requirements,
 ) -> None:
-    """Purpose:
+    """
+    Назначение:
         Thin facade над runtime_orchestrator.run_with_report().
     """
     runtime_orchestrator.run_with_report(
@@ -71,7 +73,8 @@ def run_without_report(
     handler: ReportHandler,
     requirements: Requirements,
 ) -> None:
-    """Purpose:
+    """
+    Назначение:
         Thin facade над runtime_orchestrator.run_without_report().
     """
     runtime_orchestrator.run_without_report(
@@ -88,7 +91,8 @@ def run_without_report(
 
 
 def _bind_context_with_container(ctx: UnboundCommandContext, *, container: AppContainer) -> BoundCommandContext:
-    """Purpose:
+    """
+    Назначение:
         Compatibility facade для lifecycle tests.
     """
     return runtime_orchestrator.bind_context_with_container(ctx, container=container)
@@ -101,7 +105,8 @@ def _initialize_container_resources(
     logger: logging.Logger,
     run_id: str,
 ) -> RuntimeExecutionResult:
-    """Purpose:
+    """
+    Назначение:
         Compatibility facade для runtime init mapping.
     """
     return runtime_orchestrator.initialize_container_resources(
@@ -120,7 +125,8 @@ def _shutdown_container_resources(
     run_id: str,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
-    """Purpose:
+    """
+    Назначение:
         Compatibility facade для runtime shutdown mapping.
     """
     return runtime_orchestrator.shutdown_container_resources(
@@ -143,7 +149,8 @@ def _finalize_report_artifacts(
     logger: logging.Logger,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
-    """Purpose:
+    """
+    Назначение:
         Compatibility facade для report finalization.
     """
     return runtime_orchestrator.finalize_report_artifacts(
@@ -160,7 +167,8 @@ def _finalize_report_artifacts(
 
 
 def _validate_requirements(ctx: CommandContext[Any], opts: Any, requirements: Requirements) -> None:
-    """Purpose:
+    """
+    Назначение:
         Compatibility facade для runtime requirements gate.
     """
     runtime_orchestrator.validate_requirements(ctx, opts, requirements)

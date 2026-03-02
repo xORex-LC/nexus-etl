@@ -1,7 +1,8 @@
-"""Purpose:
+"""
+Назначение:
     Runtime-level контракты orchestration слоя CLI.
 
-Boundary:
+Граница ответственности:
     - Фиксирует явный handler contract: `(ctx, opts, report_sink)`.
     - Содержит only-runtime ошибки и null-object для report write boundary.
     - Не содержит orchestration/DI lifecycle и не маппит результаты в report.
@@ -21,10 +22,11 @@ RuntimeExecutionResult: TypeAlias = DomainCommandResult | None
 
 @runtime_checkable
 class CommandHandler(Protocol):
-    """Purpose:
+    """
+    Назначение:
         Явный runtime контракт обработчика CLI-команды.
 
-    Contract:
+    Контракт:
         - Runtime always вызывает handler с 3 аргументами.
         - `report_sink` может быть `NullReportSink` в режимах без report.
     """
@@ -38,7 +40,8 @@ class CommandHandler(Protocol):
 
 
 class RuntimeErrorWithCode(RuntimeError):
-    """Purpose:
+    """
+    Назначение:
         Ошибка runtime-валидации с фиксированным exit code.
     """
 

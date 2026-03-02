@@ -1,4 +1,5 @@
-"""Назначение:
+"""
+Назначение:
     Runtime helper-функции для canonical `DomainCommandResult`.
 
 Граница ответственности:
@@ -13,7 +14,8 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 
 
 def result_with(code: SystemErrorCode) -> DomainCommandResult:
-    """Назначение:
+    """
+    Назначение:
         Собрать `DomainCommandResult` с одиночным системным кодом.
     """
     result = DomainCommandResult()
@@ -22,7 +24,8 @@ def result_with(code: SystemErrorCode) -> DomainCommandResult:
 
 
 def exit_code_from_result(result: DomainCommandResult | None) -> int:
-    """Назначение:
+    """
+    Назначение:
         Получить OS exit code из canonical runtime результата.
     """
     if result is None:

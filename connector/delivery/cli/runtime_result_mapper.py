@@ -1,4 +1,5 @@
-"""Назначение:
+"""
+Назначение:
     Маппинг runtime/handler результата в report-события.
 
 Граница ответственности:
@@ -31,7 +32,8 @@ def apply_runtime_result_to_report(
     source: str,
     secondary: bool,
 ) -> None:
-    """Назначение:
+    """
+    Назначение:
         Нормализовать runtime/handler результат в report item.
 
     Контракт:
@@ -62,7 +64,8 @@ def build_runtime_error_result(
     message: str,
     details: dict[str, Any] | None = None,
 ) -> DomainCommandResult:
-    """Назначение:
+    """
+    Назначение:
         Сконструировать `DomainCommandResult` для runtime-исключений.
     """
     diagnostic = build_error(
@@ -80,7 +83,8 @@ def build_runtime_error_result(
 
 
 def stage_for_command(command_name: str) -> DiagnosticStage:
-    """Назначение:
+    """
+    Назначение:
         Сопоставить runtime command name -> diagnostic stage.
     """
     normalized = command_name.replace("-", "_").lower()
@@ -108,7 +112,8 @@ def _apply_domain_result(
     source: str,
     secondary: bool,
 ) -> None:
-    """Назначение:
+    """
+    Назначение:
         Перенести `DomainCommandResult` в report item с synthetic fallback.
     """
     stage = stage_for_command(command_name)
@@ -160,7 +165,8 @@ def _apply_domain_result(
 
 
 def _split_domain_diagnostics(diagnostics: list[Any]) -> tuple[list[Any], list[Any]]:
-    """Назначение:
+    """
+    Назначение:
         Разделить diagnostics по severity для `split_report_diagnostics()`.
     """
     errors: list[Any] = []
@@ -174,7 +180,8 @@ def _split_domain_diagnostics(diagnostics: list[Any]) -> tuple[list[Any], list[A
 
 
 def _is_warning(diagnostic: Any) -> bool:
-    """Назначение:
+    """
+    Назначение:
         Определить warning-severity для DiagnosticItem/ReportDiagnostic.
     """
     severity = getattr(diagnostic, "severity", None)
@@ -193,7 +200,8 @@ def _with_secondary_policy(
     warnings: list[ReportDiagnostic],
     secondary: bool,
 ) -> tuple[list[ReportDiagnostic], list[ReportDiagnostic]]:
-    """Назначение:
+    """
+    Назначение:
         Secondary-policy: demote error -> warning.
     """
     if not secondary:
@@ -215,7 +223,8 @@ def _with_secondary_policy(
 
 
 def _needs_synthetic_diagnostic(*, context: IReportContext, secondary: bool) -> bool:
-    """Назначение:
+    """
+    Назначение:
         Нужен ли synthetic runtime diagnostic для non-OK без diagnostics.
     """
     if secondary:
