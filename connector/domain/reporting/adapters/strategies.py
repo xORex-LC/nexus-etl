@@ -70,9 +70,11 @@ class PlanningStageReportStrategy:
     """Purpose:
         Стратегия для planning use-cases (match/resolve).
 
-    Compatibility:
-        Повторяет контракт legacy `PlanningResultProcessor` через callbacks
-        `meta_builder` и `should_skip` на переходном окне совместимости.
+    Extension:
+        Принимает callbacks `meta_builder` и `should_skip`, потому что
+        planning-стадии имеют stage-specific skip-логику и meta-проекцию,
+        которая не обобщается на уровне базового контракта IStageReportStrategy.
+        Это постоянный extension point, а не временный shim.
     """
 
     def __init__(

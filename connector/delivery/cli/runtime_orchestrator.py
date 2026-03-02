@@ -1,7 +1,8 @@
-"""Purpose:
+"""
+Назначение:
     CLI runtime orchestration (init -> handler -> finalize -> shutdown).
 
-Boundary:
+Граница ответственности:
     - Владеет lifecycle-оркестрацией и handler invocation contract.
     - Не содержит result-to-report mapping правил (runtime_result_mapper owner).
     - Не знает о legacy result форматах (result_adapter owner).
@@ -68,10 +69,11 @@ def run_with_report(
     apply_result_to_report: Callable[..., None],
     exit_code_from_result: Callable[[Any], int],
 ) -> None:
-    """Purpose:
+    """
+    Назначение:
         Унифицированная обвязка выполнения команд с report lifecycle.
 
-    Contract:
+    Контракт:
         - Handler вызывается строго с тремя аргументами `(ctx, opts, report_sink)`.
         - Result-to-report mapping выполняется через injected mapper.
     """
@@ -310,10 +312,11 @@ def run_without_report(
     shutdown_container_resources: Callable[..., RuntimeExecutionResult],
     exit_code_from_result: Callable[[Any], int],
 ) -> None:
-    """Purpose:
+    """
+    Назначение:
         Унифицированная обвязка выполнения команд без рендеринга report.
 
-    Contract:
+    Контракт:
         Handler вызывается по тому же 3-arg контракту с `NullReportSink`.
     """
     app_config = require_app_settings(ctx)
@@ -430,7 +433,8 @@ def run_without_report(
 
 
 def bind_context_with_container(ctx: UnboundCommandContext, *, container: AppContainer) -> BoundCommandContext:
-    """Purpose:
+    """
+    Назначение:
         Привязать command-context к инициализированному DI container.
     """
     return CommandContext(
@@ -453,7 +457,8 @@ def initialize_container_resources(
     run_id: str,
     init_container_for_requirements: Callable[[AppContainer, Requirements], None],
 ) -> RuntimeExecutionResult:
-    """Purpose:
+    """
+    Назначение:
         Инициализировать DI ресурсы под runtime requirements.
     """
     try:
@@ -483,7 +488,8 @@ def shutdown_container_resources(
     run_id: str,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
-    """Purpose:
+    """
+    Назначение:
         Graceful shutdown DI ресурсов с runtime->result mapping.
     """
     if container is None:
@@ -510,7 +516,8 @@ def finalize_report_artifacts(
     logger: logging.Logger,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
-    """Назначение:
+    """
+    Назначение:
         Финализировать report envelope и записать JSON artifact.
     """
     try:
@@ -542,7 +549,8 @@ def finalize_report_artifacts(
 
 
 def validate_requirements(ctx: CommandContext[Any], opts: Any, requirements: Requirements) -> None:
-    """Purpose:
+    """
+    Назначение:
         Быстрые и предсказуемые проверки требований команды.
     """
     app_config = require_app_settings(ctx)

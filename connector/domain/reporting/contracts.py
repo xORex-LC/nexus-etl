@@ -90,19 +90,14 @@ def normalize_op_key(name: ReportOpKey | str) -> str:
 def normalize_item_status(status: ReportItemStatus | str) -> ReportItemStatus:
     """Назначение:
         Нормализовать статус item к enum report schema v2.
+
+    Принимает только канонические значения: "OK", "FAILED", "SKIPPED".
+    Неизвестная строка — ValueError (не молчаливый fallback).
     """
     if isinstance(status, ReportItemStatus):
         return status
     value = str(status).strip().upper()
-    try:
-        return ReportItemStatus(value)
-    except ValueError:
-        # Compatibility bridge для legacy delivery-статусов до полной очистки.
-        if "SKIP" in value:
-            return ReportItemStatus.SKIPPED
-        if "FAIL" in value or "ERROR" in value:
-            return ReportItemStatus.FAILED
-        return ReportItemStatus.OK
+    return ReportItemStatus(value)
 
 
 __all__ = [
