@@ -151,7 +151,7 @@ def test_architecture_guards_report_meta_ownership() -> None:
     project_root = Path(__file__).resolve().parents[3]
     usecases_root = project_root / "connector" / "usecases"
     commands_root = project_root / "connector" / "delivery" / "commands"
-    runtime_file = project_root / "connector" / "delivery" / "cli" / "runtime_orchestrator.py"
+    runtime_file = project_root / "connector" / "delivery" / "cli" / "runtime" / "orchestrator.py"
 
     usecase_violations: list[str] = []
     command_items_limit_violations: list[str] = []

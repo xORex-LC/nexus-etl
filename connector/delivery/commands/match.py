@@ -4,7 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 
 from connector.delivery.cli.context import BoundCommandContext
-from connector.delivery.cli.pipeline_config import CheckpointName
+from connector.delivery.cli.stages import CheckpointName
 from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
     build_dataset_spec,

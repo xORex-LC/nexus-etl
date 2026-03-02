@@ -17,9 +17,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONNECTOR_ROOT = REPO_ROOT / "connector"
 USECASES_ROOT = CONNECTOR_ROOT / "usecases"
-RUNTIME_RESULT_MAPPER = CONNECTOR_ROOT / "delivery" / "cli" / "runtime_result_mapper.py"
-RUNTIME_CONTRACTS = CONNECTOR_ROOT / "delivery" / "cli" / "runtime_contracts.py"
-RUNTIME_ORCHESTRATOR = CONNECTOR_ROOT / "delivery" / "cli" / "runtime_orchestrator.py"
+RUNTIME_RESULT_MAPPER = CONNECTOR_ROOT / "delivery" / "cli" / "runtime" / "result_mapper.py"
+RUNTIME_CONTRACTS = CONNECTOR_ROOT / "delivery" / "cli" / "runtime" / "contracts.py"
+RUNTIME_ORCHESTRATOR = CONNECTOR_ROOT / "delivery" / "cli" / "runtime" / "orchestrator.py"
 
 # Usecase-файлы, которым временно разрешён infra-импорт (RPT-011, P2 OPEN).
 # Когда RPT-011 закроется — убрать исключения и сократить список до пустого.
