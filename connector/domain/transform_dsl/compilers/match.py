@@ -184,7 +184,11 @@ def _build_identity_rule(rule: MatchRule) -> IdentityRule:
 
 def _read_identity_value(field_name: str, *, row, match_context):
     if hasattr(match_context, field_name):
-        return getattr(match_context, field_name)
+        value = getattr(match_context, field_name)
+        if value not in (None, ""):
+            return value
+    if isinstance(row, dict):
+        return row.get(field_name)
     if row is not None and hasattr(row, field_name):
         return getattr(row, field_name)
     return None
