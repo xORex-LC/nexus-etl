@@ -69,9 +69,9 @@ from connector.domain.transform.resolver.resolve_engine import ResolveEngine
 from connector.domain.transform.stages.stages import MatchStage, ResolveContextStage, ResolveStage
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.datasets.spec import DatasetSpec
-from connector.delivery.cli.pipeline_config import PIPELINE_CHECKPOINTS, StageName
-from connector.delivery.cli.pipeline_composer import PipelineComposer
-from connector.delivery.cli.pipeline_registry import build_stage_factory
+from connector.delivery.cli.stages import PIPELINE_CHECKPOINTS, StageName
+from connector.delivery.cli.stages import PipelineComposer
+from connector.delivery.cli.stages import build_stage_factory
 from connector.delivery.cli.dictionaries_container import DictionaryContainer
 from connector.delivery.pipelines.planning_pipeline import PlanningPipeline
 from connector.delivery.pipelines.planning_pipeline_hooks import PlanningPipelineHooks

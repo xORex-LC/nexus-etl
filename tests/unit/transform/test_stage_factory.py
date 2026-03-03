@@ -257,7 +257,7 @@ class TestStageFactoryFailFast:
 class TestBuildStageFactory:
 
     def test_all_6_stage_types_registered(self):
-        from connector.delivery.cli.pipeline_registry import build_stage_factory
+        from connector.delivery.cli.stages import build_stage_factory
 
         factory = build_stage_factory()
 
@@ -266,7 +266,7 @@ class TestBuildStageFactory:
 
     def test_resolve_context_create_raises_not_implemented(self):
         """resolve_context создаётся напрямую в PipelineContainer — create() не используется."""
-        from connector.delivery.cli.pipeline_registry import build_stage_factory
+        from connector.delivery.cli.stages import build_stage_factory
         from unittest.mock import Mock
         from connector.domain.transform.context import StageExecutionContext, PipelineMetadata
 

@@ -108,7 +108,7 @@ class RowRef:
     Назначение:
         Унифицированная ссылка на строку входного набора для отчётов.
     """
-    line_no: int
+    line_no: int | None
     row_id: str
     identity_primary: str | None
     identity_value: str | None

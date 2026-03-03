@@ -100,7 +100,7 @@ def test_cache_lifecycle_engine_refresh_delegates_to_refresh_usecase() -> None:
         page_size=100,
         max_pages=1,
         logger=None,
-        report=None,
+        report_sink=None,
         run_id="run-1",
         catalog=None,
     )

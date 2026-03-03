@@ -31,7 +31,7 @@ def test_run_without_report_handles_settings_load_error(tmp_path) -> None:
         container=None,
     )
 
-    def handler(_ctx, _opts):
+    def handler(_ctx, _opts, _report_port):
         raise SettingsLoadError(
             "invalid settings",
             [

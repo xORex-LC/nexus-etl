@@ -4,13 +4,15 @@ import sqlite3
 from dataclasses import dataclass
 
 from connector.delivery.cli.context import BoundCommandContext
-from connector.delivery.cli.pipeline_config import CheckpointName
+from connector.delivery.cli.stages import CheckpointName
 from connector.delivery.commands.common import sqlite_cache_error_result
 from connector.delivery.cli.containers import (
     build_dataset_spec,
     build_diagnostics_catalog,
 )
 from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.reporting.events import SetMetaEvent
+from connector.domain.reporting.policy import ReportPolicy
 from connector.usecases.match_usecase import MatchUseCase
 
 
@@ -23,7 +25,7 @@ class Options:
     include_deleted: bool | None = None
 
 
-def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResult:
     run_id = ctx.run_id
     app_config = ctx.app_config
     if app_config is None:
@@ -49,6 +51,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     include_matched_items_value = (
         opts.include_matched_items if opts.include_matched_items is not None else False
     )
+    report_sink.emit(SetMetaEvent(dataset=dataset_name))
+    report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
 
     try:
         pipeline = ctx.container.pipeline
@@ -68,7 +72,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                 row_source=pipeline.row_source(),
                 pipeline=match_pipeline,
                 dataset=dataset_name,
-                report=report,
+                report_sink=report_sink,
+                report_policy=report_policy,
                 catalog=catalog,
             )
     except sqlite3.Error as exc:

@@ -11,6 +11,7 @@ from connector.delivery.commands.common import (
     sqlite_cache_error_result,
 )
 from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.reporting.events import SetMetaEvent
 from connector.usecases.cache_command_service import CacheCommandService
 
 
@@ -19,7 +20,7 @@ class Options:
     dataset: str | None = None
 
 
-def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResult:
     app_config = ctx.app_config
     if app_config is None:
         raise ValueError("App settings are not initialized")
@@ -30,8 +31,10 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
         if unsupported_result is not None:
             return unsupported_result
+        if opts.dataset is not None:
+            report_sink.emit(SetMetaEvent(dataset=opts.dataset))
         service = CacheCommandService(cache_roles.cache_admin)
-        result = service.status(ctx.logger, report, run_id, dataset=opts.dataset)
+        result = service.status(ctx.logger, report_sink, run_id, dataset=opts.dataset)
         exit_code = result.exit_code()
         status = result.summary or {}
         if exit_code != 0:

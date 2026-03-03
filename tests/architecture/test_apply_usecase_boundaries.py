@@ -3,7 +3,7 @@
 
 Зачем нужны эти тесты:
 1. Гарантировать, что connector/usecases/*apply* не импортирует infra/delivery.
-2. Убедиться, что use-case не зависит от ReportCollector, logEvent и maskSecrets.
+2. Убедиться, что use-case не зависит от logEvent и maskSecrets.
 3. Предотвратить повторное смешение presentation/infra с бизнес-логикой.
 """
 
@@ -102,17 +102,6 @@ def test_import_apply_service_does_not_import_datasets() -> None:
         if module.startswith("connector.datasets"):
             violations.append(f"{_rel(service_path)}: {module}")
     assert violations == [], "ImportApplyService импортирует datasets:\n" + "\n".join(violations)
-
-
-def test_usecase_does_not_use_report_collector() -> None:
-    violations: list[str] = []
-    for path in [USECASES_ROOT / "import_apply_service.py", *_py_files(USECASES_APPLY_ROOT)]:
-        if not path.exists():
-            continue
-        for name in _import_names(path):
-            if name == "ReportCollector":
-                violations.append(f"{_rel(path)} imports ReportCollector")
-    assert violations == [], "Use-case не должен зависеть от ReportCollector:\n" + "\n".join(violations)
 
 
 def test_usecase_does_not_use_logEvent() -> None:

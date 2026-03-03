@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import typer
 
 from connector.delivery.cli.context import BoundCommandContext
-from connector.delivery.cli.pipeline_config import CheckpointName
+from connector.delivery.cli.stages import CheckpointName
 from connector.delivery.commands.common import (
     attach_dictionary_report_snapshot_if_available,
     result_with,
@@ -19,6 +19,9 @@ from connector.delivery.cli.containers import (
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.reporting.contracts import ReportContextKey
+from connector.domain.reporting.events import SetContextEvent, SetMetaEvent
+from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
     VaultStartupKeyValidationError,
@@ -54,7 +57,7 @@ _STARTUP_ERRORS = (
 )
 
 
-def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResult:
     run_id = ctx.run_id
     app_config = ctx.app_config
     if app_config is None:
@@ -114,15 +117,18 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
         dataset_name,
         strict=app_config.observability.diagnostics_strict,
     )
-    report.set_meta(dataset=dataset_name, items_limit=report_items_limit_value)
-    report.set_context(
-        "vault_rollout",
-        {
-            "vault_runtime": runtime_mode_decision.to_context(),
-            **rollout_decision.to_context(),
-            "command": "enrich",
-        },
+    report_sink.emit(SetMetaEvent(dataset=dataset_name))
+    report_sink.emit(
+        SetContextEvent(
+            name=ReportContextKey.VAULT_ROLLOUT,
+            value={
+                "vault_runtime": runtime_mode_decision.to_context(),
+                **rollout_decision.to_context(),
+                "command": "enrich",
+            },
+        )
     )
+    report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
 
     try:
         pipeline = ctx.container.pipeline
@@ -142,10 +148,11 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
                 dataset=dataset_name,
                 logger=ctx.logger,
                 run_id=run_id,
-                report=report,
+                report_sink=report_sink,
+                report_policy=report_policy,
                 catalog=catalog,
             )
-            attach_dictionary_report_snapshot_if_available(ctx=ctx, report=report)
+            attach_dictionary_report_snapshot_if_available(ctx=ctx, report_sink=report_sink)
             return result
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="enrich", exc=exc)

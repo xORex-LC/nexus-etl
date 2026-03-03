@@ -1,6 +1,6 @@
 """
 Бенчмарк: накладные расходы ApplyReportPresenter при M outcomes (100/1000).
-Измеряет стоимость преобразования ApplyResult → ReportCollector.
+Измеряет стоимость преобразования ApplyResult → event-driven report pipeline.
 
 Запуск:
     .venv/bin/python tests/performance/apply/bench_presenter_build_report.py --fast
@@ -15,7 +15,9 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import DiagnosticItem, DiagnosticSeverity, DiagnosticStage
 from connector.domain.planning.plan_models import Plan, PlanMeta, PlanSummary
 from connector.domain.planning.record_ref import RecordRef
-from connector.domain.reporting.collector import ReportCollector
+from connector.domain.reporting.context import InMemoryReportContext
+from connector.domain.reporting.policy import ReportPolicy, ReportPolicyProfile
+from connector.domain.reporting.sink import ReportSink
 from connector.usecases.apply.models import ApplyItemOutcome, ApplyResult, ApplySummary
 
 
@@ -82,16 +84,18 @@ def _make_plan() -> Plan:
 def bench_presenter(loops: int, m: int) -> float:
     result = _make_result(m)
     plan = _make_plan()
+    policy = ReportPolicy.from_profile(ReportPolicyProfile.STANDARD)
     runtime_ctx = {"retries_used": 5}
 
     total = 0.0
     timer = pyperf.perf_counter
     for _ in range(loops):
-        collector = ReportCollector(run_id="bench", command="import-apply")
+        ctx = InMemoryReportContext(run_id="bench", command="import-apply", policy=policy)
+        sink = ReportSink(ctx)
         t0 = timer()
         ApplyReportPresenter.present(
             result=result,
-            collector=collector,
+            sink=sink,
             plan=plan,
             runtime_context=runtime_ctx,
         )

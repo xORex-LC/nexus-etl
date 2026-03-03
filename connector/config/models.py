@@ -62,6 +62,7 @@ class ObservabilityConfig(BaseModel):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_json: bool = False
     report_format: Literal["json", "text"] = "json"
+    report_policy_profile: Literal["minimal", "standard", "debug"] = "standard"
     report_items_limit: int = Field(default=200, gt=0)
     report_include_skipped: bool = True
     diagnostics_strict: bool = False
