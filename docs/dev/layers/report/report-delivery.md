@@ -1,1163 +1,721 @@
-# Report Delivery — CLI Lifecycle, I/O, and Wiring
+# Report Delivery — Runtime Orchestration и Artifact Lifecycle
 
-> **Run lifecycle**: `run_with_report()` wraps every CLI command — creates the `ReportCollector`, calls the handler, finalizes artifacts, writes JSON, and maps the result to an OS exit code.
+> **Run lifecycle**: `run_with_report()` создаёт `InMemoryReportContext` и `ReportSink` per-command, делегирует handler execution, применяет runtime result mapping, финализирует через `ReportAssembler` и рендерит JSON-артефакт через `IReportRenderer`.
 
 ## 📑 Содержание
 
 - [📋 Обзор](#-обзор)
-- [🏗️ Архитектура слоя](#️-архитектура-слоя)
-  - [Основные компоненты](#основные-компоненты)
-  - [📐 UML диаграммы](#-uml-диаграммы)
-  - [🎭 Применённые паттерны](#-применённые-паттерны)
-  - [Диаграмма зависимостей](#диаграмма-зависимостей)
+- [📑 Дерево модулей](#-дерево-модулей)
+- [🏗️ Архитектурные паттерны](#-архитектурные-паттерны)
 - [🔑 Ключевые абстракции](#-ключевые-абстракции)
-- [📊 report_writer — I/O функции](#-report_writer--io-функции)
-  - [createEmptyReport()](#createemptyreport)
-  - [finalizeReport()](#finalizereport)
-  - [writeReportJson()](#writereportjson)
-- [📊 run_with_report() — полный lifecycle](#-run_with_report--полный-lifecycle)
-  - [Инициализация](#инициализация)
-  - [_call_handler() — dispatch по сигнатуре](#_call_handler--dispatch-по-сигнатуре)
-  - [_apply_cli_result_to_report()](#_apply_cli_result_to_report)
-  - [_finalize_report_artifacts()](#_finalize_report_artifacts)
-  - [Завершение и exit code](#завершение-и-exit-code)
-- [📊 run_without_report()](#-run_without_report)
-- [📊 _stage_for_command()](#-_stage_for_command)
-- [🗂️ JSON output — формат файла](#️-json-output--формат-файла)
-- [🔄 Взаимодействие с другими слоями](#-взаимодействие-с-другими-слоями)
-- [🔌 Контракты и границы](#-контракты-и-границы)
-- [💡 Типичные сценарии](#-типичные-сценарии)
-- [📌 Важные детали](#-важные-детали)
-  - [🚨 Failure Modes](#-failure-modes)
-  - [⚠️ Инварианты системы](#️-инварианты-системы)
-  - [⏱️ Performance заметки](#️-performance-заметки)
-- [🛠️ Как расширять](#️-как-расширять)
+- [📐 run\_with\_report() — lifecycle с отчётом](#-run_with_report--lifecycle-с-отчётом)
+- [📐 run\_without\_report() — lifecycle без отчёта](#-run_without_report--lifecycle-без-отчёта)
+- [🎭 runtime\_result\_mapper — маппинг результата в report](#-runtime_result_mapper--маппинг-результата-в-report)
+- [🗂️ finalize\_report\_artifacts() — финализация отчёта](#-finalize_report_artifacts--финализация-отчёта)
+- [📊 IReportRenderer / JsonReportRenderer](#-ireportrenderer--jsonreportrenderer)
+- [🚨 Exception Handling Matrix](#-exception-handling-matrix)
+- [🔌 Handler Contract](#-handler-contract)
+- [🏗️ DI Wiring — report NOT in containers](#-di-wiring--report-not-in-containers)
+- [📊 Exit Code Contract](#-exit-code-contract)
+- [📐 JSON Output Format](#-json-output-format)
+- [🔄 Interactions](#-interactions)
+- [📌 Contracts](#-contracts)
+- [💡 Scenarios](#-scenarios)
+- [⚠️ Failure Modes](#-failure-modes)
+- [🔑 Invariants](#-invariants)
+- [⏱️ Performance Notes](#-performance-notes)
+- [🛠️ Extension Guide](#-extension-guide)
 - [🔗 Связанные документы](#-связанные-документы)
 
 ---
 
 ## 📋 Обзор
 
-**Назначение**: Оркестрировать lifecycle выполнения CLI-команды — от создания отчёта до записи JSON-артефакта на диск и возврата exit code.
+Report delivery — слой runtime-оркестрации, который управляет полным lifecycle CLI-команды:
+создание report context и sink, инициализация DI container, выполнение handler,
+маппинг результата в report-события, финализация envelope и рендеринг JSON-артефакта.
 
-**Ключевая ответственность**:
-- `createEmptyReport()` — создать `ReportCollector` с первичным context-блоком `"config"`.
-- `finalizeReport()` — проставить runtime-метаданные и вызвать `report.finish()`.
-- `writeReportJson()` — сериализовать `ReportEnvelope` в JSON-файл.
-- `run_with_report()` — оркестрировать весь lifecycle: init DI → create report → call handler → finalize → write → shutdown DI → exit code.
-- `run_without_report()` — то же, но без отчёта (для административных команд).
-- `_call_handler()` — dispatch по количеству параметров handler (2-param vs. 3-param с report).
-- `_exit_code_from_result()` — сопоставить `CommandResult.status` с OS exit code.
+Ключевое разделение ответственности:
 
-**Расположение в кодовой базе**:
-- `connector/infra/artifacts/report_writer.py` — три I/O функции
-- `connector/delivery/cli/runtime.py` — `run_with_report()`, `run_without_report()` и все вспомогательные функции
-- `connector/domain/diagnostics/command_result.py` — `CommandResult`
-- `connector/domain/diagnostics/policies.py` — `SystemErrorCode`
+| Модуль | Роль |
+|--------|------|
+| `runtime_orchestrator.py` | Lifecycle orchestration: init → handler → shutdown → finalize |
+| `runtime.py` | Thin facade: инжектит production зависимости и делегирует в orchestrator |
+| `runtime_result_mapper.py` | Маппинг `DomainCommandResult` → report events (`AddItemEvent`) |
+| `result_adapter.py` | Конвертация `DomainCommandResult` ↔ OS exit code |
+| `runtime_contracts.py` | Handler protocol, `RuntimeExecutionResult`, `RuntimeErrorWithCode` |
+| `report_renderer.py` | Сериализация `ReportEnvelope` → JSON файл |
 
 ---
 
-## 🏗️ Архитектура слоя
-
-### Основные компоненты
+## 📑 Дерево модулей
 
 ```
-connector/
-├── infra/
-│   └── artifacts/
-│       └── report_writer.py          # createEmptyReport(), finalizeReport(), writeReportJson()
-├── delivery/
-│   └── cli/
-│       ├── runtime.py                # run_with_report(), run_without_report(), helpers
-│       └── containers.py            # DI containers (ReportCollector НЕ регистрируется)
-└── domain/
-    └── diagnostics/
-        ├── command_result.py         # CommandResult (ok | warn | error)
-        └── policies.py              # SystemErrorCode enum
+connector/delivery/cli/
+├── runtime_orchestrator.py      # Lifecycle orchestration (canonical)
+├── runtime.py                   # Thin facade с production DI
+├── runtime_contracts.py         # CommandHandler protocol, RuntimeExecutionResult
+├── runtime_result_mapper.py     # DomainCommandResult → report events
+├── result_adapter.py            # result_with(), exit_code_from_result()
+├── context.py                   # UnboundCommandContext, BoundCommandContext
+├── requirements.py              # Requirements flags
+└── containers.py                # AppContainer DI
+
+connector/infra/artifacts/
+└── report_renderer.py           # IReportRenderer, JsonReportRenderer
 ```
-
-### 📐 UML диаграммы
-
-| Тип | Диаграмма | Описание |
-|-----|-----------|----------|
-| Sequence | [Sequence Diagram](../../../uml/pipeline/report_layer/report_layer_sequence.puml) | Полный lifecycle run_with_report() |
-| Activity | [Activity Diagram](../../../uml/pipeline/report_layer/report_layer_activity.puml) | Алгоритм обработки command + report |
-| Components | [Component Diagram](../../../uml/pipeline/report_layer/report_layer_components.puml) | Зависимости между компонентами |
-
-**PlantUML исходники**: `docs/uml/pipeline/report_layer/*.puml`
-
-### 🎭 Применённые паттерны
-
-#### Паттерн 1: Template Method (Жизненный цикл)
-
-**Где применяется**: `run_with_report()` определяет фиксированную последовательность шагов lifecycle (init → report → handler → finalize → cleanup → exit_code), каждый из которых делегируется helper-функции.
-
-**Реализация в коде**:
-- `run_with_report()` в `connector/delivery/cli/runtime.py` — orchestrator
-- `_initialize_container_resources()`, `_call_handler()`, `_finalize_report_artifacts()`, `_shutdown_container_resources()` — шаги lifecycle
-
-**Зачем**: Единый lifecycle для всех команд с отчётом; новая команда добавляется через handler, а не через изменение lifecycle.
 
 ---
 
-#### Паттерн 2: Strategy через signature inspection
+## 🏗️ Архитектурные паттерны
 
-**Где применяется**: `_call_handler()` использует `inspect.signature()` для определения, принимает ли handler `report` как третий аргумент. Это позволяет поддерживать старые 2-param обработчики рядом с новыми 3-param.
+### Template Method (orchestration flow)
 
-**Реализация в коде**:
-- `_call_handler()` в `connector/delivery/cli/runtime.py`
+| Аспект | Описание |
+|--------|----------|
+| **Где** | `runtime_orchestrator.run_with_report()` |
+| **Реализация** | Фиксированный каркас lifecycle (init → handler → shutdown → finalize) с inject-ными callbacks для каждого шага |
+| **Пример** | `create_container`, `initialize_container_resources`, `apply_result_to_report`, `finalize_report_artifacts` — все callback-and |
+| **Зачем** | Отделяет orchestration skeleton от production wiring; позволяет тестировать lifecycle без реальных DI containers |
 
-**Зачем**: Backward-compatible API для command handlers; не требует переписывать все существующие обработчики при добавлении report-параметра.
+### Facade (runtime.py)
 
----
+| Аспект | Описание |
+|--------|----------|
+| **Где** | `runtime.run_with_report()`, `runtime.run_without_report()` |
+| **Реализация** | Thin facade инжектит `AppContainer`, `_init_container_for_requirements` и другие production зависимости |
+| **Пример** | `runtime.run_with_report(ctx=ctx, command_name="enrich", opts=opts, handler=handler, requirements=reqs)` |
+| **Зачем** | CLI команды вызывают простой 5-arg API; orchestrator получает полный parameterized interface |
 
-#### Паттерн 3: Write-once artifact
+### Write-Once Artifact
 
-**Где применяется**: `writeReportJson()` создаёт JSON-файл один раз по завершении прогона. Файл не обновляется инкрементально — это атомарная запись финального состояния.
+| Аспект | Описание |
+|--------|----------|
+| **Где** | `finalize_report_artifacts()` → `JsonReportRenderer.render()` |
+| **Реализация** | Envelope собирается один раз через `ReportAssembler.assemble()` и записывается как immutable JSON файл |
+| **Пример** | `report_{command}_{run_id}.json` |
+| **Зачем** | Детерминизм: один запуск → один артефакт; нет partial writes или append-mode |
 
-**Зачем**: Детерминированный артефакт; внешние системы могут читать файл только после полного завершения команды.
+### Secondary Demotion Policy
 
-### Диаграмма зависимостей
-
-```
-CLI command entry point
-        │
-        ▼
-run_with_report(command, args, handler, container)
-        │
-        ├─ createEmptyReport()  ────────────────► ReportCollector (new instance)
-        │      └─ set_context("config", ...)
-        │
-        ├─ _initialize_container_resources()  ──► DI resources (vault, sqlite, ...)
-        │
-        ├─ _call_handler(handler, args, container, report)
-        │      ├─ 3-param: handler(args, container, report)
-        │      └─ 2-param: handler(args, container)
-        │              │ returns CommandResult | None
-        │
-        ├─ _apply_cli_result_to_report(result, report, command)
-        │
-        ├─ _finalize_report_artifacts(report, args, result)
-        │      ├─ finalizeReport()   ──────────► report.finish() + context["runtime"]
-        │      └─ writeReportJson()  ──────────► {report_dir}/{run_id}.json
-        │
-        ├─ _shutdown_container_resources()
-        │
-        └─ _exit_code_from_result(result)  ──────► int (0 or 1)
-```
+| Аспект | Описание |
+|--------|----------|
+| **Где** | `runtime_result_mapper._with_secondary_policy()` |
+| **Реализация** | Если `secondary=True`, все errors демотируются в warnings |
+| **Пример** | Ошибка shutdown при уже-failed команде → warning, не error |
+| **Зачем** | Предотвращает маскировку первичной ошибки вторичными failures |
 
 ---
 
 ## 🔑 Ключевые абстракции
 
-### Основные функции
-
-| Функция | Модуль | Назначение |
-|---------|--------|-----------|
-| `createEmptyReport(runId, command, configSources)` | `report_writer.py` | Создаёт ReportCollector с базовым config-контекстом |
-| `finalizeReport(report, durationMs, logFile, cacheDir, reportDir)` | `report_writer.py` | Проставляет runtime-контекст и финализирует collector |
-| `writeReportJson(report, reportDir, fileBaseName)` | `report_writer.py` | Сериализует envelope в JSON-файл |
-| `run_with_report(command, args, handler, container)` | `runtime.py` | Полный lifecycle с отчётом |
-| `run_without_report(command, args, handler, container)` | `runtime.py` | Lifecycle без отчёта (для admin команд) |
-| `_call_handler(handler, args, container, report)` | `runtime.py` | Dispatch по сигнатуре handler |
-| `_stage_for_command(command_name)` | `runtime.py` | Маппинг имени команды → DiagnosticStage |
-| `_exit_code_from_result(result)` | `runtime.py` | CommandResult.status → int exit code |
-
-### CommandResult
-
-**Модуль**: `connector/domain/diagnostics/command_result.py`
-
-```python
-@dataclass
-class CommandResult:
-    status: CommandStatus = "ok"          # "ok" | "warn" | "error"
-    stats: dict[str, int] = field(...)
-    items: list[dict[str, Any]] = field(...)
-    errors: list[DiagnosticItem] = field(...)
-    warnings: list[DiagnosticItem] = field(...)
-```
-
-`CommandResult` — легковесный объект результата, не связанный с I/O и форматированием отчёта. Возвращается всеми command handlers и используется для:
-1. Добавления CLI-level диагностики в `ReportCollector`.
-2. Определения exit code.
-
-**`add_code(SystemErrorCode)`**: Эскалирует `status` на основе кода ошибки:
-- `SystemErrorCode.OK` → статус остаётся `"ok"`
-- `SystemErrorCode.DATA_INVALID` → эскалирует до `"error"`
-- `SystemErrorCode.INTERNAL_ERROR` → эскалирует до `"error"`
-- `SystemErrorCode.CACHE_ERROR` → эскалирует до `"error"`
+| Абстракция | Файл | Роль |
+|------------|------|------|
+| `CommandHandler` | `runtime_contracts.py` | Protocol: `(ctx, opts, report_sink) → RuntimeExecutionResult` |
+| `RuntimeExecutionResult` | `runtime_contracts.py` | `TypeAlias = DomainCommandResult \| None` |
+| `RuntimeErrorWithCode` | `runtime_contracts.py` | Runtime validation error с фиксированным exit code |
+| `IReportRenderer` | `report_renderer.py` | Protocol: `render(envelope, report_dir, file_base_name) → str` |
+| `JsonReportRenderer` | `report_renderer.py` | JSON serializer для `ReportEnvelope` |
+| `ReportHandler` | `runtime.py` | Alias для `CommandHandler` |
 
 ---
 
-## 📊 report_writer — I/O функции
+## 📐 run_with_report() — lifecycle с отчётом
 
-**Модуль**: `connector/infra/artifacts/report_writer.py`
+> Файл: `connector/delivery/cli/runtime_orchestrator.py`
 
-Три функции, отвечающие за создание, финализацию и запись артефакта отчёта. Намеренно минимальны — вся бизнес-логика в `ReportCollector`.
+Полный lifecycle выполнения CLI-команды с формированием report-артефакта.
 
-### createEmptyReport()
+### Шаги lifecycle
 
-**Сигнатура**:
-```python
-def createEmptyReport(
-    runId: str,
-    command: str,
-    configSources: list[str],
-) -> ReportCollector:
+```
+┌─────────────────────────────────────────────────────────┐
+│  1. Load app_config, create logger, setup TeeStream     │
+│  2. Create InMemoryReportContext + ReportSink            │
+│  3. Create ReportAssembler                               │
+│  4. Emit initial context events (CONFIG, REPORT_POLICY,  │
+│     INPUT, SetMetaEvent)                                 │
+├─────────────────────────────────────────────────────────┤
+│  try:                                                    │
+│    5. validate_requirements()                            │
+│    6. create_container() + override config/transport     │
+│    7. initialize_container_resources()                   │
+│       → if error: apply_result_to_report(secondary=F)   │
+│    8. handler(bound_ctx, opts, report_sink)              │
+│       → apply_result_to_report(source="handler_result")  │
+│  except SettingsLoadError/DslLoadError/                  │
+│         RuntimeErrorWithCode/Exception:                  │
+│    9. Build error result + apply_result_to_report()      │
+├─────────────────────────────────────────────────────────┤
+│  finally:                                                │
+│   10. shutdown_container_resources()                     │
+│       → if error: apply_result_to_report(secondary=T)   │
+│   11. finalize_report_artifacts()                        │
+│       → SetContextEvent(RUNTIME) + FinishEvent           │
+│       → assemble() → render() → write JSON               │
+│   12. Restore stdout/stderr                              │
+│   13. raise typer.Exit(exit_code_from_result())          │
+└─────────────────────────────────────────────────────────┘
 ```
 
-**Назначение**: Создать свежий `ReportCollector` для нового запуска команды.
+### Инициализация report components (шаги 2-4)
 
-**Алгоритм**:
 ```python
-def createEmptyReport(runId, command, configSources):
-    report = ReportCollector(
-        run_id=runId,
-        command=command,
-        started_at=datetime.now(tz=timezone.utc),
+report_context = InMemoryReportContext(run_id=run_id, command=command_name)
+report_sink = ReportSink(report_context)
+report_assembler = ReportAssembler(context=report_context)
+
+# Initial context events
+report_sink.emit(SetContextEvent(name=ReportContextKey.CONFIG, value={"sources": sources}))
+report_sink.emit(SetContextEvent(name=ReportContextKey.REPORT_POLICY, value=policy_payload))
+report_sink.emit(SetContextEvent(name=ReportContextKey.INPUT, value={"csv_path": "..."}))
+report_sink.emit(SetMetaEvent(items_limit=report_items_limit))
+```
+
+Report components создаются **per-command** внутри `run_with_report()`, НЕ через DI container.
+
+### ReportPolicy resolution
+
+```python
+report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
+cli_include_skipped = (
+    app_config.observability.report_include_skipped
+    if cli_include_skipped_raw is None
+    else bool(cli_include_skipped_raw)
+)
+effective_include_skipped_items = report_policy.resolve_include_skipped_items(cli_include_skipped)
+```
+
+Policy профиль берётся из `app_config.observability.report_policy_profile`, а `include_skipped` может быть переопределён через CLI option `--report-include-skipped`.
+
+### items_limit resolution
+
+```python
+report_items_limit = get_opt(opts, ("report_items_limit", "items_limit"))
+if report_items_limit is None:
+    report_items_limit = observability.report_items_limit
+report_sink.emit(SetMetaEvent(items_limit=report_items_limit))
+```
+
+CLI option имеет приоритет над config; значение фиксируется в `ReportMeta.items_limit`.
+
+### Secondary policy в finally-блоке
+
+```python
+shutdown_result = shutdown_container_resources(...)
+if shutdown_result is not None:
+    apply_result_to_report(
+        ..., secondary=exit_result is not None,  # secondary если handler уже вернул ошибку
     )
-    report.set_context("config", {"config_sources": configSources})
-    return report
 ```
 
-**Что устанавливает**:
-- `run_id` — уникальный идентификатор запуска (из CLI args или сгенерированный)
-- `command` — имя CLI-команды (`"import"`, `"apply"`, `"enrich"`, etc.)
-- `started_at` — UTC timestamp начала
-- `context["config"]` — пути к конфиг-файлам (из `AppConfig`)
+Если handler уже вернул error (`exit_result is not None`), то ошибки shutdown/finalize считаются **secondary** — их severity демотируется до warning в report.
 
 ---
 
-### finalizeReport()
+## 📐 run_without_report() — lifecycle без отчёта
 
-**Сигнатура**:
+> Файл: `connector/delivery/cli/runtime_orchestrator.py`
+
+Аналогичный lifecycle, но:
+
+- Handler получает `NullReportSink()` вместо `ReportSink`
+- Нет `finalize_report_artifacts()` — JSON-артефакт не создаётся
+- Нет `apply_result_to_report()` — runtime errors не маппятся в report events
+- stdout/stderr logging через TeeStream сохраняется
+
 ```python
-def finalizeReport(
-    report: ReportCollector,
-    durationMs: int,
-    logFile: str | None,
-    cacheDir: str | None,
-    reportDir: str | None,
-) -> None:
+exit_result = handler(bound_ctx, opts, NullReportSink())
 ```
 
-**Назначение**: Добавить runtime-метаданные в контекст и вызвать `report.finish()`.
-
-**Алгоритм**:
-```python
-def finalizeReport(report, durationMs, logFile, cacheDir, reportDir):
-    report.set_context("runtime", {
-        "duration_ms": durationMs,
-        "log_file": logFile,
-        "cache_dir": cacheDir,
-        "report_dir": reportDir,
-    })
-    report.finish()
-```
-
-**Что устанавливает**:
-- `context["runtime"]` — технические параметры запуска (длительность, пути к логам и директориям)
-- `finish()` — фиксирует `finished_at` и `duration_ms` в `ReportMeta`
-
-**Когда вызывается**: В `_finalize_report_artifacts()` после завершения handler, непосредственно перед `writeReportJson()`.
+Используется для команд, не требующих report (например, служебные/diagnostic команды).
 
 ---
 
-### writeReportJson()
+## 🎭 runtime_result_mapper — маппинг результата в report
 
-**Сигнатура**:
-```python
-def writeReportJson(
-    report: ReportCollector,
-    reportDir: str,
-    fileBaseName: str,
-) -> str:
-```
+> Файл: `connector/delivery/cli/runtime_result_mapper.py`
 
-**Назначение**: Сериализовать финальный `ReportEnvelope` в JSON-файл и вернуть путь.
+### apply_runtime_result_to_report()
 
-**Алгоритм**:
-```python
-def writeReportJson(report, reportDir, fileBaseName):
-    envelope = report.build()               # → ReportEnvelope (финальный снимок)
-    data = asdict_report(envelope)          # → dict (глубокая сериализация)
-    path = os.path.join(reportDir, f"{fileBaseName}.json")
-    os.makedirs(reportDir, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    return path
-```
+Основная функция маппинга `DomainCommandResult → AddItemEvent`.
 
-**Детали**:
-- `fileBaseName` обычно равен `run_id` (или `{command}-{run_id}`)
-- `reportDir` берётся из `AppConfig.paths.reports_dir`
-- Директория создаётся при необходимости (`makedirs(exist_ok=True)`)
-- Encoding: UTF-8, `ensure_ascii=False` — русские символы хранятся как есть
-- Indent: 2 пробела — человекочитаемый формат
+**Алгоритм:**
 
----
+1. **Type guard**: если `result` не `DomainCommandResult | None` → `TypeError`
+2. **None check**: если `result is None` → return (no-op, success)
+3. **Diagnostics extraction**:
+   - Если `result.diagnostics` есть → split по severity через `_split_domain_diagnostics()` → `split_report_diagnostics()`
+   - Если `not result.ok` и diagnostics нет → **synthetic diagnostic** с `primary_code` и `system_codes`
+4. **Empty check**: если нет errors и нет warnings → return (no-op)
+5. **Secondary policy**: если `secondary=True` → demote errors → warnings
+6. **Emit**: `AddItemEvent(status=FAILED if errors else OK, meta={source, secondary, synthetic, system_codes})`
 
-## 📊 run_with_report() — полный lifecycle
+### Synthetic Diagnostic
 
-**Модуль**: `connector/delivery/cli/runtime.py`
-
-Главная оркестрирующая функция для всех команд с отчётностью.
-
-**Сигнатура**:
-```python
-def run_with_report(
-    command: str,
-    args: Any,
-    handler: Callable,
-    container: Any,
-) -> int:   # OS exit code
-```
-
-### Инициализация
-
-```
-1. configSources = _extract_config_sources(args)
-   report = createEmptyReport(runId=args.run_id, command=command, configSources=configSources)
-
-2. _initialize_container_resources(container)
-   → Вызывает eager init DI-ресурсов:
-     - SqliteContainer.vault_ready → VaultStartupGuard.ensure_ready()
-     - Другие Resource-провайдеры, если объявлены
-```
-
-### _call_handler() — dispatch по сигнатуре
-
-**Назначение**: Вызвать handler с правильным набором аргументов в зависимости от его сигнатуры.
-
-**Алгоритм**:
-```python
-def _call_handler(handler, args, container, report):
-    sig = inspect.signature(handler)
-    params = [
-        p for p in sig.parameters.values()
-        if p.name != "self"
-    ]
-    if len(params) >= 3:
-        # Новый стиль: handler(args, container, report)
-        return handler(args, container, report)
-    else:
-        # Legacy: handler(args, container)
-        return handler(args, container)
-```
-
-**Два режима**:
-
-| Количество параметров | Вызов | Применение |
-|-----------------------|-------|-----------|
-| ≥ 3 (args, container, report) | `handler(args, container, report)` | Современные обработчики с отчётом |
-| 2 (args, container) | `handler(args, container)` | Legacy-обработчики без report |
-
-**Backward compatibility**: Старые handlers продолжают работать без изменений — `run_with_report()` всё равно создаёт и финализирует отчёт, просто handler не получает ссылку на collector.
-
----
-
-### _apply_cli_result_to_report()
-
-**Назначение**: Перенести диагностику из `CommandResult` (CLI-level ошибки) в `ReportCollector`.
+Создаётся когда `result.ok=False` но `result.diagnostics` пуст, и `_needs_synthetic_diagnostic()` возвращает `True`:
 
 ```python
-def _apply_cli_result_to_report(result, report, command):
-    if result is None:
-        return
-    stage = _stage_for_command(command)
-    for error in result.errors:
-        report.add_item(
-            status="FAILED",
-            row_ref=None,
-            payload=None,
-            errors=to_report_diagnostics([error], None),
-            warnings=[],
-            meta={"stage": stage},
-            store=True,
-        )
-    for warning in result.warnings:
-        report.add_item(
-            status="OK",
-            row_ref=None,
-            payload=None,
-            errors=[],
-            warnings=to_report_diagnostics(None, [warning]),
-            meta={"stage": stage},
-            store=True,
-        )
+def _needs_synthetic_diagnostic(*, context: IReportContext, secondary: bool) -> bool:
+    if secondary:
+        return True
+    summary = context.summary_snapshot()
+    return summary.rows_blocked == 0 and summary.errors_total == 0
 ```
 
-**Назначение**: CLI-level ошибки (например, vault startup failure, cache error) становятся `ReportItem` без `row_ref` и `payload`. Это позволяет видеть их в `envelope.items` и в `summary.by_stage`.
+Логика: если отчёт уже содержит blocked rows или errors — handler result уже отражён через stage-level reporting. Synthetic нужен только если отчёт «чистый» а результат failed.
 
----
+### Secondary Policy
 
-### _finalize_report_artifacts()
-
-**Алгоритм**:
 ```python
-def _finalize_report_artifacts(report, args, result):
-    duration_ms = _compute_duration(report)
-    finalizeReport(
-        report=report,
-        durationMs=duration_ms,
-        logFile=getattr(args, "log_file", None),
-        cacheDir=getattr(args, "cache_dir", None),
-        reportDir=getattr(args, "report_dir", None),
+def _with_secondary_policy(*, errors, warnings, secondary: bool):
+    if not secondary:
+        return errors, warnings
+    # Demote all errors → warnings
+    downgraded = [*warnings]
+    for diag in errors:
+        downgraded.append(ReportDiagnostic(severity="warning", ...))
+    return [], downgraded
+```
+
+### build_runtime_error_result()
+
+Фабрика `DomainCommandResult` для runtime-исключений:
+
+```python
+def build_runtime_error_result(*, catalog, command_name, message, details=None):
+    diagnostic = build_error(
+        catalog=catalog,
+        stage=stage_for_command(command_name),
+        code="INTERNAL_ERROR",
+        message=message,
+        details=details,
     )
-    report_dir = getattr(args, "report_dir", None)
-    if report_dir:
-        file_base = getattr(args, "run_id", "report")
-        writeReportJson(report, report_dir, file_base)
+    result = DomainCommandResult()
+    result.add_diagnostics([diagnostic], catalog)
+    return result
 ```
 
-**Порядок**: `finalizeReport()` всегда вызывается до `writeReportJson()`. Это гарантирует, что `context["runtime"]` и `meta.finished_at` присутствуют в JSON-файле.
+### stage_for_command()
+
+Маппинг runtime command name → `DiagnosticStage`:
+
+| Command name | Stage |
+|--------------|-------|
+| `mapping` | `MAP` |
+| `normalize` | `NORMALIZE` |
+| `enrich` | `ENRICH` |
+| `match` | `MATCH` |
+| `resolve` | `RESOLVE` |
+| `import_plan` | `PLAN` |
+| `import_apply` | `APPLY` |
+| `cache_refresh`, `cache_clear`, `cache_status` | `CACHE` |
+| (default) | `SINK` |
+
+Normalization: `replace("-", "_").lower()` перед lookup.
 
 ---
 
-### Завершение и exit code
+## 🗂️ finalize_report_artifacts() — финализация отчёта
 
-**`_exit_code_from_result(result) → int`**:
+> Файл: `connector/delivery/cli/runtime_orchestrator.py`
 
 ```python
-def _exit_code_from_result(result: CommandResult | None) -> int:
+def finalize_report_artifacts(*, report_sink, report_assembler, start_monotonic, paths,
+                               log_file_path, command_name, run_id, logger, emit_user_error):
+    duration_ms = getDurationMs(start_monotonic, time.monotonic())
+
+    # 1. Emit runtime context
+    report_sink.emit(SetContextEvent(
+        name=ReportContextKey.RUNTIME,
+        value={"log_file": log_file_path, "cache_dir": paths.cache_dir, "report_dir": paths.report_dir},
+    ))
+
+    # 2. Emit finish event
+    report_sink.emit(FinishEvent(duration_ms=duration_ms))
+
+    # 3. Assemble envelope (snapshot + enrichers)
+    envelope = report_assembler.assemble()
+
+    # 4. Render JSON artifact
+    report_path = JsonReportRenderer().render(
+        envelope=envelope,
+        report_dir=paths.report_dir,
+        file_base_name=f"report_{command_name}_{run_id}",
+    )
+```
+
+Шаги:
+1. Emit `SetContextEvent(RUNTIME)` — runtime paths (log, cache, report dir)
+2. Emit `FinishEvent(duration_ms=...)` — фиксирует `finished_at` и `duration_ms` в meta
+3. `report_assembler.assemble()` — snapshot envelope из context
+4. `JsonReportRenderer().render(...)` — serialize и записать JSON файл
+
+При ошибке финализации возвращает `result_with(SystemErrorCode.INTERNAL_ERROR)`.
+
+---
+
+## 📊 IReportRenderer / JsonReportRenderer
+
+> Файл: `connector/infra/artifacts/report_renderer.py`
+
+### Protocol
+
+```python
+@runtime_checkable
+class IReportRenderer(Protocol):
+    def render(self, *, envelope: ReportEnvelope, report_dir: str, file_base_name: str) -> str: ...
+```
+
+### JsonReportRenderer
+
+```python
+class JsonReportRenderer(IReportRenderer):
+    def render(self, *, envelope, report_dir, file_base_name) -> str:
+        Path(report_dir).mkdir(parents=True, exist_ok=True)
+        report_path = str(Path(report_dir) / f"{file_base_name}.json")
+        payload = asdict_envelope(envelope)
+        with open(report_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        return report_path
+```
+
+- `asdict_envelope()` конвертирует `ReportEnvelope` в plain dict (deep copy via `context.asdict_envelope()`)
+- UTF-8 encoding, `ensure_ascii=False` для кириллицы
+- `indent=2` для human-readable output
+- Возвращает абсолютный путь к записанному файлу
+
+---
+
+## 🚨 Exception Handling Matrix
+
+`run_with_report()` обрабатывает следующие исключения:
+
+| Исключение | Source label | Обработка |
+|------------|-------------|-----------|
+| `SettingsLoadError` | `settings_load_error` | `translate_settings_load_error()` → diagnostics → `DomainCommandResult` |
+| `DslLoadError` | `dsl_load_error` | `translate_dsl_load_error()` → diagnostic → `DomainCommandResult` |
+| `RuntimeErrorWithCode` | `runtime_validation_error` | `build_runtime_error_result()` с details `{runtime_exit_code, runtime_error}` |
+| `Exception` (generic) | `runtime_exception` | `build_runtime_error_result()` с details `{runtime_error: class_name}` |
+
+**Container init exceptions** (в `initialize_container_resources()`):
+
+| Исключение | Поведение |
+|------------|-----------|
+| `DslLoadError` | Re-raise (обрабатывается outer handler) |
+| `sqlite3.Error` | `result_with(SystemErrorCode.CACHE_ERROR)` |
+| `VaultDomainError` | `result_with(SystemErrorCode.INTERNAL_ERROR)` |
+| `Exception` | `result_with(SystemErrorCode.INTERNAL_ERROR)` |
+
+**Shutdown/finalize exceptions**:
+
+| Фаза | Поведение |
+|------|-----------|
+| `shutdown_container_resources` | `result_with(INTERNAL_ERROR)`, secondary=True если handler failed |
+| `finalize_report_artifacts` | `result_with(INTERNAL_ERROR)`, secondary=True если handler failed |
+
+---
+
+## 🔌 Handler Contract
+
+> Файл: `connector/delivery/cli/runtime_contracts.py`
+
+```python
+@runtime_checkable
+class CommandHandler(Protocol):
+    def __call__(
+        self,
+        ctx: BoundCommandContext,
+        opts: Any,
+        report_sink: IReportSink,
+    ) -> RuntimeExecutionResult: ...
+```
+
+**Контракт:**
+
+1. Handler всегда вызывается с **3 аргументами**: `(ctx, opts, report_sink)`
+2. `report_sink` может быть `NullReportSink` в `run_without_report()`
+3. Возвращает `DomainCommandResult | None`:
+   - `None` → success (exit code 0)
+   - `DomainCommandResult` → result.exit_code() определяет exit code
+4. Handler НЕ ответственен за finalize/shutdown — это делает orchestrator
+5. Handler публикует stage-level report events через `report_sink.emit(...)` напрямую или через `StageResultReporter`
+
+---
+
+## 🏗️ DI Wiring — report NOT in containers
+
+Report components **не** регистрируются в DI container (`AppContainer`).
+
+Они создаются per-command внутри `run_with_report()`:
+
+```python
+# Per-command creation (NOT in DI)
+report_context = InMemoryReportContext(run_id=run_id, command=command_name)
+report_sink = ReportSink(report_context)
+report_assembler = ReportAssembler(context=report_context)
+```
+
+**Почему не в DI:**
+
+- Report context привязан к конкретному command invocation, не к application scope
+- Report lifecycle (create → emit → assemble → render) полностью управляется orchestrator
+- Нет зависимостей на report компоненты извне orchestrator
+
+**Как handler получает sink:**
+
+- Через параметр `report_sink` в handler contract: `handler(ctx, opts, report_sink)`
+- Handler передаёт sink в usecase → usecase создаёт `StageResultReporter` с этим sink
+
+---
+
+## 📊 Exit Code Contract
+
+> Файл: `connector/delivery/cli/result_adapter.py`
+
+### result_with()
+
+```python
+def result_with(code: SystemErrorCode) -> DomainCommandResult:
+    result = DomainCommandResult()
+    result.add_code(code)
+    return result
+```
+
+Фабрика для runtime-ошибок с единственным system code.
+
+### exit_code_from_result()
+
+```python
+def exit_code_from_result(result: DomainCommandResult | None) -> int:
     if result is None:
         return 0
-    if result.status == "error":
-        return 1
-    return 0  # "ok" или "warn"
+    return result.exit_code()
 ```
 
-**Таблица маппинга**:
-
-| CommandResult.status | Exit code | Значение |
-|---------------------|-----------|---------|
-| `"ok"` | 0 | Успешное выполнение |
-| `"warn"` | 0 | Выполнено с предупреждениями (не ошибка) |
-| `"error"` | 1 | Ошибка выполнения |
-| `None` (handler вернул None) | 0 | Трактуется как успех |
-
-**Замечание**: `"warn"` → 0 намеренно — предупреждения не прерывают CI/CD pipeline. Ошибки данных (`DATA_INVALID`) → `"error"` → exit code 1.
+| Ситуация | Exit code |
+|----------|-----------|
+| `result is None` | `0` (success) |
+| `DomainCommandResult` | `result.exit_code()` — определяется `SystemErrorCode` приоритетом |
+| Другой тип | `TypeError` |
 
 ---
 
-### Полный lifecycle run_with_report() — пошагово
+## 📐 JSON Output Format
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    run_with_report()                            │
-│                                                                 │
-│  1. createEmptyReport()          → report (ReportCollector)     │
-│     └─ set_context("config", ...)                               │
-│                                                                 │
-│  2. _initialize_container_resources(container)                  │
-│     └─ vault_ready.init() → VaultStartupGuard.ensure_ready()   │
-│                                                                 │
-│  3. _call_handler(handler, args, container, report)             │
-│     ├─ 3-param: handler(args, container, report) → result       │
-│     └─ 2-param: handler(args, container) → result               │
-│                                                                 │
-│  4. _apply_cli_result_to_report(result, report, command)        │
-│     └─ CLI-level errors → report.add_item(store=True)           │
-│                                                                 │
-│  5. _finalize_report_artifacts(report, args, result)            │
-│     ├─ finalizeReport() → set_context("runtime") + finish()    │
-│     └─ writeReportJson() → {report_dir}/{run_id}.json           │
-│                                                                 │
-│  6. _shutdown_container_resources(container)                    │
-│                                                                 │
-│  7. return _exit_code_from_result(result)   → 0 | 1            │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 📊 run_without_report()
-
-**Сигнатура**:
-```python
-def run_without_report(
-    command: str,
-    args: Any,
-    handler: Callable,
-    container: Any,
-) -> int:
-```
-
-**Назначение**: Lifecycle для команд, которые не производят JSON-отчёт (административные команды: cache invalidate, schema migrate, diagnostics).
-
-**Отличия от `run_with_report()`**:
-- Не создаётся `ReportCollector`.
-- Не вызываются `finalizeReport()` и `writeReportJson()`.
-- Handler всегда вызывается в 2-param режиме: `handler(args, container)`.
-- DI init/shutdown выполняются так же.
-
-**Алгоритм**:
-```
-1. _initialize_container_resources(container)
-2. result = handler(args, container)
-3. _shutdown_container_resources(container)
-4. return _exit_code_from_result(result)
-```
-
-**Когда использовать**: Когда команда не обрабатывает строки датасета и не создаёт отчёт — например, `cache refresh --dry-run`, `vault probe`, `schema check`.
-
----
-
-## 📊 _stage_for_command()
-
-**Назначение**: Сопоставить имя CLI-команды с `DiagnosticStage`, чтобы CLI-level ошибки в `_apply_cli_result_to_report()` получили корректную stage-атрибуцию.
-
-**Маппинг** (типичный):
-
-| command | DiagnosticStage |
-|---------|----------------|
-| `"import"` | `DiagnosticStage.MAP` |
-| `"enrich"` | `DiagnosticStage.ENRICH` |
-| `"apply"` | `DiagnosticStage.APPLY` |
-| `"cache_refresh"` | `DiagnosticStage.CACHE` |
-| (default/unknown) | `DiagnosticStage.MAP` |
-
-**Реализация**:
-```python
-def _stage_for_command(command_name: str) -> DiagnosticStage:
-    mapping = {
-        "import": DiagnosticStage.MAP,
-        "enrich": DiagnosticStage.ENRICH,
-        "apply": DiagnosticStage.APPLY,
-        "cache_refresh": DiagnosticStage.CACHE,
-    }
-    return mapping.get(command_name, DiagnosticStage.MAP)
-```
-
----
-
-## 🗂️ JSON output — формат файла
-
-**Расположение**: `{AppConfig.paths.reports_dir}/{run_id}.json`
-
-**Кодировка**: UTF-8, indent=2, ensure_ascii=False
-
-**Пример полного файла**:
+Формат итогового JSON-артефакта — сериализация `ReportEnvelope` через `asdict_envelope()`:
 
 ```json
 {
-  "status": "PARTIAL",
   "meta": {
-    "run_id": "a3f7c2d1-1234-5678-abcd-ef0123456789",
-    "dataset": "employees",
-    "command": "import",
-    "started_at": "2026-02-27T10:00:00+00:00",
-    "finished_at": "2026-02-27T10:00:05+00:00",
-    "duration_ms": 5123,
-    "items_limit": 1000,
-    "items_truncated": false,
-    "app_version": "1.2.0",
-    "git_rev": "abc1234def5678"
+    "run_id": "abc-123",
+    "command": "enrich",
+    "schema_version": "2.0",
+    "started_at": "2026-03-03T12:00:00",
+    "finished_at": "2026-03-03T12:00:05",
+    "duration_ms": 5000,
+    "items_limit": 500,
+    "items_stored": 42,
+    "items_truncated": false
   },
   "summary": {
-    "rows_total": 250,
-    "rows_passed": 247,
-    "rows_blocked": 3,
-    "rows_with_warnings": 12,
-    "errors_total": 3,
-    "warnings_total": 15,
-    "by_stage": {
-      "ENRICH": 2,
-      "MATCH": 1
-    },
+    "status": "FAILED",
+    "rows_total": 1000,
+    "rows_passed": 950,
+    "rows_blocked": 45,
+    "rows_skipped": 5,
+    "errors_total": 45,
+    "warnings_total": 12,
     "ops": {
-      "create": {"ok": 200, "failed": 0, "count": 200},
-      "update": {"ok": 47, "failed": 3, "count": 50},
-      "skip": {"ok": 0, "failed": 0, "count": 0},
-      "apply_failed": {"ok": 0, "failed": 3, "count": 3}
+      "TRANSFORM": {"ok": 950, "failed": 45, "count": 1000}
     }
+  },
+  "context": {
+    "CONFIG": {"sources": ["settings.yaml"]},
+    "REPORT_POLICY": {"profile": "STANDARD", "...": "..."},
+    "INPUT": {"csv_path": "employees.csv"},
+    "STAGE": {"stage": "ENRICH", "strategy": "TransformStageReportStrategy"},
+    "RUNTIME": {"log_file": "/logs/enrich_abc-123.log", "...": "..."}
   },
   "items": [
     {
       "status": "FAILED",
-      "row_ref": {
-        "line_no": 42,
-        "row_id": "row-042",
-        "identity_primary": "employee_id",
-        "identity_value": "E0042"
-      },
-      "payload": {
-        "employee_id": "E0042",
-        "name": "Alice Smith",
-        "department": "Engineering",
-        "password": "***"
-      },
-      "diagnostics": [
-        {
-          "severity": "error",
-          "stage": "ENRICH",
-          "code": "secret_store_failed",
-          "field": "password",
-          "message": "Failed to store secret for field 'password'",
-          "rule": null,
-          "details": {"reason": "vault_not_ready"}
-        }
-      ],
-      "meta": {
-        "match_key": "E0042",
-        "secret_candidate_fields": ["password"],
-        "upstream_errors_count": 0,
-        "upstream_warnings_count": 0
-      }
-    }
-  ],
-  "context": {
-    "config": {
-      "config_sources": ["/etc/ankey/app.yaml"]
-    },
-    "input": {
-      "dataset": "employees",
-      "source_file": "data/employees.csv",
-      "record_count": 250
-    },
-    "enrich": {
-      "vault_rollout": {
-        "mode": "canary",
-        "triggered": true,
-        "reason": "canary_bucket_in_range"
-      }
-    },
-    "apply": {
-      "plan_path": "plans/run-a3f7c2d1.json",
-      "dry_run": false,
-      "target": "ankey_rest",
-      "retries": 3
-    },
-    "runtime": {
-      "duration_ms": 5123,
-      "log_file": "logs/run-a3f7c2d1.log",
-      "cache_dir": "cache/",
-      "report_dir": "reports/"
-    }
-  }
-}
-```
-
-### Структура top-level полей
-
-| Поле | Тип | Всегда присутствует | Описание |
-|------|-----|---------------------|---------|
-| `status` | `string` | Да | `"SUCCESS"` / `"PARTIAL"` / `"FAILED"` |
-| `meta` | `object` | Да | Метаданные запуска |
-| `summary` | `object` | Да | Агрегированные счётчики |
-| `items` | `array` | Да (может быть `[]`) | Детализация по строкам (ограничена `items_limit`) |
-| `context` | `object` | Да (может быть `{}`) | Именованные блоки от стадий |
-
-### Специальные значения
-
-- `"password": "***"` — явно замаскированное секретное поле
-- `"items_truncated": true` — список items обрезан по `items_limit`; счётчики в summary полные
-- `"row_ref": null` — CLI-level ошибка без привязки к строке (например, vault startup failure)
-- `"payload": null` — item без payload (например, строка без `should_store` или CLI-level item)
-
----
-
-## 🔄 Взаимодействие с другими слоями
-
-| Слой | Тип связи | Через что | Зачем |
-|------|-----------|-----------|-------|
-| DI Container (`containers.py`) | Инициализирует / завершает | `_initialize_container_resources()`, `_shutdown_container_resources()` | Eager init vault, sqlite; graceful shutdown |
-| ReportCollector (domain/reporting) | Создаёт и передаёт | `createEmptyReport()` → коллектор через handler | Collector живёт в lifecycle wrapper, не в DI |
-| Command handlers (delivery/commands) | Вызывает | `_call_handler()` | Handler мутирует collector и возвращает CommandResult |
-| VaultStartupGuard | Зависит через DI | `container.vault.vault_ready.init()` | Fail-fast если vault не готов |
-| AppConfig | Читает пути | `args.report_dir`, `args.log_file`, `args.cache_dir` | Для finalizeReport и writeReportJson |
-| OS filesystem | Пишет | `writeReportJson()` → `open()` | JSON-артефакт на диске |
-
----
-
-## 🔌 Контракты и границы
-
-### DI wiring — ReportCollector НЕ регистрируется
-
-`ReportCollector` намеренно не является DI-managed сервисом:
-
-```python
-# ❌ Этого НЕТ в containers.py:
-class ReportContainer(containers.DeclarativeContainer):
-    collector = providers.Singleton(ReportCollector)  # НЕВЕРНО
-```
-
-```python
-# ✅ Что реально происходит в runtime.py:
-def run_with_report(command, args, handler, container):
-    report = createEmptyReport(...)    # создаётся локально
-    result = _call_handler(handler, args, container, report)  # передаётся явно
-```
-
-**Причины**:
-1. `ReportCollector` stateful и per-invocation — Singleton не подходит.
-2. Factory-provider создавал бы новый collector при каждом `()` — нужна передача одного экземпляра.
-3. Явная передача через параметр делает зависимость видимой и тестируемой.
-
-### Контракт handler функций
-
-**3-param handler** (современный стиль):
-```python
-def handle_import(args: ImportArgs, container: AppContainer, report: ReportCollector) -> CommandResult:
-    # report доступен для set_context(), add_item() и т.д.
-    ...
-```
-
-**2-param handler** (legacy стиль):
-```python
-def handle_cache_refresh(args: CacheArgs, container: AppContainer) -> CommandResult:
-    # report недоступен; report создаётся и финализируется runtime'ом без участия handler
-    ...
-```
-
-### Контракт createEmptyReport / finalizeReport / writeReportJson
-
-```
-createEmptyReport() → report (незавершённый)
-     │
-     │ (handler мутирует report)
-     ▼
-finalizeReport(report, ...) → report (завершённый, finish() вызван)
-     │
-     ▼
-writeReportJson(report, ...) → файл на диске
-```
-
-**Нарушение порядка**: вызов `writeReportJson()` до `finalizeReport()` → `meta.finished_at == null`, `meta.duration_ms == null` в файле.
-
-### Границы слоёв
-
-**Разрешённые зависимости**:
-- ✅ `runtime.py` → `report_writer.py` (delivery → infra artifacts)
-- ✅ `runtime.py` → `ReportCollector` (delivery → domain)
-- ✅ `runtime.py` → `CommandResult` (delivery → domain diagnostics)
-- ✅ `report_writer.py` → `ReportCollector` (infra → domain)
-
-**Запрещённые зависимости**:
-- ❌ `ReportCollector` → `runtime.py` — домен не знает про delivery
-- ❌ `report_writer.py` → DI containers — инфраструктура I/O не зависит от DI
-- ❌ Command handlers → `runtime.py` напрямую — handlers вызываются через `_call_handler()`, не вызывают runtime самостоятельно
-
----
-
-## 💡 Типичные сценарии
-
-### Сценарий 1: Стандартный import с отчётом
-
-```python
-# Регистрация команды в CLI:
-@app.command("import")
-def import_command(args: ImportArgs):
-    container = build_container(args)
-    exit_code = run_with_report(
-        command="import",
-        args=args,
-        handler=handle_import,         # 3-param handler
-        container=container,
-    )
-    raise typer.Exit(code=exit_code)
-
-# Handler (3-param):
-def handle_import(args: ImportArgs, container: AppContainer, report: ReportCollector) -> CommandResult:
-    report.set_meta(dataset=args.dataset, app_version=APP_VERSION, git_rev=GIT_REV)
-    report.set_context("input", {"dataset": args.dataset, "source_file": args.source})
-
-    processor = TransformResultProcessor(
-        report=report,
-        include_items=args.include_items,
-        context_key="normalize",
-        ...
-    )
-    for result in run_normalize_pipeline(args):
-        processor.process(result)
-    return processor.finalize()
-```
-
----
-
-### Сценарий 2: Vault startup failure — отчёт содержит CLI-level ошибку
-
-```
-run_with_report("import", args, handler, container)
-    │
-    ├─ _initialize_container_resources(container)
-    │      └─ vault_ready.init() → VaultStartupGuard.ensure_ready()
-    │              └─ VaultStartupKeyValidationError("active key missing")
-    │
-    ├─ vault_startup_error_result(exc) → CommandResult(status="error", errors=[diag])
-    │
-    ├─ _apply_cli_result_to_report(result, report, "import")
-    │      └─ report.add_item(
-    │             status="FAILED", row_ref=None, payload=None,
-    │             errors=[ReportDiagnostic(stage="MAP", code="VAULT_KEY_MISSING", ...)],
-    │             store=True,
-    │         )
-    │
-    ├─ _finalize_report_artifacts() → JSON файл записан
-    │
-    └─ exit code = 1
-```
-
-В JSON-файле появится item без `row_ref` и без `payload` — маркер CLI-level отказа:
-```json
-{
-  "items": [
-    {
-      "status": "FAILED",
-      "row_ref": null,
-      "payload": null,
-      "diagnostics": [{"severity": "error", "stage": "MAP", "code": "VAULT_KEY_MISSING", ...}],
-      "meta": {"stage": "MAP"}
+      "row_ref": {"row_number": 42, "employee_id": "E001"},
+      "payload": {"field": "value"},
+      "errors": [{"severity": "error", "stage": "ENRICH", "code": "VALIDATION_ERROR", "...": "..."}],
+      "warnings": [],
+      "meta": {}
     }
   ]
 }
 ```
 
----
-
-### Сценарий 3: Dry-run apply без записи JSON
-
-```python
-# Команда без report_dir → writeReportJson не вызывается
-args.report_dir = None
-
-run_with_report("apply", args, handle_apply, container)
-# _finalize_report_artifacts():
-#   finalizeReport() → вызывается всегда
-#   writeReportJson() → ПРОПУСКАЕТСЯ (report_dir is None)
-```
-
-Даже без записи файла `finalizeReport()` всегда вызывается — `finish()` выполняется, таймстамп фиксируется.
+Путь файла: `{report_dir}/report_{command}_{run_id}.json`
 
 ---
 
-### Сценарий 4: Legacy 2-param handler
+## 🔄 Interactions
 
-```python
-def handle_cache_admin(args: CacheArgs, container: AppContainer) -> CommandResult:
-    # Нет параметра report — не получает collector
-    cache = container.cache_admin()
-    cache.invalidate(args.dataset)
-    result = CommandResult()
-    result.add_code(SystemErrorCode.OK)
-    return result
+### Report delivery → Report domain
 
-exit_code = run_with_report("cache_admin", args, handle_cache_admin, container)
-# _call_handler() обнаруживает 2 параметра → handler(args, container)
-# report создаётся и финализируется runtime'ом, handler его не видит
-# В отчёте: только context["config"] и context["runtime"]
-```
+| Вызов | Описание |
+|-------|----------|
+| `InMemoryReportContext(run_id, command)` | Создание scoped context |
+| `ReportSink(context)` | Создание sink для context |
+| `ReportAssembler(context)` | Создание assembler для context |
+| `report_sink.emit(SetContextEvent(...))` | Публикация context блоков |
+| `report_sink.emit(SetMetaEvent(...))` | Установка items_limit |
+| `report_sink.emit(FinishEvent(...))` | Финализация meta |
+| `report_assembler.assemble()` | Сборка envelope snapshot |
 
----
+### Report delivery → Report renderer
 
-## 📌 Важные детали
+| Вызов | Описание |
+|-------|----------|
+| `JsonReportRenderer().render(envelope, report_dir, file_base_name)` | Сериализация и запись |
 
-### Особенности реализации
+### Report delivery → Result domain
 
-- **`_call_handler()` через inspect.signature()**: Рефлексия вызывается один раз на invocation — не является bottleneck. Параметры подсчитываются без учёта `self`.
-- **`_initialize_container_resources()` eagerly**: Все `Resource`-провайдеры DI инициализируются до вызова handler. Если vault startup guard упал — handler не вызывается.
-- **`_shutdown_container_resources()` всегда вызывается**: Даже если handler бросил исключение (через try/finally). Это гарантирует корректное закрытие соединений.
-- **Отчёт пишется всегда**: Даже при `CommandResult.status == "error"` — JSON-файл создаётся. Это позволяет отлаживать прогоны с ошибками.
-- **`report_dir=None` → JSON не пишется**: Если `args.report_dir` не задан (например, в unit-тестах или при явном `--no-report`), `writeReportJson()` пропускается.
-
-### 🚨 Failure Modes
-
-| Ситуация | Поведение | Как обработать |
-|----------|-----------|---------------|
-| Handler бросает необработанное исключение | Исключение всплывает; `_shutdown_container_resources()` вызывается в finally; отчёт НЕ пишется | Не допускать исключений из handler — возвращать `CommandResult(status="error")` |
-| `writeReportJson()` — ошибка I/O (нет прав, диск полон) | Исключение всплывает; exit code не возвращается | Убедиться в наличии прав на `report_dir`; проверить disk space |
-| `_initialize_container_resources()` — vault startup failure | `VaultDomainError` → `vault_startup_error_result()` → `CommandResult(status="error")`; handler не вызывается | Проверить `ANKEY_VAULT_MASTER_KEYS` и доступность vault DB |
-| Handler возвращает `None` | Трактуется как успех (`exit_code=0`); `_apply_cli_result_to_report()` — no-op | Нормально для команд без явного CommandResult (редко) |
-| `report_dir` не существует | `writeReportJson()` создаёт через `makedirs(exist_ok=True)` | Без специальных действий |
-| `finalizeReport()` до вызова handler | `context["runtime"]` перезаписан handler'ом (если handler тоже пишет в "runtime") | Не писать в "runtime" из handler; использовать другие ключи |
-
-### ⚠️ Инварианты системы
-
-1. **Инвариант: finalizeReport() перед writeReportJson()**
-   - **Что**: `report.finish()` вызывается до `report.build()` в `writeReportJson()`.
-   - **Почему важно**: Иначе `meta.finished_at` и `meta.duration_ms` будут `null` в JSON.
-   - **Где проверяется**: `_finalize_report_artifacts()` всегда вызывает их в правильном порядке.
-
-2. **Инвариант: Один ReportCollector на invocation**
-   - **Что**: `createEmptyReport()` создаёт ровно один collector per `run_with_report()`.
-   - **Почему важно**: Конкурентные procs не смешивают данные.
-   - **Где проверяется**: `run_with_report()` — локальная переменная `report`, не глобальная.
-
-3. **Инвариант: _shutdown_container_resources() всегда вызывается**
-   - **Что**: DI-ресурсы корректно завершаются даже при ошибке handler.
-   - **Почему важно**: Предотвращает утечки соединений к SQLite vault DB.
-   - **Где проверяется**: try/finally в `run_with_report()`.
-
-4. **Инвариант: exit code из CommandResult.status**
-   - **Что**: OS exit code всегда и только из `_exit_code_from_result()`.
-   - **Почему важно**: CI/CD pipeline полагается на exit code для определения успеха.
-   - **Где проверяется**: `run_with_report()` возвращает `int`, который typer передаёт как `Exit(code=...)`.
-
-### ⏱️ Performance заметки
-
-**Узкие места**:
-- `writeReportJson()` с `json.dump()` + `indent=2` при 1000 items: ~5–20 мс — незначительно.
-- `_initialize_container_resources()` включает vault DB probe (write + read): ~50–200 мс при первом запуске.
-- `inspect.signature()` в `_call_handler()`: ~1–5 мс — выполняется один раз на invocation.
-
-**Оптимизации**:
-- `asdict_report()` глубоко копирует только при `build()`; повторные вызовы без изменений collector — дополнительные копии.
-- `makedirs(exist_ok=True)` в `writeReportJson()` — syscall, не блокирует при существующей директории.
+| Вызов | Описание |
+|-------|----------|
+| `apply_runtime_result_to_report(sink, context, result, ...)` | Result → report event |
+| `build_runtime_error_result(catalog, command_name, message, details)` | Exception → `DomainCommandResult` |
+| `result_with(SystemErrorCode)` | Фабрика result с system code |
+| `exit_code_from_result(result)` | Result → OS exit code |
 
 ---
 
-## 🛠️ Как расширять
+## 📌 Contracts
 
-### Добавить новую команду с отчётом
+### Handler → Orchestrator
 
-1. Реализовать handler в 3-param стиле:
+1. Handler возвращает `DomainCommandResult | None`
+2. Handler НЕ управляет report lifecycle (create/finalize)
+3. Handler публикует stage events через `report_sink.emit()`
+
+### Orchestrator → Report Domain
+
+1. `InMemoryReportContext` создаётся per-command, не shared
+2. `ReportSink.emit()` — единственный ingestion API
+3. `FinishEvent` эмитится строго один раз перед `assemble()`
+4. Context events (CONFIG, REPORT_POLICY, INPUT, RUNTIME) эмитятся orchestrator
+
+### Result Mapper → Report Domain
+
+1. Input — только `DomainCommandResult | None`; другие типы → `TypeError`
+2. `secondary=True` → все errors демотируются до warnings
+3. Synthetic diagnostic создаётся только если report ещё не содержит errors/blocked rows
+
+---
+
+## 💡 Scenarios
+
+### Сценарий 1: Успешное выполнение команды
+
+1. `run_with_report()` создаёт context/sink/assembler
+2. Handler выполняется, публикует stage events, возвращает `None`
+3. `apply_result_to_report(result=None)` → no-op
+4. `finalize_report_artifacts()` → emit RUNTIME + Finish → assemble → render JSON
+5. Exit code: `0`
+
+### Сценарий 2: Handler возвращает failed result
+
+1. Handler возвращает `DomainCommandResult` с diagnostics
+2. `apply_result_to_report(secondary=False)` → emit `AddItemEvent(status=FAILED)`
+3. Shutdown → `apply_result_to_report(secondary=True)` если shutdown тоже failed
+4. Finalize → JSON содержит handler errors + (опционально) demoted shutdown warnings
+5. Exit code: `result.exit_code()` от handler result
+
+### Сценарий 3: Runtime exception до handler
+
+1. `validate_requirements()` или `initialize_container_resources()` бросает exception
+2. Exception handler создаёт `DomainCommandResult` через `build_runtime_error_result()`
+3. `apply_result_to_report(secondary=False)` → emit error item
+4. Finally: shutdown (safe) + finalize → JSON содержит runtime error
+5. Exit code: определяется error result
+
+### Сценарий 4: run_without_report
+
+1. Handler получает `NullReportSink()` — все `emit()` → no-op
+2. Нет finalize/render — JSON файл не создаётся
+3. Errors выводятся только в stderr и logs
+4. Exit code: определяется handler result
+
+---
+
+## ⚠️ Failure Modes
+
+| Ситуация | Поведение | Как обрабатывать |
+|----------|-----------|------------------|
+| Handler throws exception | Catch в orchestrator, build error result, apply to report | Проверить logs и report JSON |
+| Container init fails | `result_with(CACHE_ERROR/INTERNAL_ERROR)`, handler не вызывается | Проверить DI configuration |
+| Shutdown fails после handler error | Secondary demotion: errors → warnings | Primary error сохраняется, shutdown warning в items |
+| Report finalization fails | `result_with(INTERNAL_ERROR)`, JSON может не быть записан | Проверить log file |
+| Invalid result type от handler | `TypeError` propagates, caught by generic Exception handler | Fix handler to return `DomainCommandResult \| None` |
+| `SettingsLoadError` | Diagnostics через `translate_settings_load_error()` | Проверить settings YAML |
+| `DslLoadError` | Diagnostics через `translate_dsl_load_error()` | Проверить DSL spec файлы |
+
+---
+
+## 🔑 Invariants
+
+1. **Per-command report scope**: один `InMemoryReportContext` + `ReportSink` на вызов команды; никогда не shared между командами.
+2. **Single handler invocation**: handler вызывается не более одного раза; retry — ответственность вызывающего кода.
+3. **Guaranteed finalize**: `finalize_report_artifacts()` выполняется в `finally` блоке — даже при exception handler.
+4. **Secondary ordering**: shutdown и finalize results всегда secondary если handler уже вернул error.
+5. **Type safety**: runtime result mapper принимает только `DomainCommandResult | None`; другие типы → `TypeError`.
+6. **Single FinishEvent**: `FinishEvent` эмитится ровно один раз, непосредственно перед `assemble()`.
+7. **Stdout/stderr restoration**: оригинальные streams восстанавливаются в inner `finally` блоке.
+
+---
+
+## ⏱️ Performance Notes
+
+- Report context/sink/assembler — lightweight объекты; создание per-command не создаёт overhead
+- `JsonReportRenderer.render()` выполняет `json.dump()` с `indent=2` — для больших отчётов (10k+ items) может занять сотни миллисекунд
+- `asdict_envelope()` выполняет `deepcopy()` — аллоцирует полную копию envelope перед сериализацией
+- TeeStream перехватывает stdout/stderr для дублирования в log файл; при intensive print output может добавить latency
+
+---
+
+## 🛠️ Extension Guide
+
+### Добавить новый формат рендеринга
+
+1. Реализовать `IReportRenderer` protocol:
    ```python
-   def handle_my_command(args: MyArgs, container: AppContainer, report: ReportCollector) -> CommandResult:
-       report.set_meta(dataset=args.dataset, ...)
-       # ... логика ...
-       return CommandResult()
+   class HtmlReportRenderer(IReportRenderer):
+       def render(self, *, envelope, report_dir, file_base_name) -> str:
+           ...
    ```
+2. Использовать в `finalize_report_artifacts()` вместо `JsonReportRenderer()`
 
-2. Зарегистрировать в CLI через `run_with_report()`:
+### Добавить новый runtime context block
+
+1. Добавить `ReportContextKey` в `contracts.py` (см. [report-models.md](report-models.md))
+2. Emit `SetContextEvent(name=key, value=payload)` в нужной фазе orchestrator
+
+### Добавить новый тип runtime exception
+
+1. Создать handler в `run_with_report()`:
    ```python
-   @app.command("my-command")
-   def my_command(args: MyArgs):
-       container = build_container(args)
-       exit_code = run_with_report("my_command", args, handle_my_command, container)
-       raise typer.Exit(code=exit_code)
+   except MyNewError as exc:
+       exit_result = build_runtime_error_result(...)
+       apply_result_to_report(..., source="my_error", secondary=False)
    ```
+2. Или обработать в `initialize_container_resources()` если ошибка при init
 
-3. (Опционально) добавить маппинг в `_stage_for_command()`:
-   ```python
-   "my_command": DiagnosticStage.MY_STAGE,
-   ```
+### Добавить команду без report
 
-### Мигрировать legacy 2-param handler на 3-param
-
-```python
-# До:
-def handle_enrich(args: EnrichArgs, container: AppContainer) -> CommandResult:
-    ...
-
-# После:
-def handle_enrich(args: EnrichArgs, container: AppContainer, report: ReportCollector) -> CommandResult:
-    report.set_meta(dataset=args.dataset, app_version=APP_VERSION, git_rev=GIT_REV)
-    # теперь stager processors могут использовать report
-    ...
-```
-
-`_call_handler()` автоматически определит новый стиль по количеству параметров — никаких изменений в `run_with_report()` не нужно.
-
-### Добавить новый контекстный блок из инфраструктуры
-
-Если новый сервис должен записывать данные в `context`, реализовать по аналогии с `attach_dictionary_report_snapshot_if_available()`:
-```python
-def attach_my_service_context(*, ctx, report) -> None:
-    if report is None:
-        return
-    service = getattr(getattr(ctx, "container", None), "my_service", None)
-    if service is None:
-        return
-    data = service().snapshot()
-    if isinstance(data, dict):
-        report.set_context("my_service", data)
-```
-
-Вызвать в конце handler (или в runtime после handler).
-
----
-
-## ❓ FAQ
-
-### Почему ReportCollector не является DI-managed Singleton?
-
-`ReportCollector` stateful и привязан к конкретному invocation — каждый запуск команды должен иметь свой изолированный collector. DI Singleton создаётся один раз на время жизни контейнера (обычно весь процесс) — это противоречит per-invocation семантике.
-
-Factory-provider (`providers.Factory`) создавал бы новый экземпляр при каждом `()`, но тогда теряется возможность передать один экземпляр через все стадии конвейера. Явная передача через параметр — самое простое и понятное решение.
-
----
-
-### Как тестировать command handler без реального DI?
-
-```python
-def test_handle_import_with_mock_report():
-    from unittest.mock import MagicMock, create_autospec
-
-    report = ReportCollector(run_id="test", command="import", started_at=datetime.now())
-    container = MagicMock()
-    args = ImportArgs(dataset="employees", source="data.csv", run_id="test")
-
-    result = handle_import(args, container, report)
-
-    assert result.status in ("ok", "warn", "error")
-    # Проверить, что context заполнен
-    report.finish()
-    envelope = report.build()
-    assert "input" in envelope.context
-```
-
----
-
-### Что если report_dir не задан (args.report_dir = None)?
-
-`writeReportJson()` не вызывается — проверка в `_finalize_report_artifacts()`:
-```python
-report_dir = getattr(args, "report_dir", None)
-if report_dir:
-    writeReportJson(report, report_dir, file_base)
-```
-
-`finalizeReport()` при этом всё равно вызывается, `report.finish()` выполняется. Collector можно использовать для `report.build()` в тестах даже без записи на диск.
-
----
-
-### Как убедиться что handler корректно определяется как 3-param?
-
-`_call_handler()` использует `inspect.signature()` и считает параметры без `self`. Если handler — это метод класса, убедитесь что он декорирован `@staticmethod` или передаётся как bound method (тогда `self` уже привязан и не считается). Для standalone-функций — просто считаются все параметры:
-- `def handle(args, container)` → 2 параметра → legacy режим
-- `def handle(args, container, report)` → 3 параметра → report режим
-- `def handle(args, container, report, extra)` → 4 параметра → также попадёт в report режим (>= 3)
-
----
-
-### Зачем `_apply_cli_result_to_report()` создаёт `ReportItem` без `row_ref`?
-
-CLI-level ошибки (vault startup failure, cache error) не привязаны к конкретной строке данных — они возникают до обработки строк. Хранение их как `ReportItem` с `row_ref=None` позволяет:
-1. Включить ошибку в `summary.by_stage` (видна в JSON-отчёте).
-2. Избежать отдельного поля для CLI-level errors (единая модель для всех ошибок).
-
-Инструменты, читающие отчёт, должны обрабатывать `row_ref=null` — это нормальный вариант.
-
----
-
-### Как run_with_report() обрабатывает исключение из handler?
-
-Если handler бросает необработанное исключение (не возвращает `CommandResult`):
-1. Исключение всплывает из `_call_handler()`.
-2. `_finalize_report_artifacts()` НЕ вызывается (нет try/finally вокруг handler).
-3. `_shutdown_container_resources()` вызывается в блоке `finally` — DI ресурсы освобождаются.
-4. JSON-файл НЕ создаётся.
-5. Исключение продолжает всплывать → typer перехватывает как ошибку → exit code 1.
-
-**Рекомендация**: Не бросайте исключения из handler — возвращайте `CommandResult(status="error")`.
-
----
-
-## 🧪 Тестирование
-
-### Unit-тест createEmptyReport
-
-```python
-def test_create_empty_report():
-    report = createEmptyReport(
-        runId="run-001",
-        command="import",
-        configSources=["/etc/ankey/app.yaml"],
-    )
-
-    assert report is not None
-    # context["config"] установлен
-    report.finish()
-    envelope = report.build()
-    assert envelope.context["config"]["config_sources"] == ["/etc/ankey/app.yaml"]
-    assert envelope.meta.run_id == "run-001"
-    assert envelope.meta.command == "import"
-```
-
-### Unit-тест finalizeReport
-
-```python
-def test_finalize_report_stamps_runtime():
-    report = createEmptyReport("run-002", "apply", [])
-
-    finalizeReport(
-        report=report,
-        durationMs=1234,
-        logFile="logs/run-002.log",
-        cacheDir="cache/",
-        reportDir="reports/",
-    )
-
-    envelope = report.build()
-    assert envelope.meta.finished_at is not None
-    assert envelope.meta.duration_ms == 1234
-    assert envelope.context["runtime"]["duration_ms"] == 1234
-    assert envelope.context["runtime"]["log_file"] == "logs/run-002.log"
-```
-
-### Integration-тест writeReportJson (с tmp_path)
-
-```python
-def test_write_report_json(tmp_path):
-    report = createEmptyReport("run-003", "import", [])
-    report.add_item(status="OK", row_ref=None, payload=None, errors=[], warnings=[], meta={}, store=True)
-    finalizeReport(report, durationMs=500, logFile=None, cacheDir=None, reportDir=str(tmp_path))
-
-    writeReportJson(report, str(tmp_path), "run-003")
-
-    json_path = tmp_path / "run-003.json"
-    assert json_path.exists()
-
-    import json
-    data = json.loads(json_path.read_text())
-    assert data["status"] == "SUCCESS"
-    assert data["summary"]["rows_total"] == 1
-    assert "config" in data["context"]
-    assert "runtime" in data["context"]
-```
-
-### Unit-тест _call_handler dispatch
-
-```python
-def test_call_handler_3_param():
-    calls = []
-
-    def handler_3(args, container, report):
-        calls.append(("3-param", report is not None))
-        return CommandResult()
-
-    report = ReportCollector(run_id="test", command="test", started_at=datetime.now())
-    _call_handler(handler_3, "args", "container", report)
-    assert calls == [("3-param", True)]
-
-
-def test_call_handler_2_param():
-    calls = []
-
-    def handler_2(args, container):
-        calls.append("2-param")
-        return CommandResult()
-
-    report = ReportCollector(run_id="test", command="test", started_at=datetime.now())
-    _call_handler(handler_2, "args", "container", report)
-    assert calls == ["2-param"]
-
-
-def test_exit_code_from_result():
-    assert _exit_code_from_result(None) == 0
-
-    ok = CommandResult()
-    ok.add_code(SystemErrorCode.OK)
-    assert _exit_code_from_result(ok) == 0
-
-    err = CommandResult()
-    err.add_code(SystemErrorCode.DATA_INVALID)
-    assert _exit_code_from_result(err) == 1
-```
+Использовать `run_without_report()` — handler получит `NullReportSink`.
 
 ---
 
 ## 🔗 Связанные документы
 
-- [report-models.md](./report-models.md) — ReportCollector, ReportEnvelope, все domain models
-- [report-pipeline.md](./report-pipeline.md) — стадии конвейера как производители данных для отчёта
-- [vault-delivery.md](../vault/vault-delivery.md) — VaultStartupGuard и vault_ready Resource в DI
-- [dictionary-delivery.md](../dictionary/dictionary-delivery.md) — DictionaryContainer и telemetry
-
----
-
-## 📝 История изменений
-
-| Дата | Изменение | Автор |
-|------|-----------|-------|
-| 2026-02-27 | Создан документ Report Delivery| xORex-LC |
+- [Report models](report-models.md) — события, context, sink, assembler, policy
+- [Report pipeline](report-pipeline.md) — stage adapters, StageResultReporter, strategies
+- [Report architecture issues](report-architecture-issues.md) — проблемы и решения
+- [REPORT-DEC-001](../../adr/report/REPORT-DEC-001-execution-context-event-driven-report-layer.md) — event-driven architecture
+- [REPORT-DEC-005](../../adr/report/REPORT-DEC-005-runtime-orchestrator-decomposition-and-explicit-handler-contract.md) — runtime orchestrator decomposition
+- [REPORT-DEC-008](../../adr/report/REPORT-DEC-008-report-policy-capability-profiles-and-contract.md) — ReportPolicy capability profiles

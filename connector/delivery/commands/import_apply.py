@@ -19,6 +19,8 @@ from connector.delivery.presenters.apply_report_presenter import ApplyReportPres
 from connector.delivery.telemetry.apply_logging_sink import LoggingApplyTelemetrySink
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.reporting.contracts import ReportContextKey
+from connector.domain.reporting.events import SetContextEvent, SetMetaEvent
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
     VaultStartupKeyValidationError,
@@ -70,7 +72,7 @@ def _runtime_context(build_result) -> dict[str, str]:
     }
 
 
-def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
+def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResult:
     """Собрать runtime/deps и выполнить apply use-case для указанного плана."""
     app_config = ctx.app_config
     if app_config is None:
@@ -162,33 +164,37 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
     target_meta = runtime.meta()
     endpoint = target_meta.endpoint
 
-    report.set_meta(dataset=dataset_name, items_limit=report_items_limit)
-    report.set_context(
-        "apply",
-        {
-            "plan_path": opts.plan_path or plan.meta.plan_path,
-            "include_deleted": plan.meta.include_deleted,
-            "stop_on_first_error": stop_on_first_error,
-            "max_actions": max_actions,
-            "dry_run": dry_run,
-            "configured_dry_run": configured_dry_run,
-            "retries": app_config.api.retries,
-            "retry_backoff_seconds": app_config.api.retry_backoff_seconds,
-            "vault_rollout": {
-                "vault_runtime": runtime_mode_decision.to_context(),
-                **rollout_decision.to_context(),
+    report_sink.emit(SetMetaEvent(dataset=dataset_name))
+    apply_context = {
+        "plan_path": opts.plan_path or plan.meta.plan_path,
+        "include_deleted": plan.meta.include_deleted,
+        "stop_on_first_error": stop_on_first_error,
+        "max_actions": max_actions,
+        "dry_run": dry_run,
+        "configured_dry_run": configured_dry_run,
+        "retries": app_config.api.retries,
+        "retry_backoff_seconds": app_config.api.retry_backoff_seconds,
+        "vault_rollout": {
+            "vault_runtime": runtime_mode_decision.to_context(),
+            **rollout_decision.to_context(),
+        },
+    }
+    report_sink.emit(
+        SetContextEvent(
+            name=ReportContextKey.APPLY_TARGET,
+            value={
+                "endpoint": endpoint,
+                "user": app_config.api.username,
+                "target_runtime_mode": build_result.effective_mode,
             },
-        },
+        )
     )
-    report.set_context(
-        "apply_target",
-        {
-            "endpoint": endpoint,
-            "user": app_config.api.username,
-            "target_runtime_mode": build_result.effective_mode,
-        },
+    report_sink.emit(
+        SetContextEvent(
+            name=ReportContextKey.TARGET_RUNTIME,
+            value=_runtime_context(build_result),
+        )
     )
-    report.set_context("target_runtime", _runtime_context(build_result))
 
     # Dry-run должен оставаться чистым: retention hooks отключены полностью.
     secret_retention = (
@@ -258,8 +264,9 @@ def handler(ctx: BoundCommandContext, opts: Options, report) -> CommandResult:
 
     ApplyReportPresenter.present(
         result=apply_result,
-        collector=report,
+        sink=report_sink,
         plan=plan,
+        apply_context=apply_context,
         runtime_context=runtime_context,
     )
 

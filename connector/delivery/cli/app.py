@@ -352,6 +352,7 @@ def importPlan(
         csv_has_header=csvHasHeader,
         include_deleted=includeDeleted,
         report_items_limit=reportItemsLimit,
+        report_include_skipped=reportIncludeSkipped,
         dataset=dataset,
         vault_mode=vaultMode,
     )

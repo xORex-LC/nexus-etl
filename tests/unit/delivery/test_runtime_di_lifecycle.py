@@ -24,6 +24,10 @@ from connector.config.models import AppConfig
 from connector.delivery.cli.context import CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli import runtime as runtime_module
+from connector.domain.reporting.sink import NullReportSink, ReportSink
+from connector.domain.reporting.context import InMemoryReportContext
+from connector.domain.reporting.assembler import ReportAssembler
+from connector.domain.reporting.events import AddItemEvent
 from connector.domain.diagnostics import build_catalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -166,6 +170,51 @@ def test_run_without_report_sets_internal_error_on_teardown_only_failure(
             ctx=_ctx(tmp_path),
             command_name="mapping",
             opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: None,
+            requirements=Requirements(),
+        )
+
+    assert exc_info.value.exit_code == 2
+
+
+def test_run_without_report_passes_null_report_sink_to_handler(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake = _FakeContainer()
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
+
+    def _handler(_ctx, _opts, report_sink):
+        observed["report_sink"] = report_sink
+        return None
+
+    runtime_module.run_without_report(
+        ctx=_ctx(tmp_path),
+        command_name="mapping",
+        opts=SimpleNamespace(),
+        handler=_handler,
+        requirements=Requirements(),
+    )
+
+    assert isinstance(observed.get("report_sink"), NullReportSink)
+
+
+def test_run_without_report_enforces_three_arg_handler_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake = _FakeContainer()
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_without_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
             handler=lambda _ctx, _opts: None,
             requirements=Requirements(),
         )
@@ -253,3 +302,147 @@ def test_initialize_container_resources_reraises_dsl_load_error_from_init_path(
         )
 
     assert exc_info.value.code == "DICT_RUNTIME_INIT_FAILED"
+
+
+def test_apply_result_to_report_materializes_domain_error_without_diagnostics() -> None:
+    context = InMemoryReportContext(run_id="r-apply-domain", command="mapping")
+    sink = ReportSink(context)
+    assembler = ReportAssembler(context=context)
+    result = CommandResult()
+    result.add_code(SystemErrorCode.INTERNAL_ERROR)
+
+    runtime_module._apply_cli_result_to_report(
+        sink,
+        context,
+        result,
+        command_name="mapping",
+        source="unit_test",
+        secondary=False,
+    )
+
+    built = assembler.assemble()
+    assert built.summary.rows_blocked == 1
+    assert built.status == "FAILED"
+    assert len(built.items) == 1
+    assert built.items[0].diagnostics[0].code == "INTERNAL_ERROR"
+
+
+def test_apply_result_to_report_skips_synthetic_when_failures_already_materialized() -> None:
+    context = InMemoryReportContext(run_id="r-no-dup", command="mapping")
+    sink = ReportSink(context)
+    assembler = ReportAssembler(context=context)
+    sink.emit(
+        AddItemEvent(
+            status="FAILED",
+            row_ref=None,
+            payload=None,
+            errors=(),
+            warnings=(),
+            meta={"source": "existing"},
+            store=True,
+            preaggregated=False,
+        )
+    )
+    result = CommandResult()
+    result.add_code(SystemErrorCode.INTERNAL_ERROR)
+
+    runtime_module._apply_cli_result_to_report(
+        sink,
+        context,
+        result,
+        command_name="mapping",
+        source="unit_test",
+        secondary=False,
+    )
+
+    built = assembler.assemble()
+    assert built.summary.rows_total == 1
+    assert len(built.items) == 1
+
+
+def test_apply_result_to_report_downgrades_secondary_failure_to_warning() -> None:
+    context = InMemoryReportContext(run_id="r-secondary", command="mapping")
+    sink = ReportSink(context)
+    assembler = ReportAssembler(context=context)
+    result = CommandResult()
+    result.add_code(SystemErrorCode.INTERNAL_ERROR)
+
+    runtime_module._apply_cli_result_to_report(
+        sink,
+        context,
+        result,
+        command_name="mapping",
+        source="runtime_shutdown",
+        secondary=True,
+    )
+
+    built = assembler.assemble()
+    assert built.summary.rows_blocked == 0
+    assert built.summary.rows_passed == 1
+    assert len(built.items) == 1
+    assert built.items[0].status == "OK"
+    assert built.items[0].diagnostics[0].severity == "warning"
+
+
+def test_apply_result_to_report_rejects_non_domain_result() -> None:
+    context = InMemoryReportContext(run_id="r-adapter", command="mapping")
+    sink = ReportSink(context)
+
+    with pytest.raises(TypeError):
+        runtime_module._apply_cli_result_to_report(
+            sink,
+            context,
+            2,
+            command_name="mapping",
+            source="unit_test",
+            secondary=False,
+        )
+
+
+def test_exit_code_from_result_supports_only_canonical_path() -> None:
+    canonical_ok = CommandResult()
+    canonical_ok.add_code(SystemErrorCode.OK)
+    canonical_fail = CommandResult()
+    canonical_fail.add_code(SystemErrorCode.INTERNAL_ERROR)
+
+    assert runtime_module._exit_code_from_result(canonical_ok) == 0
+    assert runtime_module._exit_code_from_result(canonical_fail) == 2
+    with pytest.raises(TypeError):
+        runtime_module._exit_code_from_result(3)
+
+
+def test_run_with_report_materializes_init_failure_into_report(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _capture_finalize(**kwargs):
+        captured["report_assembler"] = kwargs["report_assembler"]
+        return None
+
+    fake = _FakeContainer()
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(
+        runtime_module,
+        "_initialize_container_resources",
+        lambda **_: _result_with(SystemErrorCode.CACHE_ERROR),
+    )
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", _capture_finalize)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_with_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: _result_with(SystemErrorCode.OK),
+            requirements=Requirements(),
+        )
+
+    assert exc_info.value.exit_code == 2
+    assembler = captured["report_assembler"]
+    assert isinstance(assembler, ReportAssembler)
+    built = assembler.assemble()
+    assert built.summary.rows_blocked == 1
+    assert len(built.items) == 1
+    assert built.items[0].meta["source"] == "runtime_init"

@@ -126,3 +126,21 @@ def test_build_from_stream_summary_counts_match_input():
     assert result.summary.valid_rows == 3
     assert result.summary.failed_rows == 0
     assert result.summary.skipped == 1
+
+
+def test_build_from_stream_reports_skipped_rows_via_callback_without_plan_items():
+    rows = [
+        _result_ok(op=ResolveOp.CREATE, line_no=1),
+        _result_ok(op=ResolveOp.SKIP, line_no=2),
+        _result_ok(op=ResolveOp.SKIP, line_no=3),
+    ]
+    skipped_line_nos: list[int | None] = []
+
+    result = PlanBuilder().build_from_stream(
+        rows,
+        on_skipped_row=lambda row: skipped_line_nos.append(row.row_ref.line_no),
+    )
+
+    assert skipped_line_nos == [2, 3]
+    assert result.summary.skipped == 2
+    assert len(result.items) == 1

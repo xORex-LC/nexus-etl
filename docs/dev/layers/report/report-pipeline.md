@@ -1,6 +1,6 @@
-# Report Pipeline — Stage Integration and Data Flow
+# Report Pipeline — Stage Adapters и Data Flow
 
-> **Producer model**: each pipeline stage is a producer that feeds `ReportCollector` with per-row results, diagnostics, and context blocks. No stage reads back from the collector — data flows in one direction.
+> **Adapter model**: `StageResultReporter` — canonical adapter, конвертирующий `TransformResult` в `AddItemEvent` через `IReportSink` с stage-scoped фильтрацией диагностик, policy-based хранением items и маскировкой payload через pluggable strategy.
 
 ## 📑 Содержание
 
@@ -11,16 +11,22 @@
   - [🎭 Применённые паттерны](#-применённые-паттерны)
   - [Диаграмма зависимостей](#диаграмма-зависимостей)
 - [🔑 Ключевые абстракции](#-ключевые-абстракции)
-- [🗂️ DiagnosticItem → ReportDiagnostic конвертация](#️-diagnosticitem--reportdiagnostic-конвертация)
-- [📊 TransformResultProcessor](#-transformresultprocessor)
-  - [Алгоритм process()](#алгоритм-process)
-  - [Stage-фильтрация диагностики](#stage-фильтрация-диагностики)
-  - [Маскировка секретов в payload](#маскировка-секретов-в-payload)
-  - [Отслеживание vault-кандидатов](#отслеживание-vault-кандидатов)
-  - [finalize() — сброс статистики в context](#finalize--сброс-статистики-в-context)
-- [📊 PlanningResultProcessor](#-planningresultprocessor)
-- [📊 EnricherReport](#-enricherreport)
-- [📊 ApplyReportPresenter](#-applyreportpresenter)
+- [📊 StageResultReporter — canonical stage adapter](#-stageresultreporter--canonical-stage-adapter)
+  - [Конструктор](#конструктор)
+  - [process() — алгоритм обработки одной строки](#process--алгоритм-обработки-одной-строки)
+  - [_filter_for_report() — stage-scoped фильтрация](#_filter_for_report--stage-scoped-фильтрация)
+  - [publish_context() — публикация stage counters](#publish_context--публикация-stage-counters)
+  - [snapshot() — immutable stats](#snapshot--immutable-stats)
+- [📊 Strategies — stage-specific поведение](#-strategies--stage-specific-поведение)
+  - [IStageReportStrategy (Protocol)](#istagestrategy-protocol)
+  - [TransformStageReportStrategy](#transformstagereportstrategy)
+  - [PlanningStageReportStrategy](#planningstagereportstrategy)
+- [📊 ExecutionStatsAccumulator / StageExecutionStats](#-executionstatsaccumulator--stageexecutionstats)
+- [📊 StageCommandResultResolver — stats → CommandResult](#-stagecommandresultresolver--stats--commandresult)
+- [📊 PayloadSanitizer — маскировка секретов](#-payloadsanitizer--маскировка-секретов)
+- [📊 ApplyReportPresenter — import-apply adapter](#-applyreportpresenter--import-apply-adapter)
+- [📊 DiagnosticItem → ReportDiagnostic конвертация](#-diagnosticitem--reportdiagnostic-конвертация)
+- [🔄 UseCase Integration Pattern](#-usecase-integration-pattern)
 - [🔄 Context-блоки: кто и что пишет](#-context-блоки-кто-и-что-пишет)
 - [🔄 Взаимодействие с другими слоями](#-взаимодействие-с-другими-слоями)
 - [🔌 Контракты и границы](#-контракты-и-границы)
@@ -36,21 +42,25 @@
 
 ## 📋 Обзор
 
-**Назначение**: Описать, как каждая стадия ETL-конвейера (transform, enrich, match, resolve, apply, cache) становится производителем данных для отчёта — через адаптеры `TransformResultProcessor`, `PlanningResultProcessor`, `EnricherReport` и `ApplyReportPresenter`.
+**Назначение**: Описать stage-level адаптеры, которые конвертируют результаты ETL-стадий в report-события — через canonical `StageResultReporter`, pluggable strategies и `ApplyReportPresenter` для import-apply.
 
 **Ключевая ответственность**:
-- Конвертировать внутренние диагностики конвейера (`DiagnosticItem`) в унифицированный report-формат (`ReportDiagnostic`).
-- Адаптировать `TransformResult` (общий результат трансформации строки) к `ReportCollector.add_item()`.
-- Фильтровать диагностику по стадии (upstream vs. текущая стадия) для точного атрибутирования ошибок.
-- Маскировать секретные поля в payload перед записью в отчёт.
-- Заполнять именованные context-блоки от стадий apply, cache, enrich, import и т.д.
+- Адаптировать `TransformResult` к `AddItemEvent` через `StageResultReporter` с stage-only status policy.
+- Фильтровать диагностику по стадии (upstream vs. текущая) для точного атрибутирования ошибок.
+- Маскировать секретные поля в payload через `PayloadSanitizer`.
+- Предоставить strategy-контракт `IStageReportStrategy` для различий между transform и planning стадиями.
+- Накапливать immutable stage-статистику через `ExecutionStatsAccumulator` → `StageExecutionStats`.
+- Разрешать системные коды `CommandResult` через `StageCommandResultResolver`.
+- Адаптировать `ApplyResult` к набору report-событий через `ApplyReportPresenter`.
 
 **Расположение в кодовой базе**:
-- `connector/domain/reporting/diagnostics.py` — конвертация DiagnosticItem → ReportDiagnostic
-- `connector/domain/transform/core/result_processor.py` — `TransformResultProcessor`, `PlanningResultProcessor`
-- `connector/domain/transform/enrich/report.py` — `EnricherReport`
+- `connector/domain/reporting/adapters/stage_result_reporter.py` — `StageResultReporter`
+- `connector/domain/reporting/adapters/strategies.py` — `IStageReportStrategy`, `TransformStageReportStrategy`, `PlanningStageReportStrategy`
+- `connector/domain/reporting/adapters/stats_accumulator.py` — `ExecutionStatsAccumulator`, `StageExecutionStats`
+- `connector/domain/reporting/adapters/result_policy.py` — `StageCommandResultResolver`
+- `connector/domain/reporting/adapters/payload_sanitizer.py` — `PayloadSanitizer`
 - `connector/delivery/presenters/apply_report_presenter.py` — `ApplyReportPresenter`
-- `connector/delivery/commands/common.py` — `attach_dictionary_report_snapshot_if_available()`
+- `connector/domain/reporting/diagnostics.py` — `to_report_diagnostics()`, `split_report_diagnostics()`
 - `connector/common/sanitize.py` — `maskSecretsInObject()`
 
 ---
@@ -60,1061 +70,587 @@
 ### Основные компоненты
 
 ```
-connector/
-├── domain/
-│   ├── reporting/
-│   │   └── diagnostics.py                # DiagnosticItem → ReportDiagnostic
-│   ├── transform/
-│   │   ├── core/
-│   │   │   └── result_processor.py       # TransformResultProcessor, PlanningResultProcessor
-│   │   └── enrich/
-│   │       └── report.py                 # EnricherReport (per-row enrich stats)
-│   └── models.py                         # DiagnosticItem, DiagnosticStage
-├── common/
-│   └── sanitize.py                       # maskSecretsInObject()
-└── delivery/
-    ├── presenters/
-    │   └── apply_report_presenter.py     # ApplyResult → ReportCollector
-    └── commands/
-        ├── common.py                     # attach_dictionary_report_snapshot_if_available()
-        ├── enrich.py                     # context["enrich"] / vault rollout
-        └── import_apply.py              # context["apply"]
+connector/domain/reporting/adapters/
+├── __init__.py                  # Публичный API: реэкспорт всех адаптеров
+├── stage_result_reporter.py     # StageResultReporter (canonical adapter)
+├── strategies.py                # IStageReportStrategy, TransformStage*, PlanningStage*
+├── stats_accumulator.py         # ExecutionStatsAccumulator, StageExecutionStats
+├── result_policy.py             # StageCommandResultResolver
+└── payload_sanitizer.py         # PayloadSanitizer
+
+connector/delivery/presenters/
+└── apply_report_presenter.py    # ApplyReportPresenter (import-apply)
+
+connector/domain/reporting/
+└── diagnostics.py               # DiagnosticItem → ReportDiagnostic конвертация
 ```
 
 ### 📐 UML диаграммы
 
 | Тип | Диаграмма | Описание |
 |-----|-----------|----------|
-| Class | [Class Diagram](../../../uml/pipeline/report_layer/report_layer_class.puml) | Структура классов и связи |
-| Sequence | [Sequence Diagram](../../../uml/pipeline/report_layer/report_layer_sequence.puml) | Поток данных от стадий к collector |
-| Activity | [Activity Diagram](../../../uml/pipeline/report_layer/report_layer_activity.puml) | Алгоритм process() |
-
-**PlantUML исходники**: `docs/uml/pipeline/report_layer/*.puml`
+| Class | [Report Layer Class Diagram](../../uml/pipeline/report_layer/report_layer_class.puml) | Структура adapters, strategies, accumulator |
+| Sequence | [Report Layer Sequence Diagram](../../uml/pipeline/report_layer/report_layer_sequence.puml) | Поток: UseCase → Reporter → Sink → Context |
 
 ### 🎭 Применённые паттерны
 
-#### Паттерн 1: Adapter (Адаптер)
+#### Паттерн 1: Strategy (Stage Differences)
 
-**Где применяется**: `TransformResultProcessor` адаптирует `TransformResult` (внутренний формат конвейера) к интерфейсу `ReportCollector.add_item()`. `ApplyReportPresenter` адаптирует `ApplyResult` к тому же интерфейсу.
-
-**Реализация в коде**:
-- **Adaptee**: `TransformResult` в `connector/domain/transform/core/result.py`
-- **Adapter**: `TransformResultProcessor` в `connector/domain/transform/core/result_processor.py`
-- **Target**: `ReportCollector` в `connector/domain/reporting/collector.py`
-
-**Зачем**: Стадии конвейера не знают о формате отчёта; адаптеры изолируют знание о `ReportCollector` от самих стадий.
-
----
-
-#### Паттерн 2: Template Method (Шаблонный метод)
-
-**Где применяется**: `PlanningResultProcessor` наследует `TransformResultProcessor` и переопределяет `process()`, добавляя `meta_builder` и `should_skip` поверх базового алгоритма.
+**Где применяется**: `IStageReportStrategy` — абстрагирует stage-specific поведение: skip policy, payload projection, meta projection.
 
 **Реализация в коде**:
-- **Base**: `TransformResultProcessor.process()` — общая логика (счётчики, payload, store)
-- **Override**: `PlanningResultProcessor.process()` — добавляет planning-специфичные meta и skip
+- **Protocol**: `IStageReportStrategy` в `strategies.py`
+- **Transform**: `TransformStageReportStrategy` — для normalize/mapping/enrich (never skip, standard meta)
+- **Planning**: `PlanningStageReportStrategy` — для match/resolve (custom meta_builder, custom should_skip)
 
-**Зачем**: Переиспользует всю инфраструктуру (masking, filtering, storing) без дублирования.
+**Зачем**: Один canonical `StageResultReporter` для всех стадий. Различия инкапсулированы в strategy, а не в дублировании process()-логики.
 
----
+#### Паттерн 2: Adapter (TransformResult → ReportEvent)
 
-#### Паттерн 3: Strategy через Callable
+**Где применяется**: `StageResultReporter` — canonical adapter между pipeline domain и report domain.
 
-**Где применяется**: `payload_builder: Callable[[TransformResult], Any] | None` в `TransformResultProcessor` — внешняя стратегия построения payload; если не передана, используется `result.row` по умолчанию.
+**Реализация в коде**: `stage_result_reporter.py`
 
-**Зачем**: Разные стадии конвейера имеют разную структуру row; стратегия позволяет извлечь нужное представление без изменения базового адаптера.
+**Зачем**: Pipeline domain (`TransformResult`) не зависит от report domain. Адаптер выполняет конвертацию, фильтрацию, маскировку и запись.
+
+#### Паттерн 3: Accumulator → Immutable Snapshot
+
+**Где применяется**: `ExecutionStatsAccumulator` (mutable) → `StageExecutionStats` (frozen).
+
+**Реализация в коде**: `stats_accumulator.py`
+
+**Зачем**: Отделить фазу накопления (per-row `on_row()`) от фазы публикации (`snapshot()`). Snapshot immutable — безопасно передавать за пределы адаптера.
+
+#### Паттерн 4: Presenter (ApplyResult → Events)
+
+**Где применяется**: `ApplyReportPresenter` — delivery-boundary presenter.
+
+**Реализация в коде**: `apply_report_presenter.py`
+
+**Зачем**: `ApplyResult` — pre-aggregated модель (summary уже посчитан). Presenter конвертирует в набор report-событий с `preaggregated=True`.
 
 ### Диаграмма зависимостей
 
 ```
-Pipeline stages (enrich/match/resolve/apply)
-       │ produce
-       ▼
-TransformResult  ──────────────────────────────────────────────────►
-                                                                    │
-         TransformResultProcessor.process()                        │
-             │                                                      │
-             ├── split_report_diagnostics()  ◄─── DiagnosticItem   │
-             ├── maskSecretsInObject()                              │
-             └── report.add_item()  ─────────────────► ReportCollector
-                                                             │
-ApplyResult ──► ApplyReportPresenter.present()               │
-                   │                                          │
-                   ├── report.add_op()  ──────────────────►  │
-                   └── collector.items.append()  ──────────► │
-                                                             │
-Command handlers ──► report.set_context()  ─────────────────►
+UseCase
+  │
+  ├─→ StageResultReporter
+  │     ├─→ IStageReportStrategy (strategy)
+  │     ├─→ ExecutionStatsAccumulator (stats)
+  │     ├─→ PayloadSanitizer (masking)
+  │     ├─→ split_report_diagnostics() (conversion)
+  │     └─→ IReportSink.emit(AddItemEvent / SetContextEvent)
+  │
+  └─→ StageCommandResultResolver
+        └─→ StageExecutionStats → CommandResult
+```
+
+```
+ApplyReportPresenter
+  └─→ IReportSink.emit(SetRowCountersEvent, AddOpEvent, SetContextEvent,
+                        AddItemEvent(preaggregated=True), SetStatusEvent, ...)
 ```
 
 ---
 
 ## 🔑 Ключевые абстракции
 
-### Основные классы
-
-| Класс | Роль | Ключевые методы |
-|-------|------|-----------------|
-| `TransformResultProcessor` | Per-row адаптер TransformResult → ReportCollector | `process()`, `finalize()`, `_filter_for_report()` |
-| `PlanningResultProcessor` | Адаптер для planning-стадий (match/resolve) | `process()` (override), `meta_builder`, `should_skip` |
-| `EnricherReport` | Per-row аккумулятор статистики enrich | `record()`, `as_dict()` |
-| `ApplyReportPresenter` | Адаптер ApplyResult → ReportCollector | `present()` |
-
-### Ключевые функции
-
-| Функция | Модуль | Назначение |
-|---------|--------|-----------|
-| `to_report_diagnostics(errors, warnings)` | `diagnostics.py` | Конвертация DiagnosticItem → ReportDiagnostic, слияние errors+warnings |
-| `split_report_diagnostics(errors, warnings)` | `diagnostics.py` | То же, но возвращает раздельные списки (errors, warnings) |
-| `maskSecretsInObject(obj)` | `sanitize.py` | Рекурсивная маскировка секретных полей в dict/dataclass |
-| `attach_dictionary_report_snapshot_if_available(ctx, report)` | `commands/common.py` | Best-effort snapshot dictionary telemetry в report.context |
+| Абстракция | Файл | Тип | Назначение |
+|------------|------|-----|-----------|
+| `StageResultReporter` | `stage_result_reporter.py` | Class | Canonical adapter: TransformResult → report events |
+| `IStageReportStrategy` | `strategies.py` | Protocol | Skip/payload/meta strategy для stage |
+| `TransformStageReportStrategy` | `strategies.py` | Class | Strategy для normalize/mapping/enrich |
+| `PlanningStageReportStrategy` | `strategies.py` | Class | Strategy для match/resolve |
+| `ExecutionStatsAccumulator` | `stats_accumulator.py` | Class | Mutable stage counters |
+| `StageExecutionStats` | `stats_accumulator.py` | Frozen DC | Immutable snapshot counters |
+| `StageCommandResultResolver` | `result_policy.py` | Frozen DC | Stats → CommandResult policy |
+| `PayloadSanitizer` | `payload_sanitizer.py` | Class | Secret masking для payload |
+| `ApplyReportPresenter` | `apply_report_presenter.py` | Class | ApplyResult → report events |
 
 ---
 
-## 🗂️ DiagnosticItem → ReportDiagnostic конвертация
-
-**Модуль**: `connector/domain/reporting/diagnostics.py`
-
-Внутри конвейера диагностика представлена типом `DiagnosticItem` (domain model из `connector/domain/models.py`). Для сохранения в отчёт она должна быть конвертирована в `ReportDiagnostic`.
-
-### Структура DiagnosticItem (источник)
-
-```python
-@dataclass
-class DiagnosticItem:
-    severity: DiagnosticSeverity    # enum: ERROR | WARNING
-    stage: str | DiagnosticStage    # строка или enum
-    code: str | None                # машиночитаемый код
-    field: str | None               # имя поля
-    message: str | None             # человекочитаемое описание
-    # + опционально: rule, details (через getattr)
-```
-
-### Функции конвертации
-
-**`to_report_diagnostics(errors, warnings) → list[ReportDiagnostic]`**
-
-Принимает оба списка одновременно и возвращает единый список `ReportDiagnostic`. Каждый `DiagnosticItem` конвертируется через `_from_item()`. Уже готовые `ReportDiagnostic`-объекты проходят без изменений.
-
-```python
-def to_report_diagnostics(
-    errors: Iterable[DiagnosticItem | ReportDiagnostic] | None,
-    warnings: Iterable[DiagnosticItem | ReportDiagnostic] | None,
-) -> list[ReportDiagnostic]:
-    diagnostics = []
-    for item in errors or []:
-        diagnostics.append(_from_item(item, fallback_severity="error"))
-    for item in warnings or []:
-        diagnostics.append(_from_item(item, fallback_severity="warning"))
-    return diagnostics
-```
-
-**`split_report_diagnostics(errors, warnings) → tuple[list, list]`**
-
-Аналогична, но возвращает раздельные `(errors_list, warnings_list)` — используется в `TransformResultProcessor.process()`, который передаёт раздельные списки в `report.add_item()`.
-
-**`_from_item(item, fallback_severity) → ReportDiagnostic`**
-
-Маппинг полей:
-
-| DiagnosticItem поле | → ReportDiagnostic поле | Примечание |
-|--------------------|------------------------|-----------|
-| `severity.value` | `severity` | `.value` извлекает строку из enum; `fallback_severity` если атрибута нет |
-| `stage` | `stage` | передаётся как есть (str или enum.value) |
-| `code` | `code` | прямой маппинг |
-| `field` | `field` | прямой маппинг |
-| `message` | `message` | прямой маппинг |
-| `getattr(item, "rule", None)` | `rule` | опциональный атрибут |
-| `getattr(item, "details", None)` | `details` | опциональный атрибут |
-
-```python
-def _from_item(item: DiagnosticItem | ReportDiagnostic, fallback_severity: str) -> ReportDiagnostic:
-    if isinstance(item, ReportDiagnostic):
-        return item    # уже в нужном формате — pass-through
-    severity = item.severity.value if getattr(item, "severity", None) is not None else fallback_severity
-    return ReportDiagnostic(
-        severity=severity,
-        stage=item.stage,
-        code=item.code,
-        field=item.field,
-        message=item.message,
-        rule=getattr(item, "rule", None),
-        details=getattr(item, "details", None),
-    )
-```
-
----
-
-## 📊 TransformResultProcessor
-
-**Модуль**: `connector/domain/transform/core/result_processor.py`
-
-Центральный per-row адаптер между `TransformResult` (результат одной стадии конвейера) и `ReportCollector`. Создаётся один раз на стадию и используется в цикле по строкам.
+## 📊 StageResultReporter — canonical stage adapter
 
 ### Конструктор
 
 ```python
-TransformResultProcessor(
+StageResultReporter(
     *,
-    report: ReportCollector,
-    include_items: bool,           # сохранять ли OK-строки в items (True → include all)
-    context_key: str,              # ключ для set_context() в finalize()
-    ok_label: str,                 # метка для ok-счётчика в context (например "enriched_rows")
-    failed_label: str,             # метка для failed-счётчика (например "failed_rows")
-    payload_builder: Callable | None = None,  # стратегия извлечения payload
-    report_stage: DiagnosticStage | None = None,  # фильтр стадии для диагностики
-    include_upstream_diagnostics: bool = False,   # включать ли upstream-диагностику
+    sink: IReportSink,                        # куда писать события
+    report_policy: ReportPolicy,              # capability-based policy
+    include_items: bool,                      # хранить ли OK-items (resolves через policy)
+    context_key: ReportContextKey | str,      # ключ context-блока stage
+    ok_label: str,                            # label для OK-counter в context
+    failed_label: str,                        # label для FAILED-counter в context
+    strategy: IStageReportStrategy,           # stage-specific поведение
+    report_stage: DiagnosticStage | None,     # стадия для фильтрации diagnostics
+    include_upstream_diagnostics: bool = False, # включать upstream (resolves через policy)
+    stats_accumulator: ExecutionStatsAccumulator | None = None,
+    payload_sanitizer: PayloadSanitizer | None = None,
 )
 ```
 
-**Типичное использование** (стадия enrich):
-```python
-processor = TransformResultProcessor(
-    report=report,
-    include_items=include_items_flag,
-    context_key="enrich",
-    ok_label="enriched_rows",
-    failed_label="failed_rows",
-    report_stage=DiagnosticStage.ENRICH,
-    include_upstream_diagnostics=False,
-)
+**Resolver-логика в конструкторе**:
+- `include_items` → `report_policy.resolve_include_ok_items(include_items)` — capability AND CLI flag.
+- `include_upstream_diagnostics` → `report_policy.resolve_include_upstream_diagnostics(...)`.
 
-for result in enrich_results:
-    processor.process(result)
+### process() — алгоритм обработки одной строки
 
-command_result = processor.finalize()
-```
-
----
-
-### Алгоритм process()
-
-**Сигнатура**:
 ```python
 def process(
-    self,
     result: TransformResult | None,
     *,
     row_ref: RowRef | None = None,
     force_failed: bool = False,
     errors_override: list[DiagnosticItem] | None = None,
     warnings_override: list[DiagnosticItem] | None = None,
-) -> None:
+) -> None
 ```
 
-**Алгоритм**:
+Алгоритм (10 шагов):
 
-```
-1. rows_total += 1
+1. **Skip check**: `strategy.should_skip(result)` → return если True.
+2. **Collect diagnostics**: errors/warnings из `result` или `overrides`.
+3. **Stage filter**: `_filter_for_report()` — оставить только diagnostics текущей stage; посчитать upstream counts.
+4. **Determine status**: `force_failed or bool(eff_errors)` → `FAILED`, иначе `OK`. **Stage-only policy**: upstream ошибки не влияют на статус.
+5. **Update stats**: `stats.on_row(has_errors, has_warnings)`.
+6. **Secret fields**: извлечь из `result.meta["secret_fields"]` или `result.secret_candidates`; `stats.on_secret_fields()`.
+7. **Should-store decision**: `FAILED AND policy.include_failed_items` OR `include_items` (OK items).
+8. **Build payload**: `strategy.build_payload(result)` → `sanitizer.sanitize(payload, secret_fields)`.
+9. **Build meta**: `strategy.build_meta(result, upstream_errors_count, upstream_warnings_count, secret_fields)`.
+10. **Emit event**: `sink.emit(AddItemEvent(status, row_ref, payload, errors, warnings, meta, store, preaggregated=False))`.
 
-2. Определить eff_errors, eff_warnings:
-   - Если errors_override задан → использовать его
-   - Иначе → result.errors (или [] если result=None)
-   - Аналогично для warnings_override
+### _filter_for_report() — stage-scoped фильтрация
 
-3. Определить статус:
-   - has_errors = force_failed OR bool(eff_errors)
-   - status = "FAILED" if has_errors else "OK"
-
-4. _filter_for_report(errors, warnings):
-   - Если report_stage не задан или include_upstream_diagnostics=True:
-       вернуть все errors и warnings, upstream_count=0
-   - Иначе:
-       report_errors = [item for item in errors if item.stage == report_stage]
-       upstream_errors_count = len(errors) - len(report_errors)
-       (аналогично для warnings)
-
-5. Обновить счётчики:
-   - failed_rows += 1 (если has_errors) или ok_rows += 1
-   - warnings_rows += 1 (если eff_warnings)
-
-6. Отследить vault-кандидаты (см. раздел ниже)
-
-7. Определить should_store:
-   - should_store = (status == "FAILED") OR include_items
-
-8. Разрешить effective_row_ref:
-   - row_ref аргумент → result.row_ref → RowRef(line_no, row_id)
-
-9. Построить payload (если should_store и result.row не None):
-   - payload_builder(result) или result.row
-   - maskSecretsInObject(payload)
-   - Замаскировать secret_fields[field] = "***"
-
-10. split_report_diagnostics(eff_errors, eff_warnings)
-    → report_errors, report_warnings
-
-11. report.add_item(
-        status, row_ref, payload, errors, warnings,
-        meta={match_key, secret_candidate_fields,
-              upstream_errors_count, upstream_warnings_count},
-        store=should_store,
-    )
+```python
+def _filter_for_report(errors, warnings) -> (stage_errors, stage_warnings, upstream_errors_count, upstream_warnings_count)
 ```
 
-**ASCII Flow**:
+- Если `include_upstream_diagnostics=True` или `report_stage=None` → пропустить все без фильтрации.
+- Иначе: оставить только diagnostics с `item.stage == report_stage`, посчитать upstream counts.
+
+### publish_context() — публикация stage counters
+
+```python
+def publish_context() -> StageExecutionStats
 ```
-process(result)
-    │
-    ├─► rows_total += 1
-    │
-    ├─► resolve effective errors/warnings (override or result)
-    │
-    ├─► has_errors? ──Yes──► status = "FAILED", failed_rows += 1
-    │              └──No───► status = "OK",     ok_rows += 1
-    │
-    ├─► _filter_for_report()  ──► split by report_stage
-    │                              (upstream spillover counted separately)
-    │
-    ├─► track vault candidates (secret_fields → vault_candidates_rows)
-    │
-    ├─► should_store = FAILED OR include_items
-    │
-    ├─► if should_store:
-    │       build payload → maskSecretsInObject → mask secret_fields → "***"
-    │
-    ├─► split_report_diagnostics() → (report_errors, report_warnings)
-    │
-    └─► report.add_item(status, row_ref, payload, errors, warnings, meta, store)
+
+1. `snapshot = stats.snapshot()` — immutable.
+2. `sink.emit(SetContextEvent(name=context_key, value=snapshot.to_context_payload(ok_label, failed_label)))`.
+3. Return snapshot.
+
+### snapshot() — immutable stats
+
+```python
+def snapshot() -> StageExecutionStats
 ```
+
+Делегирует в `stats_accumulator.snapshot()`. Immutable frozen dataclass.
 
 ---
 
-### Stage-фильтрация диагностики
+## 📊 Strategies — stage-specific поведение
 
-Стадии конвейера последовательны: MAP → NORMALIZE → ENRICH → MATCH → RESOLVE → PLAN → APPLY. Каждый `TransformResult` может нести диагностику из нескольких предыдущих стадий (upstream), накопленную по цепочке.
-
-**Проблема**: Если стадия ENRICH регистрирует результат, а в нём также есть ошибки от MAP (upstream), они окажутся в отчёте для неправильной стадии.
-
-**Решение** (`_filter_for_report()`):
+### IStageReportStrategy (Protocol)
 
 ```python
-def _filter_for_report(self, *, errors, warnings):
-    if self.include_upstream_diagnostics or self.report_stage is None:
-        return errors, warnings, 0, 0
-    report_errors = [item for item in errors if _diag_stage_equals(item, self.report_stage)]
-    report_warnings = [item for item in warnings if _diag_stage_equals(item, self.report_stage)]
-    upstream_errors_count = len(errors) - len(report_errors)
-    upstream_warnings_count = len(warnings) - len(report_warnings)
-    return report_errors, report_warnings, upstream_errors_count, upstream_warnings_count
+class IStageReportStrategy(Protocol):
+    def should_skip(self, result: TransformResult | None) -> bool: ...
+    def build_payload(self, result: TransformResult | None) -> Any: ...
+    def build_meta(self, result, *, upstream_errors_count, upstream_warnings_count, secret_fields) -> dict[str, Any]: ...
 ```
 
-`upstream_errors_count` и `upstream_warnings_count` попадают в `ReportItem.meta` — их можно видеть в отчёте, но они не входят в `summary.by_stage` текущей стадии.
+### TransformStageReportStrategy
 
-**`_diag_stage_equals(item, stage)`** — сравнивает item.stage со stage, обрабатывая как enum, так и строковые значения:
+Для стандартных transform use-cases: `normalize`, `mapping`, `enrich`.
+
+| Метод | Поведение |
+|-------|----------|
+| `should_skip()` | Всегда `False` — не пропускает строки |
+| `build_payload()` | `result.row` или custom `payload_builder(result)` |
+| `build_meta()` | `{"match_key": ..., "secret_candidate_fields": [...], "upstream_errors_count": N, "upstream_warnings_count": N}` |
+
+Конструктор: `TransformStageReportStrategy(payload_builder: Callable | None = None)`.
+
+### PlanningStageReportStrategy
+
+Для planning use-cases: `match`, `resolve`.
+
+| Метод | Поведение |
+|-------|----------|
+| `should_skip()` | Делегирует в callback `should_skip(result)` если задан, иначе `False` |
+| `build_payload()` | `result.row` или custom `payload_builder(result)` |
+| `build_meta()` | `meta_builder(result)` + `upstream_errors_count/warnings_count` (setdefault) |
+
+Конструктор:
 ```python
-def _diag_stage_equals(item: DiagnosticItem, stage: DiagnosticStage) -> bool:
-    item_stage = item.stage
-    if item_stage == stage:
-        return True
-    if isinstance(item_stage, str):
-        return item_stage.upper() == stage.value
-    return False
-```
-
----
-
-### Маскировка секретов в payload
-
-Перед передачей `payload` в `report.add_item()` выполняется двухуровневая маскировка:
-
-**Уровень 1** — `maskSecretsInObject(payload)`:
-- Рекурсивно обходит dict/dataclass
-- Маскирует поля с именами, соответствующими шаблонам секретов (password, token, secret, и т.д.)
-
-**Уровень 2** — явная маскировка `secret_fields`:
-```python
-if row_payload is not None and isinstance(row_payload, dict) and secret_fields:
-    for field in secret_fields:
-        row_payload[field] = "***"
-```
-
-`secret_fields` берётся из:
-- `result.meta.get("secret_fields")` — список явно помеченных полей из transform DSL
-- `result.secret_candidates.keys()` — альтернативный источник (если meta нет)
-
-**Порядок**: сначала `maskSecretsInObject()`, затем явная замена на `"***"`. Таким образом, vault-кандидаты гарантированно замаскированы даже если `maskSecretsInObject()` не распознал имя поля.
-
----
-
-### Отслеживание vault-кандидатов
-
-`TransformResultProcessor` отслеживает, сколько строк содержат секретные поля-кандидаты для vault:
-
-```python
-# В process():
-secret_fields: list[str] = []
-if result:
-    meta_secret_fields = result.meta.get("secret_fields") if result.meta else None
-    if isinstance(meta_secret_fields, (list, tuple, set)):
-        secret_fields = [str(item) for item in meta_secret_fields if item]
-    elif result.secret_candidates:
-        secret_fields = list(result.secret_candidates.keys())
-    if secret_fields:
-        self.vault_candidates_rows += 1
-        self.vault_candidates_fields_total += len(secret_fields)
-```
-
-**В finalize()** эти счётчики попадают в `context[context_key]`:
-```python
-{
-    "vault_candidates_rows": self.vault_candidates_rows,
-    "vault_candidates_fields_total": self.vault_candidates_fields_total,
-}
-```
-
----
-
-### finalize() — сброс статистики в context
-
-**Сигнатура**:
-```python
-def finalize(self) -> CommandResult:
-```
-
-**Назначение**: Записать итоговую статистику стадии в `report.context` и вернуть `CommandResult` для CLI.
-
-**Что записывает в context**:
-```python
-self.report.set_context(
-    self.context_key,
-    {
-        "rows_total": self.rows_total,
-        self.ok_label: self.ok_rows,          # например "enriched_rows": 247
-        self.failed_label: self.failed_rows,   # например "failed_rows": 3
-        "warnings_rows": self.warnings_rows,
-        "vault_candidates_rows": self.vault_candidates_rows,
-        "vault_candidates_fields_total": self.vault_candidates_fields_total,
-    },
-)
-```
-
-**CommandResult**:
-- Если `failed_rows > 0` → `result.add_code(SystemErrorCode.DATA_INVALID)` → status `"error"`
-- Иначе → `result.add_code(SystemErrorCode.OK)` → status `"ok"`
-
----
-
-## 📊 PlanningResultProcessor
-
-**Модуль**: `connector/domain/transform/core/result_processor.py`
-
-Подкласс `TransformResultProcessor`, предназначенный для стадий match/resolve, где на каждую строку приходится planning-специфичная metadata.
-
-### Дополнительные параметры конструктора
-
-```python
-PlanningResultProcessor(
-    ...всё из TransformResultProcessor...,
-    meta_builder: Callable[[TransformResult], dict | None],  # обязателен
+PlanningStageReportStrategy(
+    *,
+    meta_builder: Callable[[TransformResult], dict[str, Any] | None],  # обязательный
     should_skip: Callable[[TransformResult], bool] | None = None,
+    payload_builder: Callable[[TransformResult], Any] | None = None,
 )
 ```
 
-- **`meta_builder`**: Вызывается для каждой строки, возвращает dict, который попадает в `ReportItem.meta`. Типичное содержимое: `match_key`, `match_strategy`, `identity_resolution`, `planned_operation`.
-- **`should_skip`**: Предикат для пропуска строк (например, неизменённых записей при dry-run). Пропущенные строки не увеличивают `rows_total`.
+---
 
-### Алгоритм process() (override)
+## 📊 ExecutionStatsAccumulator / StageExecutionStats
 
-```
-1. IF result is None → вызвать base process() и вернуть
-2. IF should_skip(result) → return (строка пропущена)
-3. rows_total += 1
-4. resolve errors/warnings, has_errors, status (аналогично base)
-5. _filter_for_report() (унаследован)
-6. should_store = FAILED OR include_items
-7. resolve effective_row_ref (из result.row_ref или result.record)
-8. build payload + maskSecretsInObject (аналогично base, без vault-tracking)
-9. meta = meta_builder(result) или {}
-   meta.setdefault("upstream_errors_count", upstream_errors_count)
-   meta.setdefault("upstream_warnings_count", upstream_warnings_count)
-10. split_report_diagnostics()
-11. report.add_item(status, row_ref, payload, errors, warnings, meta, store)
+### StageExecutionStats (frozen dataclass)
+
+```python
+@dataclass(frozen=True)
+class StageExecutionStats:
+    rows_total: int
+    ok_rows: int
+    failed_rows: int
+    warnings_rows: int
+    vault_candidates_rows: int
+    vault_candidates_fields_total: int
 ```
 
-**Ключевое отличие от base**: `meta` заполняется через `meta_builder()`, что позволяет передать planning-контекст (например, `match_key`, `identity`) в `ReportItem.meta` без изменения базового `TransformResultProcessor`.
+`to_context_payload(ok_label, failed_label)` — проецирует в dict для report context:
+```python
+{"rows_total": N, ok_label: N, failed_label: N, "warnings_rows": N,
+ "vault_candidates_rows": N, "vault_candidates_fields_total": N}
+```
+
+### ExecutionStatsAccumulator (mutable)
+
+| Метод | Назначение |
+|-------|-----------|
+| `on_row(has_errors, has_warnings)` | `rows_total++`; `failed_rows++` или `ok_rows++`; `warnings_rows++` if warnings |
+| `on_secret_fields(fields)` | `vault_candidates_rows++`; `vault_candidates_fields_total += len(fields)` |
+| `snapshot()` | → `StageExecutionStats` (frozen, immutable) |
+
+Контракт: заполняется per-row, публикуется наружу **только** через `snapshot()`.
 
 ---
 
-## 📊 EnricherReport
-
-**Модуль**: `connector/domain/transform/enrich/report.py`
-
-Лёгкий per-row аккумулятор статистики операций enrich для одной строки. Создаётся для каждой строки внутри enrich-цикла и сериализуется в `ReportItem.meta["enrich"]`.
-
-### Структура
+## 📊 StageCommandResultResolver — stats → CommandResult
 
 ```python
-@dataclass
-class EnricherReport:
-    operations_total: int = 0             # всего операций enrich для строки
-    outcomes: dict[str, int] = ...        # {"APPLIED": 3, "SKIPPED": 1, "FAILED": 0}
-    updated_fields: int = 0               # полей обновлено (outcome == "APPLIED")
+@dataclass(frozen=True)
+class StageCommandResultResolver:
+    success_code: SystemErrorCode = SystemErrorCode.OK
+    failed_code: SystemErrorCode = SystemErrorCode.DATA_INVALID
+    conflict_code: SystemErrorCode = SystemErrorCode.CONFLICT
 ```
 
-### Методы
-
-**`record(report)`** — учитывает результат одной enrich-операции:
 ```python
-def record(self, report) -> None:
-    self.operations_total += 1
-    key = report.outcome.value if hasattr(report.outcome, "value") else str(report.outcome)
-    self.outcomes[key] = self.outcomes.get(key, 0) + 1
-    if report.events:
-        self.updated_fields += sum(
-            1 for event in report.events
-            if getattr(event, "outcome", None) == "APPLIED"
-        )
+def resolve(stats: StageExecutionStats, *, has_conflicts: bool = False) -> CommandResult
 ```
 
-**`as_dict()`** — для записи в meta:
-```python
-{
-    "operations_total": 4,
-    "outcomes": {"APPLIED": 3, "SKIPPED": 1},
-    "updated_fields": 3,
-}
-```
+| Условие | Действие |
+|---------|---------|
+| `stats.failed_rows > 0` | `result.add_code(failed_code)` |
+| `stats.failed_rows == 0` | `result.add_code(success_code)` |
+| `has_conflicts=True` | `result.add_code(conflict_code)` (дополнительно) |
 
-### Как используется
-
-В enrich-стадии (через `TransformResultProcessor`) `EnricherReport` создаётся per-row, заполняется в цикле операций, а затем `as_dict()` передаётся как `meta["enrich"]` в `report.add_item()`.
+UseCase формирует `CommandResult` через resolver, **не** в runtime.
 
 ---
 
-## 📊 ApplyReportPresenter
+## 📊 PayloadSanitizer — маскировка секретов
 
-**Модуль**: `connector/delivery/presenters/apply_report_presenter.py`
+```python
+class PayloadSanitizer:
+    def sanitize(self, payload_obj: Any, *, secret_fields: Iterable[str] | None = None) -> Any
+```
 
-Единственный адаптер, который работает с `ApplyResult` (результат применения плана к target-системе), а не с `TransformResult`. Также единственный компонент, который напрямую устанавливает `collector.status`.
+Алгоритм:
+1. `dict` → `maskSecretsInObject(payload)`.
+2. `dataclass` → `asdict()` → `maskSecretsInObject()`.
+3. Прочие → `maskSecretsInObject()`.
+4. Если `secret_fields` заданы и результат — dict → `sanitized[field] = "***"` для каждого.
 
-### Сигнатура
+Используется `connector/common/sanitize.py :: maskSecretsInObject()`.
+
+---
+
+## 📊 ApplyReportPresenter — import-apply adapter
 
 ```python
 class ApplyReportPresenter:
-    def present(
-        self,
-        result: ApplyResult,
-        collector: ReportCollector,
-        plan: ApplyPlan,
-        runtime_context: dict,
-    ) -> None:
+    @staticmethod
+    def present(result: ApplyResult, sink: IReportSink, plan: Plan,
+                apply_context: dict | None, runtime_context: dict | None) -> None
 ```
 
-### Алгоритм present()
+**Boundary**: пишет **только** через `IReportSink.emit(...)`, не читает текущее состояние report context.
 
-```
-1. Маппинг ApplyResult.summary → collector.add_op():
-   - add_op("create", ok=summary.created, failed=summary.create_failed, count=summary.planned_create)
-   - add_op("update", ok=summary.updated, failed=summary.update_failed, count=summary.planned_update)
-   - add_op("skip",   ok=summary.skipped, failed=0, count=summary.skipped)
-   - add_op("apply_failed", ok=0, failed=summary.failed, count=summary.failed)
+Алгоритм `present()`:
 
-2. Плановые операции → summary.ops["plan"]:
-   - add_op("plan", count=planned_create + planned_update)
+| Шаг | Событие | Данные |
+|-----|---------|--------|
+| 1 | `SetRowCountersEvent` | Pre-aggregated: rows_total, rows_passed (created+updated), rows_blocked (failed), rows_skipped, rows_with_warnings |
+| 2 | `AddOpEvent` × 4 | CREATE (ok), UPDATE (ok), SKIP (count), APPLY_FAILED (failed) |
+| 3 | `SetContextEvent(APPLY)` | apply_context + error_stats + retention_stats + runtime_context |
+| 4 | `MergeOpFieldsEvent(PLAN)` | planned_create, planned_update из Plan |
+| 5 | `AddItemEvent` × N | Per outcome: `preaggregated=True`, status, row_ref, diagnostics, meta (op, target_id) |
+| 6 | `SetItemsTruncatedEvent` | `result.outcomes_truncated` |
+| 7 | `EnsureErrorsTotalAtLeastEvent` | `summary.failed` (если failed > 0) |
+| 8 | `SetStatusEvent` | SUCCESS / PARTIAL / FAILED по формуле |
 
-3. Установить context["apply"] из runtime_context:
-   - collector.set_context("apply", runtime_context.get("apply", {}))
+**Ключевой момент**: `AddItemEvent(preaggregated=True)` — row counters **не** инкрементируются контекстом, т.к. уже установлены через `SetRowCountersEvent`.
 
-4. Итерировать result.item_outcomes:
-   FOR EACH outcome IN result.item_outcomes:
-       collector.items.append(ReportItem(
-           status=outcome.status,      # "OK" | "FAILED"
-           row_ref=outcome.row_ref,
-           payload=outcome.payload,
-           diagnostics=outcome.diagnostics,
-           meta=outcome.meta,
-       ))
+---
 
-5. Установить collector.status напрямую:
-   IF summary.failed > 0 AND summary.created + summary.updated == 0:
-       collector.status = "FAILED"
-   ELIF summary.failed > 0:
-       collector.status = "PARTIAL"
-   ELSE:
-       collector.status = "SUCCESS"
+## 📊 DiagnosticItem → ReportDiagnostic конвертация
+
+```python
+def to_report_diagnostics(errors, warnings) -> list[ReportDiagnostic]
+def split_report_diagnostics(errors, warnings) -> (errors_list, warnings_list)
 ```
 
-**Прямая установка `collector.status`**: Это исключение из правила "статус выводится из items". Apply-стадия знает итоговый результат из `ApplyResult.summary` и устанавливает его явно, не полагаясь на `_derive_status()` из хранимых items.
+- Принимают `Iterable[DiagnosticItem | ReportDiagnostic] | None`.
+- `DiagnosticItem` → `ReportDiagnostic` с маппингом полей (severity, stage, code, field, message, rule, details).
+- `ReportDiagnostic` → pass-through.
+- `split_report_diagnostics()` — то же + split по `severity`.
+
+Используется `StageResultReporter` (шаг 10) и `ApplyReportPresenter` (шаг 5).
+
+---
+
+## 🔄 UseCase Integration Pattern
+
+Все ETL use-cases (normalize, enrich, mapping, match, resolve) следуют единому паттерну:
+
+```python
+class SomeUseCase:
+    def run(self, ..., report_sink: IReportSink, report_policy: ReportPolicy, ...) -> CommandResult:
+        # 1. Создать reporter
+        reporter = StageResultReporter(
+            sink=report_sink,
+            report_policy=report_policy,
+            include_items=self.include_items,
+            context_key=ReportContextKey.NORMALIZE,  # stage-specific
+            ok_label="normalized_ok",
+            failed_label="normalize_failed",
+            strategy=TransformStageReportStrategy(),  # или PlanningStageReportStrategy
+            report_stage=DiagnosticStage.NORMALIZE,
+        )
+
+        # 2. Обработать каждый результат
+        for result in pipeline.run(source):
+            reporter.process(result)
+
+        # 3. Опубликовать stage context
+        stats = reporter.publish_context()
+
+        # 4. Разрешить CommandResult
+        return StageCommandResultResolver().resolve(stats)
+```
+
+**Import-apply** — другой паттерн: `ImportApplyService.apply_plan()` → `ApplyResult` → `ApplyReportPresenter.present(result, sink, plan)`.
+
+### Примеры конфигурации strategy по командам
+
+| Команда | Strategy | context_key | ok_label | failed_label | report_stage |
+|---------|----------|-------------|----------|-------------|-------------|
+| `normalize` | `TransformStageReportStrategy()` | `NORMALIZE` | `normalized_ok` | `normalize_failed` | `NORMALIZE` |
+| `mapping` | `TransformStageReportStrategy()` | `MAPPING` | `mapped_ok` | `map_failed` | `MAP` |
+| `enrich` | `TransformStageReportStrategy()` | `ENRICH` | `enriched_ok` | `enrich_failed` | `ENRICH` |
+| `match` | `PlanningStageReportStrategy(meta_builder=...)` | `MATCH` | `matched_ok` | `match_failed` | `MATCH` |
+| `resolve` | `PlanningStageReportStrategy(meta_builder=..., should_skip=...)` | `RESOLVE` | `resolved_ok` | `resolve_failed` | `RESOLVE` |
 
 ---
 
 ## 🔄 Context-блоки: кто и что пишет
 
-Полная таблица всех context-блоков, которые могут присутствовать в `ReportEnvelope.context`:
-
-| Ключ | Модуль-источник | Момент записи | Типичное содержимое |
-|------|----------------|--------------|---------------------|
-| `"config"` | `report_writer.createEmptyReport()` | До вызова handler | `config_sources: list[str]` — пути к конфиг-файлам |
-| `"input"` | обработчик import-команды | В начале обработки | `dataset`, `source_file`, `record_count` |
-| `"normalize"` | `TransformResultProcessor.finalize()` (normalize) | После нормализации | `rows_total`, `normalized_rows`, `failed_rows`, `vault_candidates_rows` |
-| `"enrich"` | `TransformResultProcessor.finalize()` (enrich) + `commands/enrich.py` | После enrich | `rows_total`, `enriched_rows`, `failed_rows` + vault rollout decision |
-| `"match"` | `PlanningResultProcessor.finalize()` (match) | После match | `rows_total`, `matched_rows`, `failed_rows` |
-| `"resolve"` | `PlanningResultProcessor.finalize()` (resolve) | После resolve | `rows_total`, `resolved_rows`, `failed_rows` |
-| `"apply"` | `ApplyReportPresenter.present()` | После apply | `plan_path`, `dry_run`, `retries`, `target`, `apply_mode` |
-| `"cache_refresh"` | `usecases/cache_refresh_service.py` | После cache refresh | `refreshed`, `failed`, `total`, `datasets` |
-| `"dictionary"` | `commands/common.attach_dictionary_report_snapshot_if_available()` | Best-effort | `telemetry.snapshot()` из DictionaryProvider |
-| `"runtime"` | `report_writer.finalizeReport()` | После handler (в finalize) | `duration_ms`, `log_file`, `cache_dir`, `report_dir` |
-
-### attach_dictionary_report_snapshot_if_available()
-
-**Модуль**: `connector/delivery/commands/common.py`
-
-Специальная best-effort функция для сбора телеметрии dictionary-провайдера без добавления зависимости от dictionary-слоя в отчёт:
-
-```python
-def attach_dictionary_report_snapshot_if_available(*, ctx, report) -> None:
-    if report is None:
-        return
-    container = getattr(ctx, "container", None)
-    if container is None:
-        return
-    dictionary_container = getattr(container, "dictionary", None)
-    if dictionary_container is None:
-        return
-    telemetry_provider = getattr(dictionary_container, "telemetry", None)
-    if telemetry_provider is None:
-        return
-    telemetry = telemetry_provider()
-    if telemetry is None:
-        return
-    snapshot = telemetry.snapshot()
-    if isinstance(snapshot, dict):
-        report.set_context("dictionary", snapshot)
-```
-
-**Особенности**:
-- Цепочка `getattr(... None)` — защита от отсутствия DI-контейнера или компонента.
-- `telemetry_provider()` — вызывает Factory-провайдер DI (не Singleton), создавая свежий экземпляр.
-- Блок появляется в отчёте только если dictionary-компонент инициализирован и telemetry доступна.
+| ReportContextKey | Продюсер | Когда |
+|-----------------|----------|------|
+| `CONFIG` | Runtime orchestrator | Инициализация |
+| `INPUT` | Runtime orchestrator | Инициализация |
+| `RUNTIME` | Runtime orchestrator | Финализация |
+| `REPORT_POLICY` | Runtime orchestrator | Инициализация |
+| `STATS` | IActivitySink (ActivityMetricEvent) | По запросу подсистем |
+| `DICTIONARY` | Command handler (`attach_dictionary_report_snapshot`) | После инициализации |
+| `TARGET_RUNTIME` | Command handler | После инициализации target |
+| `VAULT_ROLLOUT` | Command handler | После vault rollout |
+| `APPLY` | ApplyReportPresenter | После apply |
+| `APPLY_TARGET` | Command handler | До/после apply |
+| `CACHE_STATUS` | Cache commands | После cache status check |
+| `CACHE_CLEAR` | Cache commands | После cache clear |
+| `CACHE_REFRESH` | Cache commands | После cache refresh |
+| `NORMALIZE` | StageResultReporter.publish_context() | После обработки всех строк |
+| `MAPPING` | StageResultReporter.publish_context() | После обработки всех строк |
+| `ENRICH` | StageResultReporter.publish_context() | После обработки всех строк |
+| `MATCH` | StageResultReporter.publish_context() | После обработки всех строк |
+| `RESOLVE` | StageResultReporter.publish_context() | После обработки всех строк |
 
 ---
 
 ## 🔄 Взаимодействие с другими слоями
 
-| Слой | Тип связи | Через что | Зачем |
-|------|-----------|-----------|-------|
-| Transform Core (`result.py`) | Читает из | `TransformResult` | Исходные данные для адаптации |
-| ReportCollector (reporting) | Пишет в | `add_item()`, `set_context()`, `add_op()` | Регистрация результатов и контекста |
-| Apply Layer (`apply_result.py`) | Читает из | `ApplyResult.summary`, `item_outcomes` | Источник apply-статистики |
-| Vault Layer | Читает vault-meta | `result.meta["secret_fields"]`, `result.secret_candidates` | Отслеживание кандидатов и маскировка |
-| Dictionary Layer | Best-effort snapshot | `ctx.container.dictionary.telemetry()` | context["dictionary"] |
-| sanitize.py | Вызывает | `maskSecretsInObject()` | Маскировка payload |
+| Слой | Взаимодействие | Направление |
+|------|---------------|------------|
+| **report-models** (domain) | Использует `IReportSink`, `ReportPolicy`, events, contracts | ← import |
+| **report-delivery** (runtime) | Runtime orchestrator передаёт `IReportSink` + `ReportPolicy` в handler/usecase | ← injection |
+| **usecases** | Создают `StageResultReporter`, вызывают `process()` / `publish_context()` | → sink |
+| **delivery/presenters** | `ApplyReportPresenter` пишет через `IReportSink` | → sink |
+| **transform domain** | `TransformResult` — входной тип для адаптеров | ← import |
+| **planning domain** | `Plan`, `ApplyResult` — входные типы для presenter | ← import |
+| **diagnostics domain** | `CommandResult`, `SystemErrorCode` — выходные типы resolver | ← import |
 
 ---
 
 ## 🔌 Контракты и границы
 
-### Контракт TransformResultProcessor
-
-**Предусловия**:
-- `report` должен быть инициализированным `ReportCollector` (не None).
-- `context_key` должен быть уникальным строковым ключом (иначе `set_context()` перезапишет предыдущее значение).
-
-**Постусловия**:
-- После каждого `process()`: `rows_total` корректно инкрементирован.
-- После `finalize()`: `report.context[context_key]` содержит статистику стадии; возвращён `CommandResult`.
-
-### Контракт ApplyReportPresenter
-
-**Предусловие**: `collector` передан до вызова `present()`; он уже может содержать items от predict/plan-стадий.
-
-**Постусловие**: `collector.status` установлен явно; `summary.ops` содержит create/update/skip/apply_failed; `collector.items` содержит outcomes.
-
-### Границы слоёв
-
-**Разрешённые зависимости**:
-- ✅ `TransformResultProcessor` → `ReportCollector` (domain → domain)
-- ✅ `TransformResultProcessor` → `DiagnosticItem` (shared domain model)
-- ✅ `ApplyReportPresenter` → `ReportCollector` (delivery → domain)
-- ✅ `commands/common.py` → `ReportCollector` (delivery → domain, через report.set_context)
-
-**Запрещённые зависимости**:
-- ❌ `TransformResultProcessor` → `connector/infra/*` — адаптер домена не знает про инфраструктуру
-- ❌ `ReportCollector` → `TransformResult` — обратная зависимость нарушила бы изоляцию
-- ❌ Pipeline stages → `ReportEnvelope` — стадии работают только с collector (builder), не с финальным envelope
+1. **Single canonical adapter**: `StageResultReporter` — единственный путь конвертации `TransformResult → report item`. Нет дублирования process()-логики.
+2. **Stage-only status policy**: `item.status` определяется только ошибками текущей стадии, не upstream.
+3. **Immutable stats contract**: `StageExecutionStats` — frozen, не мутируется после `snapshot()`.
+4. **Unidirectional flow**: Адаптеры пишут в `IReportSink`, не читают из `IReportContext`.
+5. **Strategy encapsulation**: Различия стадий инкапсулированы в strategy, не в условной логике reporter-а.
+6. **Pre-aggregated bridge**: `ApplyReportPresenter` использует `preaggregated=True` + `SetRowCountersEvent`. Контекст не пересчитывает row-счётчики для этих items.
+7. **UseCase owns result**: `CommandResult` формируется в usecase через `StageCommandResultResolver`, не в runtime.
 
 ---
 
 ## 💡 Типичные сценарии
 
-### Сценарий 1: Обработка нормализации с фильтрацией upstream ошибок
+### Сценарий 1: Normalize stage с полной детализацией
 
 ```python
-processor = TransformResultProcessor(
-    report=report,
-    include_items=False,
-    context_key="normalize",
-    ok_label="normalized_rows",
-    failed_label="failed_rows",
-    report_stage=DiagnosticStage.NORMALIZE,     # фильтровать только NORMALIZE-диагностику
-    include_upstream_diagnostics=False,
+reporter = StageResultReporter(
+    sink=report_sink,
+    report_policy=ReportPolicy.standard(),
+    include_items=True,
+    context_key=ReportContextKey.NORMALIZE,
+    ok_label="normalized_ok",
+    failed_label="normalize_failed",
+    strategy=TransformStageReportStrategy(),
+    report_stage=DiagnosticStage.NORMALIZE,
 )
 
-for result in normalize_results:
-    processor.process(result)
-    # result.errors может содержать MAP-ошибки (upstream)
-    # _filter_for_report() оставит только те, у которых stage == NORMALIZE
-    # MAP-ошибки попадут в meta["upstream_errors_count"]
+for result in pipeline.run(source):
+    reporter.process(result)  # → AddItemEvent per row
 
-cmd_result = processor.finalize()
-# report.context["normalize"] = {rows_total, normalized_rows, failed_rows, ...}
+stats = reporter.publish_context()  # → SetContextEvent(NORMALIZE, {...})
+command_result = StageCommandResultResolver().resolve(stats)
 ```
 
----
-
-### Сценарий 2: Planning-стадия с meta_builder
+### Сценарий 2: Match stage с custom meta
 
 ```python
-def build_match_meta(result: TransformResult) -> dict:
-    return {
-        "match_key": result.match_key.value if result.match_key else None,
-        "match_strategy": result.meta.get("match_strategy"),
-        "identity": result.meta.get("identity_primary"),
-    }
-
-processor = PlanningResultProcessor(
-    report=report,
-    include_items=include_items,
-    context_key="match",
-    ok_label="matched_rows",
-    failed_label="unmatched_rows",
-    meta_builder=build_match_meta,
+reporter = StageResultReporter(
+    sink=report_sink,
+    report_policy=report_policy,
+    include_items=include_matched_items,
+    context_key=ReportContextKey.MATCH,
+    ok_label="matched_ok",
+    failed_label="match_failed",
+    strategy=PlanningStageReportStrategy(
+        meta_builder=lambda r: {"match_status": r.row.match_decision.status.value if r.row else None},
+    ),
     report_stage=DiagnosticStage.MATCH,
 )
 
-for result in match_results:
-    processor.process(result)
-    # ReportItem.meta["match_key"] = "employee_id_12345"
-    # ReportItem.meta["match_strategy"] = "exact"
+for matched in iter_ok(pipeline.run(source)):
+    force_failed = bool((matched.meta or {}).get("match_drop_reason"))
+    reporter.process(matched, force_failed=force_failed)
+
+stats = reporter.publish_context()
+return StageCommandResultResolver().resolve(stats, has_conflicts=stats.failed_rows > 0)
 ```
 
----
-
-### Сценарий 3: ApplyReportPresenter с частичными сбоями
+### Сценарий 3: Import-apply
 
 ```python
-presenter = ApplyReportPresenter()
-presenter.present(
-    result=apply_result,       # ApplyResult(summary=..., item_outcomes=[...])
-    collector=report,
+apply_result = apply_service.apply_plan(plan, ...)
+ApplyReportPresenter.present(
+    result=apply_result,
+    sink=report_sink,
     plan=plan,
-    runtime_context={
-        "apply": {
-            "dry_run": False,
-            "target": "ankey_rest",
-            "plan_path": "plans/run-xyz.json",
-        }
-    },
+    apply_context={"dry_run": False},
+    runtime_context={"target": "ankey_rest"},
 )
-# После present():
-# report.summary.ops == {
-#   "create": {"ok": 10, "failed": 0, "count": 10},
-#   "update": {"ok": 5,  "failed": 2, "count": 7},
-#   "apply_failed": {"ok": 0, "failed": 2, "count": 2},
-# }
-# report.status == "PARTIAL" (есть ошибки, но есть и успешные)
-# report.context["apply"] == {"dry_run": False, "target": "ankey_rest", ...}
 ```
 
----
-
-### Сценарий 4: Маскировка vault-кандидата в payload
+### Сценарий 4: Resolve с expired pending и special ops
 
 ```python
-# TransformResult с секретным полем "password"
-result.meta = {"secret_fields": ["password"]}
-result.row = {"employee_id": "E001", "name": "Alice", "password": "s3cr3t!"}
+# Expired rows пишутся напрямую через sink (вне StageResultReporter)
+for expired_row in pending_expiry.drain_expired():
+    sink.emit(AddItemEvent(status=ReportItemStatus.FAILED, row_ref=..., errors=..., store=True))
+sink.emit(AddOpEvent(name=ReportOpKey.RESOLVE_EXPIRED, failed=expired_count))
 
-# В process():
-# 1. maskSecretsInObject(row) → маскирует известные паттерны
-# 2. payload["password"] = "***"  # явная маскировка по secret_fields
-
-# В ReportItem:
-# payload == {"employee_id": "E001", "name": "Alice", "password": "***"}
-# meta["secret_candidate_fields"] == ["password"]
+# Основной поток — через reporter
+for resolved in resolved_stream:
+    reporter.process(resolved)
 ```
 
 ---
 
 ## 📌 Важные детали
 
-### Особенности реализации
-
-- **`process()` не может вернуть ошибку**: все исключения должны быть обработаны вызывающим кодом до передачи в processor; processor предполагает корректные входные данные.
-- **`include_items=True` → все строки хранятся**: Используется для команд, где пользователю важна полная детализация (например, dry-run apply). По умолчанию `include_items=False` — хранятся только FAILED.
-- **`force_failed=True`**: Принудительно помечает строку как FAILED, даже если ошибок нет; используется, когда upstream-стадия вернула None (строка не может быть обработана).
-- **`errors_override` / `warnings_override`**: Позволяют передать конкретный набор диагностик вместо тех, что в `result.errors` — используется при инжекции синтетических ошибок (например, при timeout).
-- **`PlanningResultProcessor.should_skip()`**: Скипнутые строки не фиксируются в отчёте вообще (ни счётчики, ни items) — это отличает skip от FAILED.
-
 ### 🚨 Failure Modes
 
-| Ситуация | Поведение | Как обработать |
-|----------|-----------|---------------|
-| `result=None` + `force_failed=False` | `rows_total += 1`, `status="OK"`, пустой payload | Передавать `force_failed=True` для явного FAILED при отсутствии result |
-| `payload_builder` бросает исключение | Не перехватывается — исключение всплывает выше | Реализовывать `payload_builder` без исключений; использовать try/except снаружи |
-| `report_stage` не соответствует ни одной диагностике | Все диагностики идут в upstream_count; report_errors=[] | Нормальное поведение при отсутствии ошибок текущей стадии |
-| `maskSecretsInObject` не распознаёт имя поля | Поле не маскируется функцией, но `secret_fields` маскировка ("***") всё равно применяется | Убедиться, что vault-поля всегда передаются в `result.meta["secret_fields"]` |
-| `finalize()` вызван без `process()` | `rows_total=0`, all counters zero, `CommandResult.status="ok"` | Нормально для пустого датасета |
+| Ситуация | Поведение | Как обрабатывать |
+|----------|----------|------------------|
+| `result=None` в `process()` | Обрабатывается корректно: empty errors/warnings, status=OK | Допустимо для edge cases |
+| `strategy.should_skip()=True` | Строка полностью пропускается, не считается в stats | Для resolve: pending-only rows без resolve-результата |
+| `force_failed=True` без errors | Status=FAILED, но diagnostics пустые | Корректно для match_drop_reason |
+| `preaggregated=True` без `SetRowCountersEvent` | Counters останутся 0 | Всегда вызывать SetRowCountersEvent перед preaggregated items |
+| `report_stage=None` | Фильтрация diagnostics отключена — все проходят | Для стадий без stage-scoped диагностик |
 
 ### ⚠️ Инварианты системы
 
-1. **Инвариант: Payload без секретов**
-   - **Что**: `ReportItem.payload` никогда не содержит незамаскированных секретных значений.
-   - **Почему важно**: Отчёт хранится на диске и может быть передан во внешние системы.
-   - **Где проверяется**: `TransformResultProcessor.process()`, двухуровневая маскировка (maskSecretsInObject + explicit "***").
-
-2. **Инвариант: stage-атрибуция ошибок**
-   - **Что**: Диагностика в `ReportItem.diagnostics` принадлежит именно стадии, чей `TransformResultProcessor` её зафиксировал.
-   - **Почему важно**: `by_stage` в summary корректно показывает, где возникли ошибки.
-   - **Где проверяется**: `_filter_for_report()` фильтрует по `report_stage`.
-
-3. **Инвариант: finalize() вызывается ровно один раз на стадию**
-   - **Что**: `set_context(context_key, ...)` вызывается один раз; второй вызов перезапишет статистику.
-   - **Почему важно**: Дублирование `finalize()` испортит `context[context_key]`.
-   - **Где проверяется**: По архитектуре — processor создаётся per-stage, finalize() вызывается по завершении.
+1. **Single processing algorithm**: row-processing логика существует только в `StageResultReporter.process()`.
+2. **Stage-only status policy**: item status зависит только от stage-local ошибок; upstream diagnostics → только metadata (`upstream_errors_count`).
+3. **Immutable stats**: `StageExecutionStats` не мутируется после фиксации.
+4. **No business logic in strategy**: strategy решает only skip/payload/meta, не status и не counters.
+5. **Deterministic context publishing**: `publish_context()` вызывается один раз после обработки всех строк.
+6. **Presenter write-only**: `ApplyReportPresenter` пишет через `IReportSink.emit()`, не читает context.
 
 ### ⏱️ Performance заметки
 
-**Узкие места**:
-- `maskSecretsInObject()` — рекурсивный обход dict; при payload из 100+ полей выполняется за ~1 мс. Не является bottleneck для типичных датасетов (< 10K строк).
-- `_filter_for_report()` — линейная фильтрация `O(n)` по числу диагностик; обычно < 10 на строку → незначительно.
-- `split_report_diagnostics()` — аналогично, два прохода по небольшому списку.
-
-**Оптимизации**:
-- `should_store` проверяется до построения payload: если `False` → никакой обработки payload нет.
-- `secret_fields` маскировка выполняется только если `should_store=True` (payload строится только для хранимых items).
+- `process()` — O(errors + warnings) на строку для фильтрации и конвертации.
+- `PayloadSanitizer.sanitize()` — O(fields) для dict, O(fields) для dataclass через `asdict()`.
+- `StageExecutionStats.to_context_payload()` — O(1).
+- Для 100k+ строк: `AddItemEvent` emit-ится на каждую строку, но контекст хранит только bounded sample.
 
 ---
 
 ## 🛠️ Как расширять
 
-### Добавить новую стадию конвейера с отчётностью
+### Добавить новую стадию
 
-1. Создать `TransformResultProcessor` с `context_key="my_stage"`:
-   ```python
-   processor = TransformResultProcessor(
-       report=report,
-       include_items=False,
-       context_key="my_stage",
-       ok_label="processed_rows",
-       failed_label="failed_rows",
-       report_stage=DiagnosticStage.MY_STAGE,
-   )
-   ```
+1. Выбрать strategy: `TransformStageReportStrategy` или `PlanningStageReportStrategy`.
+2. В usecase: создать `StageResultReporter` с новым `context_key` и `report_stage`.
+3. Добавить `context_key` в `ReportContextKey` enum (если ещё нет).
+4. Вызвать `reporter.publish_context()` после обработки.
 
-2. В цикле по строкам вызывать `processor.process(result)`.
+### Добавить custom strategy
 
-3. По завершении вызвать `processor.finalize()` → `CommandResult`.
+1. Создать класс, реализующий `IStageReportStrategy`.
+2. Определить `should_skip()`, `build_payload()`, `build_meta()`.
+3. Передать в `StageResultReporter(strategy=MyStrategy())`.
 
-4. В `context["my_stage"]` автоматически появится статистика.
+### Добавить новый op-ключ
 
-### Добавить новый context-блок от команды
+1. Добавить значение в `ReportOpKey` enum.
+2. Emit через `sink.emit(AddOpEvent(name=ReportOpKey.NEW_OP, ok=N))`.
 
-```python
-# В обработчике команды:
-report.set_context("my_command_context", {
-    "param1": args.param1,
-    "param2": args.param2,
-})
-```
+### Добавить данные в ApplyReportPresenter
 
-### Добавить planning-specific meta
-
-Реализовать `meta_builder` для `PlanningResultProcessor`:
-```python
-def build_my_meta(result: TransformResult) -> dict:
-    return {
-        "custom_field": result.meta.get("custom"),
-        "match_score": result.meta.get("score", 0),
-    }
-```
-
----
-
-## ❓ FAQ
-
-### Когда использовать `include_upstream_diagnostics=True`?
-
-Когда стадии конвейера жёстко связаны и ошибка upstream стадии фактически является ошибкой текущей. Например, если enrich-стадия перезапускает всю обработку строки (re-enrich) и ошибка из MAP должна быть видна в enrich-контексте. По умолчанию `False` — строгая stage-атрибуция.
-
-**Правило**: Используйте `False` (дефолт) для стандартных линейных стадий. Используйте `True` только если стадия намеренно агрегирует диагностику предыдущих шагов.
-
----
-
-### Почему `PlanningResultProcessor` не наследует явно `finalize()`?
-
-`finalize()` унаследован из `TransformResultProcessor` без изменений — он записывает те же счётчики (rows_total, ok_rows, failed_rows, etc.) в `context[context_key]`. Planning-специфичная логика инкапсулирована в `process()` и `meta_builder`. Добавление `finalize()` в подкласс потребовалось бы только если нужны дополнительные счётчики (например, `skipped_rows`).
-
----
-
-### Что происходит с `EnricherReport`, если enrich операция упала?
-
-`EnricherReport.record(report)` вызывается только для завершённых операций enrich. Если операция бросила исключение, вызывающий код (enrich_core.py) обрабатывает его и создаёт `DiagnosticItem` с severity=ERROR. Затем этот `DiagnosticItem` передаётся в `TransformResultProcessor.process()` через `errors_override`, и строка помечается FAILED. `EnricherReport` при этом может не иметь записи для упавшей операции.
-
----
-
-### Почему `ApplyReportPresenter` устанавливает `collector.status` напрямую?
-
-Apply — финальная стадия конвейера, которая знает общий итог из `ApplyResult.summary` (created + updated + failed). `_derive_status()` работает только из хранимых `ReportItem`-объектов, которые для apply-стадии добавляются через `collector.items.append()` без `store`-логики `add_item()`. Это позволяет ApplyReportPresenter иметь полный контроль над статусом, основанным на бизнес-результате apply-операций.
-
----
-
-### Как `upstream_errors_count` отличается от `errors_total` в summary?
-
-- `summary.errors_total` — суммарное количество `ReportDiagnostic`-объектов в хранимых items (из `_count_diagnostics()`).
-- `meta.upstream_errors_count` в `ReportItem` — количество ошибок данной строки из предыдущих стадий (upstream), которые были отфильтрованы `_filter_for_report()` и не вошли в `item.diagnostics`.
-
-`upstream_errors_count` позволяет аналитику увидеть "скрытые" ошибки строки, не попавшие в диагностику из-за stage-фильтрации.
-
----
-
-### Можно ли использовать `PlanningResultProcessor` для стадии apply?
-
-Нет — apply использует `ApplyReportPresenter`, который работает с `ApplyResult` (а не `TransformResult`). `PlanningResultProcessor` предназначен исключительно для стадий match/resolve, которые возвращают `TransformResult`.
-
----
-
-## 🧪 Тестирование
-
-### Unit-тесты TransformResultProcessor
-
-```python
-def test_process_failed_row_stores_item():
-    report = ReportCollector(run_id="test", command="import", started_at=datetime.now())
-    processor = TransformResultProcessor(
-        report=report,
-        include_items=False,         # OK строки не хранятся
-        context_key="normalize",
-        ok_label="normalized_rows",
-        failed_label="failed_rows",
-    )
-
-    # FAILED строка — должна храниться
-    result = make_transform_result(errors=[make_diag("field_missing")])
-    processor.process(result)
-
-    assert processor.rows_total == 1
-    assert processor.failed_rows == 1
-    assert processor.ok_rows == 0
-
-
-def test_process_ok_row_not_stored_when_include_items_false():
-    report = ReportCollector(run_id="test", command="import", started_at=datetime.now())
-    processor = TransformResultProcessor(
-        report=report,
-        include_items=False,
-        context_key="test",
-        ok_label="ok",
-        failed_label="fail",
-    )
-
-    result = make_transform_result(errors=[])   # OK строка
-    processor.process(result)
-
-    report.finish()
-    envelope = report.build()
-    assert len(envelope.items) == 0       # не хранится
-    assert envelope.summary.rows_passed == 1  # счётчик полный
-
-
-def test_stage_filter_upstream_diagnostics():
-    report = ReportCollector(run_id="test", command="import", started_at=datetime.now())
-    processor = TransformResultProcessor(
-        report=report,
-        include_items=True,
-        context_key="enrich",
-        ok_label="ok",
-        failed_label="fail",
-        report_stage=DiagnosticStage.ENRICH,
-        include_upstream_diagnostics=False,
-    )
-
-    # Ошибка из MAP (upstream), ошибка из ENRICH (текущая)
-    map_error = make_diag("map_error", stage=DiagnosticStage.MAP)
-    enrich_error = make_diag("enrich_error", stage=DiagnosticStage.ENRICH)
-    result = make_transform_result(errors=[map_error, enrich_error])
-    processor.process(result, force_failed=True)
-
-    report.finish()
-    envelope = report.build()
-    item = envelope.items[0]
-    # Только ENRICH-диагностика в item.diagnostics
-    assert len(item.diagnostics) == 1
-    assert item.diagnostics[0].code == "enrich_error"
-    # MAP-ошибка в meta
-    assert item.meta["upstream_errors_count"] == 1
-
-
-def test_secret_field_masked_in_payload():
-    report = ReportCollector(run_id="test", command="import", started_at=datetime.now())
-    processor = TransformResultProcessor(
-        report=report,
-        include_items=True,
-        context_key="test",
-        ok_label="ok",
-        failed_label="fail",
-    )
-
-    result = make_transform_result(
-        row={"employee_id": "E001", "password": "s3cr3t"},
-        meta={"secret_fields": ["password"]},
-    )
-    processor.process(result)
-
-    report.finish()
-    envelope = report.build()
-    assert envelope.items[0].payload["password"] == "***"
-    assert envelope.items[0].payload["employee_id"] == "E001"
-```
-
-### Unit-тесты DiagnosticItem → ReportDiagnostic
-
-```python
-def test_to_report_diagnostics_maps_fields():
-    error = DiagnosticItem(
-        severity=DiagnosticSeverity.ERROR,
-        stage="ENRICH",
-        code="test_code",
-        field="test_field",
-        message="test message",
-    )
-    result = to_report_diagnostics([error], None)
-
-    assert len(result) == 1
-    assert result[0].severity == "error"
-    assert result[0].stage == "ENRICH"
-    assert result[0].code == "test_code"
-
-
-def test_split_report_diagnostics_separates():
-    error = DiagnosticItem(severity=DiagnosticSeverity.ERROR, stage="MATCH", code="err")
-    warning = DiagnosticItem(severity=DiagnosticSeverity.WARNING, stage="MATCH", code="warn")
-
-    errors, warnings = split_report_diagnostics([error], [warning])
-    assert len(errors) == 1 and errors[0].severity == "error"
-    assert len(warnings) == 1 and warnings[0].severity == "warning"
-
-
-def test_report_diagnostic_passthrough():
-    # Уже-ReportDiagnostic не конвертируется
-    diag = ReportDiagnostic(severity="warning", stage="ENRICH", code="x", field=None, message=None)
-    result = to_report_diagnostics(None, [diag])
-    assert result[0] is diag   # тот же объект
-```
+1. Новые поля → в `SetContextEvent(APPLY, value={...})`.
+2. Новые op-счётчики → в `AddOpEvent`.
+3. Новые item-метаданные → в `AddItemEvent.meta`.
 
 ---
 
 ## 🔗 Связанные документы
 
-- [report-models.md](./report-models.md) — ReportCollector, ReportEnvelope, все domain models
-- [report-delivery.md](./report-delivery.md) — CLI lifecycle, run_with_report(), JSON I/O
-- [vault-core.md](../vault/vault-core.md) — secret_candidates, secret_fields в transform pipeline
-- [dictionary-delivery.md](../dictionary/dictionary-delivery.md) — dictionary telemetry snapshot
-
----
+- [Report Models — Event-Driven Domain и Policy Framework](./report-models.md)
+- [Report Delivery — Runtime Orchestration и Artifact Lifecycle](./report-delivery.md)
+- [Report Layer — Реестр Архитектурных Проблем](./report-architecture-issues.md)
+- [REPORT-DEC-002: Unified StageResultReporter](../../adr/report/REPORT-DEC-002-unified-stage-result-reporter-and-result-policy.md)
+- [REPORT-DEC-003: ReportWritePort и инкапсуляция](../../adr/report/REPORT-DEC-003-report-write-port-and-collector-encapsulation.md)
 
 ## 📝 История изменений
 
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-02-27 | Создан документ Report Pipeline | xORex-LC |
+| 2026-03-03 | Документация обновлена после рефакторинга слоя | xORex-LC |

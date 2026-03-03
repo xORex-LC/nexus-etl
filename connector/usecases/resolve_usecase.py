@@ -7,15 +7,20 @@ from itertools import chain
 from typing import Iterable
 
 from connector.domain.models import DiagnosticStage, RowRef
+from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus, ReportOpKey
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
+from connector.domain.reporting.adapters.result_policy import StageCommandResultResolver
+from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
+from connector.domain.reporting.adapters.strategies import PlanningStageReportStrategy
 from connector.domain.reporting.diagnostics import split_report_diagnostics
+from connector.domain.reporting.events import AddItemEvent, AddOpEvent
+from connector.domain.reporting.policy import ReportPolicy
+from connector.domain.reporting.sink import IReportSink
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
-from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.cache.roles import ResolveRuntimePort
 from connector.domain.transform.core.iterators import iter_micro_batches
 from connector.domain.transform.core.result import TransformResult
-from connector.domain.transform.core.result_processor import PlanningResultProcessor
 from connector.domain.transform.resolver import pending_codec
 from connector.domain.transform.resolver.ports import IPendingExpiryService
 from connector.domain.transform.stages.stages import PipelineHooks, PipelineOrchestrator, ResolveStage
@@ -88,7 +93,8 @@ class ResolveUseCase:
         matched_source: Iterable[TransformResult],
         resolve_stage: ResolveStage,
         dataset: str,
-        report,
+        report_sink: IReportSink,
+        report_policy: ReportPolicy,
         catalog: ErrorCatalog,
         *,
         pending_expiry: IPendingExpiryService,
@@ -103,17 +109,19 @@ class ResolveUseCase:
             - resolve_hooks должен триггерить pending_expiry.sweep() после
               завершения каждого micro-batch resolve-стадии.
         """
-        report.set_meta(dataset=dataset, items_limit=self.report_items_limit)
         resolver = resolve_stage.resolver
-        _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
-        processor = PlanningResultProcessor(
-            report=report,
+        expired_failures = _report_expired(report_sink, pending_expiry.drain_expired(), resolver.settings, catalog)
+        reporter = StageResultReporter(
+            sink=report_sink,
+            report_policy=report_policy,
             include_items=self.include_resolved_items,
-            context_key="resolve",
+            context_key=ReportContextKey.RESOLVE,
             ok_label="resolved_ok",
             failed_label="resolve_failed",
-            meta_builder=lambda r: {"op": r.row.op if r.row else None},
-            should_skip=lambda r: _resolve_status(r) is None and r.row is None,
+            strategy=PlanningStageReportStrategy(
+                meta_builder=lambda r: {"op": r.row.op if r.row else None},
+                should_skip=lambda r: _resolve_status(r) is None and r.row is None,
+            ),
             report_stage=DiagnosticStage.RESOLVE,
             include_upstream_diagnostics=False,
         )
@@ -123,17 +131,21 @@ class ResolveUseCase:
             resolve_stage,
             resolve_hooks=resolve_hooks,
         ):
-            _count_special_ops(report, resolved.errors, resolved.warnings)
-            processor.process(resolved)
-            _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
+            _count_special_ops(report_sink, resolved.errors, resolved.warnings)
+            reporter.process(resolved)
+            expired_failures += _report_expired(
+                report_sink,
+                pending_expiry.drain_expired(),
+                resolver.settings,
+                catalog,
+            )
         # Sweep выполняется через resolve_hooks.on_stage_complete после исчерпания
         # micro-batch; отдельный финальный drain нужен, чтобы не потерять последний batch.
-        _report_expired(report, pending_expiry.drain_expired(), resolver.settings, catalog)
+        expired_failures += _report_expired(report_sink, pending_expiry.drain_expired(), resolver.settings, catalog)
         _purge_pending(resolver)
-        result = processor.finalize()
-        if report.summary.errors_total > 0:
-            result.add_code(SystemErrorCode.CONFLICT)
-        return result
+        stats = reporter.publish_context()
+        has_conflicts = stats.failed_rows > 0 or expired_failures > 0
+        return StageCommandResultResolver().resolve(stats, has_conflicts=has_conflicts)
 
     def _iter_resolved(
         self,
@@ -197,10 +209,11 @@ def _resolve_status(item: TransformResult) -> str | None:
     return None
 
 
-def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
+def _report_expired(report_sink: IReportSink, expired, settings, catalog: ErrorCatalog) -> int:
     mode = getattr(settings, "pending_on_expire", "error") if settings is not None else "error"
     if mode == "skip":
-        return
+        return 0
+    failed_count = 0
     for item in expired:
         diag = (diag_warning if mode == "report_only" else diag_error)(
             catalog=catalog,
@@ -209,7 +222,7 @@ def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
             field=item.field,
             message=item.reason or "pending link expired",
             record_ref=RowRef(
-                line_no=0,
+                line_no=None,
                 row_id=item.source_row_id,
                 identity_primary=None,
                 identity_value=None,
@@ -220,40 +233,48 @@ def _report_expired(report, expired, settings, catalog: ErrorCatalog) -> None:
             [diag] if mode == "report_only" else [],
         )
         if mode == "report_only":
-            report.add_item(
-                status="OK",
+            report_sink.emit(
+                AddItemEvent(
+                    status=ReportItemStatus.OK,
+                    row_ref=diag.record_ref,
+                    payload=None,
+                    errors=tuple(report_errors),
+                    warnings=tuple(report_warnings),
+                    meta={
+                        "pending_id": item.pending_id,
+                        "lookup_key": item.lookup_key,
+                    },
+                    store=True,
+                    preaggregated=False,
+                )
+            )
+            report_sink.emit(AddOpEvent(name=ReportOpKey.RESOLVE_EXPIRED, ok=1, count=1))
+            continue
+        report_sink.emit(
+            AddItemEvent(
+                status=ReportItemStatus.FAILED,
                 row_ref=diag.record_ref,
                 payload=None,
-                errors=report_errors,
-                warnings=report_warnings,
+                errors=tuple(report_errors),
+                warnings=tuple(report_warnings),
                 meta={
                     "pending_id": item.pending_id,
                     "lookup_key": item.lookup_key,
                 },
                 store=True,
+                preaggregated=False,
             )
-            report.add_op("resolve_expired", ok=1, count=1)
-            continue
-        report.add_item(
-            status="FAILED",
-            row_ref=diag.record_ref,
-            payload=None,
-            errors=report_errors,
-            warnings=report_warnings,
-            meta={
-                "pending_id": item.pending_id,
-                "lookup_key": item.lookup_key,
-            },
-            store=True,
         )
-        report.add_op("resolve_expired", failed=1, count=1)
+        report_sink.emit(AddOpEvent(name=ReportOpKey.RESOLVE_EXPIRED, failed=1, count=1))
+        failed_count += 1
+    return failed_count
 
 
-def _count_special_ops(report, errors, warnings) -> None:
+def _count_special_ops(report_sink: IReportSink, errors, warnings) -> None:
     if any(err.code == "RESOLVE_MAX_ATTEMPTS" for err in errors or []):
-        report.add_op("resolve_max_attempts", failed=1, count=1)
+        report_sink.emit(AddOpEvent(name=ReportOpKey.RESOLVE_MAX_ATTEMPTS, failed=1, count=1))
     if any(warn.code == "RESOLVE_PENDING" for warn in warnings or []):
-        report.add_op("resolve_pending", ok=1, count=1)
+        report_sink.emit(AddOpEvent(name=ReportOpKey.RESOLVE_PENDING, ok=1, count=1))
 
 
 def _resolve_transaction(resolve_stage: ResolveStage):
