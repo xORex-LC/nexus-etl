@@ -41,5 +41,21 @@ class VaultKeyManagementResult:
     rotated_at: str | None = None
 
 
-__all__ = ["VaultKeyManagementStatus", "VaultKeyManagementResult"]
+@dataclass(frozen=True)
+class VaultMaintenanceResult:
+    """Результат запуска policy-driven maintenance цикла для vault-management."""
 
+    run_id: str
+    action: Literal["no_op", "rotate", "bridge_finalize"]
+    due: bool
+    bridge_detected: bool
+    changed: bool
+    active_key_version: str | None = None
+    dek_rewrapped_count: int = 0
+
+
+__all__ = [
+    "VaultKeyManagementStatus",
+    "VaultKeyManagementResult",
+    "VaultMaintenanceResult",
+]

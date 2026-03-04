@@ -7,6 +7,8 @@ from connector.usecases.operations.vault_management_settings import VaultManagem
 from connector.usecases.management.vault import (
     VaultKeyManagementResult,
     VaultKeyManagementStatus,
+    VaultMaintenanceResult,
+    VaultMaintenanceUseCase,
     VaultKeyManagementUseCase,
     VaultStartupGuardPostVerifier,
 )
@@ -15,6 +17,8 @@ __all__ = [
     "VaultManagementSettings",
     "VaultKeyManagementStatus",
     "VaultKeyManagementResult",
+    "VaultMaintenanceResult",
+    "VaultMaintenanceUseCase",
     "VaultStartupGuardPostVerifier",
     "VaultKeyManagementUseCase",
 ]
