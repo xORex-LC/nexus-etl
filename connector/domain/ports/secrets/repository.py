@@ -84,6 +84,13 @@ class SecretVaultRepositoryPort(Protocol):
         """
         ...
 
+    def list_deks(self) -> tuple[VaultDekRecord, ...]:
+        """
+        Контракт:
+            Вернуть все DEK-записи, доступные для lifecycle-операций (rewrap/rotate).
+        """
+        ...
+
     def upsert_probe(self, record: VaultProbeRecord) -> None:
         """
         Контракт:
@@ -116,5 +123,34 @@ class SecretVaultRepositoryPort(Protocol):
         """
         Контракт:
             Зафиксировать результат последней lifecycle-операции ротации.
+        """
+        ...
+
+    def get_last_rotation_result(self) -> str | None:
+        """
+        Контракт:
+            Вернуть код результата последней lifecycle-операции (`rotating|ok|failed|...`) или None.
+        """
+        ...
+
+    def get_last_rotation_reason(self) -> str | None:
+        """
+        Контракт:
+            Вернуть служебную причину последней lifecycle-операции или None.
+        """
+        ...
+
+    def get_last_rotation_run_id(self) -> str | None:
+        """
+        Контракт:
+            Вернуть run_id последней lifecycle-операции или None.
+        """
+        ...
+
+    def set_last_rotation_run_id(self, run_id: str | None) -> None:
+        """
+        Контракт:
+            Зафиксировать run_id последней lifecycle-операции;
+            при run_id=None удалить значение.
         """
         ...

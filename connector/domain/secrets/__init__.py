@@ -3,6 +3,7 @@
 from connector.domain.secrets.errors import (
     VaultAdminAccessDeniedError,
     VaultAdminPasswordConfigError,
+    VaultManagementOperationError,
     SecretDecryptionError,
     SecretIntegrityError,
     SecretKeyConfigError,
@@ -26,6 +27,7 @@ __all__ = [
     "SecretStoreError",
     "VaultAdminAccessDeniedError",
     "VaultAdminPasswordConfigError",
+    "VaultManagementOperationError",
     "VaultDekRecord",
     "VaultDomainError",
     "VaultProbeRecord",

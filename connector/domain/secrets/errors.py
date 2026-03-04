@@ -191,3 +191,22 @@ class VaultAdminAccessDeniedError(VaultDomainError):
             message=message,
             details=details,
         )
+
+
+class VaultManagementOperationError(VaultDomainError):
+    """
+    Назначение:
+        Ошибка выполнения lifecycle-операции vault-management.
+    """
+
+    def __init__(
+        self,
+        message: str = "Vault management operation failed",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            code="VAULT_MANAGEMENT_OPERATION_ERROR",
+            message=message,
+            details=details,
+        )

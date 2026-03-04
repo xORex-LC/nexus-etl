@@ -336,6 +336,25 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
         )
         return _row_to_dek_record(row)
 
+    def list_deks(self) -> tuple[VaultDekRecord, ...]:
+        rows = self._fetchall_read(
+            """
+            SELECT
+                dek_version,
+                wrapped_dek,
+                wrap_algo,
+                wrap_key_version,
+                is_active,
+                created_at,
+                updated_at
+            FROM vault_dek
+            ORDER BY is_active DESC, updated_at DESC, dek_version DESC
+            """,
+            None,
+            op="list_deks",
+        )
+        return tuple(_row_to_dek_record(row) for row in rows if row is not None)
+
     def upsert_probe(self, record: VaultProbeRecord) -> None:
         self._execute_write(
             """
@@ -420,6 +439,33 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
             else:
                 self._set_meta_value("last_rotation_reason", reason)
 
+    def get_last_rotation_result(self) -> str | None:
+        """Назначение:
+            Вернуть код результата последней lifecycle-операции (`rotating|ok|failed|...`).
+        """
+        return self._get_meta_value("last_rotation_result")
+
+    def get_last_rotation_reason(self) -> str | None:
+        """Назначение:
+            Вернуть причину последней lifecycle-операции ротации.
+        """
+        return self._get_meta_value("last_rotation_reason")
+
+    def get_last_rotation_run_id(self) -> str | None:
+        """Назначение:
+            Вернуть run_id последней lifecycle-операции ротации.
+        """
+        return self._get_meta_value("last_rotation_run_id")
+
+    def set_last_rotation_run_id(self, run_id: str | None) -> None:
+        """Назначение:
+            Обновить run_id последней lifecycle-операции ротации.
+        """
+        if run_id is None:
+            self._delete_meta_value("last_rotation_run_id")
+            return
+        self._set_meta_value("last_rotation_run_id", run_id)
+
     def _ensure_schema(self) -> None:
         try:
             ensure_vault_schema(self._engine)
@@ -489,6 +535,19 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
     ) -> sqlite3.Row | None:
         try:
             return self._engine.execute_with_retry(sql, params, max_retries=SQLITE_SCHEMA_MAX_RETRIES).fetchone()
+        except sqlite3.DatabaseError as exc:
+            raise self._map_read_error(exc, op=op, extra_details=details) from exc
+
+    def _fetchall_read(
+        self,
+        sql: str,
+        params: tuple[Any, ...] | None = None,
+        *,
+        op: str,
+        details: dict[str, Any] | None = None,
+    ) -> list[sqlite3.Row]:
+        try:
+            return list(self._engine.execute_with_retry(sql, params, max_retries=SQLITE_SCHEMA_MAX_RETRIES).fetchall())
         except sqlite3.DatabaseError as exc:
             raise self._map_read_error(exc, op=op, extra_details=details) from exc
 
