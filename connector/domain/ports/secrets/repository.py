@@ -98,3 +98,23 @@ class SecretVaultRepositoryPort(Protocol):
         """
         ...
 
+    def get_last_rotated_at(self) -> str | None:
+        """
+        Контракт:
+            Вернуть timestamp последней успешной ротации ключа (ISO UTC) или None.
+        """
+        ...
+
+    def set_last_rotated_at(self, iso_utc: str) -> None:
+        """
+        Контракт:
+            Зафиксировать timestamp последней успешной ротации ключа (ISO UTC).
+        """
+        ...
+
+    def set_last_rotation_result(self, *, result: str, reason: str | None = None) -> None:
+        """
+        Контракт:
+            Зафиксировать результат последней lifecycle-операции ротации.
+        """
+        ...

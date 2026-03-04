@@ -28,6 +28,8 @@ from connector.config.models import (
     RefreshConfig,
     ResolverConfig,
     SqliteConfig,
+    VaultManagementConfig,
+    VaultRotationIntervalConfig,
     VaultRolloutConfig,
 )
 from connector.config.projections import (
@@ -35,6 +37,7 @@ from connector.config.projections import (
     to_identity_db_config,
     to_match_batch_settings,
     to_resolver_settings,
+    to_vault_management_settings,
     to_vault_db_config,
     to_vault_rollout_policy_settings,
     to_vault_rollout_thresholds,
@@ -53,6 +56,8 @@ __all__ = [
     "RefreshConfig",
     "ResolverConfig",
     "SqliteConfig",
+    "VaultManagementConfig",
+    "VaultRotationIntervalConfig",
     "VaultRolloutConfig",
     # Loader
     "LoadedAppConfig",
@@ -62,6 +67,7 @@ __all__ = [
     "to_identity_db_config",
     "to_match_batch_settings",
     "to_resolver_settings",
+    "to_vault_management_settings",
     "to_vault_db_config",
     "to_vault_rollout_policy_settings",
     "to_vault_rollout_thresholds",

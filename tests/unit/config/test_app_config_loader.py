@@ -168,8 +168,59 @@ def test_source_trace_contains_all_sections(tmp_path: object) -> None:
     assert "api.host" in trace
     assert "resolver.pending_max_attempts" in trace
     assert "vault_rollout.mode" in trace
+    assert "vault_management.auto_rotate_on_error" in trace
     assert "sqlite.journal_mode" in trace
     assert "dictionary.load_strategy" in trace
 
     # Все незаданные поля — "default"
     assert all(v in ("config", "env", "cli", "default") for v in trace.values())
+
+
+def test_vault_management_interval_env_string_parse(
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ENV-строка interval корректно парсится в nested-модель vault_management."""
+    cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
+    cfg_file.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("ANKEY_VAULT_MANAGEMENT__AUTO_ROTATE_INTERVAL", "hours=0,days=14,months=0,years=0")
+
+    result = load_app_config(str(cfg_file))
+
+    assert result.app_config.vault_management.auto_rotate_interval.days == 14
+    assert result.app_config.vault_management.auto_rotate_interval.hours == 0
+
+
+def test_vault_management_cli_override_beats_env_and_yaml(
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """vault_management.managed_env_file: CLI > ENV > YAML."""
+    cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
+    cfg_file.write_text("vault_management:\n  managed_env_file: ./from-config.env\n", encoding="utf-8")
+    monkeypatch.setenv("ANKEY_VAULT_MANAGEMENT__MANAGED_ENV_FILE", "./from-env.env")
+
+    result = load_app_config(
+        str(cfg_file),
+        cli_overrides={"vault_management.managed_env_file": "./from-cli.env"},
+    )
+
+    assert result.app_config.vault_management.managed_env_file == "./from-cli.env"
+    assert result.source_trace["vault_management.managed_env_file"] == "cli"
+
+
+def test_vault_management_interval_requires_non_zero_value(tmp_path: object) -> None:
+    """Все нули в auto_rotate_interval запрещены validator-ом."""
+    cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
+    cfg_file.write_text(
+        "vault_management:\n"
+        "  auto_rotate_interval:\n"
+        "    hours: 0\n"
+        "    days: 0\n"
+        "    months: 0\n"
+        "    years: 0\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SettingsLoadError):
+        load_app_config(str(cfg_file))
