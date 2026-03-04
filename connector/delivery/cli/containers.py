@@ -28,8 +28,9 @@
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator, Literal
 
 from dependency_injector import containers, providers
 
@@ -41,6 +42,7 @@ from connector.config.projections import (
     to_vault_management_settings,
     to_vault_db_config,
 )
+from connector.domain.secrets.policy.rotation_policy import VaultRotationPolicy
 from connector.domain.transform.matcher.match_deps import MatchBatchSettings, MatchScopeService
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.diagnostics import build_catalog
@@ -91,13 +93,21 @@ from connector.infra.secrets import (
     EnvVaultKeyProvider,
     FernetEnvelopeCipher,
     VaultAdminPasswordGate,
+    VaultManagedEnvKeyringStore,
+    parse_master_keyring,
 )
+from connector.infra.secrets.env_key_provider import DEFAULT_MASTER_KEYS_ENV
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
 from connector.infra.target.core.factory import (
     TargetRuntimeBuildResult,
     build_target_runtime_with_info,
+)
+from connector.usecases.management.vault import (
+    VaultKeyManagementUseCase,
+    VaultMaintenanceUseCase,
+    VaultStartupGuardPostVerifier,
 )
 
 if TYPE_CHECKING:
@@ -141,14 +151,88 @@ def _make_identity_engine(app_config: AppConfig, cache_dir: str) -> SqliteEngine
     return open_sqlite(to_identity_db_config(app_config), _identity_db_path(cache_dir, app_config.sqlite))
 
 
-def vault_startup_resource(engine: SqliteEngine) -> Iterator[None]:
+def _serialize_master_keyring(keys: tuple) -> str:
+    return ",".join(f"{item.key_version}:{item.key_material}" for item in keys)
+
+
+def _preload_effective_vault_keyring(
+    *,
+    keyring_store: VaultManagedEnvKeyringStore | None,
+) -> Literal["env", "managed_env", "none"]:
+    raw_runtime_keyring = os.environ.get(DEFAULT_MASTER_KEYS_ENV)
+    if raw_runtime_keyring and raw_runtime_keyring.strip():
+        parse_master_keyring(raw_runtime_keyring, env_var=DEFAULT_MASTER_KEYS_ENV)
+        return "env"
+
+    if keyring_store is None:
+        return "none"
+
+    keyring = keyring_store.load_keyring()
+    os.environ[DEFAULT_MASTER_KEYS_ENV] = _serialize_master_keyring(keyring)
+    return "managed_env"
+
+
+def _sync_runtime_env_from_managed_keyring(
+    *,
+    keyring_store: VaultManagedEnvKeyringStore,
+) -> None:
+    keyring = keyring_store.load_keyring()
+    os.environ[DEFAULT_MASTER_KEYS_ENV] = _serialize_master_keyring(keyring)
+
+
+def _run_vault_maintenance_with_policy(
+    *,
+    repository: SqliteVaultRepository,
+    cipher: FernetEnvelopeCipher,
+    storage_probe: SqliteEngine,
+    settings,
+    keyring_source: Literal["env", "managed_env", "none"],
+    keyring_store: VaultManagedEnvKeyringStore | None,
+) -> None:
+    if not settings.auto_rotate_enabled:
+        return
+
+    if keyring_source == "env":
+        return
+
+    if keyring_store is None:
+        if settings.auto_rotate_on_error == "fail_open":
+            return
+        raise RuntimeError("Vault maintenance requires managed_env_file when auto_rotate_enabled=true")
+
+    try:
+        key_management = VaultKeyManagementUseCase(
+            repository=repository,
+            cipher=cipher,
+            keyring_store=keyring_store,
+            post_verify=VaultStartupGuardPostVerifier(
+                repository=repository,
+                cipher=cipher,
+                storage_probe=storage_probe,
+            ),
+        )
+        maintenance = VaultMaintenanceUseCase(
+            key_management=key_management,
+            rotation_policy=VaultRotationPolicy(interval=settings.auto_rotate_interval),
+        )
+        maintenance.run_if_due()
+        _sync_runtime_env_from_managed_keyring(keyring_store=keyring_store)
+    except Exception:  # noqa: BLE001
+        if settings.auto_rotate_on_error == "fail_open":
+            return
+        raise
+
+
+def vault_startup_resource(engine: SqliteEngine, app_config: AppConfig) -> Iterator[None]:
     """
     Назначение:
-        Resource-генератор для vault DB: init schema + startup guard → yield → teardown.
+        Resource-генератор для vault DB: schema + optional maintenance + startup guard.
 
     Контракт:
         - ensure_vault_schema: создать/обновить схему vault.
-        - VaultStartupGuard.ensure_ready(): fail-fast проверка keyring/probe.
+        - keyring source precedence: runtime ENV -> managed env file.
+        - optional auto-maintenance: due-check, recovery, rotate по policy.
+        - VaultStartupGuard.ensure_ready(): финальная fail-fast проверка keyring/probe.
         - yield: container держит engine живым во время runtime.
         - teardown: engine.close().
 
@@ -156,9 +240,30 @@ def vault_startup_resource(engine: SqliteEngine) -> Iterator[None]:
         VAULT_STARTUP_* при неудачной startup-проверке.
     """
     ensure_vault_schema(engine)
+    repository = SqliteVaultRepository(engine)
+    cipher = FernetEnvelopeCipher()
+    settings = to_vault_management_settings(app_config)
+    keyring_store = (
+        VaultManagedEnvKeyringStore(settings.managed_env_file)
+        if settings.managed_env_file
+        else None
+    )
+    keyring_source = _preload_effective_vault_keyring(
+        keyring_store=keyring_store,
+    )
+
+    _run_vault_maintenance_with_policy(
+        repository=repository,
+        cipher=cipher,
+        storage_probe=engine,
+        settings=settings,
+        keyring_source=keyring_source,
+        keyring_store=keyring_store,
+    )
+
     guard = VaultStartupGuard(
-        repository=SqliteVaultRepository(engine),
-        cipher=FernetEnvelopeCipher(),
+        repository=repository,
+        cipher=cipher,
         key_provider=EnvVaultKeyProvider(),
         storage_probe=engine,
     )
@@ -227,6 +332,7 @@ class SqliteContainer(containers.DeclarativeContainer):
     vault_ready = providers.Resource(
         vault_startup_resource,
         engine=vault_engine,
+        app_config=app_config,
     )
 
     cache_ready = providers.Resource(

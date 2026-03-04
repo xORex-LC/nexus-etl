@@ -338,6 +338,93 @@ class VaultKeyManagementUseCase:
             rotated_at=result.rotated_at,
         )
 
+    def finalize_inflight_bridge(self, *, run_id: str | None = None) -> VaultKeyManagementResult | None:
+        """Назначение:
+            Финализировать in-flight bridge keyring (`new,old...`) в single-key steady-state.
+
+        Контракт:
+            - если bridge отсутствует (`len(keyring) <= 1`), вернуть `None`;
+            - при наличии bridge выполнить rewrap всех DEK на первый ключ keyring;
+            - после успешного rewrap сохранить финальный keyring (`new` only) и выполнить post-verify.
+        """
+        effective_run_id = run_id or self._run_id_factory()
+        self._logger.info(
+            "vault_mgmt_rotate",
+            component="vault_management",
+            op="start",
+            run_id=effective_run_id,
+            mode="bridge_finalize",
+        )
+
+        with self._keyring_store.lifecycle_lock():
+            keyring = self._require_keyring(run_id=effective_run_id, operation="rotate")
+            bridge_key_count = len(keyring)
+            if bridge_key_count <= 1:
+                self._logger.info(
+                    "vault_mgmt_rotate",
+                    component="vault_management",
+                    op="success",
+                    run_id=effective_run_id,
+                    mode="bridge_finalize",
+                    reason="bridge_not_detected",
+                )
+                return None
+
+            active_key = keyring[0]
+            try:
+                rewrapped = self._rewrap_in_transaction(
+                    active_key=active_key,
+                    keyring=keyring,
+                    run_id=effective_run_id,
+                    in_progress_reason="bridge_finalize_in_progress",
+                )
+                self._keyring_store.save_keyring((active_key,))
+                self._post_verify.ensure_ready((active_key,))
+            except Exception as exc:  # noqa: BLE001
+                self._mark_failed(run_id=effective_run_id, reason="bridge_finalize_failed")
+                self._logger.error(
+                    "vault_mgmt_rotate",
+                    component="vault_management",
+                    op="failed",
+                    run_id=effective_run_id,
+                    mode="bridge_finalize",
+                    reason="bridge_finalize_failed",
+                    error_type=type(exc).__name__,
+                    bridge_key_count=bridge_key_count,
+                )
+                raise self._as_operation_error(
+                    exc,
+                    reason="bridge_finalize_failed",
+                    run_id=effective_run_id,
+                    operation="rotate",
+                    extra={"bridge_key_count": bridge_key_count, "mode": "bridge_finalize"},
+                ) from exc
+
+            rotated_at = self._now_utc()
+            self._mark_success(
+                run_id=effective_run_id,
+                reason="bridge_finalize_completed",
+                rotated_at=rotated_at,
+            )
+            self._logger.info(
+                "vault_mgmt_rotate",
+                component="vault_management",
+                op="success",
+                run_id=effective_run_id,
+                mode="bridge_finalize",
+                active_key_version=active_key.key_version,
+                dek_rewrapped_count=rewrapped,
+            )
+            return VaultKeyManagementResult(
+                operation="rotate",
+                run_id=effective_run_id,
+                active_key_version=active_key.key_version,
+                dek_rewrapped_count=rewrapped,
+                bridge_key_count=bridge_key_count,
+                final_key_count=1,
+                rotated_at=rotated_at,
+            )
+
     def _rewrap_in_transaction(
         self,
         *,
@@ -525,4 +612,3 @@ def _default_key_material() -> str:
 
 
 __all__ = ["VaultKeyManagementUseCase"]
-
