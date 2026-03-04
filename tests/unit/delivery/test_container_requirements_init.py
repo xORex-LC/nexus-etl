@@ -34,6 +34,7 @@ def _container_with_call_log(*, dictionary_provider: object | None = None):
         sqlite=SimpleNamespace(
             cache_ready=_init("sqlite.cache_ready"),
             identity_ready=_init("sqlite.identity_ready"),
+            vault_schema_ready=_init("sqlite.vault_schema_ready"),
             vault_ready=_init("sqlite.vault_ready"),
         ),
         cache=SimpleNamespace(gateway=_init("cache.gateway")),
@@ -75,6 +76,14 @@ def test_init_container_for_requirements_vault_only() -> None:
     _init_container_for_requirements(container, Requirements(requires_vault_init=True))  # type: ignore[arg-type]
 
     assert calls == ["sqlite.vault_ready"]
+
+
+def test_init_container_for_requirements_vault_schema_only() -> None:
+    container, calls, _pipeline_override, _provider = _container_with_call_log()
+
+    _init_container_for_requirements(container, Requirements(requires_vault_schema=True))  # type: ignore[arg-type]
+
+    assert calls == ["sqlite.vault_schema_ready"]
 
 
 def test_init_container_for_requirements_full_profile_order() -> None:
@@ -129,6 +138,7 @@ def test_init_container_for_requirements_dictionaries_disabled_keeps_pipeline_de
         sqlite=SimpleNamespace(
             cache_ready=_init("sqlite.cache_ready"),
             identity_ready=_init("sqlite.identity_ready"),
+            vault_schema_ready=_init("sqlite.vault_schema_ready"),
             vault_ready=_init("sqlite.vault_ready"),
         ),
         cache=SimpleNamespace(gateway=_init("cache.gateway")),

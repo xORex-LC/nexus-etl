@@ -11,6 +11,7 @@ from connector.config.models import (
     PathsConfig,
     RefreshConfig,
     ResolverConfig,
+    VaultManagementConfig,
     VaultRolloutConfig,
 )
 
@@ -34,6 +35,12 @@ COMMAND_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
     ),
     "import-apply": (DatasetConfig, ExecutionConfig, ObservabilityConfig, PathsConfig, VaultRolloutConfig),
     "check-api": (ApiConfig, ObservabilityConfig, PathsConfig),
+    "vault-management-init": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
+    "vault-management-status": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
+    "vault-management-rotate": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
+    "vault-management-rewrap": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
+    "vault-management-delete-key": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
+    "vault-management-run-maintenance": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
 }
 
 USECASE_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
@@ -54,6 +61,8 @@ USECASE_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
         VaultRolloutConfig,
     ),
     "ImportApplyService": (DatasetConfig, ExecutionConfig, ObservabilityConfig, VaultRolloutConfig),
+    "VaultKeyManagementUseCase": (VaultManagementConfig, ObservabilityConfig),
+    "VaultMaintenanceUseCase": (VaultManagementConfig, ObservabilityConfig),
 }
 
 COMMAND_TO_USECASE: Final[dict[str, str]] = {
@@ -67,4 +76,10 @@ COMMAND_TO_USECASE: Final[dict[str, str]] = {
     "resolve": "ResolveUseCase",
     "import-plan": "ImportPlanService",
     "import-apply": "ImportApplyService",
+    "vault-management-init": "VaultKeyManagementUseCase",
+    "vault-management-status": "VaultKeyManagementUseCase",
+    "vault-management-rotate": "VaultKeyManagementUseCase",
+    "vault-management-rewrap": "VaultKeyManagementUseCase",
+    "vault-management-delete-key": "VaultKeyManagementUseCase",
+    "vault-management-run-maintenance": "VaultMaintenanceUseCase",
 }

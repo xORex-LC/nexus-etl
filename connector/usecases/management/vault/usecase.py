@@ -78,7 +78,12 @@ class VaultKeyManagementUseCase:
         self._key_version_factory = key_version_factory or _default_key_version
         self._logger = structlog.get_logger(__name__)
 
-    def init_keyring(self, *, run_id: str | None = None) -> VaultKeyManagementResult:
+    def init_keyring(
+        self,
+        *,
+        run_id: str | None = None,
+        initial_keyring: tuple[VaultMasterKey, ...] | None = None,
+    ) -> VaultKeyManagementResult:
         """Назначение:
             Инициализировать первый keyring (разрешено только при отсутствии active key).
         """
@@ -102,10 +107,14 @@ class VaultKeyManagementUseCase:
                     },
                 )
 
-            new_key = self._build_new_active_key(existing)
+            new_keyring, init_reason = self._resolve_initial_keyring(
+                existing_keyring=existing,
+                initial_keyring=initial_keyring,
+            )
+            active_key = new_keyring[0]
             try:
-                self._keyring_store.save_keyring((new_key,))
-                self._post_verify.ensure_ready((new_key,))
+                self._keyring_store.save_keyring(new_keyring)
+                self._post_verify.ensure_ready(new_keyring)
             except Exception as exc:  # noqa: BLE001
                 self._mark_failed(run_id=effective_run_id, reason="init_failed")
                 self._logger.error(
@@ -126,7 +135,7 @@ class VaultKeyManagementUseCase:
             rotated_at = self._now_utc()
             self._mark_success(
                 run_id=effective_run_id,
-                reason="init_completed",
+                reason=init_reason,
                 rotated_at=rotated_at,
             )
             self._logger.info(
@@ -134,15 +143,15 @@ class VaultKeyManagementUseCase:
                 component="vault_management",
                 op="success",
                 run_id=effective_run_id,
-                active_key_version=new_key.key_version,
+                active_key_version=active_key.key_version,
             )
             return VaultKeyManagementResult(
                 operation="init",
                 run_id=effective_run_id,
-                active_key_version=new_key.key_version,
+                active_key_version=active_key.key_version,
                 dek_rewrapped_count=0,
-                bridge_key_count=1,
-                final_key_count=1,
+                bridge_key_count=len(new_keyring),
+                final_key_count=len(new_keyring),
                 rotated_at=rotated_at,
             )
 
@@ -519,6 +528,37 @@ class VaultKeyManagementUseCase:
     ) -> tuple[VaultMasterKey, ...]:
         fallback = tuple(item for item in existing_keyring if item.key_version != new_key.key_version)
         return (new_key,) + fallback
+
+    def _resolve_initial_keyring(
+        self,
+        *,
+        existing_keyring: tuple[VaultMasterKey, ...],
+        initial_keyring: tuple[VaultMasterKey, ...] | None,
+    ) -> tuple[tuple[VaultMasterKey, ...], str]:
+        if initial_keyring is None:
+            new_key = self._build_new_active_key(existing_keyring)
+            return (new_key,), "init_completed"
+
+        if not initial_keyring:
+            raise VaultManagementOperationError(
+                "Initial keyring cannot be empty",
+                details={"reason": "empty_initial_keyring"},
+            )
+        if len(initial_keyring) != 1:
+            raise VaultManagementOperationError(
+                "Initial keyring must contain exactly one active key",
+                details={
+                    "reason": "initial_keyring_requires_single_key",
+                    "key_count": len(initial_keyring),
+                },
+            )
+        imported = initial_keyring[0]
+        normalized = VaultMasterKey(
+            key_version=imported.key_version,
+            key_material=imported.key_material,
+            is_active=True,
+        )
+        return (normalized,), "init_import_existing_env_completed"
 
     def _mark_success(self, *, run_id: str, reason: str, rotated_at: str | None) -> None:
         self._repository.set_last_rotation_run_id(run_id)

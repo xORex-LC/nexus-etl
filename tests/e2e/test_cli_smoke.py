@@ -10,6 +10,7 @@ def test_help_shows_commands():
     assert "mapping" in result.stdout
     assert "check-api" in result.stdout
     assert "cache" in result.stdout
+    assert "vault-management" in result.stdout
 
 def test_import_requires_subcommand():
     result = runner.invoke(

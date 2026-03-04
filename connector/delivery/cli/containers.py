@@ -57,6 +57,7 @@ from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
+from connector.domain.secrets.errors import VaultManagementOperationError
 from connector.domain.secrets.vault_startup_guard import VaultStartupGuard
 from connector.domain.transform.context import PipelineMetadata, StageExecutionContext
 from connector.domain.transform.providers import ProviderGateway
@@ -180,6 +181,25 @@ def _sync_runtime_env_from_managed_keyring(
     os.environ[DEFAULT_MASTER_KEYS_ENV] = _serialize_master_keyring(keyring)
 
 
+def _resolve_required_managed_env_file(path: str | None) -> str:
+    """
+    Назначение:
+        Нормализовать managed env path и выбросить предсказуемую ошибку при отсутствии.
+
+    Контракт:
+        - Возвращает непустой path для `VaultManagedEnvKeyringStore`.
+        - Не назначает fallback-путь: источник должен быть явно задан через
+          `CLI > ENV > config.yml > defaults`.
+    """
+    normalized = (path or "").strip()
+    if normalized:
+        return normalized
+    raise VaultManagementOperationError(
+        "Managed vault env file path is not configured",
+        details={"reason": "managed_env_file_not_configured"},
+    )
+
+
 def _run_vault_maintenance_with_policy(
     *,
     repository: SqliteVaultRepository,
@@ -272,6 +292,21 @@ def vault_startup_resource(engine: SqliteEngine, app_config: AppConfig) -> Itera
     engine.close()
 
 
+def vault_schema_resource(engine: SqliteEngine) -> Iterator[None]:
+    """
+    Назначение:
+        Resource-генератор для vault DB без startup guard и maintenance.
+
+    Контракт:
+        - Инициализирует только схему vault (`ensure_vault_schema`).
+        - Используется manual CLI management-командами (`init/status/rotate/...`),
+          где startup-guard управляется на уровне usecase/флагов.
+    """
+    ensure_vault_schema(engine)
+    yield
+    engine.close()
+
+
 def cache_startup_resource(engine: SqliteEngine, specs: list) -> Iterator[None]:
     """
     Назначение:
@@ -333,6 +368,11 @@ class SqliteContainer(containers.DeclarativeContainer):
         vault_startup_resource,
         engine=vault_engine,
         app_config=app_config,
+    )
+
+    vault_schema_ready = providers.Resource(
+        vault_schema_resource,
+        engine=vault_engine,
     )
 
     cache_ready = providers.Resource(
@@ -880,6 +920,10 @@ class AppContainer(containers.DeclarativeContainer):
     _api_settings = providers.Callable(lambda s: s.api, s=app_config)
     _dictionary_cfg = providers.Callable(lambda s: s.dictionary, s=app_config)
     _vault_management_settings = providers.Callable(to_vault_management_settings, config=app_config)
+    _vault_rotation_interval = providers.Callable(
+        lambda s: s.auto_rotate_interval,
+        s=_vault_management_settings,
+    )
 
     cache_dsl = providers.Singleton(load_cache_dsl_runtime)
     _cache_specs = providers.Callable(lambda b: list(b.cache_specs), b=cache_dsl)
@@ -919,6 +963,43 @@ class AppContainer(containers.DeclarativeContainer):
         ),
     )
 
+    vault_managed_keyring_store = providers.Factory(
+        VaultManagedEnvKeyringStore,
+        managed_env_file=providers.Callable(
+            _resolve_required_managed_env_file,
+            path=providers.Callable(
+                lambda s: s.managed_env_file,
+                s=_vault_management_settings,
+            ),
+        ),
+    )
+
+    vault_post_verifier = providers.Factory(
+        VaultStartupGuardPostVerifier,
+        repository=vault.repository,
+        cipher=vault.cipher,
+        storage_probe=sqlite.vault_engine,
+    )
+
+    vault_key_management_usecase = providers.Factory(
+        VaultKeyManagementUseCase,
+        repository=vault.repository,
+        cipher=vault.cipher,
+        keyring_store=vault_managed_keyring_store,
+        post_verify=vault_post_verifier,
+    )
+
+    vault_rotation_policy = providers.Factory(
+        VaultRotationPolicy,
+        interval=_vault_rotation_interval,
+    )
+
+    vault_maintenance_usecase = providers.Factory(
+        VaultMaintenanceUseCase,
+        key_management=vault_key_management_usecase,
+        rotation_policy=vault_rotation_policy,
+    )
+
     target = providers.Container(
         TargetContainer,
         api_settings=_api_settings,
@@ -948,6 +1029,7 @@ def _init_container_for_requirements(
 
     Контракт:
         - requires_cache: открывает cache/identity engines + schema + gateway.
+        - requires_vault_schema: открывает vault engine + schema (без startup guard).
         - requires_vault_init: открывает vault engine + schema + VaultStartupGuard.
         - requires_api: создаёт target runtime (HTTP-клиент + gateway).
         - requires_dictionaries: eager-init dictionary backend Resource и, если runtime активен,
@@ -960,6 +1042,8 @@ def _init_container_for_requirements(
         container.cache.gateway.init()
     if req.requires_vault_init:
         container.sqlite.vault_ready.init()
+    elif req.requires_vault_schema:
+        container.sqlite.vault_schema_ready.init()
     if req.requires_api:
         container.target.runtime.init()
     if req.requires_dictionaries:

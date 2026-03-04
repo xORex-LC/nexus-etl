@@ -160,6 +160,46 @@ def test_init_keyring_rejects_already_initialized_state() -> None:
     assert exc_info.value.details["reason"] == "already_initialized"
 
 
+def test_init_keyring_accepts_single_imported_keyring() -> None:
+    imported = _key("mk_imported", active=False)
+    repo = _InMemoryVaultRepository()
+    store = _InMemoryKeyringStore(keyring=None)
+    verifier = _Verifier()
+    usecase = VaultKeyManagementUseCase(
+        repository=repo,
+        cipher=FernetEnvelopeCipher(),
+        keyring_store=store,
+        post_verify=verifier,
+        now_utc=lambda: "2026-03-04T00:00:00+00:00",
+        run_id_factory=lambda: "run-init-import-001",
+    )
+
+    result = usecase.init_keyring(initial_keyring=(imported,))
+
+    assert result.operation == "init"
+    assert result.active_key_version == "mk_imported"
+    assert repo.get_last_rotation_reason() == "init_import_existing_env_completed"
+    assert store.save_history[-1][0].key_version == "mk_imported"
+    assert store.save_history[-1][0].is_active is True
+
+
+def test_init_keyring_rejects_multi_key_import_keyring() -> None:
+    imported_1 = _key("mk_imported_1", active=True)
+    imported_2 = _key("mk_imported_2", active=False)
+    usecase = VaultKeyManagementUseCase(
+        repository=_InMemoryVaultRepository(),
+        cipher=FernetEnvelopeCipher(),
+        keyring_store=_InMemoryKeyringStore(keyring=None),
+        post_verify=_Verifier(),
+        run_id_factory=lambda: "run-init-import-002",
+    )
+
+    with pytest.raises(VaultManagementOperationError) as exc_info:
+        usecase.init_keyring(initial_keyring=(imported_1, imported_2))
+
+    assert exc_info.value.details["reason"] == "initial_keyring_requires_single_key"
+
+
 def test_rotate_and_rewrap_persists_bridge_then_final_single_key() -> None:
     cipher = FernetEnvelopeCipher()
     old_key = _key("mk_old", active=True)
