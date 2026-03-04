@@ -1,8 +1,10 @@
-"""Typed settings for vault-management operational usecases.
+"""
+Назначение:
+    Typed-settings срез для operational usecases vault-management.
 
-Boundary:
-    - Owns immutable settings payload delivered from config projections.
-    - Does not read ENV/CLI/YAML directly.
+Граница ответственности:
+    - Хранит immutable snapshot настроек, уже разрешённых на границе config-layer.
+    - Не читает ENV/CLI/YAML напрямую.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from connector.domain.secrets.policy.rotation_policy import VaultRotationInterva
 
 @dataclass(frozen=True)
 class VaultManagementSettings:
-    """Resolved settings snapshot for vault-management runtime usecases."""
+    """Снимок настроек vault-management для runtime usecases."""
 
     managed_env_file: str | None
     require_admin_password_for_manual_ops: bool
@@ -24,4 +26,3 @@ class VaultManagementSettings:
     auto_rotate_enabled: bool
     auto_rotate_on_error: Literal["fail_closed", "fail_open"]
     auto_rotate_interval: VaultRotationInterval
-

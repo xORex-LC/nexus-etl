@@ -1,21 +1,31 @@
 """
 Назначение:
     Vault-only SQLite schema lifecycle (DDL + schema versioning).
+
+Граница ответственности:
+    - Создаёт/поддерживает актуальную схему vault SQLite.
+    - Не выполняет инкрементальные data migrations между версиями:
+      при несовпадении schema_version применяется reset-политика
+      (данные vault-таблиц удаляются, схема пересоздаётся).
 """
 
 from __future__ import annotations
 
-import sqlite3
-
 from connector.infra.sqlite.engine import SqliteEngine
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def ensure_vault_schema(engine: SqliteEngine) -> int:
     """
     Назначение:
         Создать vault schema и зафиксировать версию в `vault_meta`.
+
+    Контракт:
+        - bootstrap (`schema_version` отсутствует): создаются все таблицы;
+        - matching version: выполняется idempotent `CREATE TABLE IF NOT EXISTS`;
+        - version mismatch: выполняется destructive reset схемы
+          (drop vault tables -> create tables), затем фиксируется текущая версия.
     """
     _create_meta(engine)
     current_version = _get_schema_version(engine) or 0
@@ -25,11 +35,12 @@ def ensure_vault_schema(engine: SqliteEngine) -> int:
         _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
-    if current_version < SCHEMA_VERSION:
-        _migrate_to_latest(engine, current_version)
+    if current_version != SCHEMA_VERSION:
+        _reset_vault_schema(engine)
         _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
+    _create_vault_tables(engine)
     return current_version
 
 
@@ -65,19 +76,19 @@ def _set_schema_version(engine: SqliteEngine, version: int) -> None:
     )
 
 
-def _migrate_to_latest(engine: SqliteEngine, current_version: int) -> None:
-    """
-    Назначение:
-        Применить миграции до SCHEMA_VERSION.
-
-    Примечание:
-        На текущем этапе поддерживается только bootstrap до v1.
-    """
-    if current_version < 1:
-        _create_vault_tables(engine)
+def _reset_vault_schema(engine: SqliteEngine) -> None:
+    """Сбросить vault-схему (drop + create) при несовместимой версии."""
+    _drop_vault_tables(engine)
+    _create_vault_tables(engine)
 
 
 def _create_vault_tables(engine: SqliteEngine) -> None:
+    """Создать полный набор vault-таблиц для bootstrap нового хранилища."""
+    _create_vault_core_tables(engine)
+    _create_vault_management_meta_table(engine)
+
+
+def _create_vault_core_tables(engine: SqliteEngine) -> None:
     engine.execute(
         """
         CREATE TABLE IF NOT EXISTS vault_dek (
@@ -141,3 +152,23 @@ def _create_vault_tables(engine: SqliteEngine) -> None:
         )
         """
     )
+
+
+def _create_vault_management_meta_table(engine: SqliteEngine) -> None:
+    """Создать key-value таблицу служебного lifecycle metadata vault-management."""
+    engine.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vault_management_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
+
+
+def _drop_vault_tables(engine: SqliteEngine) -> None:
+    """Удалить все vault-таблицы данных для полной пересборки схемы."""
+    engine.execute("DROP TABLE IF EXISTS vault_probe")
+    engine.execute("DROP TABLE IF EXISTS vault_secrets")
+    engine.execute("DROP TABLE IF EXISTS vault_dek")
+    engine.execute("DROP TABLE IF EXISTS vault_management_meta")

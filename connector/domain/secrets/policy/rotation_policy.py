@@ -1,8 +1,10 @@
-"""Vault key rotation policy.
+"""
+Назначение:
+    Чистая доменная политика проверки "пора ли выполнять ротацию ключей vault".
 
-Boundary:
-    - Pure domain policy (no IO, no delivery/infra dependencies).
-    - Computes due/not-due based on last successful rotation timestamp and interval.
+Граница ответственности:
+    - Не выполняет IO и не зависит от delivery/infra.
+    - Вычисляет due/not-due по timestamp последней успешной ротации и интервалу.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 @dataclass(frozen=True)
 class VaultRotationInterval:
-    """Rotation interval units (calendar months/years + fixed days/hours)."""
+    """Интервал ротации (календарные months/years + фиксированные days/hours)."""
 
     hours: int = 0
     days: int = 0
@@ -30,7 +32,7 @@ class VaultRotationInterval:
 
 @dataclass(frozen=True)
 class VaultRotationPolicy:
-    """Pure due-check policy for vault key rotation."""
+    """Политика вычисления due-состояния для ротации ключа vault."""
 
     interval: VaultRotationInterval
 
@@ -40,7 +42,7 @@ class VaultRotationPolicy:
         last_rotated_at: str | None,
         now_utc: str | datetime | None = None,
     ) -> bool:
-        """Return True when rotation should run for the provided timestamp."""
+        """Вернуть `True`, если по переданному времени ротацию уже нужно запускать."""
         if not last_rotated_at:
             return True
 
@@ -52,7 +54,7 @@ class VaultRotationPolicy:
         return now >= due_at
 
     def next_due_at(self, *, last_rotated_at: str | datetime) -> datetime:
-        """Compute next due timestamp in UTC."""
+        """Рассчитать следующий due timestamp в UTC."""
         return _add_interval(_coerce_utc_datetime(last_rotated_at), self.interval)
 
 
@@ -85,4 +87,3 @@ def _add_months(base_utc: datetime, months: int) -> datetime:
 
 
 __all__ = ["VaultRotationInterval", "VaultRotationPolicy"]
-
