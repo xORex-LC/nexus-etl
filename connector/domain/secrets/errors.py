@@ -154,3 +154,40 @@ class SecretNotFoundError(VaultDomainError):
     def __init__(self, message: str = "Secret not found", *, details: dict[str, Any] | None = None) -> None:
         super().__init__(code="SECRET_NOT_FOUND", message=message, details=details)
 
+
+class VaultAdminPasswordConfigError(VaultDomainError):
+    """
+    Назначение:
+        Ошибка конфигурации password-gate для manual vault-management операций.
+    """
+
+    def __init__(
+        self,
+        message: str = "Vault admin password gate is misconfigured",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            code="VAULT_MANAGEMENT_ADMIN_PASSWORD_CONFIG_ERROR",
+            message=message,
+            details=details,
+        )
+
+
+class VaultAdminAccessDeniedError(VaultDomainError):
+    """
+    Назначение:
+        Ошибка доступа: пароль администратора vault не прошёл проверку.
+    """
+
+    def __init__(
+        self,
+        message: str = "Vault admin access denied",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            code="VAULT_MANAGEMENT_ADMIN_ACCESS_DENIED",
+            message=message,
+            details=details,
+        )

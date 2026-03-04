@@ -29,7 +29,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator
 
 from dependency_injector import containers, providers
 
@@ -38,12 +38,12 @@ from connector.config.projections import (
     to_cache_db_config,
     to_identity_db_config,
     to_resolver_settings,
+    to_vault_management_settings,
     to_vault_db_config,
 )
 from connector.domain.transform.matcher.match_deps import MatchBatchSettings, MatchScopeService
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.diagnostics import build_catalog
-from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.roles import (
     EnrichLookupPort,
     MatchRuntimePort,
@@ -90,6 +90,7 @@ from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.infra.secrets import (
     EnvVaultKeyProvider,
     FernetEnvelopeCipher,
+    VaultAdminPasswordGate,
 )
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
@@ -98,6 +99,9 @@ from connector.infra.target.core.factory import (
     TargetRuntimeBuildResult,
     build_target_runtime_with_info,
 )
+
+if TYPE_CHECKING:
+    from connector.delivery.cli.requirements import Requirements
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Path helpers (inline — no legacy db.py dependency)
@@ -769,6 +773,7 @@ class AppContainer(containers.DeclarativeContainer):
     _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_config)
     _api_settings = providers.Callable(lambda s: s.api, s=app_config)
     _dictionary_cfg = providers.Callable(lambda s: s.dictionary, s=app_config)
+    _vault_management_settings = providers.Callable(to_vault_management_settings, config=app_config)
 
     cache_dsl = providers.Singleton(load_cache_dsl_runtime)
     _cache_specs = providers.Callable(lambda b: list(b.cache_specs), b=cache_dsl)
@@ -792,6 +797,22 @@ class AppContainer(containers.DeclarativeContainer):
         vault_engine=sqlite.vault_engine,
     )
 
+    vault_admin_password_gate = providers.Singleton(
+        VaultAdminPasswordGate,
+        require_admin_password_for_manual_ops=providers.Callable(
+            lambda s: s.require_admin_password_for_manual_ops,
+            s=_vault_management_settings,
+        ),
+        admin_password_hash_env_var=providers.Callable(
+            lambda s: s.admin_password_hash_env_var,
+            s=_vault_management_settings,
+        ),
+        admin_password_env_var=providers.Callable(
+            lambda s: s.admin_password_env_var,
+            s=_vault_management_settings,
+        ),
+    )
+
     target = providers.Container(
         TargetContainer,
         api_settings=_api_settings,
@@ -813,7 +834,7 @@ class AppContainer(containers.DeclarativeContainer):
 
 def _init_container_for_requirements(
     container: AppContainer,
-    req: "Requirements",
+    req: Requirements,
 ) -> None:
     """
     Назначение:
