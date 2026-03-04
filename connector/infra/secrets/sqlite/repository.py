@@ -3,7 +3,7 @@
     SQLite-адаптер SecretVaultRepositoryPort поверх SqliteEngine.
 
 Граница ответственности:
-    - Реализует SecretVaultRepositoryPort: CRUD для secrets, DEK, probe.
+    - Реализует SecretVaultRepositoryPort: CRUD для secrets, DEK, probe и lifecycle metadata.
     - Отображает sqlite3-исключения в доменную таксономию (SecretStoreError / SecretReadError).
     - Не знает о ключевом материале, шифровании и доменных сервисах.
 """
@@ -32,6 +32,7 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
     Инварианты:
         - write transaction использует `BEGIN IMMEDIATE`;
         - read-path соблюдает run_id precedence: `exact -> global (NULL)`;
+        - lifecycle metadata хранится в `vault_management_meta` (key-value);
         - lock/schema ошибки маппятся в доменную таксономию без утечки секретов.
     """
 
@@ -388,11 +389,82 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
         )
         return _row_to_probe_record(row)
 
+    def get_last_rotated_at(self) -> str | None:
+        """
+        Назначение:
+            Вернуть timestamp последней успешной ротации (`last_rotated_at`) из meta.
+        """
+        return self._get_meta_value("last_rotated_at")
+
+    def set_last_rotated_at(self, iso_utc: str) -> None:
+        """
+        Назначение:
+            Зафиксировать timestamp последней успешной ротации в key-value meta.
+        """
+        self._set_meta_value("last_rotated_at", iso_utc)
+
+    def set_last_rotation_result(self, *, result: str, reason: str | None = None) -> None:
+        """
+        Назначение:
+            Обновить служебный статус последней lifecycle-операции ротации.
+
+        Контракт:
+            - `last_rotation_result` записывается всегда;
+            - `last_rotation_reason` обновляется при наличии reason;
+            - `last_rotation_reason` удаляется, если reason=None.
+        """
+        with self._engine.autobegin():
+            self._set_meta_value("last_rotation_result", result)
+            if reason is None:
+                self._delete_meta_value("last_rotation_reason")
+            else:
+                self._set_meta_value("last_rotation_reason", reason)
+
     def _ensure_schema(self) -> None:
         try:
             ensure_vault_schema(self._engine)
         except sqlite3.DatabaseError as exc:
             raise self._map_store_error(exc, op="schema_bootstrap", extra_details={"stage": "startup"}) from exc
+
+    def _get_meta_value(self, key: str) -> str | None:
+        row = self._fetchone_read(
+            """
+            SELECT value
+            FROM vault_management_meta
+            WHERE key = ?
+            LIMIT 1
+            """,
+            (key,),
+            op="get_vault_management_meta",
+            details={"meta_key": key},
+        )
+        if row is None:
+            return None
+        value = row["value"]
+        return str(value) if value is not None else None
+
+    def _set_meta_value(self, key: str, value: str) -> None:
+        self._execute_write(
+            """
+            INSERT INTO vault_management_meta(key, value)
+            VALUES(?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (key, value),
+            op="set_vault_management_meta",
+            details={"meta_key": key},
+        )
+
+    def _delete_meta_value(self, key: str) -> None:
+        self._execute_write(
+            """
+            DELETE FROM vault_management_meta
+            WHERE key = ?
+            """,
+            (key,),
+            op="delete_vault_management_meta",
+            details={"meta_key": key},
+        )
 
     def _execute_write(
         self,
