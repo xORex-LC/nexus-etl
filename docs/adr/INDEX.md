@@ -145,6 +145,8 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [VAULT-PROBLEM-001](./vault/VAULT-PROBLEM-001-plaintext-dev-vault-and-missing-crypto-lifecycle.md) | Problem | Plaintext dev-vault и отсутствующий production-контур секретов | ✅ Закрыто | 2026-02-18 |
 | [VAULT-DEC-001](./vault/VAULT-DEC-001-envelope-encrypted-vault-with-hexagonal-ports.md) | Decision | Envelope-encrypted vault с hexagonal разделением crypto/storage | ✅ Закрыто | 2026-02-18 |
+| [VAULT-PROBLEM-002](./vault/VAULT-PROBLEM-002-missing-vault-management-and-key-lifecycle-automation.md) | Problem | Отсутствует управляемый lifecycle master keys (user-management, rotate/rewrap, auto-rotation) | ❌ Открыто | 2026-03-04 |
+| [VAULT-DEC-002](./vault/VAULT-DEC-002-vault-management-managed-env-keyring-and-rotation-lifecycle.md) | Decision | Vault Management с managed env keyring, rotate+rewrap и policy-driven auto-rotation | ❌ Открыто | 2026-03-04 |
 
 ### Matcher
 
