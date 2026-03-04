@@ -4,5 +4,17 @@
 """
 
 from connector.usecases.operations.vault_management_settings import VaultManagementSettings
+from connector.usecases.management.vault import (
+    VaultKeyManagementResult,
+    VaultKeyManagementStatus,
+    VaultKeyManagementUseCase,
+    VaultStartupGuardPostVerifier,
+)
 
-__all__ = ["VaultManagementSettings"]
+__all__ = [
+    "VaultManagementSettings",
+    "VaultKeyManagementStatus",
+    "VaultKeyManagementResult",
+    "VaultStartupGuardPostVerifier",
+    "VaultKeyManagementUseCase",
+]

@@ -13,6 +13,7 @@ from __future__ import annotations
 import fcntl
 import os
 import tempfile
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -38,6 +39,7 @@ class VaultManagedEnvKeyringStore:
         self._path = Path(managed_env_file)
         self._lock_path = self._path.with_suffix(self._path.suffix + ".lock")
         self._env_var = env_var
+        self._lock_state = threading.local()
 
     @property
     def lock_path(self) -> Path:
@@ -46,13 +48,32 @@ class VaultManagedEnvKeyringStore:
 
     @contextmanager
     def lifecycle_lock(self) -> Iterator[None]:
-        """Взять межпроцессный exclusive-lock для lifecycle-операций keyring."""
+        """
+        Назначение:
+            Взять межпроцессный exclusive-lock для lifecycle-операций keyring.
+
+        Контракт:
+            - lock reentrant внутри одного процесса/потока;
+            - повторный вход не открывает второй fd и не вызывает повторный flock;
+            - первый внешний вход берёт lock, последний выход его освобождает.
+        """
+        depth = int(getattr(self._lock_state, "depth", 0))
+        if depth > 0:
+            self._lock_state.depth = depth + 1
+            try:
+                yield
+            finally:
+                self._lock_state.depth = int(getattr(self._lock_state, "depth", 1)) - 1
+            return
+
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
         fd = -1
         try:
             fd = os.open(self._lock_path, os.O_RDWR | os.O_CREAT, 0o600)
             os.fchmod(fd, 0o600)
             fcntl.flock(fd, fcntl.LOCK_EX)
+            self._lock_state.depth = 1
+            self._lock_state.fd = fd
             yield
         except OSError as exc:
             raise SecretStoreError(
@@ -70,6 +91,8 @@ class VaultManagedEnvKeyringStore:
                     fcntl.flock(fd, fcntl.LOCK_UN)
                 finally:
                     os.close(fd)
+                    self._lock_state.depth = 0
+                    self._lock_state.fd = None
 
     def load_keyring(self) -> tuple[VaultMasterKey, ...]:
         """Загрузить и распарсить keyring из managed env-файла под lifecycle-lock."""
