@@ -43,6 +43,15 @@ _VERIFICATION_ERRORS: tuple[type[Exception], ...] = tuple(
 )
 
 
+def _is_probable_invalid_hash_error(error: Exception) -> bool:
+    """Определить, что ошибка верификации вызвана некорректным hash-значением."""
+    message = str(error).strip().lower()
+    if not message:
+        return False
+    markers = ("decoding failed", "invalid", "malformed", "hash")
+    return any(marker in message for marker in markers)
+
+
 class VaultAdminPasswordGate:
     """Назначение:
         Проверить доступ к ручным vault-management операциям.
@@ -213,6 +222,22 @@ class VaultAdminPasswordGate:
                     },
                 ) from exc
             if _VERIFICATION_ERRORS and isinstance(exc, _VERIFICATION_ERRORS):
+                if _is_probable_invalid_hash_error(exc):
+                    self._logger.warning(
+                        "vault_admin_password_gate_failed",
+                        reason="invalid_password_hash",
+                        mode=mode,
+                        hash_env_var=self._admin_password_hash_env_var,
+                        error_type=type(exc).__name__,
+                    )
+                    raise VaultAdminPasswordConfigError(
+                        "Vault admin password hash is invalid",
+                        details={
+                            "reason": "invalid_password_hash",
+                            "mode": mode,
+                            "hash_env_var": self._admin_password_hash_env_var,
+                        },
+                    ) from exc
                 self._logger.warning(
                     "vault_admin_password_gate_failed",
                     reason="password_verification_failed",

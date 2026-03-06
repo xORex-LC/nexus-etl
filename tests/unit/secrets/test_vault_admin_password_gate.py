@@ -119,3 +119,29 @@ def test_verify_manual_access_raises_for_password_mismatch_and_logs_are_safe() -
         assert wrong_password not in str(entry)
         assert password_hash not in str(entry)
 
+
+def test_verify_manual_access_rejects_invalid_argon2_hash() -> None:
+    gate = _build_gate(
+        env={
+            "ANKEY_VAULT_ADMIN_PASSWORD_HASH": "$argon2id$invalid_hash_payload",
+            "ANKEY_VAULT_ADMIN_PASSWORD": "any-value",
+        }
+    )
+
+    with pytest.raises(VaultAdminPasswordConfigError) as exc_info:
+        gate.verify_manual_access(non_interactive=True)
+
+    assert exc_info.value.details["reason"] == "invalid_password_hash"
+
+
+def test_verify_manual_access_interactive_prompt_failure_maps_to_access_denied() -> None:
+    password_hash = PasswordHasher().hash("expected-password")
+    gate = _build_gate(
+        env={"ANKEY_VAULT_ADMIN_PASSWORD_HASH": password_hash},
+        prompt_password=lambda _: (_ for _ in ()).throw(RuntimeError("tty_error")),
+    )
+
+    with pytest.raises(VaultAdminAccessDeniedError) as exc_info:
+        gate.verify_manual_access(non_interactive=False)
+
+    assert exc_info.value.details["reason"] == "password_prompt_failed"

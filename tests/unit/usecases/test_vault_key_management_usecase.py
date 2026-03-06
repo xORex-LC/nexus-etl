@@ -364,3 +364,69 @@ def test_rotate_failure_keeps_bridge_keyring_as_recoverable_state() -> None:
     assert repo.get_last_rotation_result() == "failed"
     assert repo.get_last_rotation_reason() == "rotate_failed"
     assert repo.get_last_rotation_run_id() == "run-rotate-failed"
+
+
+def test_finalize_inflight_bridge_rewraps_and_persists_single_key() -> None:
+    cipher = FernetEnvelopeCipher()
+    old_key = _key("mk_old", active=True)
+    new_key = _key("mk_new", active=True)
+    dek_plaintext, wrapped = _build_wrapped_dek(cipher, old_key.key_material)
+    repo = _InMemoryVaultRepository(
+        deks=(
+            VaultDekRecord(
+                dek_version="dek_v1",
+                wrapped_dek=wrapped,
+                wrap_algo=FERNET_V1,
+                wrap_key_version=old_key.key_version,
+                is_active=True,
+                created_at="2026-03-04T00:00:00+00:00",
+                updated_at="2026-03-04T00:00:00+00:00",
+            ),
+        )
+    )
+    store = _InMemoryKeyringStore(keyring=(new_key, old_key))
+    verifier = _Verifier()
+    usecase = VaultKeyManagementUseCase(
+        repository=repo,
+        cipher=cipher,
+        keyring_store=store,
+        post_verify=verifier,
+        now_utc=lambda: "2026-03-05T00:00:00+00:00",
+        run_id_factory=lambda: "run-bridge-finalize-001",
+    )
+
+    result = usecase.finalize_inflight_bridge()
+
+    assert result is not None
+    assert result.operation == "rotate"
+    assert result.active_key_version == "mk_new"
+    assert result.final_key_count == 1
+    assert store.save_history[-1][0].key_version == "mk_new"
+    assert len(store.save_history[-1]) == 1
+    assert repo.get_last_rotation_result() == "ok"
+    assert repo.get_last_rotation_reason() == "bridge_finalize_completed"
+    rewrapped = repo.list_deks()[0]
+    assert rewrapped.wrap_key_version == "mk_new"
+    assert (
+        cipher.unwrap_dek(
+            wrapped_dek=rewrapped.wrapped_dek,
+            master_key=new_key.key_material,
+            wrap_algo=FERNET_V1,
+        )
+        == dek_plaintext
+    )
+
+
+def test_finalize_inflight_bridge_returns_none_when_single_key_state() -> None:
+    active_key = _key("mk_only", active=True)
+    usecase = VaultKeyManagementUseCase(
+        repository=_InMemoryVaultRepository(),
+        cipher=FernetEnvelopeCipher(),
+        keyring_store=_InMemoryKeyringStore(keyring=(active_key,)),
+        post_verify=_Verifier(),
+        run_id_factory=lambda: "run-bridge-finalize-002",
+    )
+
+    result = usecase.finalize_inflight_bridge()
+
+    assert result is None

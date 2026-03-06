@@ -97,3 +97,30 @@ def test_lifecycle_lock_blocks_other_process(tmp_path: Path) -> None:
         assert process.exitcode == 0
         assert queue.get(timeout=1) == "blocked"
 
+
+def test_save_keyring_rejects_empty_keyring(tmp_path: Path) -> None:
+    store = VaultManagedEnvKeyringStore(str(tmp_path / "vault.env"))
+
+    with pytest.raises(SecretKeyConfigError) as exc_info:
+        store.save_keyring(())
+
+    assert exc_info.value.code == "VAULT_STARTUP_KEY_CONFIG_ERROR"
+    assert exc_info.value.details["reason"] == "empty_keyring"
+
+
+def test_lifecycle_lock_is_reentrant_in_single_thread(tmp_path: Path) -> None:
+    env_file = tmp_path / "vault.env"
+    store = VaultManagedEnvKeyringStore(str(env_file))
+    key = VaultMasterKey(
+        key_version="mk_2026",
+        key_material=_random_fernet_key(),
+        is_active=True,
+    )
+
+    with store.lifecycle_lock():
+        with store.lifecycle_lock():
+            store.save_keyring((key,))
+            loaded = store.load_keyring()
+
+    assert len(loaded) == 1
+    assert loaded[0].key_version == "mk_2026"
