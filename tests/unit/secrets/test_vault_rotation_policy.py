@@ -49,3 +49,20 @@ def test_rotation_interval_rejects_all_zeros() -> None:
     with pytest.raises(ValueError):
         VaultRotationInterval()
 
+
+def test_rotation_policy_treats_naive_timestamp_as_utc() -> None:
+    policy = VaultRotationPolicy(interval=VaultRotationInterval(hours=1))
+    assert (
+        policy.is_due(
+            last_rotated_at="2026-03-04T00:00:00",
+            now_utc="2026-03-04T01:00:00+00:00",
+        )
+        is True
+    )
+
+
+def test_rotation_policy_rejects_invalid_iso_timestamp() -> None:
+    policy = VaultRotationPolicy(interval=VaultRotationInterval(days=1))
+
+    with pytest.raises(ValueError):
+        policy.is_due(last_rotated_at="not-a-timestamp", now_utc="2026-03-04T00:00:00+00:00")

@@ -4,16 +4,32 @@ import json
 from pathlib import Path
 
 from argon2 import PasswordHasher
+from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 import connector.delivery.cli.containers as containers_module
+from connector.config.loader import load_app_config
+from connector.config.projections import to_vault_db_config
+from connector.infra.secrets.sqlite.repository import SqliteVaultRepository
+from connector.infra.sqlite.engine import open_sqlite
 from connector.main import app
 
 
 runner = CliRunner()
 
 
-def _write_config(tmp_path: Path, *, managed_env_file: Path) -> Path:
+def _write_config(
+    tmp_path: Path,
+    *,
+    managed_env_file: Path,
+    vault_management_overrides: dict[str, object] | None = None,
+) -> Path:
+    vm = {
+        "managed_env_file": str(managed_env_file),
+        "require_admin_password_for_manual_ops": True,
+    }
+    if vault_management_overrides:
+        vm.update(vault_management_overrides)
     cfg = tmp_path / "config.yml"
     cfg.write_text(
         "\n".join(
@@ -23,8 +39,7 @@ def _write_config(tmp_path: Path, *, managed_env_file: Path) -> Path:
                 f'  log_dir: "{tmp_path / "logs"}"',
                 f'  report_dir: "{tmp_path / "reports"}"',
                 "vault_management:",
-                f'  managed_env_file: "{managed_env_file}"',
-                "  require_admin_password_for_manual_ops: true",
+                *(f"  {key}: {json.dumps(value)}" for key, value in vm.items()),
             ]
         ),
         encoding="utf-8",
@@ -45,6 +60,31 @@ def _last_json_payload(output: str) -> dict[str, object]:
         if stripped.startswith("{") and stripped.endswith("}"):
             return json.loads(stripped)
     raise AssertionError(f"JSON payload was not found in output:\n{output}")
+
+
+def _invoke_vault(cfg: Path, command_args: list[str], *, env: dict[str, str]) -> object:
+    return runner.invoke(
+        app,
+        ["--config", str(cfg), "vault-management", *command_args],
+        env=env,
+    )
+
+
+def _read_status(cfg: Path, *, env: dict[str, str]) -> dict[str, object]:
+    result = _invoke_vault(cfg, ["status"], env=env)
+    assert result.exit_code == 0, result.stdout + "\n" + result.stderr
+    return _last_json_payload(result.stdout)
+
+
+def _update_last_rotated_at(cfg: Path, *, iso_utc: str) -> None:
+    loaded = load_app_config(str(cfg)).app_config
+    vault_db_path = loaded.sqlite.vault_db_path or str(Path(loaded.paths.cache_dir) / "ankey_vault.sqlite3")
+    engine = open_sqlite(to_vault_db_config(loaded), vault_db_path)
+    try:
+        repo = SqliteVaultRepository(engine)
+        repo.set_last_rotated_at(iso_utc)
+    finally:
+        engine.close()
 
 
 def test_vault_management_help_lists_subcommands() -> None:
@@ -227,6 +267,128 @@ def test_vault_management_no_verify_skips_post_verify_hook(tmp_path: Path, monke
             "--no-verify",
         ],
         env=env,
+    )
+
+    assert result.exit_code == 0
+    payload = _last_json_payload(result.stdout)
+    assert payload["operation"] == "init"
+
+
+def test_vault_management_non_interactive_requires_force(tmp_path: Path) -> None:
+    cfg = _write_config(tmp_path, managed_env_file=tmp_path / "managed-vault.env")
+    env = _admin_env()
+
+    result = _invoke_vault(
+        cfg,
+        ["init", "--non-interactive"],
+        env=env,
+    )
+
+    assert result.exit_code != 0
+    assert "--non-interactive требует --force" in (result.stdout + result.stderr)
+
+
+def test_vault_management_full_lifecycle_manual_commands(tmp_path: Path) -> None:
+    cfg = _write_config(tmp_path, managed_env_file=tmp_path / "managed-vault.env")
+    env = _admin_env()
+
+    init_result = _invoke_vault(cfg, ["init", "--non-interactive", "--force"], env=env)
+    assert init_result.exit_code == 0
+    init_key = _last_json_payload(init_result.stdout)["active_key_version"]
+
+    rotate_result = _invoke_vault(cfg, ["rotate", "--non-interactive", "--force"], env=env)
+    assert rotate_result.exit_code == 0
+    rotate_payload = _last_json_payload(rotate_result.stdout)
+    assert rotate_payload["operation"] == "rotate"
+    rotate_key = rotate_payload["active_key_version"]
+    assert rotate_key != init_key
+
+    rewrap_result = _invoke_vault(cfg, ["rewrap", "--non-interactive", "--force"], env=env)
+    assert rewrap_result.exit_code == 0
+    rewrap_payload = _last_json_payload(rewrap_result.stdout)
+    assert rewrap_payload["operation"] == "rewrap"
+    assert rewrap_payload["active_key_version"] == rotate_key
+
+    delete_result = _invoke_vault(cfg, ["delete-key", "--non-interactive", "--force"], env=env)
+    assert delete_result.exit_code == 0
+    delete_payload = _last_json_payload(delete_result.stdout)
+    assert delete_payload["operation"] == "delete_key"
+    assert delete_payload["active_key_version"] != rotate_key
+
+    _update_last_rotated_at(cfg, iso_utc="2020-01-01T00:00:00+00:00")
+    maintenance_result = _invoke_vault(cfg, ["run-maintenance", "--non-interactive", "--force"], env=env)
+    assert maintenance_result.exit_code == 0
+    maintenance_payload = _last_json_payload(maintenance_result.stdout)
+    assert maintenance_payload["action"] == "rotate"
+    assert maintenance_payload["changed"] is True
+
+    status_payload = _read_status(cfg, env=env)
+    assert status_payload["bridge_keyring"] is False
+    assert status_payload["dek_rewrap_required"] == 0
+
+
+def test_vault_management_import_existing_env_flow(tmp_path: Path) -> None:
+    cfg = _write_config(tmp_path, managed_env_file=tmp_path / "managed-vault.env")
+    imported_key_version = "mk_imported_env"
+    imported_key_material = Fernet.generate_key().decode("utf-8")
+    imported_keyring = f"{imported_key_version}:{imported_key_material}"
+    env = {
+        **_admin_env(),
+        "ANKEY_VAULT_MASTER_KEYS": imported_keyring,
+    }
+
+    result = _invoke_vault(
+        cfg,
+        ["init", "--import-existing-env", "--non-interactive", "--force", "--no-verify"],
+        env=env,
+    )
+
+    assert result.exit_code == 0
+    payload = _last_json_payload(result.stdout)
+    assert payload["operation"] == "init"
+    assert payload["active_key_version"] == imported_key_version
+
+    status_payload = _read_status(cfg, env=env)
+    assert status_payload["active_key_version"] == imported_key_version
+
+
+def test_vault_management_gate_uses_custom_env_var_names_from_config(tmp_path: Path) -> None:
+    cfg = _write_config(
+        tmp_path,
+        managed_env_file=tmp_path / "managed-vault.env",
+        vault_management_overrides={
+            "admin_password_hash_env_var": "MY_CUSTOM_GATE_HASH",
+            "admin_password_env_var": "MY_CUSTOM_GATE_PASSWORD",
+        },
+    )
+    password = "Custom-Password-For-Vault"
+    env = {
+        "MY_CUSTOM_GATE_HASH": PasswordHasher().hash(password),
+        "MY_CUSTOM_GATE_PASSWORD": password,
+    }
+
+    result = _invoke_vault(
+        cfg,
+        ["init", "--non-interactive", "--force"],
+        env=env,
+    )
+
+    assert result.exit_code == 0
+    payload = _last_json_payload(result.stdout)
+    assert payload["operation"] == "init"
+
+
+def test_vault_management_gate_can_be_disabled_by_config_policy(tmp_path: Path) -> None:
+    cfg = _write_config(
+        tmp_path,
+        managed_env_file=tmp_path / "managed-vault.env",
+        vault_management_overrides={"require_admin_password_for_manual_ops": False},
+    )
+
+    result = _invoke_vault(
+        cfg,
+        ["init", "--non-interactive", "--force"],
+        env={},
     )
 
     assert result.exit_code == 0
