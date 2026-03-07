@@ -1,0 +1,33 @@
+@startuml
+title Vault Management - Activity Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam activity {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+start
+:VaultMaintenanceUseCase.run_if_due();
+:status = key_management.status();
+
+if (status.bridge_keyring?) then (yes)
+  :finalized = finalize_inflight_bridge(run_id);
+  if (finalized is None?) then (yes)
+    :return action=no_op\nbridge_detected=true\nchanged=false;
+  else (no)
+    :return action=bridge_finalize\nbridge_detected=true\nchanged=true;
+  endif
+else (no)
+  :due = rotation_policy.is_due(...);
+  if (due?) then (yes)
+    :rotated = rotate_and_rewrap(run_id);
+    :return action=rotate\ndue=true\nchanged=true;
+  else (no)
+    :return action=no_op\ndue=false\nchanged=false;
+  endif
+endif
+stop
+
+@enduml

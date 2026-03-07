@@ -1053,7 +1053,53 @@ Fernet выбран потому что:
 
 ---
 
-## 21. Связанные документы
+## 21. Vault-Management Crypto Lifecycle (DEC-002)
+
+### 21.1 Managed keyring storage contract
+
+`VaultManagedEnvKeyringStore` хранит keyring в managed env-файле формата:
+
+```dotenv
+ANKEY_VAULT_MASTER_KEYS=mk_2026_03_07:<fernet_key>
+```
+
+Крипто-важные свойства:
+- сохраняется только `key_version:key_material` (без plaintext секретов/DEK);
+- запись атомарна: `tmp -> fsync(file) -> rename -> fsync(dir)`;
+- права файла принудительно `0600`;
+- lifecycle-операции сериализуются через `flock`.
+
+### 21.2 Single-key steady-state и bridge keyring
+
+В steady-state keyring содержит ровно один active master key.
+
+Во время `rotate` допустимо временное состояние `bridge keyring` (`new,old`) для crash-safe протокола:
+1. Сохранить `bridge keyring`.
+2. Rewrap всех DEK на `new`.
+3. Финализировать keyring до `new only`.
+4. Выполнить `VaultStartupGuard` post-verify.
+
+Если процесс прерван до шага 3, `run-maintenance` обнаруживает bridge и завершает safe-finalization.
+
+### 21.3 Runtime source precedence
+
+Crypto runtime читает ключи через `EnvVaultKeyProvider`, поэтому эффективный источник всегда:
+1. `ANKEY_VAULT_MASTER_KEYS` в runtime env (если задан и валиден),
+2. иначе managed env-файл подгружается в runtime env при startup.
+
+Это сохраняет единый криптографический read-path и исключает fork логики для разных keyring источников.
+
+### 21.4 Password gate и криптографическая проверка
+
+`VaultAdminPasswordGate` не шифрует данные vault и не участвует в DEK/master key операциях.
+Его зона ответственности:
+- верификация доступа к manual lifecycle-операциям;
+- проверка plaintext password против argon2id hash из ENV;
+- отсутствие утечки `password/password_hash` в logs/errors.
+
+---
+
+## 22. Связанные документы
 
 - [vault-core.md](vault-core.md) — Поток pipeline: как сервисы write/read подключаются к
   `SecretStoreProtocol` и `SecretProviderProtocol`
@@ -1065,3 +1111,4 @@ Fernet выбран потому что:
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-02-27 | Создан документ Vault Cryptography | xORex-LC |
+| 2026-03-07 | Добавлен раздел DEC-002: managed keyring lifecycle, bridge protocol и runtime precedence | xORex-LC |
