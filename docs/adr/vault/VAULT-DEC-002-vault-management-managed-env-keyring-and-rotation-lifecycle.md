@@ -1,6 +1,6 @@
 # VAULT-DEC-002: Vault Management с managed env keyring, rotate+rewrap и policy-driven auto-rotation
 
-> **Статус**: Предложено
+> **Статус**: Закрыто
 > **Дата принятия**: 2026-03-04
 > **Решает проблему**: [VAULT-PROBLEM-002](./VAULT-PROBLEM-002-missing-vault-management-and-key-lifecycle-automation.md)
 > **Участники решения**: @xorex-LC
@@ -37,13 +37,13 @@
 6. Поддержать **auto-rotation policy** из YAML (часы/дни/месяцы/годы).
 7. Всегда выполнять **post-operation verify** через startup guard.
 8. Хранить ключевой материал только в env-контуре (managed env-файл), без записи в AppConfig.
-9. Размещать operational orchestration в `usecases/operations/*`; `domain/secrets` оставлять только для инвариантов и портов.
+9. Размещать operational orchestration в `usecases/management/vault/*`; `domain/secrets` оставлять только для инвариантов и портов.
 10. В новом management-контуре использовать `structlog`; legacy stdlib logging вне scope массовой миграции.
 11. `rotate` и `rewrap` выполняются по **всем DEK** в vault-хранилище.
 12. Keyring хранит **ровно один активный master key**; после успешного `rotate + rewrap + verify` предыдущий master key не сохраняется.
 13. `init` разрешён только при отсутствии активного keyring; повторный `init` должен завершаться контролируемой ошибкой.
 14. Любой параметр, доступный для override через CLI/ENV/config, не хардкодится в usecase/domain/infra; дефолты задаются только в CONFIG-слое.
-15. В `v1` вводятся только два новых порта (`VaultManagedKeyringStorePort`, `VaultAdminGatePort`); lifecycle metadata интегрируется в существующий `SecretVaultRepositoryPort`, а `VaultRotationPolicy` остаётся domain-service без отдельного порта.
+15. В `v1` вводятся usecase-level контракты (`VaultManagedKeyringStoreProtocol`, `VaultPostVerifyProtocol`); lifecycle metadata интегрируется в существующий `SecretVaultRepositoryPort`, а `VaultRotationPolicy` остаётся domain-service без отдельного порта.
 16. `rotate` реализуется как crash-safe двухфазная операция с временным `bridge keyring` (`new,old`) и обязательной финализацией в single-key steady-state.
 
 Определения:
@@ -62,8 +62,8 @@
 - `VaultRotationPolicy` (`connector/domain/secrets/policy/rotation_policy.py`) — доменные правила вычисления `rotation due?`.
 - `VaultManagedEnvKeyringStore` (`connector/infra/secrets/management/managed_env_keyring_store.py`) — чтение/запись managed env keyring.
 - `VaultAdminPasswordGate` (`connector/infra/secrets/management/admin_password_gate.py`) — verify admin password для manual operations.
-- `VaultKeyManagementUseCase` (`connector/usecases/operations/vault_key_management.py`) — orchestration `init/rotate/rewrap/delete/status`.
-- `VaultMaintenanceUseCase` (`connector/usecases/operations/vault_maintenance.py`) — non-interactive policy-driven maintenance.
+- `VaultKeyManagementUseCase` (`connector/usecases/management/vault/usecase.py`) — orchestration `init/rotate/rewrap/delete/status`.
+- `VaultMaintenanceUseCase` (`connector/usecases/management/vault/maintenance.py`) — non-interactive policy-driven maintenance.
 - `vault_management` delivery command (`connector/delivery/commands/vault_management.py`) + wiring в CLI.
 
 **Изменения в существующих компонентах**:
@@ -77,30 +77,32 @@
 ### Границы ответственности
 
 - `domain/secrets/*`: только инварианты, policy, domain-порты и domain-ошибки (без prompt/env/file/schedule orchestration).
-- `usecases/operations/*`: сценарии выполнения operational задач (`vault management`, `check-api health`, `sqlite vacuum` и т.п.).
+- `usecases/management/vault/*`: сценарии выполнения operational задач vault-management.
 - `infra/secrets/management/*` и `infra/operations/*`: конкретные адаптеры для IO/security/executor.
 - `delivery/commands/*`: CLI boundary (аргументы, confirm/prompt, формат вывода).
 
 ### Интерфейсы
 
 ```python
-class VaultManagedKeyringStorePort(Protocol):
+class VaultManagedKeyringStoreProtocol(Protocol):
+    def lifecycle_lock(self) -> ContextManager[None]: ...
     def load_keyring(self) -> tuple[VaultMasterKey, ...]: ...
-    def save_keyring(self, keys: tuple[VaultMasterKey, ...], *, force: bool) -> None: ...
+    def save_keyring(self, keys: tuple[VaultMasterKey, ...]) -> None: ...
 
 
-class VaultAdminGatePort(Protocol):
-    def verify_manual_access(self, *, non_interactive: bool) -> None: ...
+class VaultPostVerifyProtocol(Protocol):
+    def ensure_ready(self, keyring: tuple[VaultMasterKey, ...]) -> None: ...
 
 class VaultKeyManagementUseCase:
-    def init_keyring(self, *, force: bool) -> None: ...
-    def rotate_and_rewrap(self, *, force: bool) -> str: ...
-    def rewrap_all_dek(self) -> None: ...
-    def delete_key(self, *, force: bool) -> None: ...
+    def init_keyring(self, *, run_id: str | None = None, initial_keyring: tuple[VaultMasterKey, ...] | None = None) -> VaultKeyManagementResult: ...
+    def status(self) -> VaultKeyManagementStatus: ...
+    def rotate_and_rewrap(self, *, run_id: str | None = None) -> VaultKeyManagementResult: ...
+    def rewrap_all_dek(self, *, run_id: str | None = None) -> VaultKeyManagementResult: ...
+    def delete_key(self, *, run_id: str | None = None) -> VaultKeyManagementResult: ...
 
 
 class VaultMaintenanceUseCase:
-    def run_if_due(self, *, non_interactive: bool, force: bool) -> bool: ...
+    def run_if_due(self) -> VaultMaintenanceResult: ...
 ```
 
 ```python
@@ -286,7 +288,7 @@ ENV override-паттерн:
 
 Идемпотентное прокидывание настроек:
 1. `load_app_config()` формирует immutable `AppConfig`.
-2. projection в typed settings для `usecases/operations`.
+2. projection в typed settings (`connector/usecases/operations/vault_management_settings.py`) для usecases `management/vault`.
 3. use-case получает settings snapshot per invocation (без глобального mutable state).
 
 Правило anti-hardcode:
@@ -357,8 +359,8 @@ ENV override-паттерн:
 | `connector/delivery/commands/vault_management.py` | Реализовать user-facing команды управления lifecycle |
 | `connector/delivery/cli/containers.py` | Wiring сервисов key-management + startup maintenance hook |
 | `connector/domain/secrets/policy/rotation_policy.py` | Доменная логика вычисления due-window |
-| `connector/usecases/operations/vault_key_management.py` | Operational orchestration init/rotate/rewrap/delete/status |
-| `connector/usecases/operations/vault_maintenance.py` | Policy-driven non-interactive maintenance |
+| `connector/usecases/management/vault/usecase.py` | Operational orchestration init/rotate/rewrap/delete/status |
+| `connector/usecases/management/vault/maintenance.py` | Policy-driven non-interactive maintenance |
 | `connector/infra/secrets/management/managed_env_keyring_store.py` | Persist/load keyring в managed env-файл |
 | `connector/infra/secrets/management/admin_password_gate.py` | Manual access gate (prompt/env verify) |
 | `connector/domain/ports/secrets/repository.py` | Расширить существующий контракт lifecycle metadata-методами |
@@ -400,14 +402,14 @@ ENV override-паттерн:
 - `tests/<test_type>/<layer>/...`
 
 Для данного решения:
-- unit: `tests/unit/secrets/`, `tests/unit/usecases/operations/`, `tests/unit/config/`
+- unit: `tests/unit/secrets/`, `tests/unit/usecases/`, `tests/unit/config/`
 - integration: `tests/integration/secrets/`, `tests/integration/delivery/`
 - architecture: `tests/architecture/`
 - performance: `tests/performance/vault/` (на `pyperf`)
 
 **Тесты**:
 - ✅ Unit: `managed_env_keyring_store` (parse/save, confirm/force, permissions).
-- ✅ Unit: `vault_admin_password_gate` (`argon2id`, interactive/non-interactive success/failure, retries).
+- ✅ Unit: `vault_admin_password_gate` (`argon2id`, interactive/non-interactive success/failure, invalid hash mapping).
 - ✅ Unit: `rotation_policy` (due/not-due для hours/days/months/years).
 - ✅ Integration: `vault-management init` на чистом окружении + `VaultStartupGuard.ensure_ready()`.
 - ✅ Integration: `vault-management rotate` выполняет rewrap и сохраняет decrypt-совместимость.
@@ -458,8 +460,8 @@ ENV override-паттерн:
 
 ## 📐 Диаграммы
 
-**UML диаграммы** (будут добавлены отдельно при реализации):
-- Class: `operations/vault-management` usecase + domain policy + infra adapters.
+**UML диаграммы** (актуализируются при следующем раунде diagram-sync):
+- Class: `management/vault` usecase + domain policy + infra adapters.
 - Sequence: `rotate + rewrap + verify`.
 
 **Примеры использования**:
@@ -500,8 +502,8 @@ syncEmployees vault-management run-maintenance --non-interactive --force
 | Компонент | Влияние | Требуемые изменения |
 |-----------|---------|---------------------|
 | `delivery/cli/app.py` | Новая командная группа | Добавить `vault-management` namespace |
-| `delivery/commands/*` | Косвенное | Вызывают usecases из `operations` вместо domain orchestration |
-| `usecases/operations/*` | Прямое | Новый operational-срез для lifecycle, healthcheck, maintenance |
+| `delivery/commands/*` | Косвенное | Вызывают usecases из `management/vault` вместо domain orchestration |
+| `usecases/management/vault/*` | Прямое | Operational-срез lifecycle vault-management |
 | `config/models.py` | Прямое | Добавить секцию `vault_management` |
 | `infra/secrets/env_key_provider.py` | Косвенное | Продолжает использовать `ANKEY_VAULT_MASTER_KEYS`, но источник теперь managed env-file |
 | `domain/ports/secrets/repository.py` | Прямое | Расширить существующий репозиторный контракт lifecycle metadata-методами |
@@ -513,9 +515,9 @@ syncEmployees vault-management run-maintenance --non-interactive --force
 ## 📚 Документация
 
 **Обновлена документация**:
-- ⏳ `docs/dev/layers/vault/vault-delivery.md` — будет добавлена секция `vault-management`.
-- ⏳ `docs/dev/layers/vault/vault-crypto.md` — будет добавлен lifecycle flow `rotate + rewrap + auto-maintenance`.
-- ⏳ `README.md` — будет добавлен user guide для `vault-management`.
+- ✅ `docs/dev/layers/vault/vault-delivery.md` — добавлен раздел `vault-management` (delivery контур + startup integration).
+- ✅ `docs/dev/layers/vault/vault-crypto.md` — добавлен lifecycle flow `rotate + rewrap + auto-maintenance`.
+- ✅ `README.md` — добавлен user guide для `vault-management`.
 
 ---
 
@@ -536,3 +538,4 @@ syncEmployees vault-management run-maintenance --non-interactive --force
 | 2026-03-04 | Подтверждён `env-first` контракт: runtime env как effective источник, managed env-файл как persisted fallback/import source |
 | 2026-03-04 | Уточнена single-active-keyring модель (без persisted fallback master keys) и anti-hardcode правило для override-параметров |
 | 2026-03-04 | Принят lean-подход по портам: удалён `VaultRotationPolicyPort`, metadata встроена в существующий `SecretVaultRepositoryPort` |
+| 2026-03-07 | Реализация DEC-002 завершена: CLI namespace, usecases `management/vault`, startup maintenance, test matrix и документация синхронизированы |

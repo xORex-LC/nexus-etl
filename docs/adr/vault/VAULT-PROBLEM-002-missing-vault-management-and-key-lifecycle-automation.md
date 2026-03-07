@@ -1,8 +1,8 @@
 # VAULT-PROBLEM-002: Отсутствует управляемый lifecycle master keys (user-management, rotate/rewrap, auto-rotation)
 
-> **Статус**: Открыта
+> **Статус**: Решена в [VAULT-DEC-002](./VAULT-DEC-002-vault-management-managed-env-keyring-and-rotation-lifecycle.md)
 > **Дата создания**: 2026-03-04
-> **Затронутые компоненты**: `EnvVaultKeyProvider`, `VaultStartupGuard`, `delivery/cli/app.py`, `delivery/cli/containers.py`, `config/models.py`, `usecases/operations/*`
+> **Затронутые компоненты**: `EnvVaultKeyProvider`, `VaultStartupGuard`, `delivery/cli/app.py`, `delivery/cli/containers.py`, `config/models.py`, `usecases/management/vault/*`
 
 ---
 
@@ -93,7 +93,7 @@ Vault-подсистема уже использует envelope encryption и fa
 - **Минусы**: Основная проблема ротации остаётся нерешённой.
 
 ### Вариант 3: Полноценный `vault-management` с managed env-файлом (целевой)
-- **Идея**: Встроенный CLI-контур `init/rotate/rewrap/delete/status/run-maintenance`, persisted managed env keyring, policy-driven auto-rotation, post-verify, manual password gate и вынос orchestration в `usecases/operations`.
+- **Идея**: Встроенный CLI-контур `init/rotate/rewrap/delete/status/run-maintenance`, persisted managed env keyring, policy-driven auto-rotation, post-verify, manual password gate и вынос orchestration в `usecases/management/vault`.
 - **Плюсы**: Закрывает полный lifecycle и снижает операционные риски.
 - **Минусы**: Больше объём внедрения и тестирования.
 
@@ -119,3 +119,4 @@ Vault-подсистема уже использует envelope encryption и fa
 |------|---------|
 | 2026-03-04 | Проблема зафиксирована по итогам анализа vault lifecycle в production-эксплуатации |
 | 2026-03-04 | Сформирован целевой вариант решения в [VAULT-DEC-002](./VAULT-DEC-002-vault-management-managed-env-keyring-and-rotation-lifecycle.md) |
+| 2026-03-07 | Проблема закрыта: реализован полный lifecycle в рамках DEC-002 (CLI/usecase/startup-maintenance/test-matrix) |

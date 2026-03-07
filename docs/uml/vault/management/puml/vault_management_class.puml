@@ -1,0 +1,107 @@
+@startuml
+title Vault Management - Class Diagram (Current)
+set namespaceSeparator none
+left to right direction
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam class {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+hide empty members
+
+class "vault_management.py\n(command handlers)" as Delivery <<delivery>> {
+  +init_handler(...)
+  +status_handler(...)
+  +rotate_handler(...)
+  +rewrap_handler(...)
+  +delete_key_handler(...)
+  +run_maintenance_handler(...)
+}
+
+class "VaultAdminPasswordGate" as AdminGate {
+  +verify_manual_access(non_interactive: bool)
+}
+
+class "VaultKeyManagementUseCase" as KeyMgmt {
+  +init_keyring(...): VaultKeyManagementResult
+  +status(): VaultKeyManagementStatus
+  +rotate_and_rewrap(...): VaultKeyManagementResult
+  +rewrap_all_dek(...): VaultKeyManagementResult
+  +delete_key(...): VaultKeyManagementResult
+  +finalize_inflight_bridge(...): VaultKeyManagementResult?
+}
+
+class "VaultMaintenanceUseCase" as Maintenance {
+  +run_if_due(): VaultMaintenanceResult
+}
+
+class "VaultRotationPolicy" as RotationPolicy {
+  +is_due(last_rotated_at, now_utc): bool
+}
+
+interface "VaultManagedKeyringStoreProtocol" as IKeyring <<protocol>> {
+  +lifecycle_lock(): ContextManager[None]
+  +load_keyring(): tuple[VaultMasterKey,...]
+  +save_keyring(keys): None
+}
+
+interface "VaultPostVerifyProtocol" as IPostVerify <<protocol>> {
+  +ensure_ready(keyring): None
+}
+
+interface "SecretVaultRepositoryPort" as IRepository <<protocol>> {
+  +transaction(): ContextManager[None]
+  +list_deks(): tuple[VaultDekRecord,...]
+  +upsert_dek(record): None
+  +set_last_rotation_result(result, reason): None
+  +set_last_rotated_at(iso_utc): None
+}
+
+interface "SecretCipherPort" as ICipher <<protocol>> {
+  +wrap_dek(...)
+  +unwrap_dek(...)
+}
+
+class "VaultManagedEnvKeyringStore" as KeyringStore
+class "VaultStartupGuardPostVerifier" as PostVerifier
+class "SqliteVaultRepository" as SqliteRepo
+class "FernetEnvelopeCipher" as Cipher
+class "vault_startup_resource()\n(containers.py)" as Startup <<delivery>>
+
+Delivery --> AdminGate : verifies manual access
+Delivery --> KeyMgmt : manual operations
+Delivery --> Maintenance : run-maintenance
+
+Maintenance --> KeyMgmt : delegates lifecycle
+Maintenance --> RotationPolicy : due-check
+
+KeyMgmt --> IKeyring : lock/load/save keyring
+KeyMgmt --> IRepository : transaction + metadata
+KeyMgmt --> ICipher : unwrap/wrap DEK
+KeyMgmt --> IPostVerify : post-operation verify
+
+KeyringStore ..|> IKeyring
+PostVerifier ..|> IPostVerify
+SqliteRepo ..|> IRepository
+Cipher ..|> ICipher
+
+Startup --> KeyringStore : preload managed keyring
+Startup --> Maintenance : optional auto-rotation
+Startup --> KeyMgmt : bridge finalization path
+
+note right of KeyMgmt
+  Boundary:
+  - orchestrates lifecycle protocol
+  - no CLI parsing / no direct SQL
+  - keeps single-key steady-state
+end note
+
+note bottom of Delivery
+  CLI flags are handled here:
+  --force, --dry-run, --non-interactive,
+  --verify/--no-verify, --managed-env-file
+end note
+
+@enduml

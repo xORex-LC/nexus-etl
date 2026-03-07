@@ -130,6 +130,86 @@ syncEmployees --config ./config.yml match --dataset employees --csv-has-header
 syncEmployees --config ./config.yml resolve --dataset employees --csv-has-header
 ```
 
+## Vault Management (master key lifecycle)
+
+CLI namespace для управления lifecycle master keys:
+
+```bash
+syncEmployees --config ./config.yml vault-management --help
+```
+
+Поддерживаемые subcommands:
+
+- `init`
+- `status`
+- `rotate`
+- `rewrap`
+- `delete-key`
+- `run-maintenance`
+
+### Пример конфигурации
+
+```yaml
+vault_management:
+  managed_env_file: "./cache/vault.env"
+  require_admin_password_for_manual_ops: true
+  admin_password_hash_env_var: "ANKEY_VAULT_ADMIN_PASSWORD_HASH"
+  admin_password_env_var: "ANKEY_VAULT_ADMIN_PASSWORD"
+  auto_rotate_enabled: true
+  auto_rotate_interval:
+    days: 30
+  auto_rotate_on_error: "fail_closed"
+```
+
+Важно:
+
+- runtime precedence для keyring: `ANKEY_VAULT_MASTER_KEYS` (если задан) > `managed_env_file`.
+- steady-state keyring хранит ровно один active key.
+- `--non-interactive` требует `--force` (confirm-step отключается только через `--force`).
+
+### Базовые сценарии
+
+```bash
+# 1) Инициализация keyring (one-time)
+syncEmployees --config ./config.yml vault-management init --verify
+
+# 2) Текущий статус keyring/metadata/DEK
+syncEmployees --config ./config.yml vault-management status
+
+# 3) Ручная ротация (new key + rewrap всех DEK + verify)
+syncEmployees --config ./config.yml vault-management rotate --verify
+
+# 4) Rewrap всех DEK текущим active key
+syncEmployees --config ./config.yml vault-management rewrap --verify
+
+# 5) Replace-flow для active key (delete-key не удаляет "в никуда")
+syncEmployees --config ./config.yml vault-management delete-key --verify
+
+# 6) Policy-driven maintenance (due-check/recovery/rotate)
+syncEmployees --config ./config.yml vault-management run-maintenance --non-interactive --force
+```
+
+### Manual-operation security gate
+
+Для manual операций (`init/rotate/rewrap/delete-key/run-maintenance`) по умолчанию включена проверка admin password:
+
+- hash (argon2id): `ANKEY_VAULT_ADMIN_PASSWORD_HASH`
+- plaintext для non-interactive режима: `ANKEY_VAULT_ADMIN_PASSWORD`
+
+Можно переопределить имена этих переменных через:
+
+- `vault_management.admin_password_hash_env_var`
+- `vault_management.admin_password_env_var`
+
+### Общие флаги vault-management
+
+- `--force` — отключает только confirm-step.
+- `--dry-run` — валидация и план без изменений в keyring/DB.
+- `--non-interactive` — без prompt, пароль читается из ENV.
+- `--verify/--no-verify` — включить/выключить post-operation startup verify.
+- `--managed-env-file` — CLI-override пути managed keyring файла.
+- `init --import-existing-env` — one-shot импорт текущего `ANKEY_VAULT_MASTER_KEYS` в managed env-файл.
+
 ## Артефакты выполнения
 
 По умолчанию используются директории:
