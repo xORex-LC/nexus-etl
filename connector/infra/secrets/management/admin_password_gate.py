@@ -25,6 +25,11 @@ from connector.domain.secrets.errors import (
 
 PromptFn = Callable[[str], str]
 
+# Динамическое построение кортежей типов исключений для совместимости
+# с разными версиями argon2-cffi:
+#   - argon2-cffi >=21.1: argon2.exceptions.InvalidHash
+#   - argon2-cffi >=23.1: argon2.exceptions.InvalidHashError
+# getattr + isinstance guard позволяет работать с обеими версиями.
 _INVALID_HASH_ERRORS: tuple[type[Exception], ...] = tuple(
     exc_type
     for exc_type in (
@@ -42,14 +47,23 @@ _VERIFICATION_ERRORS: tuple[type[Exception], ...] = tuple(
     if isinstance(exc_type, type) and issubclass(exc_type, Exception)
 )
 
+# Маркеры сообщений для fallback-детекции невалидного hash.
+# Покрывают argon2-cffi >=21.1 (InvalidHash message variants)
+# и >=23.1 (InvalidHashError / VerificationError message variants).
+_INVALID_HASH_MESSAGE_MARKERS: tuple[str, ...] = (
+    "decoding failed",
+    "invalid",
+    "malformed",
+    "hash",
+)
+
 
 def _is_probable_invalid_hash_error(error: Exception) -> bool:
     """Определить, что ошибка верификации вызвана некорректным hash-значением."""
     message = str(error).strip().lower()
     if not message:
         return False
-    markers = ("decoding failed", "invalid", "malformed", "hash")
-    return any(marker in message for marker in markers)
+    return any(marker in message for marker in _INVALID_HASH_MESSAGE_MARKERS)
 
 
 class VaultAdminPasswordGate:

@@ -96,7 +96,7 @@ class VaultKeyManagementUseCase:
         )
 
         with self._keyring_store.lifecycle_lock():
-            existing = self._load_keyring_for_init()
+            existing = self._load_keyring_safe(treat_empty_as_absent=True)
             if existing:
                 raise VaultManagementOperationError(
                     "Vault keyring is already initialized",
@@ -158,9 +158,15 @@ class VaultKeyManagementUseCase:
     def status(self) -> VaultKeyManagementStatus:
         """Назначение:
             Вернуть read-only статус keyring/DEK/metadata для vault-management.
+
+        Примечание:
+            Снимок является best-effort и не гарантирует атомарности —
+            keyring читается под lifecycle_lock, а DEK и metadata вне лока.
+            Для операций, требующих согласованности, используется lifecycle_lock
+            на протяжении всей операции (rotate, rewrap, finalize).
         """
         with self._keyring_store.lifecycle_lock():
-            keyring = self._load_keyring_or_empty()
+            keyring = self._load_keyring_safe(treat_empty_as_absent=False)
 
         active_key = keyring[0] if keyring else None
         deks = self._repository.list_deks()
@@ -322,14 +328,15 @@ class VaultKeyManagementUseCase:
         """Назначение:
             Выполнить delete-key только как replace-flow (`rotate + rewrap`).
         """
+        effective_run_id = run_id or self._run_id_factory()
         self._logger.info(
             "vault_mgmt_delete",
             component="vault_management",
             op="start",
-            run_id=run_id,
+            run_id=effective_run_id,
             mode="replace_flow",
         )
-        result = self.rotate_and_rewrap(run_id=run_id)
+        result = self.rotate_and_rewrap(run_id=effective_run_id)
         self._logger.info(
             "vault_mgmt_delete",
             component="vault_management",
@@ -570,21 +577,21 @@ class VaultKeyManagementUseCase:
         self._repository.set_last_rotation_run_id(run_id)
         self._repository.set_last_rotation_result(result="failed", reason=reason)
 
-    def _load_keyring_for_init(self) -> tuple[VaultMasterKey, ...]:
-        try:
-            return self._keyring_store.load_keyring()
-        except SecretKeyConfigError as exc:
-            reason = str(exc.details.get("reason", ""))
-            if reason in {"managed_env_file_missing", "managed_env_var_missing", "empty_keyring"}:
-                return ()
-            raise
+    def _load_keyring_safe(self, *, treat_empty_as_absent: bool) -> tuple[VaultMasterKey, ...]:
+        """Загрузить keyring, подавляя ожидаемые ошибки конфигурации.
 
-    def _load_keyring_or_empty(self) -> tuple[VaultMasterKey, ...]:
+        Аргумент treat_empty_as_absent контролирует обработку пустого keyring:
+          - True  (init): empty_keyring считается "ещё не инициализирован" → вернуть ().
+          - False (status/require): empty_keyring — ошибка конфигурации → пробросить.
+        """
         try:
             return self._keyring_store.load_keyring()
         except SecretKeyConfigError as exc:
             reason = str(exc.details.get("reason", ""))
-            if reason in {"managed_env_file_missing", "managed_env_var_missing"}:
+            allowed = {"managed_env_file_missing", "managed_env_var_missing"}
+            if treat_empty_as_absent:
+                allowed = allowed | {"empty_keyring"}
+            if reason in allowed:
                 return ()
             raise
 
@@ -594,7 +601,7 @@ class VaultKeyManagementUseCase:
         run_id: str,
         operation: Literal["rotate", "rewrap"],
     ) -> tuple[VaultMasterKey, ...]:
-        keyring = self._load_keyring_or_empty()
+        keyring = self._load_keyring_safe(treat_empty_as_absent=False)
         if keyring:
             return keyring
         raise VaultManagementOperationError(

@@ -17,9 +17,8 @@ import structlog
 
 from connector.common.time import getUtcNowIso
 from connector.domain.secrets.policy.rotation_policy import VaultRotationPolicy
-from connector.usecases.management.vault.contracts import NowFactory, RunIdFactory
+from connector.usecases.management.vault.contracts import NowFactory, RunIdFactory, VaultKeyManagementProtocol
 from connector.usecases.management.vault.models import VaultMaintenanceResult
-from connector.usecases.management.vault.usecase import VaultKeyManagementUseCase
 
 
 class VaultMaintenanceUseCase:
@@ -36,7 +35,7 @@ class VaultMaintenanceUseCase:
     def __init__(
         self,
         *,
-        key_management: VaultKeyManagementUseCase,
+        key_management: VaultKeyManagementProtocol,
         rotation_policy: VaultRotationPolicy,
         now_utc: NowFactory = getUtcNowIso,
         run_id_factory: RunIdFactory | None = None,

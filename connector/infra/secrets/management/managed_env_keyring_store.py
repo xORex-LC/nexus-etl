@@ -171,10 +171,11 @@ class VaultManagedEnvKeyringStore:
                 temp_file.write(f"{self._env_var}={raw_value}\n")
                 temp_file.flush()
                 os.fsync(temp_file.fileno())
+                # fchmod до rename гарантирует корректные права атомарно —
+                # os.replace сохраняет inode и permissions на POSIX.
                 os.fchmod(temp_file.fileno(), 0o600)
 
             os.replace(temp_path, self._path)
-            os.chmod(self._path, 0o600)
             _fsync_directory(self._path.parent)
         except OSError as exc:
             raise SecretStoreError(

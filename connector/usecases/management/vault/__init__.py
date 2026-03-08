@@ -8,6 +8,7 @@ from connector.usecases.management.vault.contracts import (
     KeyVersionFactory,
     NowFactory,
     RunIdFactory,
+    VaultKeyManagementProtocol,
     VaultManagedKeyringStoreProtocol,
     VaultPostVerifyProtocol,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "NowFactory",
     "KeyMaterialFactory",
     "KeyVersionFactory",
+    "VaultKeyManagementProtocol",
     "VaultManagedKeyringStoreProtocol",
     "VaultPostVerifyProtocol",
     "VaultKeyManagementStatus",

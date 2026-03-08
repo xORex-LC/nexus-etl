@@ -60,7 +60,7 @@ def test_run_if_due_noop_when_not_due() -> None:
         ),
     )
     usecase = VaultMaintenanceUseCase(
-        key_management=key_management,  # type: ignore[arg-type]
+        key_management=key_management,
         rotation_policy=VaultRotationPolicy(interval=VaultRotationInterval(days=30)),
         now_utc=lambda: "2026-03-06T00:00:00+00:00",
         run_id_factory=lambda: "maintenance-run-001",
@@ -99,7 +99,7 @@ def test_run_if_due_runs_rotate_when_due() -> None:
         ),
     )
     usecase = VaultMaintenanceUseCase(
-        key_management=key_management,  # type: ignore[arg-type]
+        key_management=key_management,
         rotation_policy=VaultRotationPolicy(interval=VaultRotationInterval(days=30)),
         now_utc=lambda: "2026-03-06T00:00:00+00:00",
         run_id_factory=lambda: "maintenance-run-002",
@@ -149,7 +149,7 @@ def test_run_if_due_prioritizes_bridge_finalize() -> None:
         ),
     )
     usecase = VaultMaintenanceUseCase(
-        key_management=key_management,  # type: ignore[arg-type]
+        key_management=key_management,
         rotation_policy=VaultRotationPolicy(interval=VaultRotationInterval(days=30)),
         now_utc=lambda: "2026-03-06T00:00:00+00:00",
         run_id_factory=lambda: "maintenance-run-003",

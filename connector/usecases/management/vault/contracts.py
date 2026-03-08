@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Callable, ContextManager, Protocol
 
 from connector.domain.ports.secrets.key_provider import VaultMasterKey
+from connector.usecases.management.vault.models import VaultKeyManagementResult, VaultKeyManagementStatus
 
 RunIdFactory = Callable[[], str]
 NowFactory = Callable[[], str]
@@ -32,6 +33,16 @@ class VaultManagedKeyringStoreProtocol(Protocol):
         ...
 
 
+class VaultKeyManagementProtocol(Protocol):
+    """Контракт key-management операций для maintenance usecase."""
+
+    def status(self) -> VaultKeyManagementStatus: ...
+
+    def rotate_and_rewrap(self, *, run_id: str | None = None) -> VaultKeyManagementResult: ...
+
+    def finalize_inflight_bridge(self, *, run_id: str | None = None) -> VaultKeyManagementResult | None: ...
+
+
 class VaultPostVerifyProtocol(Protocol):
     """Контракт post-operation verify шага."""
 
@@ -44,6 +55,7 @@ __all__ = [
     "NowFactory",
     "KeyMaterialFactory",
     "KeyVersionFactory",
+    "VaultKeyManagementProtocol",
     "VaultManagedKeyringStoreProtocol",
     "VaultPostVerifyProtocol",
 ]
