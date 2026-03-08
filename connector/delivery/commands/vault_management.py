@@ -33,7 +33,9 @@ from connector.domain.secrets.errors import (
 )
 from connector.infra.secrets import parse_master_keyring
 from connector.infra.secrets.env_key_provider import DEFAULT_MASTER_KEYS_ENV
+from connector.domain.secrets.policy.rotation_policy import VaultRotationPolicy
 from connector.usecases.management.vault.models import VaultKeyManagementStatus
+from connector.usecases.management.vault.usecase import VaultKeyManagementUseCase
 from connector.usecases.operations.vault_management_settings import VaultManagementSettings
 
 
@@ -340,7 +342,7 @@ def _build_key_management_usecase(
     ctx: BoundCommandContext,
     settings: VaultManagementSettings,
     verify: bool,
-):
+) -> VaultKeyManagementUseCase:
     keyring_store = ctx.container.vault_managed_keyring_store(managed_env_file=settings.managed_env_file)
     post_verify = ctx.container.vault_post_verifier() if verify else _NoopPostVerifier()
     return ctx.container.vault_key_management_usecase(
@@ -386,7 +388,7 @@ def _status_payload(
 def _maintenance_dry_run_plan(
     *,
     status: VaultKeyManagementStatus,
-    rotation_policy,
+    rotation_policy: VaultRotationPolicy,
 ) -> tuple[str, bool, bool]:
     if status.bridge_keyring:
         return "bridge_finalize", True, False
