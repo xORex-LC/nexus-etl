@@ -16,16 +16,16 @@ class EnsureFieldsFilter(logging.Filter):
             Компонент по умолчанию, если не задан.
     """
 
-    def __init__(self, runId: str, defaultComponent: str = "core"):
+    def __init__(self, run_id: str, default_component: str = "core"):
         super().__init__()
-        self.runId = runId
-        self.defaultComponent = defaultComponent
+        self.run_id = run_id
+        self.default_component = default_component
 
     def filter(self, record: logging.LogRecord) -> bool:
         if not hasattr(record, "runId"):
-            record.runId = self.runId
+            record.runId = self.run_id
         if not hasattr(record, "component"):
-            record.component = self.defaultComponent
+            record.component = self.default_component
         return True
 
 class StdStreamToLogger:
@@ -41,10 +41,10 @@ class StdStreamToLogger:
             Обычно 'stdout' или 'stderr'
     """
 
-    def __init__(self, logger: logging.Logger, level: int, runId: str, component: str):
+    def __init__(self, logger: logging.Logger, level: int, run_id: str, component: str):
         self.logger = logger
         self.level = level
-        self.runId = runId
+        self.run_id = run_id
         self.component = component
         self.buffer = ""
 
@@ -55,12 +55,12 @@ class StdStreamToLogger:
         while "\n" in self.buffer:
             line, self.buffer = self.buffer.split("\n", 1)
             if line.strip():
-                self.logger.log(self.level, line.rstrip(), extra={"runId": self.runId, "component": self.component})
+                self.logger.log(self.level, line.rstrip(), extra={"runId": self.run_id, "component": self.component})
         return len(s)
 
     def flush(self) -> None:
         if self.buffer.strip():
-            self.logger.log(self.level, self.buffer.rstrip(), extra={"runId": self.runId, "component": self.component})
+            self.logger.log(self.level, self.buffer.rstrip(), extra={"runId": self.run_id, "component": self.component})
         self.buffer = ""
 
 class TeeStream:
@@ -88,19 +88,19 @@ class TeeStream:
         self.primary.flush()
         self.secondary.flush()
 
-def mapLogLevel(levelName: str) -> int:
+def map_log_level(level_name: str) -> int:
     """
     Назначение:
         Преобразует строковый уровень логирования в logging level.
 
     Входные данные:
-        levelName: str
+        level_name: str
             ERROR|WARN|INFO|DEBUG
 
     Выходные данные:
         int
     """
-    value = (levelName or "").strip().upper()
+    value = (level_name or "").strip().upper()
     if value == "ERROR":
         return logging.ERROR
     if value == "WARN":
@@ -109,33 +109,33 @@ def mapLogLevel(levelName: str) -> int:
         return logging.INFO
     if value == "DEBUG":
         return logging.DEBUG
-    raise ValueError(f"Unsupported log level: {levelName}")
+    raise ValueError(f"Unsupported log level: {level_name}")
 
-def createCommandLogger(commandName: str, logDir: str, runId: str, logLevel: str) -> tuple[logging.Logger, str]:
+def create_command_logger(command_name: str, log_dir: str, run_id: str, log_level: str) -> tuple[logging.Logger, str]:
     """
     Назначение:
         Создаёт логгер для конкретной команды и возвращает путь к log-файлу.
 
     Входные данные:
-        commandName: str
-        logDir: str
-        runId: str
-        logLevel: str
+        command_name: str
+        log_dir: str
+        run_id: str
+        log_level: str
 
     Выходные данные:
-        (logger, logFilePath)
+        (logger, log_file_path)
     """
-    Path(logDir).mkdir(parents=True, exist_ok=True)
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
 
-    logFilePath = str(Path(logDir) / f"{commandName}_{runId}.log")
+    log_file_path = str(Path(log_dir) / f"{command_name}_{run_id}.log")
 
-    loggerName = f"syncEmployees.{commandName}.{runId}"
-    logger = logging.getLogger(loggerName)
+    logger_name = f"syncEmployees.{command_name}.{run_id}"
+    logger = logging.getLogger(logger_name)
     logger.handlers.clear()
     logger.propagate = False
-    logger.addFilter(EnsureFieldsFilter(runId, "app"))
+    logger.addFilter(EnsureFieldsFilter(run_id, "app"))
 
-    level = mapLogLevel(logLevel)
+    level = map_log_level(log_level)
     logger.setLevel(level)
 
     formatter = logging.Formatter(
@@ -143,15 +143,15 @@ def createCommandLogger(commandName: str, logDir: str, runId: str, logLevel: str
         datefmt="%Y-%m-%dT%H:%M:%S%z",
     )
 
-    fileHandler = logging.FileHandler(logFilePath, encoding="utf-8")
-    fileHandler.setLevel(level)
-    fileHandler.setFormatter(formatter)
-    fileHandler.addFilter(EnsureFieldsFilter(runId=runId))
-    logger.addHandler(fileHandler)
+    file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+    file_handler.setLevel(level)
+    file_handler.setFormatter(formatter)
+    file_handler.addFilter(EnsureFieldsFilter(run_id=run_id))
+    logger.addHandler(file_handler)
 
-    return logger, logFilePath
+    return logger, log_file_path
 
-def logEvent(logger: logging.Logger, level: int, runId: str, component: str, message: str) -> None:
+def log_event(logger: logging.Logger, level: int, run_id: str, component: str, message: str) -> None:
     """
     Назначение:
         Унифицированная запись событий с runId/component.
@@ -159,8 +159,8 @@ def logEvent(logger: logging.Logger, level: int, runId: str, component: str, mes
     Входные данные:
         logger: logging.Logger
         level: int
-        runId: str
+        run_id: str
         component: str
         message: str
     """
-    logger.log(level, message, extra={"runId": runId, "component": component})
+    logger.log(level, message, extra={"runId": run_id, "component": component})
