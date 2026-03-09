@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
-from connector.common.sanitize import isMaskedSecret
+from connector.common.sanitize import is_masked_secret
 
 
 def _get_str(value: Any) -> str | None:
