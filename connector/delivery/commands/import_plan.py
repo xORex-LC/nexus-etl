@@ -206,7 +206,7 @@ def _dataset_requires_vault(dataset_spec) -> bool:
     """Назначение:
         Проверить, нужны ли secret-store операции в transform/enrich перед планированием.
     """
-    enrich_spec = dataset_spec.build_enrich_spec()
+    enrich_spec = dataset_spec.build_spec_for("enrich")
     secrets = enrich_spec.enrich.secrets
     if secrets is not None:
         for field in secrets.fields:

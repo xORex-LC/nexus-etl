@@ -23,7 +23,7 @@ from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform_dsl import load_enrich_spec_for_dataset
 from connector.domain.transform_dsl import load_sink_spec_for_dataset
-from connector.datasets.employees.spec import make_employees_spec
+from connector.datasets.registry import get_spec
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
@@ -526,8 +526,8 @@ def test_enricher_warns_when_candidate_violates_sink_type():
 
 
 def test_employees_spec_sink_spec_has_dataset():
-    spec = make_employees_spec()
-    sink_spec = spec.build_sink_spec()
+    spec = get_spec("employees")
+    sink_spec = spec.build_spec_for("sink")
 
     assert sink_spec is not None
     assert sink_spec.dataset == "employees"

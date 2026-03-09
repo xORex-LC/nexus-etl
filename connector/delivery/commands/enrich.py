@@ -166,7 +166,7 @@ def _dataset_requires_vault(dataset_spec) -> bool:
         - учитывает декларативный `enrich.secrets.fields`;
         - учитывает явные `target: secret:<field>` в generate/lookup.
     """
-    enrich_spec = dataset_spec.build_enrich_spec()
+    enrich_spec = dataset_spec.build_spec_for("enrich")
     secrets = enrich_spec.enrich.secrets
     if secrets is not None:
         for field in secrets.fields:
