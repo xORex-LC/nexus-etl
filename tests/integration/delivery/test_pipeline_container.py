@@ -20,7 +20,7 @@ import pytest
 from dependency_injector import providers
 
 from connector.config.models import AppConfig
-from connector.datasets.employees.spec import make_employees_spec
+from connector.datasets.registry import get_spec
 from connector.delivery.cli.containers import PipelineContainer
 from connector.delivery.cli.stages import build_stage_factory
 from connector.domain.diagnostics.catalog import build_catalog
@@ -76,7 +76,7 @@ def _apply_command_overrides(
     container: PipelineContainer,
     dataset_spec=None,
     run_id: str = "test-run",
-    csv_has_header: bool = True,
+    source_has_header: bool = True,
     catalog=None,
     include_deleted: bool = False,
     secret_store=None,
@@ -84,13 +84,13 @@ def _apply_command_overrides(
 ):
     """Apply standard per-command overrides to PipelineContainer."""
     if dataset_spec is None:
-        dataset_spec = make_employees_spec()
+        dataset_spec = get_spec("employees")
     if catalog is None:
         catalog = build_catalog("employees", strict=False)
 
     container.dataset_spec.override(dataset_spec)
     container.run_id.override(run_id)
-    container.csv_has_header.override(csv_has_header)
+    container.source_has_header.override(source_has_header)
     container.catalog.override(catalog)
     container.include_deleted.override(include_deleted)
     container.secret_store.override(secret_store)
@@ -109,7 +109,7 @@ class TestOverrideContextManager:
         container = _make_pipeline_container()
         original_provider = container.run_id
 
-        dataset_spec = make_employees_spec()
+        dataset_spec = get_spec("employees")
         with container.dataset_spec.override(dataset_spec), \
              container.run_id.override("test-run-1"):
             assert container.run_id() == "test-run-1"

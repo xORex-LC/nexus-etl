@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from connector.config.models import AppConfig
-from connector.datasets.employees.spec import make_employees_spec
+from connector.datasets.registry import get_spec
 from connector.delivery.cli.containers import PipelineContainer
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.transform.core.extractor import Extractor
@@ -54,7 +54,7 @@ def _write_csv(path: Path, rows: list[list[str]]) -> None:
 
 def _build_container(monkeypatch, csv_path: Path):
     monkeypatch.setenv("EMPLOYEES_SOURCE_PATH", str(csv_path))
-    dataset_spec = make_employees_spec()
+    dataset_spec = get_spec("employees")
     catalog = build_catalog("employees", strict=False)
     cache_roles = _build_cache_roles()
 
@@ -63,7 +63,7 @@ def _build_container(monkeypatch, csv_path: Path):
     container.app_config.override(AppConfig())
     container.dataset_spec.override(dataset_spec)
     container.run_id.override("e2e-test-run")
-    container.csv_has_header.override(True)
+    container.source_has_header.override(True)
     container.catalog.override(catalog)
     container.include_deleted.override(False)
     container.secret_store.override(None)

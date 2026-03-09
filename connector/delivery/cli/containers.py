@@ -629,7 +629,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         - Does NOT: содержать бизнес-логику — только wiring через StageFactory.
 
     Контракт:
-        - Per-command dependencies (dataset_spec, run_id, csv_has_header, catalog, etc.)
+        - Per-command dependencies (dataset_spec, run_id, source_has_header, catalog, etc.)
           задаются через override() context managers в command handlers.
         - Stages материализуются лениво: normalize handler НЕ материализует planning_context.
         - Один экземпляр PipelineContainer на invocation CLI-команды (sub-container AppContainer).
@@ -645,7 +645,7 @@ class PipelineContainer(containers.DeclarativeContainer):
     app_config = providers.Dependency(instance_of=object)
     cache_roles = providers.Dependency(instance_of=object)
     catalog = providers.Dependency(instance_of=object)
-    csv_has_header = providers.Dependency(instance_of=bool)
+    source_has_header = providers.Dependency(instance_of=object)
     run_id = providers.Dependency(instance_of=str)
     secret_store = providers.Object(None)
     dictionaries = providers.Object(None)
@@ -775,9 +775,9 @@ class PipelineContainer(containers.DeclarativeContainer):
     # ── Row source ────────────────────────────────────────────────────────────
 
     row_source = providers.Factory(
-        lambda s, h: s.build_record_source(csv_has_header=h),
+        lambda s, h: s.build_record_source(has_header=h),
         s=dataset_spec,
-        h=csv_has_header,
+        h=source_has_header,
     )
 
     # ── Transform stages ──────────────────────────────────────────────────────

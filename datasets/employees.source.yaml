@@ -2,11 +2,11 @@ dataset: employees
 source:
   type: file
   format: csv
+  has_header: false
   location_ref: EMPLOYEES_SOURCE_PATH
   options:
     delimiter: ","
     encoding: "utf-8-sig"
-    has_header_default: false
   fields:
     - name: raw_id
       type: string

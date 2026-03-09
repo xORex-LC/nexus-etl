@@ -19,7 +19,7 @@ from connector.usecases.resolve_usecase import ResolveUseCase
 
 @dataclass(frozen=True)
 class Options:
-    csv_has_header: bool | None = None
+    source_has_header: bool | None = None
     dataset: str | None = None
     report_items_limit: int | None = None
     include_resolved_items: bool | None = None
@@ -38,8 +38,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         strict=app_config.observability.diagnostics_strict,
     )
 
-    csv_has_header_value = (
-        opts.csv_has_header if opts.csv_has_header is not None else app_config.dataset.csv_has_header
+    source_has_header_value = (
+        opts.source_has_header if opts.source_has_header is not None else app_config.dataset.source_has_header
     )
     include_deleted_value = (
         opts.include_deleted if opts.include_deleted is not None else app_config.dataset.include_deleted
@@ -60,7 +60,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         composer = pipeline.pipeline_composer()
         with pipeline.dataset_spec.override(dataset_spec), \
              pipeline.run_id.override(run_id), \
-             pipeline.csv_has_header.override(csv_has_header_value), \
+             pipeline.source_has_header.override(source_has_header_value), \
              pipeline.catalog.override(catalog), \
              pipeline.include_deleted.override(include_deleted_value):
             plan_hooks = pipeline.resolve_stage_hooks()
