@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -28,6 +29,7 @@ def _read_yaml(path: str | Path) -> dict[str, Any]:
     return data
 
 
+@lru_cache(maxsize=1)
 def _repo_root() -> Path:
     """
     Назначение:
@@ -44,6 +46,7 @@ def _repo_root() -> Path:
     return current.parents[4]
 
 
+@lru_cache(maxsize=1)
 def _load_registry_or_raise() -> dict[str, Any]:
     """
     Назначение:
