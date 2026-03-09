@@ -99,6 +99,12 @@ def stage_for_command(command_name: str) -> DiagnosticStage:
         "cache_refresh": DiagnosticStage.CACHE,
         "cache_clear": DiagnosticStage.CACHE,
         "cache_status": DiagnosticStage.CACHE,
+        "vault_management_init": DiagnosticStage.SINK,
+        "vault_management_status": DiagnosticStage.SINK,
+        "vault_management_rotate": DiagnosticStage.SINK,
+        "vault_management_rewrap": DiagnosticStage.SINK,
+        "vault_management_delete_key": DiagnosticStage.SINK,
+        "vault_management_run_maintenance": DiagnosticStage.SINK,
     }
     return stage_map.get(normalized, DiagnosticStage.SINK)
 

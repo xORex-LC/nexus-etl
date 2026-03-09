@@ -34,9 +34,11 @@ from __future__ import annotations
 from connector.config.models import AppConfig
 from connector.domain.secrets.policy.rollout_metrics import VaultRolloutThresholds
 from connector.domain.secrets.policy.rollout_policy import VaultRolloutPolicySettings
+from connector.domain.secrets.policy.rotation_policy import VaultRotationInterval
 from connector.domain.transform.matcher.match_deps import MatchBatchSettings
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.infra.sqlite.config import SqliteDbConfig
+from connector.usecases.operations.vault_management_settings import VaultManagementSettings
 
 
 def to_resolver_settings(config: AppConfig) -> ResolverSettings:
@@ -160,6 +162,26 @@ def to_identity_db_config(config: AppConfig) -> SqliteDbConfig:
     )
 
 
+def to_vault_management_settings(config: AppConfig) -> VaultManagementSettings:
+    """AppConfig.vault_management → typed settings для operational vault usecases."""
+    vm = config.vault_management
+    interval_cfg = vm.auto_rotate_interval
+    return VaultManagementSettings(
+        managed_env_file=vm.managed_env_file,
+        require_admin_password_for_manual_ops=vm.require_admin_password_for_manual_ops,
+        admin_password_hash_env_var=vm.admin_password_hash_env_var,
+        admin_password_env_var=vm.admin_password_env_var,
+        auto_rotate_enabled=vm.auto_rotate_enabled,
+        auto_rotate_on_error=vm.auto_rotate_on_error,
+        auto_rotate_interval=VaultRotationInterval(
+            hours=interval_cfg.hours,
+            days=interval_cfg.days,
+            months=interval_cfg.months,
+            years=interval_cfg.years,
+        ),
+    )
+
+
 __all__ = [
     "to_resolver_settings",
     "to_vault_rollout_policy_settings",
@@ -168,4 +190,5 @@ __all__ = [
     "to_vault_db_config",
     "to_cache_db_config",
     "to_identity_db_config",
+    "to_vault_management_settings",
 ]

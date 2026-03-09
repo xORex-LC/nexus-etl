@@ -123,3 +123,43 @@ def test_busy_timeout_maps_to_read_error_with_diagnostics(tmp_path: Path, monkey
         assert details["lock_holder_pid"] == "unknown"
     finally:
         engine.close()
+
+
+def test_busy_timeout_maps_to_store_error_for_rotation_meta(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    repo, engine = _build_repo(tmp_path)
+    try:
+        def always_locked(sql: str, params=None):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(engine, "execute", always_locked)
+
+        with pytest.raises(SecretStoreError) as exc_info:
+            repo.set_last_rotated_at("2026-03-04T10:00:00+00:00")
+
+        details = exc_info.value.details
+        assert exc_info.value.code == "SECRET_STORE_ERROR"
+        assert details["reason"] == "busy_timeout"
+        assert details["op"] == "set_vault_management_meta"
+        assert details["meta_key"] == "last_rotated_at"
+    finally:
+        engine.close()
+
+
+def test_busy_timeout_maps_to_read_error_for_rotation_meta(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    repo, engine = _build_repo(tmp_path)
+    try:
+        def always_locked(sql: str, params=None):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(engine, "execute", always_locked)
+
+        with pytest.raises(SecretReadError) as exc_info:
+            repo.get_last_rotated_at()
+
+        details = exc_info.value.details
+        assert exc_info.value.code == "SECRET_READ_ERROR"
+        assert details["reason"] == "busy_timeout"
+        assert details["op"] == "get_vault_management_meta"
+        assert details["meta_key"] == "last_rotated_at"
+    finally:
+        engine.close()

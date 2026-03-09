@@ -27,6 +27,10 @@ from connector.domain.secrets.policy.rollout_policy import (
     compute_canary_bucket,
     evaluate_vault_rollout,
 )
+from connector.domain.secrets.policy.rotation_policy import (
+    VaultRotationInterval,
+    VaultRotationPolicy,
+)
 from connector.domain.secrets.policy.runtime_mode_policy import (
     VAULT_RUNTIME_MODE_AUTO,
     VAULT_RUNTIME_MODE_OFF,
@@ -51,6 +55,8 @@ __all__ = [
     "VAULT_RUNTIME_MODE_ON",
     "VaultRolloutDecision",
     "VaultRolloutPolicySettings",
+    "VaultRotationInterval",
+    "VaultRotationPolicy",
     "VaultRolloutThresholds",
     "VaultRuntimeModeDecision",
     "build_vault_operational_metrics",

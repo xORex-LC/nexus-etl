@@ -1,0 +1,43 @@
+@startuml
+title Vault Management Metadata - State Machine Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #f7e9dc
+  BorderColor #d9c2a8
+}
+
+[*] --> Unknown
+
+state Unknown
+state Rotating
+state Ok
+state Failed
+
+Unknown --> Ok : init_keyring success\nset_last_rotation_result("ok", reason)
+Unknown --> Failed : init_keyring failed\nset_last_rotation_result("failed", reason)
+
+Ok --> Rotating : rotate_and_rewrap start\nset_last_rotation_result("rotating", "rotate_in_progress")
+Ok --> Rotating : rewrap_all_dek start\nset_last_rotation_result("rotating", "rewrap_in_progress")
+Ok --> Rotating : finalize_inflight_bridge start\nset_last_rotation_result("rotating", "bridge_finalize_in_progress")
+
+Rotating --> Ok : success\nset_last_rotation_result("ok", reason)\nset_last_rotated_at(optional)
+Rotating --> Failed : failure\nset_last_rotation_result("failed", reason)
+
+Failed --> Rotating : retry lifecycle operation
+Failed --> Ok : successful retry
+
+Ok --> Ok : run_if_due (due=false)\nmetadata result unchanged
+
+note right of Rotating
+  run_id is updated on each lifecycle attempt
+  via set_last_rotation_run_id(run_id)
+end note
+
+note bottom
+  State values reflect repository metadata:
+  last_rotation_result = rotating | ok | failed
+end note
+
+@enduml
