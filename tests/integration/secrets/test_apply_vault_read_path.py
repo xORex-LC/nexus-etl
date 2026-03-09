@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from cryptography.fernet import Fernet
 
-from connector.datasets.employees.spec import make_employees_spec
+from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_models import Operation, Plan, PlanItem, PlanMeta, PlanSummary
@@ -150,7 +150,7 @@ def _run_apply(
             default_run_id=plan.meta.run_id,
         )
         executor = _DummyExecutor()
-        adapter = make_employees_spec(secrets=provider).get_apply_adapter()
+        adapter = get_spec("employees", secrets=provider).get_apply_adapter()
         service = ImportApplyService(executor=executor)
         result = service.apply_plan(
             plan=plan,
