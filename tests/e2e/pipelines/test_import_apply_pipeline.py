@@ -8,16 +8,15 @@ from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, Plan
 from connector.infra.artifacts.plan_reader import readPlanFile
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
-from connector.infra.target.providers.ankey_rest.payloads import (
-    build_user_upsert_payload,
-)
+from connector.domain.dataset_dsl.payload_compiler import SinkDrivenPayloadBuilder
+from connector.domain.transform_dsl import load_sink_spec_for_dataset
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.reporting.assembler import ReportAssembler
 from connector.domain.reporting.context import InMemoryReportContext
 from connector.domain.reporting.events import SetMetaEvent
 from connector.domain.reporting.sink import ReportSink
 from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
-from connector.datasets.employees.spec import make_employees_spec
+from connector.datasets.registry import get_spec
 from connector.main import app
 from connector.domain.diagnostics.catalog import build_catalog
 
@@ -95,7 +94,13 @@ def test_plan_reader_reads_items(tmp_path: Path):
     assert plan.items[0].target_id == "id-1"
 
 def test_payload_builder_contains_exact_keys():
-    payload = build_user_upsert_payload(
+    sink_spec = load_sink_spec_for_dataset("employees")
+    builder = SinkDrivenPayloadBuilder(
+        sink_spec=sink_spec,
+        defaults={"avatarId": None},
+        conditional_fields=["password"],
+    )
+    payload = builder(
         {
             "email": "u@example.com",
             "last_name": "L",
@@ -130,7 +135,7 @@ def test_payload_builder_contains_exact_keys():
     }
 
 def test_apply_adapter_builds_request():
-    adapter = make_employees_spec().get_apply_adapter()
+    adapter = get_spec("employees").get_apply_adapter()
     item = PlanItem(
         row_id="line:1",
         line_no=1,
@@ -213,7 +218,7 @@ def test_import_apply_stop_on_first_error():
             ExecutionResult(ok=False, answer_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
         ]
     )
-    adapter = make_employees_spec().get_apply_adapter()
+    adapter = get_spec("employees").get_apply_adapter()
     service = ImportApplyService(executor)
     apply_result = service.apply_plan(
         plan=plan,
@@ -288,7 +293,7 @@ def test_import_apply_max_actions_limits_requests():
             ExecutionResult(ok=True, answer_code=200, response_payload={"ok": True}),
         ]
     )
-    adapter = make_employees_spec().get_apply_adapter()
+    adapter = get_spec("employees").get_apply_adapter()
     service = ImportApplyService(executor)
     service.apply_plan(
         plan=plan,
@@ -334,7 +339,7 @@ def test_import_apply_does_not_retry_resource_exists_in_usecase():
             ),
         ]
     )
-    adapter = make_employees_spec().get_apply_adapter()
+    adapter = get_spec("employees").get_apply_adapter()
     service = ImportApplyService(executor)
     apply_result = service.apply_plan(
         plan=plan,
@@ -525,7 +530,7 @@ def test_apply_report_items_include_dataset():
             ExecutionResult(ok=False, answer_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
         ]
     )
-    adapter = make_employees_spec().get_apply_adapter()
+    adapter = get_spec("employees").get_apply_adapter()
     service = ImportApplyService(executor)
     apply_result = service.apply_plan(
         plan=plan,
