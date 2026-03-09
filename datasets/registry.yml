@@ -14,6 +14,49 @@ datasets:
     build_options:
       enrich:
         require_match_key: true
+    report:
+      identity_label: match_key
+      conflict_code: MATCH_CONFLICT
+      conflict_field: matchKey
+    apply:
+      operation_alias: users.upsert
+      payload:
+        source: sink
+        defaults:
+          avatarId: null
+        conditional_fields:
+          - password
+      params:
+        mode: target_id
+    diagnostics:
+      - code: INVALID_AVATAR_ID
+        system_code: DATA_INVALID
+        severity: error
+        message: "avatarId must be empty or null"
+      - code: USR_ORG_TAB_CONFLICT
+        system_code: DATA_INVALID
+        severity: error
+        message: "usr_org_tab_num conflicts with existing row"
+      - code: TARGET_ID_MISSING
+        system_code: DATA_INVALID
+        severity: error
+        message: "target_id is required"
+      - code: MATCH_KEY_MISSING
+        system_code: DATA_INVALID
+        severity: error
+        message: "match_key is required"
+      - code: INVALID_INT
+        system_code: DATA_INVALID
+        severity: error
+        message: "invalid integer value"
+      - code: INVALID_EMAIL
+        system_code: DATA_INVALID
+        severity: error
+        message: "email has invalid format"
+      - code: INVALID_BOOLEAN
+        system_code: DATA_INVALID
+        severity: error
+        message: "invalid boolean value"
 
 cache:
   version: 1
