@@ -37,6 +37,7 @@ def test_schema_bootstrap_creates_vault_tables(tmp_path: Path):
         assert "vault_dek" in table_names
         assert "vault_secrets" in table_names
         assert "vault_probe" in table_names
+        assert "vault_management_meta" in table_names
 
         version_row = engine.fetchone("SELECT value FROM vault_meta WHERE key='schema_version'")
         assert version_row is not None
@@ -208,11 +209,13 @@ def test_dek_upsert_keeps_single_active_dek(tmp_path: Path):
         active = repo.get_active_dek()
         old = repo.get_dek(dek_version="dek_v1")
         new = repo.get_dek(dek_version="dek_v2")
+        all_deks = repo.list_deks()
 
         assert active is not None
         assert active.dek_version == "dek_v2"
         assert new is not None and new.is_active is True
         assert old is not None and old.is_active is False
+        assert [item.dek_version for item in all_deks] == ["dek_v2", "dek_v1"]
     finally:
         engine.close()
 
@@ -247,5 +250,52 @@ def test_repository_rejects_nested_transactions(tmp_path: Path):
             with pytest.raises(RuntimeError, match="Nested vault transactions"):
                 with repo.transaction():
                     pass
+    finally:
+        engine.close()
+
+
+def test_vault_management_metadata_roundtrip(tmp_path: Path):
+    repo, engine = _build_repo(tmp_path)
+    try:
+        assert repo.get_last_rotated_at() is None
+
+        repo.set_last_rotated_at("2026-03-04T10:00:00+00:00")
+        assert repo.get_last_rotated_at() == "2026-03-04T10:00:00+00:00"
+
+        repo.set_last_rotation_result(result="ok", reason="manual_rotate")
+        repo.set_last_rotation_run_id("run-rotate-001")
+        result_row = engine.fetchone(
+            "SELECT value FROM vault_management_meta WHERE key='last_rotation_result'"
+        )
+        reason_row = engine.fetchone(
+            "SELECT value FROM vault_management_meta WHERE key='last_rotation_reason'"
+        )
+        run_id_row = engine.fetchone(
+            "SELECT value FROM vault_management_meta WHERE key='last_rotation_run_id'"
+        )
+        assert result_row is not None and result_row[0] == "ok"
+        assert reason_row is not None and reason_row[0] == "manual_rotate"
+        assert run_id_row is not None and run_id_row[0] == "run-rotate-001"
+        assert repo.get_last_rotation_result() == "ok"
+        assert repo.get_last_rotation_reason() == "manual_rotate"
+        assert repo.get_last_rotation_run_id() == "run-rotate-001"
+
+        repo.set_last_rotation_result(result="failed", reason=None)
+        repo.set_last_rotation_run_id(None)
+        result_row = engine.fetchone(
+            "SELECT value FROM vault_management_meta WHERE key='last_rotation_result'"
+        )
+        reason_row = engine.fetchone(
+            "SELECT value FROM vault_management_meta WHERE key='last_rotation_reason'"
+        )
+        run_id_row = engine.fetchone(
+            "SELECT value FROM vault_management_meta WHERE key='last_rotation_run_id'"
+        )
+        assert result_row is not None and result_row[0] == "failed"
+        assert reason_row is None
+        assert run_id_row is None
+        assert repo.get_last_rotation_result() == "failed"
+        assert repo.get_last_rotation_reason() is None
+        assert repo.get_last_rotation_run_id() is None
     finally:
         engine.close()

@@ -1,0 +1,72 @@
+@startuml
+title Vault Management Rotate - Sequence Diagram (Current)
+skinparam backgroundColor white
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam sequence {
+  ArrowColor #4b5563
+  LifeLineBorderColor #9ca3af
+}
+hide footbox
+autonumber
+
+actor Operator
+participant "Typer CLI\nvault-management rotate" as CLI
+participant "rotate_handler\n(vault_management.py)" as Handler
+participant "VaultAdminPasswordGate" as Gate
+participant "VaultKeyManagementUseCase" as Usecase
+participant "VaultManagedEnvKeyringStore" as Store
+participant "SqliteVaultRepository" as Repo
+participant "SecretCipherPort\n(FernetEnvelopeCipher)" as Cipher
+participant "VaultStartupGuardPostVerifier" as Verify
+
+Operator -> CLI : syncEmployees vault-management rotate --verify
+CLI -> Handler : rotate_handler(ctx, opts)
+Handler -> Gate : verify_manual_access(non_interactive)
+Gate --> Handler : ok
+
+Handler -> Usecase : rotate_and_rewrap(run_id?)
+activate Usecase
+Usecase -> Store : lifecycle_lock()
+Usecase -> Store : load_keyring()
+Store --> Usecase : current keyring (old)
+Usecase -> Store : save_keyring((new, old...))
+note right of Usecase
+  Bridge keyring is persisted first
+  to keep rotate crash-safe.
+end note
+
+Usecase -> Repo : transaction() (BEGIN IMMEDIATE)
+activate Repo
+Usecase -> Repo : set_last_rotation_run_id(run_id)
+Usecase -> Repo : set_last_rotation_result("rotating", "rotate_in_progress")
+Usecase -> Repo : list_deks()
+Repo --> Usecase : deks
+
+loop each DEK
+  Usecase -> Cipher : unwrap_dek(wrapped_dek, candidate key)
+  Cipher --> Usecase : dek_plaintext
+  Usecase -> Cipher : wrap_dek(dek_plaintext, new master key)
+  Cipher --> Usecase : rewrapped_dek
+  Usecase -> Repo : upsert_dek(... wrap_key_version=new)
+end
+
+Usecase -> Repo : commit transaction
+deactivate Repo
+Usecase -> Store : save_keyring((new,))
+Usecase -> Verify : ensure_ready((new,))
+Verify --> Usecase : ready
+Usecase -> Repo : set_last_rotation_result("ok", "rotate_completed")
+Usecase -> Repo : set_last_rotated_at(now_utc)
+Usecase --> Handler : VaultKeyManagementResult
+
+deactivate Usecase
+Handler --> CLI : JSON payload + SystemErrorCode.OK
+
+alt rotate fails (rewrap/save/verify)
+  Usecase -> Repo : set_last_rotation_result("failed", reason)
+  Usecase --> Handler : VaultManagementOperationError
+  Handler --> CLI : DATA_INVALID / INTERNAL_ERROR
+end
+
+@enduml

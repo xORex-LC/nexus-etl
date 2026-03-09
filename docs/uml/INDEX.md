@@ -31,6 +31,10 @@
 4. `config/`
 - итоговая модель settings, загрузка, границы и contracts.
 
+5. `vault/`
+- `management/` — lifecycle `vault-management` (class/sequence/activity/state machine):
+  manual rotate protocol, maintenance flow, metadata states, startup touchpoints.
+
 ## Правила размещения
 
 1. Для каждой предметной области используем отдельный каталог.

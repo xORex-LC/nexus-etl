@@ -1,6 +1,9 @@
 """Доменные модели и ошибки Vault-подсистемы."""
 
 from connector.domain.secrets.errors import (
+    VaultAdminAccessDeniedError,
+    VaultAdminPasswordConfigError,
+    VaultManagementOperationError,
     SecretDecryptionError,
     SecretIntegrityError,
     SecretKeyConfigError,
@@ -22,6 +25,9 @@ __all__ = [
     "SecretNotFoundError",
     "SecretReadError",
     "SecretStoreError",
+    "VaultAdminAccessDeniedError",
+    "VaultAdminPasswordConfigError",
+    "VaultManagementOperationError",
     "VaultDekRecord",
     "VaultDomainError",
     "VaultProbeRecord",

@@ -1081,7 +1081,73 @@ secret = svc.get_secret(dataset="hr", field="pw", source_ref={"match_key":"emp"}
 
 ---
 
-## 17. Связанные документы
+## 17. Vault-Management Delivery Контур (DEC-002)
+
+### 17.1 Где находится orchestration
+
+| Слой | Модуль | Ответственность |
+|------|--------|-----------------|
+| Delivery | `connector/delivery/cli/app.py` | CLI namespace `syncEmployees vault-management <subcommand>` и парсинг флагов |
+| Delivery | `connector/delivery/commands/vault_management.py` | Confirm/password gate, dry-run payload, вызов usecase |
+| Usecase | `connector/usecases/management/vault/usecase.py` | Lifecycle orchestration `init/status/rotate/rewrap/delete-key` |
+| Usecase | `connector/usecases/management/vault/maintenance.py` | `run_if_due`, bridge recovery и due-gate |
+| Infra | `connector/infra/secrets/management/managed_env_keyring_store.py` | Managed keyring file IO (atomic write + lock + permissions) |
+| Infra | `connector/infra/secrets/management/admin_password_gate.py` | Manual access gate (argon2id verify) |
+| Domain | `connector/domain/secrets/policy/rotation_policy.py` | Чистая due-политика без IO |
+
+Граница ответственности:
+- Delivery слой не содержит rotate/rewrap алгоритм.
+- Usecase слой не содержит CLI/prompt parsing.
+- Domain policy не знает о файлах, ENV и DI.
+
+### 17.2 Startup integration
+
+`vault_startup_resource()` выполняет:
+1. `ensure_vault_schema(engine)`.
+2. Preload effective keyring с precedence `runtime ENV -> managed env file`.
+3. Optional maintenance (`auto_rotate_enabled=true`) с политикой ошибок:
+   - `fail_closed`: исключение прерывает startup.
+   - `fail_open`: ошибка maintenance не блокирует startup.
+4. Финальный `VaultStartupGuard.ensure_ready()`.
+
+### 17.3 Реальный CLI контракт
+
+Subcommands:
+- `init`
+- `status`
+- `rotate`
+- `rewrap`
+- `delete-key`
+- `run-maintenance`
+
+Общие флаги:
+- `--force`
+- `--dry-run`
+- `--non-interactive`
+- `--verify/--no-verify`
+- `--managed-env-file`
+
+Специальный флаг:
+- `init --import-existing-env`
+
+Поведение confirm/gate:
+- при `--non-interactive` обязателен `--force`;
+- manual operations (`init/rotate/rewrap/delete-key/run-maintenance`) проходят через `VaultAdminPasswordGate`;
+- `status` является read-only и gate не требует.
+
+### 17.4 Контракт `delete-key`
+
+`delete-key` реализован только как replace-flow:
+1. Генерируется новый active key.
+2. Выполняется rewrap всех DEK.
+3. Выполняется post-verify.
+4. Steady-state возвращается к single-key (`new` only).
+
+Прямого удаления единственного active key нет.
+
+---
+
+## 18. Связанные документы
 
 - [vault-core.md](vault-core.md) — Как write/read-сервисы встраиваются в конвейер:
   `SecretStoreProtocol` в enrich, `SecretProviderProtocol` в apply
@@ -1093,3 +1159,4 @@ secret = svc.get_secret(dataset="hr", field="pw", source_ref={"match_key":"emp"}
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-02-27 | Создан документ Vault Delivery | xORex-LC |
+| 2026-03-07 | Добавлен раздел DEC-002: delivery-контур `vault-management`, startup integration и CLI контракт | xORex-LC |

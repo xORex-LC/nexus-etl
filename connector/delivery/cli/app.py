@@ -11,7 +11,7 @@ from connector.config.diagnostics import translate_settings_load_error
 from connector.common.run_id import generate_run_id
 from connector.delivery.cli.context import CommandPaths, CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
-from connector.delivery.cli.runtime import run_with_report
+from connector.delivery.cli.runtime import run_with_report, run_without_report
 from connector.delivery.cli import options as cli_options
 from connector.delivery.cli.containers import build_diagnostics_catalog
 from connector.delivery.cli.settings_slice_map import (
@@ -31,6 +31,7 @@ from connector.delivery.commands import (
     mapping as mapping_command,
     normalize as normalize_command,
     resolve as resolve_command,
+    vault_management as vault_management_command,
 )
 from connector.domain.models import DiagnosticStage
 
@@ -38,6 +39,7 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 cacheApp = typer.Typer(no_args_is_help=True)
 importApp = typer.Typer(no_args_is_help=True)
 userApp = typer.Typer(no_args_is_help=True)
+vaultManagementApp = typer.Typer(no_args_is_help=True)
 
 
 def _ensure_dir(path: str) -> None:
@@ -491,6 +493,241 @@ def cacheClear(
     )
 
 
+@vaultManagementApp.command("init")
+def vaultManagementInit(
+    ctx: typer.Context,
+    force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
+    dryRun: bool = typer.Option(False, "--dry-run", help="Validate and show plan without writes"),
+    nonInteractive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Disable interactive prompts; password comes from ENV",
+    ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="Run post-operation startup verify",
+    ),
+    managedEnvFile: str | None = typer.Option(
+        None,
+        "--managed-env-file",
+        help="Override managed env keyring file",
+    ),
+    importExistingEnv: bool = typer.Option(
+        False,
+        "--import-existing-env",
+        help="Import existing ANKEY_VAULT_MASTER_KEYS as initial keyring",
+    ),
+):
+    opts = vault_management_command.InitOptions(
+        force=force,
+        dry_run=dryRun,
+        non_interactive=nonInteractive,
+        verify=verify,
+        managed_env_file=managedEnvFile,
+        import_existing_env=importExistingEnv,
+    )
+    command_ctx = _build_ctx(ctx, command_key="vault-management-init")
+    run_without_report(
+        ctx=command_ctx,
+        command_name="vault-management-init",
+        opts=opts,
+        handler=vault_management_command.init_handler,
+        requirements=Requirements(requires_vault_schema=True),
+    )
+
+
+@vaultManagementApp.command("status")
+def vaultManagementStatus(
+    ctx: typer.Context,
+    force: bool = typer.Option(False, "--force", help="Accepted for command contract consistency"),
+    dryRun: bool = typer.Option(False, "--dry-run", help="No-op for read-only status command"),
+    nonInteractive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Accepted for command contract consistency",
+    ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="Build usecase with verify on/off mode",
+    ),
+    managedEnvFile: str | None = typer.Option(
+        None,
+        "--managed-env-file",
+        help="Override managed env keyring file",
+    ),
+):
+    opts = vault_management_command.StatusOptions(
+        force=force,
+        dry_run=dryRun,
+        non_interactive=nonInteractive,
+        verify=verify,
+        managed_env_file=managedEnvFile,
+    )
+    command_ctx = _build_ctx(ctx, command_key="vault-management-status")
+    run_without_report(
+        ctx=command_ctx,
+        command_name="vault-management-status",
+        opts=opts,
+        handler=vault_management_command.status_handler,
+        requirements=Requirements(requires_vault_schema=True),
+    )
+
+
+@vaultManagementApp.command("rotate")
+def vaultManagementRotate(
+    ctx: typer.Context,
+    force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
+    dryRun: bool = typer.Option(False, "--dry-run", help="Validate and show plan without writes"),
+    nonInteractive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Disable interactive prompts; password comes from ENV",
+    ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="Run post-operation startup verify",
+    ),
+    managedEnvFile: str | None = typer.Option(
+        None,
+        "--managed-env-file",
+        help="Override managed env keyring file",
+    ),
+):
+    opts = vault_management_command.RotateOptions(
+        force=force,
+        dry_run=dryRun,
+        non_interactive=nonInteractive,
+        verify=verify,
+        managed_env_file=managedEnvFile,
+    )
+    command_ctx = _build_ctx(ctx, command_key="vault-management-rotate")
+    run_without_report(
+        ctx=command_ctx,
+        command_name="vault-management-rotate",
+        opts=opts,
+        handler=vault_management_command.rotate_handler,
+        requirements=Requirements(requires_vault_schema=True),
+    )
+
+
+@vaultManagementApp.command("rewrap")
+def vaultManagementRewrap(
+    ctx: typer.Context,
+    force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
+    dryRun: bool = typer.Option(False, "--dry-run", help="Validate and show plan without writes"),
+    nonInteractive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Disable interactive prompts; password comes from ENV",
+    ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="Run post-operation startup verify",
+    ),
+    managedEnvFile: str | None = typer.Option(
+        None,
+        "--managed-env-file",
+        help="Override managed env keyring file",
+    ),
+):
+    opts = vault_management_command.RewrapOptions(
+        force=force,
+        dry_run=dryRun,
+        non_interactive=nonInteractive,
+        verify=verify,
+        managed_env_file=managedEnvFile,
+    )
+    command_ctx = _build_ctx(ctx, command_key="vault-management-rewrap")
+    run_without_report(
+        ctx=command_ctx,
+        command_name="vault-management-rewrap",
+        opts=opts,
+        handler=vault_management_command.rewrap_handler,
+        requirements=Requirements(requires_vault_schema=True),
+    )
+
+
+@vaultManagementApp.command("delete-key")
+def vaultManagementDeleteKey(
+    ctx: typer.Context,
+    force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
+    dryRun: bool = typer.Option(False, "--dry-run", help="Validate and show plan without writes"),
+    nonInteractive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Disable interactive prompts; password comes from ENV",
+    ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="Run post-operation startup verify",
+    ),
+    managedEnvFile: str | None = typer.Option(
+        None,
+        "--managed-env-file",
+        help="Override managed env keyring file",
+    ),
+):
+    opts = vault_management_command.DeleteKeyOptions(
+        force=force,
+        dry_run=dryRun,
+        non_interactive=nonInteractive,
+        verify=verify,
+        managed_env_file=managedEnvFile,
+    )
+    command_ctx = _build_ctx(ctx, command_key="vault-management-delete-key")
+    run_without_report(
+        ctx=command_ctx,
+        command_name="vault-management-delete-key",
+        opts=opts,
+        handler=vault_management_command.delete_key_handler,
+        requirements=Requirements(requires_vault_schema=True),
+    )
+
+
+@vaultManagementApp.command("run-maintenance")
+def vaultManagementRunMaintenance(
+    ctx: typer.Context,
+    force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
+    dryRun: bool = typer.Option(False, "--dry-run", help="Validate and show plan without writes"),
+    nonInteractive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Disable interactive prompts; password comes from ENV",
+    ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="Run post-operation startup verify",
+    ),
+    managedEnvFile: str | None = typer.Option(
+        None,
+        "--managed-env-file",
+        help="Override managed env keyring file",
+    ),
+):
+    opts = vault_management_command.RunMaintenanceOptions(
+        force=force,
+        dry_run=dryRun,
+        non_interactive=nonInteractive,
+        verify=verify,
+        managed_env_file=managedEnvFile,
+    )
+    command_ctx = _build_ctx(ctx, command_key="vault-management-run-maintenance")
+    run_without_report(
+        ctx=command_ctx,
+        command_name="vault-management-run-maintenance",
+        opts=opts,
+        handler=vault_management_command.run_maintenance_handler,
+        requirements=Requirements(requires_vault_schema=True),
+    )
+
+
 app.add_typer(cacheApp, name="cache")
 app.add_typer(importApp, name="import")
 app.add_typer(userApp, name="user")
+app.add_typer(vaultManagementApp, name="vault-management")

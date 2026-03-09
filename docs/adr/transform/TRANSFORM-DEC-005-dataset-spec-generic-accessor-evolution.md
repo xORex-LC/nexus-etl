@@ -1,6 +1,6 @@
 # TRANSFORM-DEC-005: DatasetSpec — двухфазная эволюция к generic accessor
 
-> **Статус**: Принято
+> **Статус**: Принято (Phase 2 реализуется в [TRANSFORM-DEC-009](./TRANSFORM-DEC-009-declarative-dataset-spec-yaml-driven-plugins.md))
 > **Дата принятия**: 2026-02-22
 > **Решает проблему**: [TRANSFORM-PROBLEM-005](./TRANSFORM-PROBLEM-005-dataset-spec-ocp-violation.md)
 > **Участники решения**: @xorex-LC
