@@ -6,7 +6,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet
 
-from connector.datasets.employees.spec import make_employees_spec
+from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_models import Operation, Plan, PlanItem, PlanMeta, PlanSummary
@@ -155,7 +155,7 @@ def _run_apply(tmp_path: Path, *, lifecycle: dict[str, object] | None, exec_ok: 
             default_run_id="run-1",
         )
         retention = VaultRetentionService(repository=repo, locator=locator)
-        adapter = make_employees_spec(secrets=provider).get_apply_adapter()
+        adapter = get_spec("employees", secrets=provider).get_apply_adapter()
         result = ImportApplyService(
             executor=_DummyExecutor(ok=exec_ok),
             secret_retention=retention,
