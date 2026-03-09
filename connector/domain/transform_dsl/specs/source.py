@@ -35,6 +35,7 @@ class SourceConfig(DslBaseModel):
     format: str | None = None
     location: str | None = None
     location_ref: str | None = None
+    has_header: bool = False
     options: dict[str, Any] = Field(default_factory=dict)
     fields: list[SourceFieldSpec] = Field(default_factory=list)
 

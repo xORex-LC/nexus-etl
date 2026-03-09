@@ -41,7 +41,7 @@ from connector.infra.logging.setup import logEvent
 
 @dataclass(frozen=True)
 class Options:
-    csv_has_header: bool | None = None
+    source_has_header: bool | None = None
     include_deleted: bool | None = None
     report_items_limit: int | None = None
     report_include_skipped: bool | None = None
@@ -114,8 +114,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
             if opts.report_items_limit is not None
             else app_config.observability.report_items_limit
         )
-        csv_has_header_value = (
-            opts.csv_has_header if opts.csv_has_header is not None else app_config.dataset.csv_has_header
+        source_has_header_value = (
+            opts.source_has_header if opts.source_has_header is not None else app_config.dataset.source_has_header
         )
 
         catalog = build_diagnostics_catalog(
@@ -129,7 +129,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
         pipeline = ctx.container.pipeline
         with pipeline.dataset_spec.override(_spec), \
              pipeline.run_id.override(run_id), \
-             pipeline.csv_has_header.override(csv_has_header_value), \
+             pipeline.source_has_header.override(source_has_header_value), \
              pipeline.catalog.override(catalog), \
              pipeline.include_deleted.override(include_deleted_value), \
              pipeline.secret_store.override(secret_store):
