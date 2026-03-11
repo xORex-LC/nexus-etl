@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.common.sanitize import truncateText
+from connector.common.sanitize import truncate_text
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import ExecutionResult
 from connector.infra.target.core.engines.error_normalizer import NormalizedFault
@@ -51,7 +51,7 @@ class TargetResultBuilder:
             ok=False,
             answer_code=exc.answer_code,
             error_code=normalized.error_code,
-            error_message=truncateText(str(exc)),
+            error_message=truncate_text(str(exc)),
             error_reason=exc.error_reason,
             error_details=error_details,
         )
@@ -80,7 +80,7 @@ class TargetResultBuilder:
         return ExecutionResult(
             ok=False,
             error_code=SystemErrorCode.INFRA_UNAVAILABLE,
-            error_message=truncateText(str(exc)),
+            error_message=truncate_text(str(exc)),
         )
 
     def spec_error(self, message: str) -> ExecutionResult:
@@ -88,5 +88,5 @@ class TargetResultBuilder:
         return ExecutionResult(
             ok=False,
             error_code=self._kernel.system_error_code("SPEC"),
-            error_message=truncateText(message),
+            error_message=truncate_text(message),
         )

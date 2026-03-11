@@ -15,7 +15,7 @@ from uuid import uuid4
 
 import structlog
 
-from connector.common.time import getUtcNowIso
+from connector.common.time import get_utc_now_iso
 from connector.domain.secrets.policy.rotation_policy import VaultRotationPolicy
 from connector.usecases.management.vault.contracts import NowFactory, RunIdFactory, VaultKeyManagementProtocol
 from connector.usecases.management.vault.models import VaultMaintenanceResult
@@ -37,7 +37,7 @@ class VaultMaintenanceUseCase:
         *,
         key_management: VaultKeyManagementProtocol,
         rotation_policy: VaultRotationPolicy,
-        now_utc: NowFactory = getUtcNowIso,
+        now_utc: NowFactory = get_utc_now_iso,
         run_id_factory: RunIdFactory | None = None,
     ) -> None:
         self._key_management = key_management

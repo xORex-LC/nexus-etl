@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from connector.common.sanitize import maskSecretsInObject, truncateText
+from connector.common.sanitize import mask_secrets_in_object, truncate_text
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.infra.target.core.models import TargetFaultKind
 from connector.infra.target.core.spec_models import (
@@ -203,7 +203,7 @@ class TargetKernel:
 
     def redact_payload(self, payload: Any) -> Any:
         """Замаскировать секретные поля в payload-данных."""
-        return maskSecretsInObject(payload)
+        return mask_secrets_in_object(payload)
 
     def safe_body(self, body: Any, redaction: RedactionSpec | None = None) -> Any:
         """Вернуть безопасное представление тела ответа в зависимости от `body_mode`."""
@@ -211,7 +211,7 @@ class TargetKernel:
         if mode == "none":
             return None
         if isinstance(body, str):
-            return truncateText(body)
+            return truncate_text(body)
         if mode == "keys_only" and isinstance(body, dict):
             return list(body.keys())
-        return maskSecretsInObject(body)
+        return mask_secrets_in_object(body)

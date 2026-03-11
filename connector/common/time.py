@@ -13,6 +13,7 @@ def get_now_iso() -> str:
     """
     return datetime.now().astimezone().isoformat()
 
+
 def get_utc_now_iso() -> str:
     """
     Назначение:
@@ -23,6 +24,7 @@ def get_utc_now_iso() -> str:
             Например: 2026-01-11T17:22:10+00:00
     """
     return datetime.now(timezone.utc).isoformat()
+
 
 def get_duration_ms(start_monotonic: float, end_monotonic: float) -> int:
     """

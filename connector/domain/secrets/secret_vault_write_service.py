@@ -9,7 +9,7 @@ import base64
 import os
 from uuid import uuid4
 
-from connector.common.time import getUtcNowIso
+from connector.common.time import get_utc_now_iso
 from connector.domain.ports.secrets.cipher import SecretCipherPort
 from connector.domain.ports.secrets.key_provider import VaultKeyProviderPort, VaultMasterKey
 from connector.domain.ports.secrets.locator import SecretLocatorPort
@@ -76,7 +76,7 @@ class SecretVaultWriteService(SecretStoreProtocol):
                 details={"reason": "match_key_missing"},
             )
 
-        now = getUtcNowIso()
+        now = get_utc_now_iso()
         source_ref = {"match_key": normalized_match_key}
 
         try:

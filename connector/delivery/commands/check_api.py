@@ -11,7 +11,7 @@ from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.events import SetContextEvent
-from connector.infra.logging.setup import logEvent
+from connector.infra.logging.setup import log_event
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     target_meta = runtime.meta()
 
     if result.ok:
-        logEvent(
+        log_event(
             ctx.logger, logging.INFO, run_id, "api",
             f"api ok endpoint={target_meta.endpoint} latency_ms={result.latency_ms}",
         )
@@ -56,7 +56,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         )
         return result_with(SystemErrorCode.OK)
 
-    logEvent(
+    log_event(
         ctx.logger, logging.ERROR, run_id, "api",
         f"API check failed: {result.error_message}",
     )

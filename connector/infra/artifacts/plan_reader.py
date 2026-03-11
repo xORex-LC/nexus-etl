@@ -61,7 +61,7 @@ def _build_plan(meta_raw: dict, summary_raw: dict, items_raw: list, path: str) -
             continue
         # TODO: TECHDEBT - remove password masking once plan never includes secrets.
         desired_raw = raw.get("desired_state") if isinstance(raw.get("desired_state"), dict) else {}
-        if isMaskedSecret(desired_raw.get("password")):
+        if is_masked_secret(desired_raw.get("password")):
             desired_raw = {k: v for k, v in desired_raw.items() if k != "password"}
         target_id_raw = raw.get("target_id")
         if target_id_raw is None:
