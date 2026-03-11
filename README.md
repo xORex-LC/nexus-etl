@@ -102,7 +102,7 @@ syncEmployees --config ./config.yml cache status --dataset employees
 ### Построение плана импорта
 
 ```bash
-syncEmployees --config ./config.yml import plan --dataset employees --csv-has-header
+syncEmployees --config ./config.yml import plan --dataset employees
 ```
 
 Результат плана пишется в `reports/` (путь логируется и попадает в report).
@@ -123,11 +123,11 @@ syncEmployees --config ./config.yml import apply --plan ./reports/plan_import_<r
 ### Отладка отдельных стадий
 
 ```bash
-syncEmployees --config ./config.yml mapping --dataset employees --csv-has-header
-syncEmployees --config ./config.yml normalize --dataset employees --csv-has-header
-syncEmployees --config ./config.yml enrich --dataset employees --csv-has-header
-syncEmployees --config ./config.yml match --dataset employees --csv-has-header
-syncEmployees --config ./config.yml resolve --dataset employees --csv-has-header
+syncEmployees --config ./config.yml mapping --dataset employees
+syncEmployees --config ./config.yml normalize --dataset employees
+syncEmployees --config ./config.yml enrich --dataset employees
+syncEmployees --config ./config.yml match --dataset employees
+syncEmployees --config ./config.yml resolve --dataset employees
 ```
 
 ## Vault Management (master key lifecycle)

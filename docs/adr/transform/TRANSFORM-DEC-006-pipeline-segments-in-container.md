@@ -256,7 +256,7 @@ import_plan command
 |----------|------------|---------|
 | `dataset_spec` | ✅ | `build_dataset_spec()` |
 | `run_id` | ✅ | `ctx.run_id` |
-| `csv_has_header` | ✅ | opts / app_settings |
+| `source_has_header` | ✅ | opts / app_settings |
 | `catalog` | ✅ | `build_diagnostics_catalog()` |
 | `include_deleted` | ✅ | opts / app_settings |
 | `secret_store` | по условию | vault write service, если vault enabled |

@@ -75,7 +75,6 @@ def _run_import_plan(
             run_id,
             "import",
             "plan",
-            "--csv-has-header",
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),

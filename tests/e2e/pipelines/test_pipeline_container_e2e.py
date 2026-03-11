@@ -63,7 +63,6 @@ def _build_container(monkeypatch, csv_path: Path):
     container.app_config.override(AppConfig())
     container.dataset_spec.override(dataset_spec)
     container.run_id.override("e2e-test-run")
-    container.source_has_header.override(True)
     container.catalog.override(catalog)
     container.include_deleted.override(False)
     container.secret_store.override(None)

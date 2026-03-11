@@ -182,7 +182,6 @@ def main(
 @app.command("mapping")
 def mapping(
     ctx: typer.Context,
-    sourceHasHeader: bool | None = cli_options.SOURCE_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeMappedItems: bool | None = typer.Option(
@@ -193,7 +192,6 @@ def mapping(
     ),
 ):
     opts = mapping_command.Options(
-        source_has_header=sourceHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_mapped_items=includeMappedItems,
@@ -211,7 +209,6 @@ def mapping(
 @app.command("match")
 def match(
     ctx: typer.Context,
-    sourceHasHeader: bool | None = cli_options.SOURCE_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeMatchedItems: bool | None = typer.Option(
@@ -223,7 +220,6 @@ def match(
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
 ):
     opts = match_command.Options(
-        source_has_header=sourceHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_matched_items=includeMatchedItems,
@@ -242,7 +238,6 @@ def match(
 @app.command("normalize")
 def normalize(
     ctx: typer.Context,
-    sourceHasHeader: bool | None = cli_options.SOURCE_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeNormalizedItems: bool | None = typer.Option(
@@ -253,7 +248,6 @@ def normalize(
     ),
 ):
     opts = normalize_command.Options(
-        source_has_header=sourceHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_normalized_items=includeNormalizedItems,
@@ -271,7 +265,6 @@ def normalize(
 @app.command("resolve")
 def resolve(
     ctx: typer.Context,
-    sourceHasHeader: bool | None = cli_options.SOURCE_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeResolvedItems: bool | None = typer.Option(
@@ -283,7 +276,6 @@ def resolve(
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
 ):
     opts = resolve_command.Options(
-        source_has_header=sourceHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_resolved_items=includeResolvedItems,
@@ -302,7 +294,6 @@ def resolve(
 @app.command("enrich")
 def enrich(
     ctx: typer.Context,
-    sourceHasHeader: bool | None = cli_options.SOURCE_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeEnrichedItems: bool | None = typer.Option(
@@ -314,7 +305,6 @@ def enrich(
     vaultMode: str | None = cli_options.VAULT_MODE,
 ):
     opts = enrich_command.Options(
-        source_has_header=sourceHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_enriched_items=includeEnrichedItems,
@@ -338,7 +328,6 @@ def enrich(
 @import_app.command("plan")
 def importPlan(
     ctx: typer.Context,
-    sourceHasHeader: bool | None = cli_options.SOURCE_HAS_HEADER,
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     reportIncludeSkipped: bool | None = typer.Option(
@@ -351,7 +340,6 @@ def importPlan(
     vaultMode: str | None = cli_options.VAULT_MODE,
 ):
     opts = import_plan_command.Options(
-        source_has_header=sourceHasHeader,
         include_deleted=includeDeleted,
         report_items_limit=reportItemsLimit,
         report_include_skipped=reportIncludeSkipped,

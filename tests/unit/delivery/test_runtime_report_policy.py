@@ -46,7 +46,7 @@ def _app_config(tmp_path: Path, *, profile: str) -> AppConfig:
             "report_policy_profile": profile,
             "diagnostics_strict": True,
         },
-        "dataset": {"dataset_name": "employees", "source_has_header": True},
+        "dataset": {"dataset_name": "employees"},
         "execution": {"dry_run": True},
         "refresh": {"page_size": 100, "max_pages": 1},
         "matching_runtime": {"match_batch_size": 100, "match_flush_interval_ms": 100},
