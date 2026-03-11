@@ -14,7 +14,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from typing import Any, Protocol, runtime_checkable
 
-from connector.common.time import getNowIso
+from connector.common.time import get_now_iso
 from connector.domain.models import DiagnosticStage
 from connector.domain.reporting.contracts import (
     normalize_context_key,
@@ -88,7 +88,7 @@ class InMemoryReportContext(IReportContext):
             run_id=run_id,
             dataset=None,
             command=command,
-            started_at=started_at or getNowIso(),
+            started_at=started_at or get_now_iso(),
         )
         self._summary = ReportSummary()
         self._items: list[ReportItem] = []
@@ -147,7 +147,7 @@ class InMemoryReportContext(IReportContext):
             self._status = event.status
             return
         if isinstance(event, FinishEvent):
-            self._meta.finished_at = event.finished_at or getNowIso()
+            self._meta.finished_at = event.finished_at or get_now_iso()
             self._meta.duration_ms = event.duration_ms
             if self._status is None:
                 self._status = self._derive_status()

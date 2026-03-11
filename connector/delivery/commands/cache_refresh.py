@@ -18,7 +18,7 @@ from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.events import SetContextEvent, SetMetaEvent
 from connector.datasets.registry import build_identity_index_plan
 from connector.infra.cache.dsl_runtime import build_sync_adapters
-from connector.infra.logging.setup import logEvent
+from connector.infra.logging.setup import log_event
 from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.common.identity_sync import IdentityIndexSyncer
@@ -113,7 +113,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         typer.echo(f"ERROR: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     except Exception as exc:
-        logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
+        log_event(ctx.logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
         typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
 

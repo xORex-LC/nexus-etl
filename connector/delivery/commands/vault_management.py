@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, replace
 import structlog
 import typer
 
-from connector.common.time import getUtcNowIso
+from connector.common.time import get_utc_now_iso
 from connector.config.projections import to_vault_management_settings
 from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import result_with
@@ -392,7 +392,7 @@ def _maintenance_dry_run_plan(
 ) -> tuple[str, bool, bool]:
     if status.bridge_keyring:
         return "bridge_finalize", True, False
-    due = rotation_policy.is_due(last_rotated_at=status.last_rotated_at, now_utc=getUtcNowIso())
+    due = rotation_policy.is_due(last_rotated_at=status.last_rotated_at, now_utc=get_utc_now_iso())
     if not due:
         return "no_op", True, False
     can_apply = status.active_key_version is not None

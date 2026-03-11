@@ -9,7 +9,7 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.events import SetContextEvent
 from connector.domain.secrets.errors import VaultDomainError
-from connector.infra.logging.setup import logEvent
+from connector.infra.logging.setup import log_event
 
 
 def result_with(code: SystemErrorCode) -> CommandResult:
@@ -27,7 +27,7 @@ def sqlite_cache_error_result(*, logger, run_id: str, scope: str, exc: Exception
     Назначение:
         Единый fallback для ошибок открытия/чтения cache DB.
     """
-    logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
+    log_event(logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
     typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
     return result_with(SystemErrorCode.CACHE_ERROR)
 
@@ -37,7 +37,7 @@ def log_sqlite_cache_error(*, logger, run_id: str, exc: Exception) -> None:
     Назначение:
         Единый логгер cache sqlite-ошибки для best-effort сценариев.
     """
-    logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
+    log_event(logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
 
 
 def vault_startup_error_result(*, logger, run_id: str, exc: VaultDomainError) -> CommandResult:
@@ -45,7 +45,7 @@ def vault_startup_error_result(*, logger, run_id: str, exc: VaultDomainError) ->
     Назначение:
         Единый fail-fast результат для startup guard ошибок (`VAULT_STARTUP_*`).
     """
-    logEvent(logger, logging.ERROR, run_id, "vault", f"{exc.code}: {exc}")
+    log_event(logger, logging.ERROR, run_id, "vault", f"{exc.code}: {exc}")
     typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
     return result_with(SystemErrorCode.INTERNAL_ERROR)
 

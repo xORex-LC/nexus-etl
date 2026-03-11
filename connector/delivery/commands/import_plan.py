@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import typer
 
-from connector.common.time import getNowIso
+from connector.common.time import get_now_iso
 from connector.delivery.cli.containers import build_dataset_spec, build_diagnostics_catalog
 from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import (
@@ -36,7 +36,7 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
     resolve_vault_runtime_mode,
 )
 from connector.infra.artifacts.plan_writer import write_plan_file
-from connector.infra.logging.setup import logEvent
+from connector.infra.logging.setup import log_event
 
 
 @dataclass(frozen=True)
@@ -134,7 +134,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
              pipeline.include_deleted.override(include_deleted_value), \
              pipeline.secret_store.override(secret_store):
 
-            generated_at = getNowIso()
+            generated_at = get_now_iso()
             plan_pipeline = pipeline.planning_pipeline()
             planning_runtime = ctx.container.cache.roles().planning_runtime
             with plan_pipeline.open(
@@ -184,7 +184,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
                 run_id=run_id,
                 generated_at=generated_at,
             )
-            logEvent(ctx.logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
+            log_event(ctx.logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
             result = CommandResult()
             result.add_code(SystemErrorCode.OK)
             attach_dictionary_report_snapshot_if_available(ctx=ctx, report_sink=report_sink)
@@ -197,7 +197,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
     except sqlite3.Error as exc:
         return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="plan", exc=exc)
     except Exception as exc:
-        logEvent(ctx.logger, logging.ERROR, run_id, "plan", f"Import plan failed: {exc}")
+        log_event(ctx.logger, logging.ERROR, run_id, "plan", f"Import plan failed: {exc}")
         typer.echo("ERROR: import plan failed (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
 

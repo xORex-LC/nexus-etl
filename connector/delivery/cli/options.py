@@ -7,7 +7,12 @@ import typer
 DATASET = typer.Option(None, "--dataset", help="Dataset name")
 
 # Source options
-SOURCE_HAS_HEADER = typer.Option(None, "--source-has-header", help="Source file has header row")
+SOURCE_HAS_HEADER = typer.Option(
+    None,
+    "--source-has-header",
+    "--csv-has-header",
+    help="Source file has header row",
+)
 
 # Report options
 REPORT_ITEMS_LIMIT = typer.Option(None, "--report-items-limit", help="Max items stored in report")

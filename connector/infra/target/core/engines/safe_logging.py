@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.common.sanitize import truncateText
+from connector.common.sanitize import truncate_text
 from connector.infra.target.core.kernel import TargetKernel
 
 try:
@@ -51,7 +51,7 @@ class TargetSafeLogger:
     ) -> dict[str, Any] | None:
         """Собрать безопасные детали ошибки для результирующих диагностик."""
         details: dict[str, Any] | None = None
-        safe_preview = truncateText(content_preview) if content_preview else None
+        safe_preview = truncate_text(content_preview) if content_preview else None
         if safe_preview:
             details = {"content_preview": safe_preview}
         if isinstance(payload, (dict, list)):
@@ -77,13 +77,13 @@ class TargetSafeLogger:
             "answer_code": answer_code,
             "fault_kind": fault_kind,
         }
-        safe_preview = truncateText(content_preview) if content_preview else None
+        safe_preview = truncate_text(content_preview) if content_preview else None
         if safe_preview:
             log_data["content_preview"] = safe_preview
         if isinstance(payload, (dict, list)):
             log_data["response_payload"] = self.safe_body(payload)
         elif isinstance(payload, str):
-            log_data["response_payload"] = truncateText(payload)
+            log_data["response_payload"] = truncate_text(payload)
         self._logger.warning("target request failed", **log_data)
 
     def debug_retry(

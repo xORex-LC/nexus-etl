@@ -41,7 +41,7 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
 )
 from connector.datasets.registry import build_identity_index_plan, get_spec
 from connector.infra.artifacts.plan_reader import readPlanFile
-from connector.infra.logging.setup import logEvent
+from connector.infra.logging.setup import log_event
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.common.identity_sync import IdentityIndexSyncer
 
@@ -99,7 +99,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     try:
         plan = readPlanFile(opts.plan_path or "")
     except (OSError, ValueError) as exc:
-        logEvent(ctx.logger, logging.ERROR, run_id, "plan", f"Import apply failed: {exc}")
+        log_event(ctx.logger, logging.ERROR, run_id, "plan", f"Import apply failed: {exc}")
         typer.echo(f"ERROR: import apply failed: {exc}", err=True)
         return result_with(SystemErrorCode.IO_ERROR)
 
@@ -157,7 +157,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     try:
         identity_keys, identity_id_fields = build_identity_index_plan()
     except Exception as exc:
-        logEvent(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to init identity index: {exc}")
+        log_event(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to init identity index: {exc}")
 
     build_result = ctx.container.target.runtime()
     runtime = build_result.runtime
