@@ -76,7 +76,6 @@ def _apply_command_overrides(
     container: PipelineContainer,
     dataset_spec=None,
     run_id: str = "test-run",
-    source_has_header: bool = True,
     catalog=None,
     include_deleted: bool = False,
     secret_store=None,
@@ -90,7 +89,6 @@ def _apply_command_overrides(
 
     container.dataset_spec.override(dataset_spec)
     container.run_id.override(run_id)
-    container.source_has_header.override(source_has_header)
     container.catalog.override(catalog)
     container.include_deleted.override(include_deleted)
     container.secret_store.override(secret_store)

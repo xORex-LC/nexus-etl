@@ -80,19 +80,14 @@ class YamlDatasetSpec:
             raise UnsupportedStageError(stage_type, dataset=self.dataset_name)
         return loader(self.dataset_name)
 
-    def build_record_source(
-        self,
-        *,
-        has_header: bool | None = None,
-    ) -> Iterable[SourceRecord]:
+    def build_record_source(self) -> Iterable[SourceRecord]:
         source_spec = load_source_spec_for_dataset(self.dataset_name)
         if source_spec.source.type != "file" or source_spec.source.format != "csv":
             raise ValueError(
                 f"{self.dataset_name} source spec must be file/csv for current runtime"
             )
-        effective = has_header if has_header is not None else source_spec.source.has_header
         source_path = resolve_source_location(source_spec)
-        return CsvRecordSource(source_path, effective)
+        return CsvRecordSource(source_path, source_spec.source.has_header)
 
     def get_report_adapter(self) -> ReportAdapter:
         r = self._dsl_spec.report

@@ -33,7 +33,7 @@ class PipelineContainer(containers.DeclarativeContainer):
     cache_roles     = providers.Dependency(instance_of=SqliteCacheRolePorts)
     dataset_spec    = providers.Dependency(instance_of=DatasetSpec)
     catalog         = providers.Dependency(instance_of=ErrorCatalog)
-    csv_has_header  = providers.Dependency(instance_of=bool)
+    source_has_header  = providers.Dependency(instance_of=bool)
 
     # resolver_settings: только для planning-ветки (match/resolve)
     # Команды без planning не передают это значение → не резолвится
@@ -55,7 +55,7 @@ class PipelineContainer(containers.DeclarativeContainer):
     normalize_stage = providers.Factory(_build_normalize_stage, spec=dataset_spec, catalog=catalog)
     enrich_stage    = providers.Factory(_build_enrich_stage,    spec=dataset_spec,
                                         catalog=catalog, enrich_deps=enrich_deps)
-    row_source      = providers.Factory(_build_row_source, spec=dataset_spec, csv_has_header=csv_has_header)
+    row_source      = providers.Factory(_build_row_source, spec=dataset_spec, source_has_header=source_has_header)
 
     # ── Planning stages (resolver_settings резолвится только здесь) ───────
     planning_deps = providers.Factory(
@@ -78,7 +78,7 @@ container = PipelineContainer()
 container.cache_roles.override(cache_roles)
 container.dataset_spec.override(dataset_spec)
 container.catalog.override(catalog)
-container.csv_has_header.override(csv_has_header_value)
+container.source_has_header.override(source_has_header_value)
 # resolver_settings — НЕ передаётся, НЕ переопределяется
 # planning_deps — никогда не строится
 
@@ -93,7 +93,7 @@ container = PipelineContainer()
 container.cache_roles.override(cache_roles)
 container.dataset_spec.override(dataset_spec)
 container.catalog.override(catalog)
-container.csv_has_header.override(csv_has_header_value)
+container.source_has_header.override(source_has_header_value)
 container.resolver_settings.override(app_settings.resolver)  # ОДИН раз, здесь
 
 planning_deps = container.planning_deps()  # resolver_settings резолвится
@@ -140,7 +140,7 @@ resolve    →  resolve_stage → planning_deps → resolver_settings ← ТОЛ
 - ✅ **Один источник правды**: `resolver_settings` в match передаётся ровно один раз, в одном месте — через `container.resolver_settings.override()`
 - ✅ **Explicit dependency graph**: граф зависимостей описан декларативно, не разбросан по command handlers
 - ✅ **Open/closed для capabilities**: новая capability — новый провайдер в контейнере; остальные команды не меняются
-- ✅ **Testability**: тест normalize overrides только `dataset_spec`, `catalog`, `csv_has_header` — без `cache_roles`, `resolver_settings`, `planning_deps`
+- ✅ **Testability**: тест normalize overrides только `dataset_spec`, `catalog`, `source_has_header` — без `cache_roles`, `resolver_settings`, `planning_deps`
 - ✅ **Natural slot для TransformContext**: когда trigger-критерии TRANSFORM-DEC-002 будут достигнуты, `enrich_deps` провайдер меняет `TransformProviderDeps(...)` на `TransformContext.build(...)` — остальной граф не меняется
 
 **Недостатки (компромиссы)**:

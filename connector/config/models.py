@@ -74,7 +74,6 @@ class DatasetConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     dataset_name: str = "employees"
-    source_has_header: bool | None = None
     include_deleted: bool = False
 
 

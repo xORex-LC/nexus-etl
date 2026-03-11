@@ -2,7 +2,7 @@ dataset: employees
 source:
   type: file
   format: csv
-  has_header: false
+  has_header: true
   location_ref: EMPLOYEES_SOURCE_PATH
   options:
     delimiter: ","

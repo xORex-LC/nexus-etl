@@ -25,7 +25,6 @@ observability:
 
 dataset:
   dataset_name: employees
-  source_has_header: false
   include_deleted: false
 
 execution:
