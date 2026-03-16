@@ -38,7 +38,7 @@ class DatasetSpec(Protocol):
     def build_match_spec(self) -> MatchSpec: ...
     def build_resolve_spec(self) -> ResolveSpec: ...
     def build_sink_spec(self) -> SinkSpec: ...
-    def build_record_source(self, source_has_header: bool) -> Iterable[SourceRecord]: ...
+    def build_record_source(self) -> Iterable[SourceRecord]: ...
 ```
 
 `PipelineContainer` обращается к методам напрямую:
@@ -66,7 +66,7 @@ class DatasetSpec(Protocol):
         ...
 
     def build_sink_spec(self) -> SinkSpec: ...
-    def build_record_source(self, source_has_header: bool) -> Iterable[SourceRecord]: ...
+    def build_record_source(self) -> Iterable[SourceRecord]: ...
 ```
 
 `PipelineContainer` использует generic accessor:
@@ -93,7 +93,7 @@ def build_spec_for(self, stage_type: str) -> object:
 
 - Возвращает `object` (тип-erased). Тип-safety на стороне `StageDescriptor.engine_factory` — factory знает ожидаемый тип spec для своего `stage_type`.
 - Бросает `UnsupportedStageError` (не `KeyError`!) если датасет не поддерживает стадию.
-- Не делает I/O — только возвращает конструированный объект-spec из уже загруженной конфигурации.
+- Generic accessor сохраняет единый stage-key контракт; текущая YAML-реализация может загружать stage-конфиг on demand.
 
 ### YAML-driven реализация (целевое состояние)
 
@@ -113,8 +113,9 @@ class YamlDatasetSpec:
     def build_sink_spec(self) -> SinkSpec:
         return SinkSpec.from_config(self._config.sink)
 
-    def build_record_source(self, source_has_header: bool) -> Iterable[SourceRecord]:
-        return CsvRecordSource(self._config.source, source_has_header=source_has_header)
+    def build_record_source(self) -> Iterable[SourceRecord]:
+        source_path = resolve_source_location(self._config.source)
+        return CsvRecordSource(source_path, self._config.source.has_header)
 ```
 
 ---
@@ -157,9 +158,9 @@ class YamlDatasetSpec:
 
 ### Инварианты Phase 2
 
-1. `build_spec_for(stage_type)` **не делает I/O** — только возвращает объект из уже загруженного конфига
+1. `build_spec_for(stage_type)` сохраняет generic stage-key контракт, даже если YAML-реализация загружает stage-конфиг on demand
 2. `UnsupportedStageError` (не `KeyError`) — чёткое сообщение об ошибке для unsupported stage
-3. `build_sink_spec()` и `build_record_source()` остаются typed — они не per-stage, а per-dataset
+3. `build_record_source()` остаётся dataset-level accessor; `source.has_header` читается из source DSL, а не из CLI override
 
 ---
 

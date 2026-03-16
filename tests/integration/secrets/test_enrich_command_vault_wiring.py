@@ -115,7 +115,6 @@ def test_enrich_command_fails_when_vault_mode_off_and_dataset_has_secret_fields(
             "--run-id",
             "vault-off",
             "enrich",
-            "--source-has-header",
             "--vault-mode",
             "off",
         ],
