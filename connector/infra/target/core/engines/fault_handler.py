@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from connector.common.sanitize import truncateText
+from connector.common.sanitize import truncate_text
 from connector.infra.target.core.engines.error_normalizer import (
     NormalizedFault,
     TargetErrorNormalizer,
@@ -84,7 +84,7 @@ class TargetFaultHandler:
         )
         if content_preview is not None:
             error_details = dict(error_details or {})
-            error_details["content_preview"] = truncateText(str(content_preview))
+            error_details["content_preview"] = truncate_text(str(content_preview))
         if exc.error_reason is not None:
             error_details = dict(error_details or {})
             error_details["error_reason"] = exc.error_reason

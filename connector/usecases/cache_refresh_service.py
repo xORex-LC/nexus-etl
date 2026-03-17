@@ -10,7 +10,7 @@ import time
 import hashlib
 from typing import Any
 
-from connector.common.time import getNowIso
+from connector.common.time import get_now_iso
 from connector.domain.cache_core import CacheDependencyGraph, CacheRefreshPlanner
 from connector.datasets.cache_sync import CacheSyncAdapterProtocol
 from connector.domain.models import DiagnosticStage
@@ -22,7 +22,7 @@ from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.ports.cache.models import UpsertResult
 from connector.domain.ports.cache.roles import CacheRefreshPort
 from connector.domain.ports.target.read import TargetPagedReaderProtocol
-from connector.infra.logging.setup import logEvent
+from connector.infra.logging.setup import log_event
 from connector.usecases.common.identity_sync import IdentityIndexSyncer
 
 
@@ -84,7 +84,7 @@ class CacheRefreshUseCase:
         """
         Обновляет кэш из целевой системы с пагинацией.
         """
-        logEvent(
+        log_event(
             logger,
             logging.INFO,
             run_id,
@@ -141,7 +141,7 @@ class CacheRefreshUseCase:
                         stats["pages"] = max(stats["pages"], page_result.page)
 
                         items = page_result.items or []
-                        logEvent(
+                        log_event(
                             logger,
                             logging.DEBUG,
                             run_id,
@@ -209,7 +209,7 @@ class CacheRefreshUseCase:
                                 )
                             except Exception as exc:
                                 stats["failed"] += 1
-                                logEvent(logger, logging.ERROR, run_id, "cache", f"Failed to upsert {key}: {exc}")
+                                log_event(logger, logging.ERROR, run_id, "cache", f"Failed to upsert {key}: {exc}")
                                 report_errors, report_warnings = split_report_diagnostics(
                                     [
                                         diag_error(
@@ -240,7 +240,7 @@ class CacheRefreshUseCase:
                                     )
                                 )
 
-                now_iso = getNowIso()
+                now_iso = get_now_iso()
 
                 for name in stats_by_dataset.keys():
                     count_total = self.cache_refresh.count(name)
@@ -265,7 +265,7 @@ class CacheRefreshUseCase:
                 if api_base_url:
                     self.cache_refresh.set_meta(None, "source_api_base", api_base_url)
         except Exception as exc:
-            logEvent(logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
+            log_event(logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
             raise
 
         retries_used = 0
@@ -297,7 +297,7 @@ class CacheRefreshUseCase:
         )
 
         duration_ms = int((time.monotonic() - start_monotonic) * 1000)
-        logEvent(
+        log_event(
             logger,
             logging.INFO,
             run_id,

@@ -4,7 +4,7 @@ import csv
 from typing import Iterable
 
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.infra.sources.csv_utils import CsvFormatError, parseNull
+from connector.infra.sources.csv_utils import CsvFormatError, parse_null
 
 
 class CsvRecordSource:
@@ -32,7 +32,7 @@ class CsvRecordSource:
                         raise CsvFormatError(
                             f"Invalid column count at line {csv_line_no}: expected {len(reader.fieldnames)}, got {got}"
                         )
-                    values = {key: parseNull(row.get(key)) for key in row}
+                    values = {key: parse_null(row.get(key)) for key in row}
                     record = SourceRecord(
                         line_no=csv_line_no,
                         record_id=f"line:{csv_line_no}",
@@ -52,7 +52,7 @@ class CsvRecordSource:
                     raise CsvFormatError(
                         f"Invalid column count at line {csv_line_no}: expected {expected_len}, got {len(row)}"
                     )
-                values = {f"col_{idx}": parseNull(value) for idx, value in enumerate(row)}
+                values = {f"col_{idx}": parse_null(value) for idx, value in enumerate(row)}
                 record = SourceRecord(
                     line_no=csv_line_no,
                     record_id=f"line:{csv_line_no}",

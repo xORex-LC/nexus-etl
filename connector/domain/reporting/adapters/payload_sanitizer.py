@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any, Iterable
 
-from connector.common.sanitize import maskSecretsInObject
+from connector.common.sanitize import mask_secrets_in_object
 
 
 class PayloadSanitizer:
@@ -31,11 +31,11 @@ class PayloadSanitizer:
             return None
 
         if isinstance(payload_obj, dict):
-            sanitized = maskSecretsInObject(payload_obj)
+            sanitized = mask_secrets_in_object(payload_obj)
         elif hasattr(payload_obj, "__dataclass_fields__"):
-            sanitized = maskSecretsInObject(asdict(payload_obj))
+            sanitized = mask_secrets_in_object(asdict(payload_obj))
         else:
-            sanitized = maskSecretsInObject(payload_obj)
+            sanitized = mask_secrets_in_object(payload_obj)
 
         if isinstance(sanitized, dict) and secret_fields is not None:
             for field in secret_fields:

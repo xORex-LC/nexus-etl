@@ -3,8 +3,7 @@
     Контракты dataset-плагина для transform/planning/apply сценариев.
 
     DatasetSpec (Protocol) — narrowed: DSL configuration + adapters.
-    build_*_stage() и build_*_deps() удалены из Protocol (DEC-004 Stage 3).
-    Сборка стадий — ответственность StageFactory + PipelineContainer.
+    Phase 2 (DEC-009): typed build_*_spec() заменены на generic build_spec_for(stage_type).
 """
 
 from __future__ import annotations
@@ -15,14 +14,6 @@ from typing import Iterable, Protocol
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.target.apply import ApplyAdapterProtocol
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.transform_dsl.specs import (
-    EnrichSpec,
-    MappingSpec,
-    MatchSpec,
-    NormalizeSpec,
-    ResolveSpec,
-    SinkSpec,
-)
 
 
 @dataclass(frozen=True)
@@ -36,31 +27,36 @@ class ReportAdapter:
     conflict_field: str
 
 
+class UnsupportedStageError(Exception):
+    """
+    Назначение:
+        Стадия не поддерживается данным датасетом.
+    """
+
+    def __init__(self, stage_type: str, *, dataset: str) -> None:
+        self.stage_type = stage_type
+        self.dataset = dataset
+        super().__init__(
+            f"Dataset '{dataset}' does not support stage type '{stage_type}'"
+        )
+
+
 class DatasetSpec(Protocol):
     """
     Назначение:
         Контракт плагина датасета: DSL configuration + adapters.
 
     Граница:
-        - build_*_spec() — DSL-конфигурация (Phase 1 compromise, see DEC-005).
+        - build_spec_for(stage_type) — generic accessor для DSL-спецификации стадии (Phase 2, DEC-009).
         - build_record_source() — доступ к источнику данных.
         - get_report_adapter() / get_apply_adapter() — отчётные/apply адаптеры.
         - get_diagnostic_catalog() — каталог ошибок.
-        - build_*_stage(), build_*_deps() удалены (DEC-004 Stage 3).
     """
 
     dataset_name: str
 
-    def build_map_spec(self, settings=None) -> MappingSpec: ...
-    def build_normalize_spec(self, settings=None) -> NormalizeSpec: ...
-    def build_enrich_spec(self, settings=None) -> EnrichSpec: ...
-    def build_match_spec(self, settings=None) -> MatchSpec: ...
-    def build_resolve_spec(self, settings=None) -> ResolveSpec: ...
-    def build_sink_spec(self, settings=None) -> SinkSpec | None: ...
-    def build_record_source(
-        self,
-        csv_has_header: bool,
-    ) -> Iterable[SourceRecord]: ...
+    def build_spec_for(self, stage_type: str) -> object: ...
+    def build_record_source(self) -> Iterable[SourceRecord]: ...
     def get_report_adapter(self) -> ReportAdapter: ...
     def get_apply_adapter(self) -> ApplyAdapterProtocol: ...
     def get_diagnostic_catalog(self, strict: bool) -> ErrorCatalog: ...

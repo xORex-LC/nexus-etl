@@ -17,7 +17,7 @@ import os
 from typing import Protocol
 from uuid import uuid4
 
-from connector.common.time import getUtcNowIso
+from connector.common.time import get_utc_now_iso
 from connector.domain.ports.secrets.cipher import SecretCipherPort
 from connector.domain.ports.secrets.key_provider import VaultKeyProviderPort, VaultMasterKey
 from connector.domain.ports.secrets.repository import SecretVaultRepositoryPort
@@ -133,7 +133,7 @@ class VaultStartupGuard:
             ) from exc
 
     def _create_probe(self, active_master_key: VaultMasterKey) -> VaultProbeRecord:
-        now = getUtcNowIso()
+        now = get_utc_now_iso()
         dek_record, dek_plaintext = self._ensure_active_dek(active_master_key=active_master_key, now=now)
         try:
             ciphertext = self._cipher.encrypt(

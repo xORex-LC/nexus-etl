@@ -12,7 +12,7 @@ from connector.usecases.import_apply_service import ImportApplyService
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
-from connector.datasets.employees.spec import make_employees_spec
+from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.catalog import build_catalog
 
 CATALOG = build_catalog("employees", strict=True)
@@ -167,7 +167,7 @@ def test_import_apply_error_stats():
     executor = DummyExecutor(
         ExecutionResult(ok=False, answer_code=400, error_code=SystemErrorCode.DATA_INVALID, error_message="HTTP 400")
     )
-    adapter = make_employees_spec().get_apply_adapter()
+    adapter = get_spec("employees").get_apply_adapter()
     service = ImportApplyService(executor)
     result = service.apply_plan(
         plan=plan,

@@ -18,7 +18,6 @@ from connector.usecases.normalize_usecase import NormalizeUseCase
 
 @dataclass(frozen=True)
 class Options:
-    csv_has_header: bool | None = None
     dataset: str | None = None
     report_items_limit: int | None = None
     include_normalized_items: bool | None = None
@@ -30,9 +29,6 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     if app_config is None:
         raise ValueError("App settings are not initialized")
 
-    csv_has_header_value = (
-        opts.csv_has_header if opts.csv_has_header is not None else app_config.dataset.csv_has_header
-    )
     report_items_limit_value = (
         opts.report_items_limit
         if opts.report_items_limit is not None
@@ -53,7 +49,6 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         composer = pipeline.pipeline_composer()
         with pipeline.dataset_spec.override(dataset_spec), \
              pipeline.run_id.override(run_id), \
-             pipeline.csv_has_header.override(csv_has_header_value), \
              pipeline.catalog.override(catalog):
             usecase = NormalizeUseCase(
                 report_items_limit=report_items_limit_value,

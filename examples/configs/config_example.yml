@@ -25,7 +25,6 @@ observability:
 
 dataset:
   dataset_name: employees
-  csv_has_header: false
   include_deleted: false
 
 execution:

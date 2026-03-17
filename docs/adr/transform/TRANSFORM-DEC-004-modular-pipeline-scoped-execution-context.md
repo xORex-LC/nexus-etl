@@ -706,7 +706,7 @@ for resolved in resolve_stage.run(batch):  # ← StageContract
 
 #### Решение D: Per-command wiring через override context managers
 
-**Проблема**: `PipelineContainer` — субконтейнер `AppContainer`, который создаётся один раз в `run_with_report()` (Composition Root). Но per-command данные (`dataset_spec`, `csv_has_header`, `secret_store`, `run_id`) появляются позже — в command handler. Как безопасно передать их в PipelineContainer?
+**Проблема**: `PipelineContainer` — субконтейнер `AppContainer`, который создаётся один раз в `run_with_report()` (Composition Root). Но per-command данные (`dataset_spec`, `catalog`, `secret_store`, `run_id`, а для planning ещё и `include_deleted`) появляются позже — в command handler. Как безопасно передать их в `PipelineContainer`?
 
 **Два варианта:**
 
@@ -722,7 +722,7 @@ for resolved in resolve_stage.run(batch):  # ← StageContract
 pipeline = ctx.container.pipeline
 
 with pipeline.dataset_spec.override(dataset_spec), \
-     pipeline.csv_has_header.override(has_header), \
+     pipeline.catalog.override(catalog), \
      pipeline.run_id.override(run_id), \
      pipeline.secret_store.override(secret_store):
 
@@ -745,10 +745,10 @@ with pipeline.dataset_spec.override(dataset_spec), \
 | Provider | Источник | Override в handler? |
 |----------|----------|---------------------|
 | `dataset_spec` | CLI args → `DatasetSpec` | Да — per-command |
-| `csv_has_header` | CLI flag | Да — per-command |
+| `catalog` | `build_diagnostics_catalog()` / `ctx.catalog` | Да — per-command |
 | `run_id` | Генерируется в handler | Да — per-command |
 | `secret_store` | Vault rollout result | Да — per-command (может быть None) |
-| `catalog` | `AppContainer` | Нет — приходит из parent container |
+| `include_deleted` | opts / app_settings | Да — только planning |
 | `app_settings` | `AppContainer` | Нет — приходит из parent container |
 | `cache_roles` | `AppContainer` | Нет — приходит из parent container |
 | `stage_factory` | Singleton, статический | Нет — один на всё приложение |
@@ -802,7 +802,6 @@ class PipelineContainer(containers.DeclarativeContainer):
     app_settings    = providers.Dependency(instance_of=AppSettings)
     cache_roles     = providers.Dependency(instance_of=SqliteCacheRolePorts)
     catalog         = providers.Dependency(instance_of=ErrorCatalog)
-    csv_has_header  = providers.Dependency(instance_of=bool)
     run_id          = providers.Dependency(instance_of=str)
 
     # Опциональные capabilities (не все команды их передают)
@@ -854,21 +853,21 @@ class PipelineContainer(containers.DeclarativeContainer):
 
     # ── Transform stages (resolver_settings не участвует) ────────────
     row_source = providers.Factory(
-        lambda spec, h: spec.build_record_source(csv_has_header=h),
-        spec=dataset_spec, h=csv_has_header,
+        lambda spec: spec.build_record_source(),
+        spec=dataset_spec,
     )
     map_stage = providers.Factory(
-        lambda f, spec, ctx, opts: f.create("map", spec.build_map_spec(), ctx, options=opts),
+        lambda f, spec, ctx, opts: f.create("map", spec.build_spec_for("map"), ctx, options=opts),
         f=stage_factory, spec=dataset_spec,
         ctx=transform_context, opts=map_options,
     )
     normalize_stage = providers.Factory(
-        lambda f, spec, ctx, opts: f.create("normalize", spec.build_normalize_spec(), ctx, options=opts),
+        lambda f, spec, ctx, opts: f.create("normalize", spec.build_spec_for("normalize"), ctx, options=opts),
         f=stage_factory, spec=dataset_spec,
         ctx=transform_context, opts=normalize_options,
     )
     enrich_stage = providers.Factory(
-        lambda f, spec, ctx, opts, gw: f.create("enrich", spec.build_enrich_spec(), ctx, options=opts, gateway=gw),
+        lambda f, spec, ctx, opts, gw: f.create("enrich", spec.build_spec_for("enrich"), ctx, options=opts, gateway=gw),
         f=stage_factory, spec=dataset_spec,
         ctx=enrich_context, opts=enrich_options,
         gw=provider_gateway,
@@ -876,12 +875,12 @@ class PipelineContainer(containers.DeclarativeContainer):
 
     # ── Planning stages (resolver_settings резолвится только здесь) ──
     match_stage = providers.Factory(
-        lambda f, spec, ctx, opts: f.create("match", spec.build_match_spec(), ctx, options=opts),
+        lambda f, spec, ctx, opts: f.create("match", spec.build_spec_for("match"), ctx, options=opts),
         f=stage_factory, spec=dataset_spec,
         ctx=planning_context, opts=match_options,
     )
     resolve_stage = providers.Factory(
-        lambda f, spec, ctx, opts: f.create("resolve", spec.build_resolve_spec(), ctx, options=opts),
+        lambda f, spec, ctx, opts: f.create("resolve", spec.build_spec_for("resolve"), ctx, options=opts),
         f=stage_factory, spec=dataset_spec,
         ctx=planning_context, opts=resolve_options,
     )
@@ -1036,10 +1035,10 @@ CLI Command
 
 | Файл | Изменение |
 |------|-----------|
-| `connector/delivery/cli/containers.py` | Создать `PipelineContainer` (DeclarativeContainer): providers `dataset_spec`, `run_id`, `csv_has_header`, `secret_store`, `catalog`, `app_settings`, `cache_roles`, `dictionaries`; scoped contexts (`transform_context`, `enrich_context`, `planning_context`); `stage_factory` Singleton; `provider_gateway` Singleton; все 5 stage providers; `transform_pipeline`, `full_pipeline` orchestrators. |
+| `connector/delivery/cli/containers.py` | Создать `PipelineContainer` (DeclarativeContainer): providers `dataset_spec`, `run_id`, `secret_store`, `catalog`, `app_settings`, `cache_roles`, `dictionaries`; scoped contexts (`transform_context`, `enrich_context`, `planning_context`); `stage_factory` Singleton; `provider_gateway` Singleton; все 5 stage providers; `transform_pipeline`, `full_pipeline` orchestrators. |
 | `connector/delivery/cli/containers.py` | `AppContainer`: добавить `pipeline = providers.Container(PipelineContainer, catalog=..., app_settings=..., cache_roles=...)`. |
 | `connector/delivery/cli/containers.py` | `build_pipeline_context()` и `PipelineContext` — добавить deprecation warning (удалить в Этапе 5). |
-| `connector/delivery/commands/normalize.py` | Per-command override context manager: `dataset_spec`, `run_id`, `csv_has_header`. Запрашивает только `map_stage()`, `normalize_stage()`. |
+| `connector/delivery/commands/normalize.py` | Per-command override context manager: `dataset_spec`, `run_id`, `catalog`. Запрашивает только `map_stage()`, `normalize_stage()`. |
 | `connector/delivery/commands/enrich.py` | Per-command override. Запрашивает `map_stage()`, `normalize_stage()`, `enrich_stage()`. |
 | `connector/delivery/commands/match.py` | Per-command override включая `secret_store`. Запрашивает `match_stage()`. Один путь для `resolver_settings`. |
 | `connector/delivery/commands/resolve.py` | Per-command override. Запрашивает `resolve_stage()`. |

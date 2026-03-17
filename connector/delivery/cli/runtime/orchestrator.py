@@ -20,7 +20,7 @@ from typing import Any, Callable
 
 import typer
 
-from connector.common.time import getDurationMs
+from connector.common.time import get_duration_ms
 from connector.config.config import SettingsLoadError
 from connector.config.models import AppConfig
 from connector.config.diagnostics import translate_settings_load_error
@@ -35,7 +35,7 @@ from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.reporting.sink import NullReportSink, ReportSink
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.artifacts.report_renderer import JsonReportRenderer
-from connector.infra.logging.setup import StdStreamToLogger, TeeStream, createCommandLogger, logEvent
+from connector.infra.logging.setup import StdStreamToLogger, TeeStream, create_command_logger, log_event
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve_source_location
 from connector.delivery.cli.context import BoundCommandContext, CommandContext, UnboundCommandContext
@@ -83,11 +83,11 @@ def run_with_report(
     run_id = ctx.run_id
 
     start_monotonic = time.monotonic()
-    logger, log_file_path = createCommandLogger(
-        commandName=command_name,
-        logDir=paths.log_dir,
-        runId=run_id,
-        logLevel=observability.log_level,
+    logger, log_file_path = create_command_logger(
+        command_name=command_name,
+        log_dir=paths.log_dir,
+        run_id=run_id,
+        log_level=observability.log_level,
     )
     ctx = replace(ctx, logger=logger)
 
@@ -137,7 +137,7 @@ def run_with_report(
     container: AppContainer | None = None
 
     try:
-        logEvent(logger, logging.INFO, run_id, "core", "Command started")
+        log_event(logger, logging.INFO, run_id, "core", "Command started")
 
         validate_requirements(ctx, opts, requirements)
 
@@ -182,7 +182,7 @@ def run_with_report(
             error=exc,
             record_ref=None,
         )
-        logEvent(logger, logging.ERROR, run_id, "config", f"Settings error: {exc}")
+        log_event(logger, logging.ERROR, run_id, "config", f"Settings error: {exc}")
         echo_command_diagnostics("ERROR: invalid settings configuration", diags)
         result = DomainCommandResult()
         result.add_diagnostics(diags, ctx.catalog)
@@ -203,7 +203,7 @@ def run_with_report(
             error=exc,
             record_ref=None,
         )
-        logEvent(logger, logging.ERROR, run_id, "dsl", f"{exc.code}: {exc}")
+        log_event(logger, logging.ERROR, run_id, "dsl", f"{exc.code}: {exc}")
         typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
         result = DomainCommandResult()
         result.add_diagnostics([diag], ctx.catalog)
@@ -217,7 +217,7 @@ def run_with_report(
             secondary=False,
         )
     except RuntimeErrorWithCode as exc:
-        logEvent(logger, logging.ERROR, run_id, "config", str(exc))
+        log_event(logger, logging.ERROR, run_id, "config", str(exc))
         typer.echo(f"ERROR: {exc}", err=True)
         exit_result = build_runtime_error_result(
             catalog=ctx.catalog,
@@ -234,7 +234,7 @@ def run_with_report(
             secondary=False,
         )
     except Exception as exc:
-        logEvent(logger, logging.ERROR, run_id, "core", f"Command failed: {exc}")
+        log_event(logger, logging.ERROR, run_id, "core", f"Command failed: {exc}")
         typer.echo("ERROR: command failed (see logs/report)", err=True)
         exit_result = build_runtime_error_result(
             catalog=ctx.catalog,
@@ -325,11 +325,11 @@ def run_without_report(
     run_id = ctx.run_id
 
     start_monotonic = time.monotonic()
-    logger, log_file_path = createCommandLogger(
-        commandName=command_name,
-        logDir=paths.log_dir,
-        runId=run_id,
-        logLevel=observability.log_level,
+    logger, log_file_path = create_command_logger(
+        command_name=command_name,
+        log_dir=paths.log_dir,
+        run_id=run_id,
+        log_level=observability.log_level,
     )
     ctx = replace(ctx, logger=logger)
 
@@ -346,7 +346,7 @@ def run_without_report(
     container: AppContainer | None = None
 
     try:
-        logEvent(logger, logging.INFO, run_id, "core", "Command started")
+        log_event(logger, logging.INFO, run_id, "core", "Command started")
 
         validate_requirements(ctx, opts, requirements)
 
@@ -375,7 +375,7 @@ def run_without_report(
             error=exc,
             record_ref=None,
         )
-        logEvent(logger, logging.ERROR, run_id, "config", f"Settings error: {exc}")
+        log_event(logger, logging.ERROR, run_id, "config", f"Settings error: {exc}")
         echo_command_diagnostics("ERROR: invalid settings configuration", diags)
         result = DomainCommandResult()
         result.add_diagnostics(diags, ctx.catalog)
@@ -388,13 +388,13 @@ def run_without_report(
             error=exc,
             record_ref=None,
         )
-        logEvent(logger, logging.ERROR, run_id, "dsl", f"{exc.code}: {exc}")
+        log_event(logger, logging.ERROR, run_id, "dsl", f"{exc.code}: {exc}")
         typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
         result = DomainCommandResult()
         result.add_diagnostics([diag], ctx.catalog)
         exit_result = result
     except RuntimeErrorWithCode as exc:
-        logEvent(logger, logging.ERROR, run_id, "config", str(exc))
+        log_event(logger, logging.ERROR, run_id, "config", str(exc))
         typer.echo(f"ERROR: {exc}", err=True)
         exit_result = build_runtime_error_result(
             catalog=ctx.catalog,
@@ -403,7 +403,7 @@ def run_without_report(
             details={"runtime_exit_code": exc.exit_code, "runtime_error": "RuntimeErrorWithCode"},
         )
     except Exception as exc:
-        logEvent(logger, logging.ERROR, run_id, "core", f"Command failed: {exc}")
+        log_event(logger, logging.ERROR, run_id, "core", f"Command failed: {exc}")
         typer.echo("ERROR: command failed (see logs)", err=True)
         exit_result = build_runtime_error_result(
             catalog=ctx.catalog,
@@ -422,8 +422,8 @@ def run_without_report(
             if exit_result is None and shutdown_result is not None:
                 exit_result = shutdown_result
 
-            _ = getDurationMs(start_monotonic, time.monotonic())
-            logEvent(logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}")
+            _ = get_duration_ms(start_monotonic, time.monotonic())
+            log_event(logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}")
         finally:
             sys.stdout = original_stdout
             sys.stderr = original_stderr
@@ -467,15 +467,15 @@ def initialize_container_resources(
         # Dictionary/DSL init failures must reach outer DSL error handling path unchanged.
         raise
     except sqlite3.Error as exc:
-        logEvent(logger, logging.ERROR, run_id, "cache", f"Container cache init failed: {exc}")
+        log_event(logger, logging.ERROR, run_id, "cache", f"Container cache init failed: {exc}")
         typer.echo("ERROR: failed to initialize cache resources (see logs/report)", err=True)
         return result_with(SystemErrorCode.CACHE_ERROR)
     except VaultDomainError as exc:
-        logEvent(logger, logging.ERROR, run_id, "vault", f"{exc.code}: {exc}")
+        log_event(logger, logging.ERROR, run_id, "vault", f"{exc.code}: {exc}")
         typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     except Exception as exc:
-        logEvent(logger, logging.ERROR, run_id, "core", f"Container resource init failed: {exc}")
+        log_event(logger, logging.ERROR, run_id, "core", f"Container resource init failed: {exc}")
         typer.echo("ERROR: failed to initialize runtime resources (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     return None
@@ -497,7 +497,7 @@ def shutdown_container_resources(
     try:
         container.shutdown_resources()
     except Exception as exc:
-        logEvent(logger, logging.ERROR, run_id, "core", f"Container shutdown failed: {exc}")
+        log_event(logger, logging.ERROR, run_id, "core", f"Container shutdown failed: {exc}")
         if emit_user_error:
             typer.echo("ERROR: runtime teardown failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
@@ -521,7 +521,7 @@ def finalize_report_artifacts(
         Финализировать report envelope и записать JSON artifact.
     """
     try:
-        duration_ms = getDurationMs(start_monotonic, time.monotonic())
+        duration_ms = get_duration_ms(start_monotonic, time.monotonic())
         report_sink.emit(
             SetContextEvent(
                 name=ReportContextKey.RUNTIME,
@@ -539,9 +539,9 @@ def finalize_report_artifacts(
             report_dir=paths.report_dir,
             file_base_name=f"report_{command_name}_{run_id}",
         )
-        logEvent(logger, logging.INFO, run_id, "report", f"Report written: {report_path}")
+        log_event(logger, logging.INFO, run_id, "report", f"Report written: {report_path}")
     except Exception as exc:
-        logEvent(logger, logging.ERROR, run_id, "report", f"Report finalization failed: {exc}")
+        log_event(logger, logging.ERROR, run_id, "report", f"Report finalization failed: {exc}")
         if emit_user_error:
             typer.echo("ERROR: failed to finalize report (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)

@@ -49,7 +49,6 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
             "--run-id",
             run_id,
             "enrich",
-            "--csv-has-header",
         ],
         env=merged_env,
     )

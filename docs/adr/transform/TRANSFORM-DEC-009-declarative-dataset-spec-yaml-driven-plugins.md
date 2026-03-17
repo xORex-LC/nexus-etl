@@ -41,8 +41,12 @@
 - `params_compiler.py` — generic params builders (`build_target_id_params`, `resolve_params_builder`)
 - `catalog_compiler.py` — `compile_diagnostic_catalog` (DSL entries → ErrorCatalog)
 
+**`connector/datasets/yaml_spec_loader.py`:**
+- `LoadedYamlDatasetArtifacts` — eager snapshot dataset-level и stage DSL
+- `load_yaml_dataset_artifacts(dataset)` — разовая загрузка полного YAML snapshot датасета
+
 **`connector/datasets/yaml_spec.py`:**
-- `YamlDatasetSpec` — generic DatasetSpec из YAML
+- `YamlDatasetSpec` — runtime accessor поверх preloaded YAML snapshot
 
 ### Расширение registry.yml
 
@@ -73,7 +77,7 @@ datasets:
 
 ### SinkSpec-driven payload building
 
-`SinkDrivenPayloadBuilder` заменяет `build_user_upsert_payload`, используя метаданные из SinkSpec:
+`SinkDrivenPayloadBuilder` заменяет хардкодированный employees payload builder, используя метаданные из SinkSpec:
 
 | SinkFieldSpec | Использование |
 |---|---|
@@ -92,7 +96,7 @@ class DatasetSpec(Protocol):
     dataset_name: str
 
     def build_spec_for(self, stage_type: str) -> object: ...
-    def build_record_source(self, csv_has_header: bool) -> Iterable[SourceRecord]: ...
+    def build_record_source(self) -> Iterable[SourceRecord]: ...
     def get_report_adapter(self) -> ReportAdapter: ...
     def get_apply_adapter(self) -> ApplyAdapterProtocol: ...
     def get_diagnostic_catalog(self, strict: bool) -> ErrorCatalog: ...
@@ -113,7 +117,7 @@ def _build_registry() -> dict[str, callable]:
 
 ```
 registry.yml
-  ├─ stage refs → load_*_spec_for_dataset() → stage specs (уже работает)
+  ├─ stage refs → eager load dataset snapshot → stage specs
   ├─ report: → ReportAdapterSpec → ReportAdapter
   ├─ apply: → ApplyAdapterSpec → OperationApplyAdapter
   │    └─ payload.source=sink → SinkSpec (employees.sink.yaml) → SinkDrivenPayloadBuilder
@@ -154,6 +158,7 @@ registry.yml
 | `connector/domain/dataset_dsl/payload_compiler.py` | Новый: SinkDrivenPayloadBuilder |
 | `connector/domain/dataset_dsl/params_compiler.py` | Новый: generic params builders |
 | `connector/domain/dataset_dsl/catalog_compiler.py` | Новый: DSL → ErrorCatalog |
+| `connector/datasets/yaml_spec_loader.py` | Новый: eager loader полного YAML snapshot датасета |
 | `connector/datasets/yaml_spec.py` | Новый: YamlDatasetSpec |
 | `connector/datasets/spec.py` | Изменён: Phase 2 Protocol |
 | `connector/datasets/registry.py` | Изменён: auto-discovery |
@@ -164,9 +169,9 @@ registry.yml
 
 ### Инварианты
 
-1. `build_spec_for(stage_type)` не делает I/O — возвращает объект из уже загруженного конфига
+1. `build_spec_for(stage_type)` не делает I/O — возвращает объект из уже загруженного dataset snapshot
 2. `UnsupportedStageError` (не `KeyError`) для неизвестных стадий
-3. `SinkDrivenPayloadBuilder` побитово идентичен `build_user_upsert_payload` для тех же входных данных
+3. `SinkDrivenPayloadBuilder` для `employees` зафиксирован golden contract tests по текущему payload behavior
 4. Auto-discovery не ломает существующие `get_spec()` / `list_specs()` контракты
 
 ---
@@ -174,7 +179,7 @@ registry.yml
 ## 🧪 Валидация решения
 
 **Тесты**:
-- ✅ Equivalence test: `SinkDrivenPayloadBuilder` vs `build_user_upsert_payload` — идентичный output
+- ✅ Golden contract tests: `SinkDrivenPayloadBuilder` для `employees` фиксирует payload behavior без возврата legacy builder
 - ✅ `build_spec_for("map")` → `MappingSpec`, `build_spec_for("unknown")` → `UnsupportedStageError`
 - ✅ Auto-discovery: `get_spec("employees")` → `YamlDatasetSpec`
 - ✅ Pydantic validation: корректная валидация DatasetDslSpec из YAML
@@ -192,7 +197,7 @@ registry.yml
 - `conditional_fields` и `defaults` должны быть явно указаны в registry.yml
 
 **Риски**:
-- ⚠️ Payload behavioral equivalence — coercion edge cases могут отличаться → Митигация: equivalence test
+- ⚠️ Payload behavioral drift — coercion edge cases могут измениться незаметно → Митигация: golden contract tests для `employees`
 - ⚠️ Phase 2 blast radius (PipelineContainer + command handlers) → Митигация: staged commits
 
 ---

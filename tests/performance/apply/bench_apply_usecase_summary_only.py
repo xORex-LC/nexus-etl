@@ -75,9 +75,9 @@ def _build_plan(n: int) -> Plan:
 
 def bench_apply_all_ok(loops: int) -> float:
     plan = _build_plan(N)
-    from connector.datasets.employees.spec import make_employees_spec
+    from connector.datasets.registry import get_spec
 
-    adapter = make_employees_spec().get_apply_adapter()
+    adapter = get_spec("employees").get_apply_adapter()
     executor = OkExecutor()
     service = ImportApplyService(executor)
 

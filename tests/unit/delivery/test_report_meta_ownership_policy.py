@@ -50,7 +50,7 @@ def _app_config(tmp_path: Path) -> AppConfig:
         "paths": {"cache_dir": str(tmp_path / "cache"), "log_dir": str(tmp_path / "logs"),
                   "report_dir": str(tmp_path / "reports")},
         "observability": {"log_level": "INFO", "report_items_limit": 100, "diagnostics_strict": True},
-        "dataset": {"dataset_name": "employees", "csv_has_header": True},
+        "dataset": {"dataset_name": "employees"},
         "execution": {"dry_run": True},
         "refresh": {"page_size": 100, "max_pages": 1},
         "matching_runtime": {"match_batch_size": 100, "match_flush_interval_ms": 100},

@@ -41,7 +41,6 @@ from connector.usecases.enrich_usecase import EnrichUseCase
 
 @dataclass(frozen=True)
 class Options:
-    csv_has_header: bool | None = None
     dataset: str | None = None
     report_items_limit: int | None = None
     include_enriched_items: bool | None = None
@@ -63,9 +62,6 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     if app_config is None:
         raise ValueError("App config is not initialized")
 
-    csv_has_header_value = (
-        opts.csv_has_header if opts.csv_has_header is not None else app_config.dataset.csv_has_header
-    )
     report_items_limit_value = (
         opts.report_items_limit
         if opts.report_items_limit is not None
@@ -135,7 +131,6 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         composer = pipeline.pipeline_composer()
         with pipeline.dataset_spec.override(dataset_spec), \
              pipeline.run_id.override(run_id), \
-             pipeline.csv_has_header.override(csv_has_header_value), \
              pipeline.catalog.override(catalog), \
              pipeline.secret_store.override(secret_store):
             usecase = EnrichUseCase(
@@ -166,7 +161,7 @@ def _dataset_requires_vault(dataset_spec) -> bool:
         - учитывает декларативный `enrich.secrets.fields`;
         - учитывает явные `target: secret:<field>` в generate/lookup.
     """
-    enrich_spec = dataset_spec.build_enrich_spec()
+    enrich_spec = dataset_spec.build_spec_for("enrich")
     secrets = enrich_spec.enrich.secrets
     if secrets is not None:
         for field in secrets.fields:

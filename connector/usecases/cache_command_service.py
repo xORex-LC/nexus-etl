@@ -12,7 +12,7 @@ from connector.domain.reporting.events import AddOpEvent, SetContextEvent
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_status_usecase import CacheStatusUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
-from connector.infra.logging.setup import logEvent
+from connector.infra.logging.setup import log_event
 
 
 class CacheCommandService:
@@ -88,7 +88,7 @@ class CacheCommandService:
             report_sink.emit(SetContextEvent(name=ReportContextKey.CACHE_STATUS, value={"status": status}))
             return CommandResult(summary=status)
         except Exception as exc:
-            logEvent(logger, logging.ERROR, run_id, "cache", f"Cache status failed: {exc}")
+            log_event(logger, logging.ERROR, run_id, "cache", f"Cache status failed: {exc}")
             result = CommandResult(summary={})
             result.add_code(SystemErrorCode.CACHE_ERROR)
             return result
@@ -106,7 +106,7 @@ class CacheCommandService:
             if self.cache_clear is None:
                 raise ValueError("Cache clear usecase is not configured")
             cleared = self.cache_clear.clear_with_options(dataset=dataset, cascade=cascade)
-            logEvent(
+            log_event(
                 logger,
                 logging.INFO,
                 run_id,
@@ -116,7 +116,7 @@ class CacheCommandService:
             report_sink.emit(SetContextEvent(name=ReportContextKey.CACHE_CLEAR, value={"cleared": cleared}))
             return CommandResult(summary=cleared)
         except Exception as exc:
-            logEvent(logger, logging.ERROR, run_id, "cache", f"Cache clear failed: {exc}")
+            log_event(logger, logging.ERROR, run_id, "cache", f"Cache clear failed: {exc}")
             result = CommandResult(summary={})
             result.add_code(SystemErrorCode.CACHE_ERROR)
             return result

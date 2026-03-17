@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import structlog
 
-from connector.common.time import getUtcNowIso
+from connector.common.time import get_utc_now_iso
 from connector.domain.ports.secrets.cipher import SecretCipherPort
 from connector.domain.ports.secrets.key_provider import VaultMasterKey
 from connector.domain.ports.secrets.repository import SecretVaultRepositoryPort
@@ -63,7 +63,7 @@ class VaultKeyManagementUseCase:
         cipher: SecretCipherPort,
         keyring_store: VaultManagedKeyringStoreProtocol,
         post_verify: VaultPostVerifyProtocol,
-        now_utc: NowFactory = getUtcNowIso,
+        now_utc: NowFactory = get_utc_now_iso,
         run_id_factory: RunIdFactory | None = None,
         key_material_factory: KeyMaterialFactory | None = None,
         key_version_factory: KeyVersionFactory | None = None,
