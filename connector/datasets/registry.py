@@ -1,10 +1,9 @@
-"""
-Назначение:
-    Реестр датасетов с auto-discovery из registry.yml.
+"""Назначение:
+    Реестр DatasetSpec factories с auto-discovery из `datasets/registry.yml`.
 
 Граница ответственности:
-    - Owns: получение DatasetSpec по имени, список всех датасетов, identity index plan.
-    - Does NOT: загрузка DSL-конфигурации (dataset_dsl.loader), сборка spec (yaml_spec).
+    - Owns: выбор factory по имени датасета, auto-discovery и eager registry validation.
+    - Does NOT: детали eager YAML loading и runtime accessor behavior самих DatasetSpec.
 """
 
 from __future__ import annotations
@@ -23,10 +22,10 @@ def _make_yaml_spec(
     secrets: SecretProviderProtocol | None = None,
 ) -> DatasetSpec:
     from connector.datasets.yaml_spec import YamlDatasetSpec
-    from connector.domain.dataset_dsl.loader import load_dataset_dsl_spec
+    from connector.datasets.yaml_spec_loader import load_yaml_dataset_artifacts
 
-    dsl_spec = load_dataset_dsl_spec(dataset_name)
-    return YamlDatasetSpec(dataset_name, dsl_spec, secrets)
+    artifacts = load_yaml_dataset_artifacts(dataset_name)
+    return YamlDatasetSpec(artifacts, secrets)
 
 
 def _import_spec_factory(spec_class_ref: str) -> Callable[..., DatasetSpec]:
@@ -95,10 +94,23 @@ def list_specs(secrets: SecretProviderProtocol | None = None) -> list[DatasetSpe
 def validate_registry() -> None:
     """
     Назначение:
-        Eagerly validate all dataset registrations (spec_class imports).
-        Вызывается при старте, чтобы ошибки в spec_class обнаруживались сразу.
+        Eagerly validate all dataset registrations before runtime command path.
+
+    Контракт:
+        - для YAML-driven datasets загружает полный snapshot артефактов;
+        - для `spec_class` проверяет import factory/class;
+        - не кеширует preloaded spec объекты глобально.
     """
-    _get_registry()
+    from connector.datasets.yaml_spec_loader import load_yaml_dataset_artifacts
+
+    registry_data = load_registry()
+    datasets = registry_data.get("datasets") or {}
+    for name, entry in datasets.items():
+        spec_class_ref = entry.get("spec_class") if isinstance(entry, dict) else None
+        if spec_class_ref:
+            _import_spec_factory(spec_class_ref)
+            continue
+        load_yaml_dataset_artifacts(name)
 
 
 def resolve_dataset_name(dataset: str | None, default: str) -> str:
