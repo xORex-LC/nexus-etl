@@ -4,7 +4,7 @@ from connector.infra.secrets.dict_provider import DictSecretProvider
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec, RequestExecutorProtocol
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.datasets.employees.spec import make_employees_spec
+from connector.datasets.registry import get_spec
 
 CATALOG = build_catalog("employees", strict=True)
 
@@ -56,7 +56,7 @@ def base_desired_state(with_password: bool = False) -> dict:
 
 def test_apply_create_uses_secret_provider_when_missing_password():
     provider = DictSecretProvider({("employees", "password", "row1", 1): "secret123"})
-    adapter = make_employees_spec(secrets=provider).get_apply_adapter()
+    adapter = get_spec("employees", secrets=provider).get_apply_adapter()
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor)
     plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
@@ -78,7 +78,7 @@ def test_apply_create_uses_secret_provider_when_missing_password():
 
 
 def test_apply_create_fails_when_secret_missing():
-    adapter = make_employees_spec().get_apply_adapter()
+    adapter = get_spec("employees").get_apply_adapter()
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor)
     plan = make_plan("create", base_desired_state(with_password=False), secret_fields=["password"])
@@ -110,7 +110,7 @@ class CountingProvider:
 
 def test_apply_update_does_not_request_secret():
     provider = CountingProvider()
-    adapter = make_employees_spec(secrets=provider).get_apply_adapter()
+    adapter = get_spec("employees", secrets=provider).get_apply_adapter()
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor)
     plan = make_plan("update", base_desired_state(with_password=False), secret_fields=[])

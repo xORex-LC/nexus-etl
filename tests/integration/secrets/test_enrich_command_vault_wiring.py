@@ -52,7 +52,6 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
             "--run-id",
             "vault-write",
             "enrich",
-            "--csv-has-header",
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),
@@ -116,7 +115,6 @@ def test_enrich_command_fails_when_vault_mode_off_and_dataset_has_secret_fields(
             "--run-id",
             "vault-off",
             "enrich",
-            "--csv-has-header",
             "--vault-mode",
             "off",
         ],

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-def getNowIso() -> str:
+def get_now_iso() -> str:
     """
     Назначение:
         Возвращает текущее время в ISO 8601 с timezone.
@@ -13,7 +13,8 @@ def getNowIso() -> str:
     """
     return datetime.now().astimezone().isoformat()
 
-def getUtcNowIso() -> str:
+
+def get_utc_now_iso() -> str:
     """
     Назначение:
         Возвращает текущее время в UTC ISO 8601.
@@ -24,17 +25,18 @@ def getUtcNowIso() -> str:
     """
     return datetime.now(timezone.utc).isoformat()
 
-def getDurationMs(startMonotonic: float, endMonotonic: float) -> int:
+
+def get_duration_ms(start_monotonic: float, end_monotonic: float) -> int:
     """
     Назначение:
         Считает длительность в миллисекундах по monotonic timestamps.
 
     Входные данные:
-        startMonotonic: float
-        endMonotonic: float
+        start_monotonic: float
+        end_monotonic: float
 
     Выходные данные:
         int
             Длительность в миллисекундах.
     """
-    return int((endMonotonic - startMonotonic) * 1000)
+    return int((end_monotonic - start_monotonic) * 1000)

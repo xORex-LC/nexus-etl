@@ -48,7 +48,6 @@ package "connector/config/app_settings.py" {
   }
   class DatasetSettings {
     +dataset_name: str
-    +csv_has_header: bool
     +include_deleted: bool
   }
   class ExecutionSettings {

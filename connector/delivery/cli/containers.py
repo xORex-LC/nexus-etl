@@ -70,7 +70,7 @@ from connector.domain.transform.resolver.pending_codec import PendingCodecAdapte
 from connector.domain.transform.resolver.pending_expiry_service import PendingExpiryService
 from connector.domain.transform.resolver.resolve_engine import ResolveEngine
 from connector.domain.transform.stages.stages import MatchStage, ResolveContextStage, ResolveStage
-from connector.datasets.registry import get_spec, resolve_dataset_name
+from connector.datasets.registry import get_spec, resolve_dataset_name, validate_registry
 from connector.datasets.spec import DatasetSpec
 from connector.delivery.cli.stages import PIPELINE_CHECKPOINTS, StageName
 from connector.delivery.cli.stages import PipelineComposer
@@ -599,8 +599,8 @@ def _build_planning_context(
 
 def _compile_resolve_rules(dataset_spec: DatasetSpec) -> object:
     """Compile resolve spec → resolve_rules (needed by match_engine_factory)."""
-    resolve_spec = dataset_spec.build_resolve_spec()
-    sink_spec = dataset_spec.build_sink_spec()
+    resolve_spec = dataset_spec.build_spec_for("resolve")
+    sink_spec = dataset_spec.build_spec_for("sink")
     compiled = ResolveDsl().compile(resolve_spec, sink_spec=sink_spec)
     return compiled.resolve_rules
 
@@ -629,7 +629,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         - Does NOT: содержать бизнес-логику — только wiring через StageFactory.
 
     Контракт:
-        - Per-command dependencies (dataset_spec, run_id, csv_has_header, catalog, etc.)
+        - Per-command dependencies (dataset_spec, run_id, catalog, etc.)
           задаются через override() context managers в command handlers.
         - Stages материализуются лениво: normalize handler НЕ материализует planning_context.
         - Один экземпляр PipelineContainer на invocation CLI-команды (sub-container AppContainer).
@@ -645,7 +645,6 @@ class PipelineContainer(containers.DeclarativeContainer):
     app_config = providers.Dependency(instance_of=object)
     cache_roles = providers.Dependency(instance_of=object)
     catalog = providers.Dependency(instance_of=object)
-    csv_has_header = providers.Dependency(instance_of=bool)
     run_id = providers.Dependency(instance_of=str)
     secret_store = providers.Object(None)
     dictionaries = providers.Object(None)
@@ -654,7 +653,7 @@ class PipelineContainer(containers.DeclarativeContainer):
     # ── Derived metadata ──────────────────────────────────────────────────────
 
     sink_spec = providers.Factory(
-        lambda s: s.build_sink_spec(),
+        lambda s: s.build_spec_for("sink"),
         s=dataset_spec,
     )
 
@@ -775,9 +774,8 @@ class PipelineContainer(containers.DeclarativeContainer):
     # ── Row source ────────────────────────────────────────────────────────────
 
     row_source = providers.Factory(
-        lambda s, h: s.build_record_source(csv_has_header=h),
+        lambda s: s.build_record_source(),
         s=dataset_spec,
-        h=csv_has_header,
     )
 
     # ── Transform stages ──────────────────────────────────────────────────────
@@ -786,7 +784,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         _create_stage,
         factory=stage_factory,
         stage_type="map",
-        spec=providers.Factory(lambda s: s.build_map_spec(), s=dataset_spec),
+        spec=providers.Factory(lambda s: s.build_spec_for("map"), s=dataset_spec),
         ctx=transform_context,
         options=map_options,
     )
@@ -800,7 +798,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         _create_stage,
         factory=stage_factory,
         stage_type="normalize",
-        spec=providers.Factory(lambda s: s.build_normalize_spec(), s=dataset_spec),
+        spec=providers.Factory(lambda s: s.build_spec_for("normalize"), s=dataset_spec),
         ctx=transform_context,
         options=normalize_options,
         row_builder=row_builder,
@@ -810,7 +808,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         _create_stage,
         factory=stage_factory,
         stage_type="enrich",
-        spec=providers.Factory(lambda s: s.build_enrich_spec(), s=dataset_spec),
+        spec=providers.Factory(lambda s: s.build_spec_for("enrich"), s=dataset_spec),
         ctx=enrich_context,
         options=enrich_options,
         gateway=provider_gateway,
@@ -822,7 +820,7 @@ class PipelineContainer(containers.DeclarativeContainer):
     # напрямую в PipelineContainer, т.к. требует batch_settings (Variant B, DEC-002).
     _match_engine = providers.Singleton(
         MatchEngine,
-        spec=providers.Factory(lambda s: s.build_match_spec(), s=dataset_spec),
+        spec=providers.Factory(lambda s: s.build_spec_for("match"), s=dataset_spec),
         ctx=planning_context,
         resolve_rules=compiled_resolve_rules,
         include_deleted=include_deleted,
@@ -840,7 +838,7 @@ class PipelineContainer(containers.DeclarativeContainer):
     # ── Resolve engine (Singleton, shared between ResolveContextStage и ResolveStage)
     _resolve_engine = providers.Singleton(
         ResolveEngine,
-        spec=providers.Factory(lambda s: s.build_resolve_spec(), s=dataset_spec),
+        spec=providers.Factory(lambda s: s.build_spec_for("resolve"), s=dataset_spec),
         ctx=planning_context,
         options=resolve_options,
         codec=pending_codec,
@@ -1078,7 +1076,12 @@ def build_dataset_spec(
     """
     Назначение:
         Разрешить имя датасета и вернуть соответствующий DatasetSpec.
+
+    Контракт:
+        - validate_registry() вызывается eagerly: ошибки в spec_class
+          обнаруживаются при старте, а не при первом get_spec().
     """
+    validate_registry()
     dataset_name = resolve_dataset_name(dataset, dataset_settings.dataset_name)
     return dataset_name, get_spec(dataset_name, secrets=secrets)
 

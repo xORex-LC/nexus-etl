@@ -22,7 +22,7 @@ from typing import Any
 from cryptography.fernet import Fernet
 
 from connector.common.time import getUtcNowIso
-from connector.datasets.employees.spec import make_employees_spec
+from connector.datasets.registry import get_spec
 from connector.delivery.commands.import_apply_dry_run_executor import DryRunExecutor
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.planning.plan_models import Plan, PlanItem, PlanMeta, PlanSummary
@@ -280,7 +280,7 @@ def _bench_e2e_apply(
         locator=locator,
         default_run_id=run_id,
     )
-    spec = make_employees_spec(
+    spec = get_spec("employees",
         secrets=provider,
     )
     adapter = spec.get_apply_adapter()

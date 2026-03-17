@@ -1,4 +1,4 @@
-def maskSecret(value: str | None) -> str | None:
+def mask_secret(value: str | None) -> str | None:
     """
     Назначение:
         Маскирует секреты для безопасного вывода в stdout/logs.
@@ -20,7 +20,7 @@ def maskSecret(value: str | None) -> str | None:
     return "***"
 
 
-def isMaskedSecret(value: str | None) -> bool:
+def is_masked_secret(value: str | None) -> bool:
     """
     Проверяет, является ли значение замаскированным секретом.
 
@@ -29,7 +29,7 @@ def isMaskedSecret(value: str | None) -> bool:
     return value == "***"
 
 
-def truncateText(value: str | None, limit: int = 500) -> str | None:
+def truncate_text(value: str | None, limit: int = 500) -> str | None:
     """
     Назначение:
         Ограничивает длину текста, чтобы избежать раздувания логов/отчётов.
@@ -53,7 +53,7 @@ def truncateText(value: str | None, limit: int = 500) -> str | None:
     return value[:head] + suffix
 
 
-def maskSecretsInObject(
+def mask_secrets_in_object(
     obj: object,
     sensitive_keys: tuple[str, ...] = (
         "password",
@@ -82,10 +82,10 @@ def maskSecretsInObject(
         masked: dict[str, object] = {}
         for k, v in obj.items():
             if k.lower() in sensitive:
-                masked[k] = maskSecret(str(v) if v is not None else None)
+                masked[k] = mask_secret(str(v) if v is not None else None)
             else:
-                masked[k] = maskSecretsInObject(v, sensitive_keys)
+                masked[k] = mask_secrets_in_object(v, sensitive_keys)
         return masked
     if isinstance(obj, list):
-        return [maskSecretsInObject(item, sensitive_keys) for item in obj]
+        return [mask_secrets_in_object(item, sensitive_keys) for item in obj]
     return obj

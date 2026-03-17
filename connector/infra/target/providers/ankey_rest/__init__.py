@@ -9,9 +9,6 @@ from connector.infra.target.providers.ankey_rest.provider import (
     apply_retry_overrides,
     build_transport_compiler_registry,
 )
-from connector.infra.target.providers.ankey_rest.payloads import (
-    build_user_upsert_payload,
-)
 from connector.infra.target.providers.ankey_rest.mutations import (
     build_ankey_mutations,
 )
@@ -23,5 +20,4 @@ __all__ = [
     "apply_retry_overrides",
     "build_transport_compiler_registry",
     "build_ankey_mutations",
-    "build_user_upsert_payload",
 ]

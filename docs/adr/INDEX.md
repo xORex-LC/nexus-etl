@@ -112,6 +112,8 @@ docs/adr/
 | [TRANSFORM-PROBLEM-008](./transform/TRANSFORM-PROBLEM-008-pending-codec-stage-coupling.md) | Problem | pending_codec привязан к стадии resolver — SRP нарушен, будущие consumers получат лишнюю зависимость | ✅ Закрыто | 2026-02-23 |
 | [TRANSFORM-DEC-008](./transform/TRANSFORM-DEC-008-pending-codec-standalone-feature.md) | Decision | Вынести pending_codec в `domain/transform/pending/` — standalone feature без привязки к стадии | ✅ Закрыто | 2026-02-23 |
 | [TRANSFORM-PROBLEM-009](./transform/TRANSFORM-PROBLEM-009-sink-validation-cross-cutting-in-stage-cores.md) | Problem | Sink schema validation — cross-cutting concern внутри всех 4 stage cores | ❌ Открыто (наблюдение, accepted pattern) | 2026-02-24 |
+| [TRANSFORM-PROBLEM-010](./transform/TRANSFORM-PROBLEM-010-hardcoded-dataset-spec-blocks-extensibility.md) | Problem | Хардкодированный DatasetSpec блокирует расширяемость датасетов | ✅ Закрыто | 2026-03-09 |
+| [TRANSFORM-DEC-009](./transform/TRANSFORM-DEC-009-declarative-dataset-spec-yaml-driven-plugins.md) | Decision | Декларативный DatasetSpec — YAML-driven dataset plugins | ✅ Закрыто | 2026-03-09 |
 
 ### Delivery
 

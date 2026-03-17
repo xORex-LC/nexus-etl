@@ -17,7 +17,7 @@ from __future__ import annotations
 import time
 from typing import Any, Iterable
 
-from connector.common.sanitize import maskSecretsInObject, truncateText
+from connector.common.sanitize import mask_secrets_in_object, truncate_text
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.ports.target.execution import ExecutionResult, RequestSpec
 from connector.domain.ports.target.read import TargetPageResult
@@ -174,11 +174,11 @@ class TargetGateway:
             )
         except ValueError as exc:
             self._failures_total += 1
-            yield _fail_page(self._kernel.system_error_code("SPEC"), truncateText(str(exc)))
+            yield _fail_page(self._kernel.system_error_code("SPEC"), truncate_text(str(exc)))
             return
         except Exception as exc:
             self._failures_total += 1
-            yield _fail_page(SystemErrorCode.INFRA_UNAVAILABLE, truncateText(str(exc)))
+            yield _fail_page(SystemErrorCode.INFRA_UNAVAILABLE, truncate_text(str(exc)))
             return
 
         while True:
@@ -190,7 +190,7 @@ class TargetGateway:
                 ):
                     self._requests_total += 1
                     last_page = page
-                    safe_items = maskSecretsInObject(items)
+                    safe_items = mask_secrets_in_object(items)
                     yield TargetPageResult(ok=True, page=page, items=safe_items)
                 return
             except DriverError as exc:
@@ -209,11 +209,11 @@ class TargetGateway:
 
                 self._failures_total += 1
                 error_details = self._fault_handler.build_exc_details(exc, retry_action)
-                yield _fail_page(normalized.error_code, truncateText(str(exc)), error_details)
+                yield _fail_page(normalized.error_code, truncate_text(str(exc)), error_details)
                 return
             except Exception as exc:
                 self._failures_total += 1
-                yield _fail_page(SystemErrorCode.INFRA_UNAVAILABLE, truncateText(str(exc)))
+                yield _fail_page(SystemErrorCode.INFRA_UNAVAILABLE, truncate_text(str(exc)))
                 return
 
     # ------------------------------------------------------------------
@@ -232,7 +232,7 @@ class TargetGateway:
                 ok=False,
                 fault_kind="SPEC",
                 error_code=self._kernel.system_error_code("SPEC"),
-                error_message=truncateText(str(exc)),
+                error_message=truncate_text(str(exc)),
             )
 
         start = time.monotonic()
@@ -253,9 +253,9 @@ class TargetGateway:
 
         if driver_exc is not None:
             normalized, _ = self._fault_handler.from_driver_error(driver_exc)
-            return _fail(normalized.fault_kind, normalized.error_code, truncateText(str(driver_exc)))
+            return _fail(normalized.fault_kind, normalized.error_code, truncate_text(str(driver_exc)))
         if unexpected_exc is not None:
-            return _fail("TRANSIENT", SystemErrorCode.INFRA_UNAVAILABLE, truncateText(str(unexpected_exc)))
+            return _fail("TRANSIENT", SystemErrorCode.INFRA_UNAVAILABLE, truncate_text(str(unexpected_exc)))
         assert resp is not None
         if resp.ok:
             return TargetCheckResult(ok=True, latency_ms=latency_ms)

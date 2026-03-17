@@ -8,7 +8,7 @@ class CsvFormatError(Exception):
     """
 
 
-def parseNull(value: str | None) -> str | None:
+def parse_null(value: str | None) -> str | None:
     """
     Назначение:
         Преобразует пустые/NULL значения в None и тримит строки.

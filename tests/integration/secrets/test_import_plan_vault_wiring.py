@@ -53,7 +53,6 @@ def test_import_plan_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: 
             "vault-plan",
             "import",
             "plan",
-            "--csv-has-header",
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),

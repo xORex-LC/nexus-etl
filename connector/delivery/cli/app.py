@@ -36,10 +36,10 @@ from connector.delivery.commands import (
 from connector.domain.models import DiagnosticStage
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
-cacheApp = typer.Typer(no_args_is_help=True)
-importApp = typer.Typer(no_args_is_help=True)
-userApp = typer.Typer(no_args_is_help=True)
-vaultManagementApp = typer.Typer(no_args_is_help=True)
+cache_app = typer.Typer(no_args_is_help=True)
+import_app = typer.Typer(no_args_is_help=True)
+user_app = typer.Typer(no_args_is_help=True)
+vault_management_app = typer.Typer(no_args_is_help=True)
 
 
 def _ensure_dir(path: str) -> None:
@@ -67,7 +67,7 @@ def _build_ctx(
         }
     return CommandContext(
         logger=ctx.obj["logger"],
-        run_id=ctx.obj["runId"],
+        run_id=ctx.obj["run_id"],
         catalog=catalog,
         strict=app_config.observability.diagnostics_strict,
         app_config=app_config,
@@ -81,77 +81,77 @@ def _build_ctx(
 def main(
     ctx: typer.Context,
     config: str | None = typer.Option(None, "--config", help="Path to config.yml"),
-    runId: str | None = typer.Option(None, "--run-id", help="Run identifier (UUID). If omitted, generated."),
-    logLevel: str | None = typer.Option(None, "--log-level", help="Log level: ERROR|WARN|INFO|DEBUG"),
-    logJson: bool | None = typer.Option(None, "--log-json", help="Enable JSON logging (reserved)"),
-    logDir: str | None = typer.Option(None, "--log-dir", help="Directory for logs."),
-    reportDir: str | None = typer.Option(None, "--report-dir", help="Directory for reports."),
-    cacheDir: str | None = typer.Option(None, "--cache-dir", help="Directory for cache (SQLite later)."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Run identifier (UUID). If omitted, generated."),
+    log_level: str | None = typer.Option(None, "--log-level", help="Log level: ERROR|WARN|INFO|DEBUG"),
+    log_json: bool | None = typer.Option(None, "--log-json", help="Enable JSON logging (reserved)"),
+    log_dir: str | None = typer.Option(None, "--log-dir", help="Directory for logs."),
+    report_dir: str | None = typer.Option(None, "--report-dir", help="Directory for reports."),
+    cache_dir: str | None = typer.Option(None, "--cache-dir", help="Directory for cache (SQLite later)."),
     host: str | None = typer.Option(None, "--host", help="API host/IP"),
     port: int | None = typer.Option(None, "--port", help="API port"),
-    apiUsername: str | None = typer.Option(None, "--api-username", help="API username"),
-    apiPassword: str | None = typer.Option(None, "--api-password", help="API password (avoid; use env/file)"),
-    apiPasswordFile: str | None = typer.Option(None, "--api-password-file", help="Read API password from file"),
-    tlsSkipVerify: bool | None = typer.Option(None, "--tls-skip-verify", help="Disable TLS verification"),
-    caFile: str | None = typer.Option(None, "--ca-file", help="CA file path"),
-    pageSize: int | None = typer.Option(None, "--page-size", help="Page size for API pagination"),
-    maxPages: int | None = typer.Option(None, "--max-pages", help="Max pages to fetch from API"),
-    timeoutSeconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
+    api_username: str | None = typer.Option(None, "--api-username", help="API username"),
+    api_password: str | None = typer.Option(None, "--api-password", help="API password (avoid; use env/file)"),
+    api_passwordFile: str | None = typer.Option(None, "--api-password-file", help="Read API password from file"),
+    tls_skip_verify: bool | None = typer.Option(None, "--tls-skip-verify", help="Disable TLS verification"),
+    ca_file: str | None = typer.Option(None, "--ca-file", help="CA file path"),
+    page_size: int | None = typer.Option(None, "--page-size", help="Page size for API pagination"),
+    max_pages: int | None = typer.Option(None, "--max-pages", help="Max pages to fetch from API"),
+    timeout_seconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
     retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API calls"),
-    retryBackoffSeconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff for retries"),
-    matchBatchSize: int | None = typer.Option(None, "--match-batch-size", help="Match micro-batch size"),
-    matchFlushIntervalMs: int | None = typer.Option(
+    retry_backoff_seconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff for retries"),
+    match_batch_size: int | None = typer.Option(None, "--match-batch-size", help="Match micro-batch size"),
+    match_flush_interval_ms: int | None = typer.Option(
         None,
         "--match-flush-interval-ms",
         help="Match micro-batch flush interval (ms)",
     ),
-    resolveBatchSize: int | None = typer.Option(None, "--resolve-batch-size", help="Resolve micro-batch size"),
-    resolveFlushIntervalMs: int | None = typer.Option(
+    resolve_batch_size: int | None = typer.Option(None, "--resolve-batch-size", help="Resolve micro-batch size"),
+    resolve_flush_interval_ms: int | None = typer.Option(
         None,
         "--resolve-flush-interval-ms",
         help="Resolve micro-batch flush interval (ms)",
     ),
-    strictDiagnostics: bool | None = typer.Option(
+    strict_diagnostics: bool | None = typer.Option(
         None,
         "--strict-diagnostics/--no-strict-diagnostics",
         help="Fail on unknown diagnostic codes",
     ),
 ):
-    if apiPasswordFile and not apiPassword:
-        p = Path(apiPasswordFile)
+    if api_passwordFile and not api_password:
+        p = Path(api_passwordFile)
         if not p.exists() or not p.is_file():
-            typer.echo(f"ERROR: api-password-file not found: {apiPasswordFile}", err=True)
+            typer.echo(f"ERROR: api-password-file not found: {api_passwordFile}", err=True)
             raise typer.Exit(code=2)
-        apiPassword = p.read_text(encoding="utf-8").strip()
+        api_password = p.read_text(encoding="utf-8").strip()
 
-    if not runId:
-        runId = generate_run_id()
+    if not run_id:
+        run_id = generate_run_id()
 
-    cliOverrides = {
+    cli_overrides = {
         "api.host": host,
         "api.port": port,
-        "api.username": apiUsername,
-        "api.password": apiPassword,
-        "observability.log_level": logLevel,
-        "observability.log_json": logJson,
-        "paths.log_dir": logDir,
-        "paths.report_dir": reportDir,
-        "paths.cache_dir": cacheDir,
-        "api.tls_skip_verify": tlsSkipVerify,
-        "api.ca_file": caFile,
-        "refresh.page_size": pageSize,
-        "refresh.max_pages": maxPages,
-        "api.timeout_seconds": timeoutSeconds,
+        "api.username": api_username,
+        "api.password": api_password,
+        "observability.log_level": log_level,
+        "observability.log_json": log_json,
+        "paths.log_dir": log_dir,
+        "paths.report_dir": report_dir,
+        "paths.cache_dir": cache_dir,
+        "api.tls_skip_verify": tls_skip_verify,
+        "api.ca_file": ca_file,
+        "refresh.page_size": page_size,
+        "refresh.max_pages": max_pages,
+        "api.timeout_seconds": timeout_seconds,
         "api.retries": retries,
-        "api.retry_backoff_seconds": retryBackoffSeconds,
-        "matching_runtime.match_batch_size": matchBatchSize,
-        "matching_runtime.match_flush_interval_ms": matchFlushIntervalMs,
-        "resolver.resolve_batch_size": resolveBatchSize,
-        "resolver.resolve_flush_interval_ms": resolveFlushIntervalMs,
-        "observability.diagnostics_strict": strictDiagnostics,
+        "api.retry_backoff_seconds": retry_backoff_seconds,
+        "matching_runtime.match_batch_size": match_batch_size,
+        "matching_runtime.match_flush_interval_ms": match_flush_interval_ms,
+        "resolver.resolve_batch_size": resolve_batch_size,
+        "resolver.resolve_flush_interval_ms": resolve_flush_interval_ms,
+        "observability.diagnostics_strict": strict_diagnostics,
     }
     try:
-        loaded_app = load_app_config(config, cli_overrides=cliOverrides)
+        loaded_app = load_app_config(config, cli_overrides=cli_overrides)
     except SettingsLoadError as exc:
         catalog = build_diagnostics_catalog(None, strict=False)
         diagnostics = translate_settings_load_error(
@@ -170,7 +170,7 @@ def main(
     _ensure_dir(loaded_app.app_config.paths.cache_dir)
 
     ctx.obj = {
-        "runId": runId,
+        "run_id": run_id,
         "app_config": loaded_app.app_config,
         "sources": sorted({v for v in loaded_app.source_trace.values() if v != "default"}),
         "settings_source_trace": loaded_app.source_trace,
@@ -182,7 +182,6 @@ def main(
 @app.command("mapping")
 def mapping(
     ctx: typer.Context,
-    csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeMappedItems: bool | None = typer.Option(
@@ -193,7 +192,6 @@ def mapping(
     ),
 ):
     opts = mapping_command.Options(
-        csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_mapped_items=includeMappedItems,
@@ -211,7 +209,6 @@ def mapping(
 @app.command("match")
 def match(
     ctx: typer.Context,
-    csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeMatchedItems: bool | None = typer.Option(
@@ -223,7 +220,6 @@ def match(
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
 ):
     opts = match_command.Options(
-        csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_matched_items=includeMatchedItems,
@@ -242,7 +238,6 @@ def match(
 @app.command("normalize")
 def normalize(
     ctx: typer.Context,
-    csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeNormalizedItems: bool | None = typer.Option(
@@ -253,7 +248,6 @@ def normalize(
     ),
 ):
     opts = normalize_command.Options(
-        csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_normalized_items=includeNormalizedItems,
@@ -271,7 +265,6 @@ def normalize(
 @app.command("resolve")
 def resolve(
     ctx: typer.Context,
-    csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeResolvedItems: bool | None = typer.Option(
@@ -283,7 +276,6 @@ def resolve(
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
 ):
     opts = resolve_command.Options(
-        csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_resolved_items=includeResolvedItems,
@@ -302,7 +294,6 @@ def resolve(
 @app.command("enrich")
 def enrich(
     ctx: typer.Context,
-    csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     dataset: str | None = cli_options.DATASET,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     includeEnrichedItems: bool | None = typer.Option(
@@ -314,7 +305,6 @@ def enrich(
     vaultMode: str | None = cli_options.VAULT_MODE,
 ):
     opts = enrich_command.Options(
-        csv_has_header=csvHasHeader,
         dataset=dataset,
         report_items_limit=reportItemsLimit,
         include_enriched_items=includeEnrichedItems,
@@ -335,10 +325,9 @@ def enrich(
     )
 
 
-@importApp.command("plan")
+@import_app.command("plan")
 def importPlan(
     ctx: typer.Context,
-    csvHasHeader: bool | None = cli_options.CSV_HAS_HEADER,
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
     reportItemsLimit: int | None = cli_options.REPORT_ITEMS_LIMIT,
     reportIncludeSkipped: bool | None = typer.Option(
@@ -351,7 +340,6 @@ def importPlan(
     vaultMode: str | None = cli_options.VAULT_MODE,
 ):
     opts = import_plan_command.Options(
-        csv_has_header=csvHasHeader,
         include_deleted=includeDeleted,
         report_items_limit=reportItemsLimit,
         report_include_skipped=reportIncludeSkipped,
@@ -373,8 +361,8 @@ def importPlan(
     )
 
 
-@importApp.command("apply")
-def importApply(
+@import_app.command("apply")
+def import_apply(
     ctx: typer.Context,
     plan: str | None = typer.Option(None, "--plan", help="Path to plan_import.json"),
     stopOnFirstError: bool | None = cli_options.STOP_ON_FIRST_ERROR,
@@ -414,14 +402,14 @@ def checkApi(ctx: typer.Context):
     )
 
 
-@cacheApp.command("refresh")
+@cache_app.command("refresh")
 def cacheRefresh(
     ctx: typer.Context,
-    pageSize: int | None = typer.Option(None, "--page-size", help="Page size for API pagination"),
-    maxPages: int | None = typer.Option(None, "--max-pages", help="Maximum pages to fetch from API"),
-    timeoutSeconds: float | None = cli_options.TIMEOUT_SECONDS,
+    page_size: int | None = typer.Option(None, "--page-size", help="Page size for API pagination"),
+    max_pages: int | None = typer.Option(None, "--max-pages", help="Maximum pages to fetch from API"),
+    timeout_seconds: float | None = cli_options.TIMEOUT_SECONDS,
     retries: int | None = cli_options.RETRIES,
-    retryBackoffSeconds: float | None = cli_options.RETRY_BACKOFF_SECONDS,
+    retry_backoff_seconds: float | None = cli_options.RETRY_BACKOFF_SECONDS,
     dataset: str | None = cli_options.DATASET,
     includeDeleted: bool | None = cli_options.INCLUDE_DELETED,
     deps: bool | None = typer.Option(
@@ -435,11 +423,11 @@ def cacheRefresh(
     if app_config is None:
         raise RuntimeError("App config is not initialized")
     opts = cache_refresh_command.Options(
-        page_size=pageSize if pageSize is not None else app_config.refresh.page_size,
-        max_pages=maxPages if maxPages is not None else app_config.refresh.max_pages,
-        timeout_seconds=timeoutSeconds,
+        page_size=page_size if page_size is not None else app_config.refresh.page_size,
+        max_pages=max_pages if max_pages is not None else app_config.refresh.max_pages,
+        timeout_seconds=timeout_seconds,
         retries=retries,
-        retry_backoff_seconds=retryBackoffSeconds,
+        retry_backoff_seconds=retry_backoff_seconds,
         include_deleted=includeDeleted,
         include_dependencies=deps,
         report_items_limit=reportItemsLimit,
@@ -456,7 +444,7 @@ def cacheRefresh(
     )
 
 
-@cacheApp.command("status")
+@cache_app.command("status")
 def cacheStatus(
     ctx: typer.Context,
     dataset: str | None = cli_options.DATASET,
@@ -472,7 +460,7 @@ def cacheStatus(
     )
 
 
-@cacheApp.command("clear")
+@cache_app.command("clear")
 def cacheClear(
     ctx: typer.Context,
     dataset: str | None = cli_options.DATASET,
@@ -493,7 +481,7 @@ def cacheClear(
     )
 
 
-@vaultManagementApp.command("init")
+@vault_management_app.command("init")
 def vaultManagementInit(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
@@ -537,7 +525,7 @@ def vaultManagementInit(
     )
 
 
-@vaultManagementApp.command("status")
+@vault_management_app.command("status")
 def vaultManagementStatus(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Accepted for command contract consistency"),
@@ -575,7 +563,7 @@ def vaultManagementStatus(
     )
 
 
-@vaultManagementApp.command("rotate")
+@vault_management_app.command("rotate")
 def vaultManagementRotate(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
@@ -613,7 +601,7 @@ def vaultManagementRotate(
     )
 
 
-@vaultManagementApp.command("rewrap")
+@vault_management_app.command("rewrap")
 def vaultManagementRewrap(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
@@ -651,7 +639,7 @@ def vaultManagementRewrap(
     )
 
 
-@vaultManagementApp.command("delete-key")
+@vault_management_app.command("delete-key")
 def vaultManagementDeleteKey(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
@@ -689,7 +677,7 @@ def vaultManagementDeleteKey(
     )
 
 
-@vaultManagementApp.command("run-maintenance")
+@vault_management_app.command("run-maintenance")
 def vaultManagementRunMaintenance(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
@@ -727,7 +715,7 @@ def vaultManagementRunMaintenance(
     )
 
 
-app.add_typer(cacheApp, name="cache")
-app.add_typer(importApp, name="import")
-app.add_typer(userApp, name="user")
-app.add_typer(vaultManagementApp, name="vault-management")
+app.add_typer(cache_app, name="cache")
+app.add_typer(import_app, name="import")
+app.add_typer(user_app, name="user")
+app.add_typer(vault_management_app, name="vault-management")

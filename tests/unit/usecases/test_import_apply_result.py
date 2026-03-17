@@ -84,8 +84,8 @@ def _fail_executor(code: SystemErrorCode = SystemErrorCode.DATA_INVALID) -> Dumm
 
 
 def _make_adapter():
-    from connector.datasets.employees.spec import make_employees_spec
-    return make_employees_spec().get_apply_adapter()
+    from connector.datasets.registry import get_spec
+    return get_spec("employees").get_apply_adapter()
 
 
 def _make_service(executor: DummyExecutor) -> ImportApplyService:
