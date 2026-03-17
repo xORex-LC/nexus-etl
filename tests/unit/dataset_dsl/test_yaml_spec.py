@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from connector.datasets.registry import get_spec, list_specs
+from connector.datasets import registry as registry_module
+from connector.datasets.registry import get_spec, list_specs, validate_registry
 from connector.datasets.spec import UnsupportedStageError
 from connector.datasets.yaml_spec import YamlDatasetSpec
+from connector.datasets.yaml_spec_loader import load_yaml_dataset_artifacts
 from connector.domain.transform_dsl.specs import (
     EnrichSpec,
     MappingSpec,
@@ -67,6 +69,16 @@ class TestYamlDatasetSpecBuildSpecFor:
         assert exc_info.value.stage_type == "nonexistent"
         assert exc_info.value.dataset == "employees"
 
+    def test_returns_deep_copy_on_each_call(self, spec):
+        first = spec.build_spec_for("map")
+        original_target = first.mapping.rules[0].target
+        first.mapping.rules[0].target = "__mutated__"
+
+        second = spec.build_spec_for("map")
+
+        assert second.mapping.rules[0].target == original_target
+        assert second.mapping.rules[0].target != "__mutated__"
+
 
 class TestYamlDatasetSpecAdapters:
     @pytest.fixture()
@@ -92,3 +104,42 @@ class TestYamlDatasetSpecAdapters:
         assert catalog.contains("INVALID_INT")
         assert catalog.contains("INVALID_EMAIL")
         assert catalog.contains("INVALID_BOOLEAN")
+
+    def test_accessors_do_not_reload_yaml_after_construction(self, monkeypatch, tmp_path):
+        artifacts = load_yaml_dataset_artifacts("employees")
+        spec = YamlDatasetSpec(artifacts)
+
+        def _unexpected(*args, **kwargs):
+            raise AssertionError("runtime accessor must not call YAML loaders after construction")
+
+        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_mapping_spec_for_dataset", _unexpected)
+        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_normalize_spec_for_dataset", _unexpected)
+        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_enrich_spec_for_dataset", _unexpected)
+        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_match_spec_for_dataset", _unexpected)
+        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_resolve_spec_for_dataset", _unexpected)
+        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_sink_spec_for_dataset", _unexpected)
+        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_source_spec_for_dataset", _unexpected)
+        monkeypatch.setenv("EMPLOYEES_SOURCE_PATH", str(tmp_path / "employees.csv"))
+
+        assert isinstance(spec.build_spec_for("map"), MappingSpec)
+        assert spec.get_apply_adapter().operation_alias == "users.upsert"
+        source = spec.build_record_source()
+        assert source.has_header is True
+
+
+class TestRegistryValidation:
+    def test_validate_registry_eagerly_validates_yaml_datasets(self, monkeypatch):
+        monkeypatch.setattr(
+            registry_module,
+            "load_registry",
+            lambda: {"datasets": {"employees": {"mapping": "employees.mapping.yaml"}}},
+        )
+
+        def _boom(dataset_name: str):
+            raise ValueError(f"invalid dataset snapshot: {dataset_name}")
+
+        monkeypatch.setattr(registry_module, "_registry", None)
+        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_yaml_dataset_artifacts", _boom)
+
+        with pytest.raises(ValueError, match="invalid dataset snapshot: employees"):
+            validate_registry()
