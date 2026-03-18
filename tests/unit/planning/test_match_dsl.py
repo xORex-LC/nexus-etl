@@ -38,7 +38,6 @@ def _sample_context() -> MatchContext:
         line_no=1,
         match_key="Doe|John|M|100",
         match_key_complete=True,
-        usr_org_tab_num="TAB-100",
     )
 
 
@@ -59,6 +58,11 @@ def test_match_dsl_compile_matches_employees_dsl_contract():
     assert identity0.primary == "match_key"
     assert identity0.values.get("match_key") == "Doe|John|M|100"
     assert identity0.values.get("usr_org_tab_num") == "TAB-100"
+
+    identity1 = compiled.identity_rules[1].build_identity(row, context)
+    assert identity1.primary == "usr_org_tab_num"
+    assert identity1.values.get("match_key") == "Doe|John|M|100"
+    assert identity1.values.get("usr_org_tab_num") == "TAB-100"
 
 
 def test_match_spec_rejects_invalid_thresholds():

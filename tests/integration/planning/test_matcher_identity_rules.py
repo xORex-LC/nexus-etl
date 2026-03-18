@@ -56,17 +56,16 @@ class FakeCacheRepo:
         _ = scope
 
 
-def _make_context(match_key: str, usr_org_tab_num: str | None) -> MatchContext:
+def _make_context(match_key: str) -> MatchContext:
     return MatchContext(
         line_no=1,
         match_key=match_key,
         match_key_complete=bool(match_key),
-        usr_org_tab_num=usr_org_tab_num,
         row_ref=RowRef(line_no=1, row_id="line:1", identity_primary=None, identity_value=None),
     )
 
 
-def _make_transform_result(match_context: MatchContext) -> TransformResult:
+def _make_transform_result(match_context: MatchContext, *, usr_org_tab_num: str | None) -> TransformResult:
     row = {
         "email": None,
         "last_name": "Doe",
@@ -81,7 +80,7 @@ def _make_transform_result(match_context: MatchContext) -> TransformResult:
         "organization_id": None,
         "position": None,
         "avatar_id": None,
-        "usr_org_tab_num": match_context.usr_org_tab_num,
+        "usr_org_tab_num": usr_org_tab_num,
         "target_id": None,
     }
     return TransformResult(
@@ -114,8 +113,8 @@ def test_matcher_uses_next_identity_rule_when_primary_missing():
         dedup_store=LocalSourceDedupStore(),
     )
 
-    match_context = _make_context(match_key="", usr_org_tab_num="TAB-1")
-    result = matcher.match(_make_transform_result(match_context))
+    match_context = _make_context(match_key="")
+    result = matcher.match(_make_transform_result(match_context, usr_org_tab_num="TAB-1"))
 
     assert result.row is not None
     assert result.row.match_decision.status == MatchDecisionStatus.MATCHED
@@ -145,8 +144,8 @@ def test_matcher_returns_conflict_when_secondary_rule_has_multiple_candidates():
         dedup_store=LocalSourceDedupStore(),
     )
 
-    match_context = _make_context(match_key="", usr_org_tab_num="TAB-1")
-    result = matcher.match(_make_transform_result(match_context))
+    match_context = _make_context(match_key="")
+    result = matcher.match(_make_transform_result(match_context, usr_org_tab_num="TAB-1"))
 
     assert result.row is None
     assert result.errors

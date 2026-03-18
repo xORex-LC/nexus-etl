@@ -2,6 +2,12 @@
 Назначение:
     MatchDsl: компиляция MatchSpec в MatchingRules.
     Compiled models: MatchingRules, IdentityRule, SourceDedupRules, FuzzyScoringRules.
+
+Граница ответственности:
+    Compiler knows how to assemble dataset-specific identity rules, but does not
+    project dataset fields into generic MatchContext. Generic derived values
+    (for example match_key) come from MatchContext; dataset row fields are read
+    directly from row payload.
 """
 
 from __future__ import annotations
