@@ -69,6 +69,11 @@ ALLOWED_STRUCTLOG_IMPORT_PATHS = {
     "connector/infra/dictionaries/telemetry.py",
     # structlog-forward-adoption: новые usecase-модули используют structlog (DEC-001)
     "connector/usecases/resolve_usecase.py",
+    # vault-management: usecase/delivery/infra management modules log through structlog
+    "connector/usecases/management/vault/maintenance.py",
+    "connector/usecases/management/vault/usecase.py",
+    "connector/delivery/commands/vault_management.py",
+    "connector/infra/secrets/management/admin_password_gate.py",
 }
 FORBIDDEN_CORE_LITERALS = ("resourceexists", "health.check")
 FORBIDDEN_TARGET_LEGACY_LITERALS = ("response_json", "body_snippet")
