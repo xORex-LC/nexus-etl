@@ -5,6 +5,11 @@
     Source-dedup состояние вынесено в ISourceDedupStore (DI-зависимость).
     MatchCore не управляет lifecycle dedup-стора — reset() вызывается
     снаружи (PlanningPipeline) перед каждым прогоном.
+
+Граница ответственности:
+    MatchCore работает с generic MatchContext и row payload. Dataset-specific
+    identity fields остаются в DSL/rule definitions и читаются из row, а не из
+    runtime-контекста.
 """
 
 from __future__ import annotations
@@ -596,7 +601,7 @@ def _extract_row_and_context(source: TransformResult[Any]) -> tuple[Any | None, 
         Построить единый match-контекст для matcher без ValidateStage.
     """
     row = source.row
-    return row, _build_match_context(source, row)
+    return row, _build_match_context(source)
 
 
 def _build_source_dedup_key(identity: Identity) -> str | None:
@@ -727,7 +732,15 @@ def _build_source_conflict_error(catalog: ErrorCatalog, row: MatchedRow) -> Diag
     )
 
 
-def _build_match_context(source: TransformResult[Any], row: Any | None) -> MatchContext:
+def _build_match_context(source: TransformResult[Any]) -> MatchContext:
+    """
+    Назначение:
+        Собрать generic runtime context для matcher/resolver.
+
+    Инвариант:
+        Dataset-specific row fields не проецируются в MatchContext и должны
+        читаться из row через compiled identity rules.
+    """
     match_key_value = source.match_key.value if source.match_key else ""
     row_ref = source.row_ref or RowRef(
         line_no=source.record.line_no,
@@ -752,7 +765,6 @@ def _build_match_context(source: TransformResult[Any], row: Any | None) -> Match
         line_no=source.record.line_no,
         match_key=match_key_value,
         match_key_complete=source.match_key is not None,
-        usr_org_tab_num=getattr(row, "usr_org_tab_num", None),
         row_ref=row_ref,
         secret_candidates=dict(source.secret_candidates),
         secret_fields=secret_fields,
