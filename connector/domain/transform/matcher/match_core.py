@@ -37,6 +37,7 @@ from connector.domain.transform.matcher.scoring import is_tie, rank_candidates
 from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.matcher.ports import ISourceDedupStore
 from connector.domain.transform.core.result import TransformResult
+from connector.domain.transform.common.values import read_field_value
 
 
 class MatchCore:
@@ -272,7 +273,7 @@ class MatchCore:
             fingerprint=fingerprint,
             fingerprint_fields=fingerprint_fields,
             source_links=links,
-            target_id=row.get("target_id") if isinstance(row, dict) else getattr(row, "target_id", None),
+            target_id=read_field_value(row, "target_id"),
             match_decision=match_decision,
         )
 
@@ -627,7 +628,7 @@ def _read_value(
         return desired_state.get(field)
     if field == identity.primary:
         return identity.primary_value
-    return getattr(row, field, None)
+    return read_field_value(row, field)
 
 
 def _candidate_dedup_key(candidate: dict[str, Any]) -> str:

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from connector.domain.models import Identity
+from connector.domain.transform.common.values import read_field_value
 from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.transform_dsl.build_options import MatchDslBuildOptions
@@ -187,8 +188,4 @@ def _read_identity_value(field_name: str, *, row, match_context):
         value = getattr(match_context, field_name)
         if value not in (None, ""):
             return value
-    if isinstance(row, dict):
-        return row.get(field_name)
-    if row is not None and hasattr(row, field_name):
-        return getattr(row, field_name)
-    return None
+    return read_field_value(row, field_name)

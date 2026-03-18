@@ -9,6 +9,22 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping
 
 
+def read_field_value(payload: Any, field_name: str) -> Any:
+    """
+    Назначение:
+        Унифицированно прочитать плоское поле из dict/object payload.
+
+    Граница ответственности:
+        - Owns: чтение runtime-row/object значений без знания о DSL-правилах.
+        - Does NOT: применять fallback/precedence между разными источниками данных.
+    """
+    if isinstance(payload, Mapping):
+        return payload.get(field_name)
+    if payload is None:
+        return None
+    return getattr(payload, field_name, None)
+
+
 def read_value(
     *,
     record_values: Mapping[str, Any] | None,
