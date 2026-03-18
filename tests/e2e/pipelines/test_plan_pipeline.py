@@ -17,8 +17,22 @@ from connector.main import app
 
 runner = CliRunner()
 
+CSV_HEADER = (
+    "raw_id",
+    "full_name",
+    "login",
+    "email_or_phone",
+    "contacts",
+    "org",
+    "manager",
+    "flags",
+    "employment",
+    "extra",
+)
+
 def _write_csv(path: Path, rows: list[list[str | None]]) -> None:
     with path.open("w", encoding="utf-8") as f:
+        f.write(",".join(CSV_HEADER) + "\n")
         for row in rows:
             f.write(",".join("" if v is None else str(v) for v in row) + "\n")
 
