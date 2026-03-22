@@ -108,10 +108,17 @@ class DatasetSpec(Protocol):
 def _build_registry() -> dict[str, callable]:
     for name, entry in registry["datasets"].items():
         if entry.get("spec_class"):
-            result[name] = _import_spec_factory(entry["spec_class"])
+            result[name] = _resolve_spec_factory(name, entry["spec_class"])
         else:
             result[name] = partial(_make_yaml_spec, name)
 ```
+
+`spec_class` фиксируется как strict factory contract:
+- импортируемый symbol обязан быть callable;
+- обязан принимать optional keyword `secrets=None`;
+- обязан возвращать валидный `DatasetSpec`;
+- `validate_registry()` eagerly конструирует custom spec через `factory(secrets=None)`;
+- `instance.dataset_name` обязан совпадать с ключом датасета в `registry.yml`.
 
 ### Поток данных
 
@@ -173,6 +180,7 @@ registry.yml
 2. `UnsupportedStageError` (не `KeyError`) для неизвестных стадий
 3. `SinkDrivenPayloadBuilder` для `employees` зафиксирован golden contract tests по текущему payload behavior
 4. Auto-discovery не ломает существующие `get_spec()` / `list_specs()` контракты
+5. `spec_class` использует strict factory contract: `factory(*, secrets=None) -> DatasetSpec`
 
 ---
 
@@ -182,6 +190,7 @@ registry.yml
 - ✅ Golden contract tests: `SinkDrivenPayloadBuilder` для `employees` фиксирует payload behavior без возврата legacy builder
 - ✅ `build_spec_for("map")` → `MappingSpec`, `build_spec_for("unknown")` → `UnsupportedStageError`
 - ✅ Auto-discovery: `get_spec("employees")` → `YamlDatasetSpec`
+- ✅ `spec_class` eagerly валидируется через factory call + dataset_name match
 - ✅ Pydantic validation: корректная валидация DatasetDslSpec из YAML
 
 **Метрики успеха**:
