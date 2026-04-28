@@ -11,6 +11,8 @@ logs/
 reports/
 /cache/
 config_example_ankey.yml
+environment/*.env
+environment/*.env.lock
 .vscode
 .VSCode*
 .coverage

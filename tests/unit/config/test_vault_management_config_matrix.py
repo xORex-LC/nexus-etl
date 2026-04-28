@@ -46,6 +46,15 @@ def _write_config(tmp_path: Path, payload: dict[str, Any]) -> Path:
             "CLI_HASH_VAR",
         ),
         (
+            "admin_password_hash_file",
+            None,
+            "./config-vault-admin.env",
+            "ANKEY_VAULT_MANAGEMENT__ADMIN_PASSWORD_HASH_FILE",
+            "./env-vault-admin.env",
+            "./env-vault-admin.env",
+            "./cli-vault-admin.env",
+        ),
+        (
             "admin_password_env_var",
             "ANKEY_VAULT_ADMIN_PASSWORD",
             "CFG_PASSWORD_VAR",
@@ -161,4 +170,3 @@ def test_vault_management_interval_precedence_matrix(
     assert interval_cli.days == 1
     assert cli_result.source_trace["vault_management.auto_rotate_interval.hours"] == "cli"
     assert cli_result.source_trace["vault_management.auto_rotate_interval.days"] == "cli"
-

@@ -21,6 +21,7 @@ class VaultManagementSettings:
 
     managed_env_file: str | None
     require_admin_password_for_manual_ops: bool
+    admin_password_hash_file: str | None
     admin_password_hash_env_var: str
     admin_password_env_var: str
     auto_rotate_enabled: bool

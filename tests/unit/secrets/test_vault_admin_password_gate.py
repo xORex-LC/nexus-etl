@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import structlog.testing
 from argon2 import PasswordHasher
@@ -15,10 +17,12 @@ def _build_gate(
     *,
     env: dict[str, str],
     require_admin_password_for_manual_ops: bool = True,
+    admin_password_hash_file: str | None = None,
     prompt_password=None,
 ) -> VaultAdminPasswordGate:
     return VaultAdminPasswordGate(
         require_admin_password_for_manual_ops=require_admin_password_for_manual_ops,
+        admin_password_hash_file=admin_password_hash_file,
         admin_password_hash_env_var="ANKEY_VAULT_ADMIN_PASSWORD_HASH",
         admin_password_env_var="ANKEY_VAULT_ADMIN_PASSWORD",
         env=env,
@@ -47,6 +51,53 @@ def test_verify_manual_access_non_interactive_success() -> None:
     )
 
     gate.verify_manual_access(non_interactive=True)
+
+
+def test_verify_manual_access_reads_hash_from_private_hash_file(tmp_path: Path) -> None:
+    password = "Admin-Secret-From-File-2026"
+    password_hash = PasswordHasher().hash(password)
+    hash_file = tmp_path / "vault-admin.env"
+    hash_file.write_text(f"ANKEY_VAULT_ADMIN_PASSWORD_HASH={password_hash}\n", encoding="utf-8")
+    hash_file.chmod(0o600)
+    gate = _build_gate(
+        env={"ANKEY_VAULT_ADMIN_PASSWORD": password},
+        admin_password_hash_file=str(hash_file),
+    )
+
+    gate.verify_manual_access(non_interactive=True)
+
+
+def test_verify_manual_access_rejects_open_hash_file_permissions(tmp_path: Path) -> None:
+    password_hash = PasswordHasher().hash("expected")
+    hash_file = tmp_path / "vault-admin.env"
+    hash_file.write_text(f"ANKEY_VAULT_ADMIN_PASSWORD_HASH={password_hash}\n", encoding="utf-8")
+    hash_file.chmod(0o644)
+    gate = _build_gate(
+        env={"ANKEY_VAULT_ADMIN_PASSWORD": "expected"},
+        admin_password_hash_file=str(hash_file),
+    )
+
+    with pytest.raises(VaultAdminPasswordConfigError) as exc_info:
+        gate.verify_manual_access(non_interactive=True)
+
+    assert exc_info.value.details["reason"] == "admin_password_hash_file_permissions_too_open"
+    assert exc_info.value.details["file_mode"] == "0o644"
+
+
+def test_verify_manual_access_rejects_missing_hash_file_variable(tmp_path: Path) -> None:
+    hash_file = tmp_path / "vault-admin.env"
+    hash_file.write_text("OTHER_HASH=value\n", encoding="utf-8")
+    hash_file.chmod(0o600)
+    gate = _build_gate(
+        env={"ANKEY_VAULT_ADMIN_PASSWORD": "expected"},
+        admin_password_hash_file=str(hash_file),
+    )
+
+    with pytest.raises(VaultAdminPasswordConfigError) as exc_info:
+        gate.verify_manual_access(non_interactive=True)
+
+    assert exc_info.value.details["reason"] == "admin_password_hash_missing"
+    assert exc_info.value.details["hash_file"] == str(hash_file)
 
 
 def test_verify_manual_access_interactive_success() -> None:

@@ -951,6 +951,10 @@ class AppContainer(containers.DeclarativeContainer):
             lambda s: s.require_admin_password_for_manual_ops,
             s=_vault_management_settings,
         ),
+        admin_password_hash_file=providers.Callable(
+            lambda s: s.admin_password_hash_file,
+            s=_vault_management_settings,
+        ),
         admin_password_hash_env_var=providers.Callable(
             lambda s: s.admin_password_hash_env_var,
             s=_vault_management_settings,

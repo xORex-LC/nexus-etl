@@ -85,8 +85,9 @@ vault_rollout:
   schema_changed_rate_threshold_pct: 0.0
 
 vault_management:
-  managed_env_file: "./cache/vault.env"
+  managed_env_file: "./environment/vault.env"
   require_admin_password_for_manual_ops: true
+  admin_password_hash_file: "./environment/vault-admin.env"
   admin_password_hash_env_var: "ANKEY_VAULT_ADMIN_PASSWORD_HASH"
   admin_password_env_var: "ANKEY_VAULT_ADMIN_PASSWORD"
   auto_rotate_enabled: false
@@ -95,6 +96,7 @@ vault_management:
   auto_rotate_on_error: "fail_closed"
   # ENV overrides:
   # ANKEY_VAULT_MANAGEMENT__MANAGED_ENV_FILE=./cache/vault.env
+  # ANKEY_VAULT_MANAGEMENT__ADMIN_PASSWORD_HASH_FILE=./environment/vault-admin.env
   # ANKEY_VAULT_MANAGEMENT__AUTO_ROTATE_ENABLED=true
   # ANKEY_VAULT_MANAGEMENT__AUTO_ROTATE_INTERVAL=hours=0,days=30,months=0,years=0
   # ANKEY_VAULT_MANAGEMENT__AUTO_ROTATE_ON_ERROR=fail_closed
