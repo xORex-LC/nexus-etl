@@ -94,11 +94,11 @@ def init_handler(ctx: BoundCommandContext, opts: InitOptions, report_sink) -> Co
     _ = report_sink
     settings = _resolve_settings(ctx, opts)
     try:
-        usecase = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         gate_result = _prepare_manual_operation(ctx=ctx, opts=opts, operation="init")
         if gate_result is not None:
             return gate_result
 
+        usecase = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         status = usecase.status()
         import_keyring: tuple[VaultMasterKey, ...] | None = None
         if opts.import_existing_env:
@@ -130,6 +130,10 @@ def status_handler(ctx: BoundCommandContext, opts: StatusOptions, report_sink) -
     _ = report_sink
     settings = _resolve_settings(ctx, opts)
     try:
+        gate_result = _verify_admin_access(ctx=ctx, non_interactive=opts.non_interactive, operation="status")
+        if gate_result is not None:
+            return gate_result
+
         usecase = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         status = usecase.status()
         _emit_json_payload(_status_payload(status=status, settings=settings))
@@ -142,11 +146,11 @@ def rotate_handler(ctx: BoundCommandContext, opts: RotateOptions, report_sink) -
     _ = report_sink
     settings = _resolve_settings(ctx, opts)
     try:
-        usecase = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         gate_result = _prepare_manual_operation(ctx=ctx, opts=opts, operation="rotate")
         if gate_result is not None:
             return gate_result
 
+        usecase = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         status = usecase.status()
         if opts.dry_run:
             can_apply = status.active_key_version is not None
@@ -173,11 +177,11 @@ def rewrap_handler(ctx: BoundCommandContext, opts: RewrapOptions, report_sink) -
     _ = report_sink
     settings = _resolve_settings(ctx, opts)
     try:
-        usecase = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         gate_result = _prepare_manual_operation(ctx=ctx, opts=opts, operation="rewrap")
         if gate_result is not None:
             return gate_result
 
+        usecase = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         status = usecase.status()
         if opts.dry_run:
             can_apply = status.active_key_version is not None
@@ -204,11 +208,11 @@ def delete_key_handler(ctx: BoundCommandContext, opts: DeleteKeyOptions, report_
     _ = report_sink
     settings = _resolve_settings(ctx, opts)
     try:
-        usecase = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         gate_result = _prepare_manual_operation(ctx=ctx, opts=opts, operation="delete-key")
         if gate_result is not None:
             return gate_result
 
+        usecase = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         status = usecase.status()
         if opts.dry_run:
             can_apply = status.active_key_version is not None
@@ -239,16 +243,16 @@ def run_maintenance_handler(
     _ = report_sink
     settings = _resolve_settings(ctx, opts)
     try:
+        gate_result = _prepare_manual_operation(ctx=ctx, opts=opts, operation="run-maintenance")
+        if gate_result is not None:
+            return gate_result
+
         key_management = _build_key_management_usecase(ctx=ctx, settings=settings, verify=opts.verify)
         rotation_policy = ctx.container.vault_rotation_policy(interval=settings.auto_rotate_interval)
         maintenance = ctx.container.vault_maintenance_usecase(
             key_management=key_management,
             rotation_policy=rotation_policy,
         )
-        gate_result = _prepare_manual_operation(ctx=ctx, opts=opts, operation="run-maintenance")
-        if gate_result is not None:
-            return gate_result
-
         status = key_management.status()
         if opts.dry_run:
             action, can_apply, due = _maintenance_dry_run_plan(

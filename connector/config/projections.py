@@ -169,6 +169,7 @@ def to_vault_management_settings(config: AppConfig) -> VaultManagementSettings:
     return VaultManagementSettings(
         managed_env_file=vm.managed_env_file,
         require_admin_password_for_manual_ops=vm.require_admin_password_for_manual_ops,
+        admin_password_hash_file=vm.admin_password_hash_file,
         admin_password_hash_env_var=vm.admin_password_hash_env_var,
         admin_password_env_var=vm.admin_password_env_var,
         auto_rotate_enabled=vm.auto_rotate_enabled,

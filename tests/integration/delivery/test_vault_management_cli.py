@@ -71,7 +71,7 @@ def _invoke_vault(cfg: Path, command_args: list[str], *, env: dict[str, str]) ->
 
 
 def _read_status(cfg: Path, *, env: dict[str, str]) -> dict[str, object]:
-    result = _invoke_vault(cfg, ["status"], env=env)
+    result = _invoke_vault(cfg, ["status", "--non-interactive"], env=env)
     assert result.exit_code == 0, result.stdout + "\n" + result.stderr
     return _last_json_payload(result.stdout)
 
@@ -130,6 +130,7 @@ def test_vault_management_init_and_status_non_interactive(tmp_path: Path) -> Non
             str(cfg),
             "vault-management",
             "status",
+            "--non-interactive",
         ],
         env=env,
     )
@@ -186,6 +187,7 @@ def test_vault_management_rotate_dry_run_does_not_change_active_key(tmp_path: Pa
             str(cfg),
             "vault-management",
             "status",
+            "--non-interactive",
         ],
         env=env,
     )

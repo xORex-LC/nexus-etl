@@ -1132,8 +1132,9 @@ Subcommands:
 
 Поведение confirm/gate:
 - при `--non-interactive` обязателен `--force`;
-- manual operations (`init/rotate/rewrap/delete-key/run-maintenance`) проходят через `VaultAdminPasswordGate`;
-- `status` является read-only и gate не требует.
+- все `vault-management` операции (`status/init/rotate/rewrap/delete-key/run-maintenance`) проходят через `VaultAdminPasswordGate`;
+- hash admin password читается из `vault_management.admin_password_hash_file`, если он задан; файл должен иметь права `0600` или строже;
+- если `admin_password_hash_file` не задан, поддерживается legacy-режим чтения hash из process ENV.
 
 ### 17.4 Контракт `delete-key`
 

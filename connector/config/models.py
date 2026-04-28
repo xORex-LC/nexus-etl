@@ -236,6 +236,7 @@ class VaultManagementConfig(BaseModel):
 
     managed_env_file: str | None = None
     require_admin_password_for_manual_ops: bool = True
+    admin_password_hash_file: str | None = None
     admin_password_hash_env_var: str = "ANKEY_VAULT_ADMIN_PASSWORD_HASH"
     admin_password_env_var: str = "ANKEY_VAULT_ADMIN_PASSWORD"
     auto_rotate_enabled: bool = False

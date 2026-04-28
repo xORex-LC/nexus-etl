@@ -151,8 +151,9 @@ syncEmployees --config ./config.yml vault-management --help
 
 ```yaml
 vault_management:
-  managed_env_file: "./cache/vault.env"
+  managed_env_file: "./environment/vault.env"
   require_admin_password_for_manual_ops: true
+  admin_password_hash_file: "./environment/vault-admin.env"
   admin_password_hash_env_var: "ANKEY_VAULT_ADMIN_PASSWORD_HASH"
   admin_password_env_var: "ANKEY_VAULT_ADMIN_PASSWORD"
   auto_rotate_enabled: true
@@ -191,15 +192,20 @@ syncEmployees --config ./config.yml vault-management run-maintenance --non-inter
 
 ### Manual-operation security gate
 
-Для manual операций (`init/rotate/rewrap/delete-key/run-maintenance`) по умолчанию включена проверка admin password:
+Для `vault-management` операций (`status/init/rotate/rewrap/delete-key/run-maintenance`) по умолчанию включена проверка admin password:
 
-- hash (argon2id): `ANKEY_VAULT_ADMIN_PASSWORD_HASH`
+- hash (argon2id): переменная `ANKEY_VAULT_ADMIN_PASSWORD_HASH` внутри `vault_management.admin_password_hash_file`
 - plaintext для non-interactive режима: `ANKEY_VAULT_ADMIN_PASSWORD`
 
 Можно переопределить имена этих переменных через:
 
+- `vault_management.admin_password_hash_file`
 - `vault_management.admin_password_hash_env_var`
 - `vault_management.admin_password_env_var`
+
+Hash-файл должен быть локальным secret-файлом с правами `0600` или строже. Если
+`admin_password_hash_file` не задан, сохраняется legacy-режим чтения hash из
+process ENV.
 
 ### Общие флаги vault-management
 
