@@ -102,8 +102,9 @@ class VaultKeyManagementUseCase:
             now_utc=now,
         )
         try:
-            self._repository.upsert_unseal_metadata(metadata)
-            self._post_verify.ensure_ready((active_key,))
+            with self._repository.transaction():
+                self._repository.upsert_unseal_metadata(metadata)
+                self._post_verify.ensure_ready((active_key,))
         except Exception as exc:  # noqa: BLE001
             self._mark_failed(run_id=effective_run_id, reason="init_failed")
             raise self._as_operation_error(

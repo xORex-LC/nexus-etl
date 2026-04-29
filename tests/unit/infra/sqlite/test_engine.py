@@ -189,6 +189,15 @@ def test_engine_is_readonly_returns_false_for_writable(tmp_path: Path) -> None:
         engine.close()
 
 
+def test_engine_is_readonly_returns_false_inside_active_transaction(tmp_path: Path) -> None:
+    engine = open_sqlite(SqliteDbConfig(journal_mode="DELETE"), str(tmp_path / "test.db"))
+    try:
+        with engine.transaction(mode="immediate"):
+            assert engine.is_readonly() is False
+    finally:
+        engine.close()
+
+
 def test_engine_is_readonly_propagates_other_errors() -> None:
     """is_readonly() пробрасывает OperationalError не связанные с readonly."""
     import unittest.mock as mock
