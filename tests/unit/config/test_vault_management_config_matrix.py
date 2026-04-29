@@ -17,7 +17,7 @@ def _write_config(tmp_path: Path, payload: dict[str, Any]) -> Path:
 
 
 @pytest.mark.parametrize(
-    ("field_name", "expected_default", "config_value", "env_var", "env_raw_value", "env_expected", "cli_value"),
+    ("field_name", "expected_default", "config_value", "env_var", "env_raw_value", "cli_value"),
     [
         (
             "require_admin_password_for_manual_ops",
@@ -25,7 +25,6 @@ def _write_config(tmp_path: Path, payload: dict[str, Any]) -> Path:
             False,
             "ANKEY_VAULT_MANAGEMENT__REQUIRE_ADMIN_PASSWORD_FOR_MANUAL_OPS",
             "true",
-            True,
             False,
         ),
         (
@@ -34,7 +33,6 @@ def _write_config(tmp_path: Path, payload: dict[str, Any]) -> Path:
             "./config-vault-admin.env",
             "ANKEY_VAULT_MANAGEMENT__ADMIN_PASSWORD_HASH_FILE",
             "./env-vault-admin.env",
-            "./env-vault-admin.env",
             "./cli-vault-admin.env",
         ),
         (
@@ -42,7 +40,6 @@ def _write_config(tmp_path: Path, payload: dict[str, Any]) -> Path:
             "ANKEY_VAULT_ADMIN_PASSWORD",
             "CFG_PASSWORD_VAR",
             "ANKEY_VAULT_MANAGEMENT__ADMIN_PASSWORD_ENV_VAR",
-            "ENV_PASSWORD_VAR",
             "ENV_PASSWORD_VAR",
             "CLI_PASSWORD_VAR",
         ),
@@ -56,7 +53,6 @@ def test_vault_management_scalar_precedence_matrix(
     config_value: object,
     env_var: str,
     env_raw_value: str,
-    env_expected: object,
     cli_value: object,
 ) -> None:
     default_result = load_app_config()
@@ -70,8 +66,8 @@ def test_vault_management_scalar_precedence_matrix(
 
     monkeypatch.setenv(env_var, env_raw_value)
     env_result = load_app_config(str(cfg_file))
-    assert getattr(env_result.app_config.vault_management, field_name) == env_expected
-    assert env_result.source_trace[f"vault_management.{field_name}"] == "env"
+    assert getattr(env_result.app_config.vault_management, field_name) == config_value
+    assert env_result.source_trace[f"vault_management.{field_name}"] == "config"
 
     cli_result = load_app_config(str(cfg_file), cli_overrides={f"vault_management.{field_name}": cli_value})
     assert getattr(cli_result.app_config.vault_management, field_name) == cli_value

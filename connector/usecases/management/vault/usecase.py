@@ -150,9 +150,11 @@ class VaultKeyManagementUseCase:
         )
 
     def verify_unseal(self, *, passphrase: str) -> VaultMasterKey:
-        """Проверить passphrase и вернуть runtime master key."""
+        """Проверить passphrase, startup readiness и вернуть runtime master key."""
         metadata = self._require_metadata(operation="status", run_id=None)
-        return self._unseal_service.derive_key(passphrase=passphrase, metadata=metadata)
+        active_key = self._unseal_service.derive_key(passphrase=passphrase, metadata=metadata)
+        self._post_verify.ensure_ready((active_key,))
+        return active_key
 
     def rotate_and_rewrap(
         self,

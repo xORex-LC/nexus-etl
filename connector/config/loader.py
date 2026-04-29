@@ -42,6 +42,7 @@ from connector.config.models import AppConfig
 # ENV prefix и разделитель уровней: ANKEY_API__HOST → section=api, field=host
 _ENV_PREFIX = "ANKEY_"
 _LEVEL_SEP = "__"
+_ENV_OVERRIDE_DENIED_SECTIONS = frozenset({"vault_management"})
 
 
 @dataclass(frozen=True)
@@ -154,6 +155,11 @@ def _collect_env_overrides() -> dict[str, Any]:
             # Пустая строка — env_ignore_empty: не перетираем дефолт
             continue
         section = section_raw.lower()
+        if section in _ENV_OVERRIDE_DENIED_SECTIONS:
+            # Security-sensitive sections must come from explicit config/CLI only.
+            # In particular, vault-management admin gate settings must not be
+            # disabled or redirected by process environment variables.
+            continue
         field_key = field_raw.lower()
         if section not in result:
             result[section] = {}

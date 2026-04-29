@@ -176,28 +176,36 @@ def test_source_trace_contains_all_sections(tmp_path: object) -> None:
     assert all(v in ("config", "env", "cli", "default") for v in trace.values())
 
 
-def test_vault_management_admin_password_hash_file_env_parse(
+def test_vault_management_env_override_is_ignored(
     tmp_path: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ENV admin hash file корректно попадает в nested-модель vault_management."""
+    """ENV не может менять security-sensitive vault_management настройки."""
     cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
     cfg_file.write_text("{}", encoding="utf-8")
     monkeypatch.setenv("ANKEY_VAULT_MANAGEMENT__ADMIN_PASSWORD_HASH_FILE", "./environment/vault-admin.env")
+    monkeypatch.setenv("ANKEY_VAULT_MANAGEMENT__REQUIRE_ADMIN_PASSWORD_FOR_MANUAL_OPS", "false")
 
     result = load_app_config(str(cfg_file))
 
-    assert result.app_config.vault_management.admin_password_hash_file == "./environment/vault-admin.env"
+    assert result.app_config.vault_management.admin_password_hash_file is None
+    assert result.app_config.vault_management.require_admin_password_for_manual_ops is True
+    assert result.source_trace["vault_management.admin_password_hash_file"] == "default"
+    assert result.source_trace["vault_management.require_admin_password_for_manual_ops"] == "default"
 
 
-def test_vault_management_hash_file_cli_override_beats_env_and_yaml(
+def test_vault_management_hash_file_cli_override_beats_yaml_while_env_is_ignored(
     tmp_path: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """vault_management.admin_password_hash_file: CLI > ENV > YAML."""
+    """vault_management.admin_password_hash_file: CLI > YAML; ENV игнорируется."""
     cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
     cfg_file.write_text("vault_management:\n  admin_password_hash_file: ./from-config.env\n", encoding="utf-8")
     monkeypatch.setenv("ANKEY_VAULT_MANAGEMENT__ADMIN_PASSWORD_HASH_FILE", "./from-env.env")
+
+    env_ignored_result = load_app_config(str(cfg_file))
+    assert env_ignored_result.app_config.vault_management.admin_password_hash_file == "./from-config.env"
+    assert env_ignored_result.source_trace["vault_management.admin_password_hash_file"] == "config"
 
     result = load_app_config(
         str(cfg_file),
