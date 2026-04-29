@@ -17,7 +17,12 @@ from typing import Any, Iterator
 
 from connector.domain.ports.secrets.repository import SecretVaultRepositoryPort
 from connector.domain.secrets.errors import SecretReadError, SecretStoreError
-from connector.domain.secrets.models import VaultDekRecord, VaultProbeRecord, VaultSecretRecord
+from connector.domain.secrets.models import (
+    VaultDekRecord,
+    VaultProbeRecord,
+    VaultSecretRecord,
+    VaultUnsealMetadata,
+)
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine
 
@@ -466,6 +471,82 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
             return
         self._set_meta_value("last_rotation_run_id", run_id)
 
+    def get_unseal_metadata(self) -> VaultUnsealMetadata | None:
+        row = self._fetchone_read(
+            """
+            SELECT
+                key_version,
+                kdf_algo,
+                kdf_salt,
+                kdf_time_cost,
+                kdf_memory_cost_kib,
+                kdf_parallelism,
+                kdf_hash_len,
+                hmac_algo,
+                hmac_salt,
+                hmac_digest,
+                created_at,
+                updated_at
+            FROM vault_unseal_meta
+            WHERE id = 1
+            LIMIT 1
+            """,
+            (),
+            op="get_unseal_metadata",
+            details={},
+        )
+        return _row_to_unseal_metadata(row)
+
+    def upsert_unseal_metadata(self, metadata: VaultUnsealMetadata) -> None:
+        self._execute_write(
+            """
+            INSERT INTO vault_unseal_meta(
+                id,
+                key_version,
+                kdf_algo,
+                kdf_salt,
+                kdf_time_cost,
+                kdf_memory_cost_kib,
+                kdf_parallelism,
+                kdf_hash_len,
+                hmac_algo,
+                hmac_salt,
+                hmac_digest,
+                created_at,
+                updated_at
+            )
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                key_version = excluded.key_version,
+                kdf_algo = excluded.kdf_algo,
+                kdf_salt = excluded.kdf_salt,
+                kdf_time_cost = excluded.kdf_time_cost,
+                kdf_memory_cost_kib = excluded.kdf_memory_cost_kib,
+                kdf_parallelism = excluded.kdf_parallelism,
+                kdf_hash_len = excluded.kdf_hash_len,
+                hmac_algo = excluded.hmac_algo,
+                hmac_salt = excluded.hmac_salt,
+                hmac_digest = excluded.hmac_digest,
+                updated_at = excluded.updated_at
+            """,
+            (
+                metadata.key_version,
+                metadata.kdf_algo,
+                metadata.kdf_salt,
+                metadata.kdf_time_cost,
+                metadata.kdf_memory_cost_kib,
+                metadata.kdf_parallelism,
+                metadata.kdf_hash_len,
+                metadata.hmac_algo,
+                metadata.hmac_salt,
+                metadata.hmac_digest,
+                metadata.created_at,
+                metadata.updated_at,
+            ),
+            op="upsert_unseal_metadata",
+            details={"key_version": metadata.key_version, "kdf_algo": metadata.kdf_algo},
+        )
+
     def _ensure_schema(self) -> None:
         try:
             ensure_vault_schema(self._engine)
@@ -646,6 +727,25 @@ def _row_to_probe_record(row: sqlite3.Row | None) -> VaultProbeRecord | None:
         cipher_algo=str(row["cipher_algo"]),
         key_version=str(row["key_version"]),
         dek_version=str(row["dek_version"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
+
+
+def _row_to_unseal_metadata(row: sqlite3.Row | None) -> VaultUnsealMetadata | None:
+    if row is None:
+        return None
+    return VaultUnsealMetadata(
+        key_version=str(row["key_version"]),
+        kdf_algo=str(row["kdf_algo"]),
+        kdf_salt=row["kdf_salt"],
+        kdf_time_cost=int(row["kdf_time_cost"]),
+        kdf_memory_cost_kib=int(row["kdf_memory_cost_kib"]),
+        kdf_parallelism=int(row["kdf_parallelism"]),
+        kdf_hash_len=int(row["kdf_hash_len"]),
+        hmac_algo=str(row["hmac_algo"]),
+        hmac_salt=row["hmac_salt"],
+        hmac_digest=row["hmac_digest"],
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )

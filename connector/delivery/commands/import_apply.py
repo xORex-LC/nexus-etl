@@ -14,6 +14,7 @@ import typer
 from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.cli.containers import build_diagnostics_catalog
 from connector.delivery.commands.common import log_sqlite_cache_error, result_with, vault_startup_error_result
+from connector.delivery.commands.vault_unseal import provide_runtime_unseal_passphrase
 from connector.delivery.commands.import_apply_dry_run_executor import DryRunExecutor
 from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
 from connector.delivery.telemetry.apply_logging_sink import LoggingApplyTelemetrySink
@@ -137,6 +138,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     startup_guard_passed = True
     if rollout_decision.vault_enabled:
         try:
+            provide_runtime_unseal_passphrase(ctx)
             ctx.container.sqlite.vault_ready.init()
         except _STARTUP_ERRORS as exc:
             startup_guard_passed = False

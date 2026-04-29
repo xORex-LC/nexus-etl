@@ -29,7 +29,6 @@ from connector.config.models import (
     ResolverConfig,
     SqliteConfig,
     VaultManagementConfig,
-    VaultRotationIntervalConfig,
     VaultRolloutConfig,
 )
 from connector.config.projections import (
@@ -57,7 +56,6 @@ __all__ = [
     "ResolverConfig",
     "SqliteConfig",
     "VaultManagementConfig",
-    "VaultRotationIntervalConfig",
     "VaultRolloutConfig",
     # Loader
     "LoadedAppConfig",

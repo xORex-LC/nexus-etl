@@ -68,3 +68,28 @@ class VaultProbeRecord:
     created_at: str
     updated_at: str
 
+
+@dataclass(frozen=True)
+class VaultUnsealMetadata:
+    """
+    Назначение:
+        Persistent metadata для восстановления master wrapping key из unseal passphrase.
+
+    Инварианты:
+        - Не содержит plaintext passphrase или master key material.
+        - `kdf_salt` и `hmac_salt` независимы.
+        - `hmac_digest` используется только для fail-fast проверки passphrase.
+    """
+
+    key_version: str
+    kdf_algo: str
+    kdf_salt: bytes | str
+    kdf_time_cost: int
+    kdf_memory_cost_kib: int
+    kdf_parallelism: int
+    kdf_hash_len: int
+    hmac_algo: str
+    hmac_salt: bytes | str
+    hmac_digest: bytes | str
+    created_at: str
+    updated_at: str

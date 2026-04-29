@@ -22,9 +22,9 @@
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ApiConfig(BaseModel):
@@ -212,64 +212,15 @@ class DictionaryConfig(BaseModel):
     lookup_miss_sample_percent: int = Field(default=10, ge=0, le=100)
 
 
-class VaultRotationIntervalConfig(BaseModel):
-    """Декларативная конфигурация интервала auto-rotation."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    hours: int = Field(default=0, ge=0)
-    days: int = Field(default=0, ge=0)
-    months: int = Field(default=0, ge=0)
-    years: int = Field(default=0, ge=0)
-
-    @model_validator(mode="after")
-    def _require_non_zero_interval(self) -> "VaultRotationIntervalConfig":
-        if self.hours == 0 and self.days == 0 and self.months == 0 and self.years == 0:
-            raise ValueError("auto_rotate_interval requires at least one non-zero unit")
-        return self
-
-
 class VaultManagementConfig(BaseModel):
-    """Config-layer модель vault-management lifecycle policy."""
+    """Config-layer модель vault-management access policy."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    managed_env_file: str | None = None
+    admin_password_hash_name: ClassVar[str] = "ANKEY_VAULT_ADMIN_PASSWORD_HASH"
     require_admin_password_for_manual_ops: bool = True
     admin_password_hash_file: str | None = None
-    admin_password_hash_env_var: str = "ANKEY_VAULT_ADMIN_PASSWORD_HASH"
     admin_password_env_var: str = "ANKEY_VAULT_ADMIN_PASSWORD"
-    auto_rotate_enabled: bool = False
-    auto_rotate_interval: VaultRotationIntervalConfig = VaultRotationIntervalConfig(days=30)
-    auto_rotate_on_error: Literal["fail_closed", "fail_open"] = "fail_closed"
-
-    @field_validator("auto_rotate_interval", mode="before")
-    @classmethod
-    def _parse_interval_from_env_string(
-        cls,
-        value: object,
-    ) -> object:
-        """Поддержать ENV-строку вида `hours=0,days=30,months=0,years=0`."""
-        if not isinstance(value, str):
-            return value
-        chunks = [chunk.strip() for chunk in value.split(",") if chunk.strip()]
-        if not chunks:
-            raise ValueError("auto_rotate_interval string is empty")
-        parsed: dict[str, int] = {}
-        for chunk in chunks:
-            key, sep, raw_value = chunk.partition("=")
-            if sep != "=":
-                raise ValueError(f"auto_rotate_interval token has invalid format: {chunk!r}")
-            normalized_key = key.strip().lower()
-            if normalized_key not in {"hours", "days", "months", "years"}:
-                raise ValueError(f"auto_rotate_interval token has unknown unit: {normalized_key!r}")
-            try:
-                parsed[normalized_key] = int(raw_value.strip())
-            except ValueError as exc:
-                raise ValueError(
-                    f"auto_rotate_interval token has non-integer value: {chunk!r}"
-                ) from exc
-        return parsed
 
 
 class AppConfig(BaseModel):
@@ -311,7 +262,6 @@ __all__ = [
     "VaultRolloutConfig",
     "SqliteConfig",
     "DictionaryConfig",
-    "VaultRotationIntervalConfig",
     "VaultManagementConfig",
     "AppConfig",
 ]

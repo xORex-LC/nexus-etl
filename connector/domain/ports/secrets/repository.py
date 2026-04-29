@@ -7,7 +7,12 @@ from __future__ import annotations
 
 from typing import ContextManager, Protocol
 
-from connector.domain.secrets.models import VaultDekRecord, VaultProbeRecord, VaultSecretRecord
+from connector.domain.secrets.models import (
+    VaultDekRecord,
+    VaultProbeRecord,
+    VaultSecretRecord,
+    VaultUnsealMetadata,
+)
 
 
 class SecretVaultRepositoryPort(Protocol):
@@ -152,5 +157,19 @@ class SecretVaultRepositoryPort(Protocol):
         Контракт:
             Зафиксировать run_id последней lifecycle-операции;
             при run_id=None удалить значение.
+        """
+        ...
+
+    def get_unseal_metadata(self) -> VaultUnsealMetadata | None:
+        """
+        Контракт:
+            Вернуть metadata unseal-модели или None, если vault ещё не инициализирован.
+        """
+        ...
+
+    def upsert_unseal_metadata(self, metadata: VaultUnsealMetadata) -> None:
+        """
+        Контракт:
+            Создать или заменить metadata unseal-модели.
         """
         ...
