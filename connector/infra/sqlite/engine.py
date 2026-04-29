@@ -178,6 +178,10 @@ class SqliteEngine:
         Raises:
             sqlite3.OperationalError: если ошибка не связана с readonly-статусом.
         """
+        # A write transaction is already enough proof for callers that need a
+        # readiness check inside an atomic operation, such as vault init.
+        if self._conn.in_transaction:
+            return False
         try:
             self.execute("BEGIN IMMEDIATE")
             self.execute("ROLLBACK")

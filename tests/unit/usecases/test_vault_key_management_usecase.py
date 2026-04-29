@@ -21,7 +21,16 @@ class _Repo:
 
     @contextmanager
     def transaction(self):
-        yield
+        deks_snapshot = dict(self._deks)
+        meta_snapshot = dict(self._meta)
+        unseal_snapshot = self.unseal_metadata
+        try:
+            yield
+        except Exception:
+            self._deks = deks_snapshot
+            self._meta = meta_snapshot
+            self.unseal_metadata = unseal_snapshot
+            raise
 
     def get_unseal_metadata(self) -> VaultUnsealMetadata | None:
         return self.unseal_metadata
@@ -70,6 +79,12 @@ class _Verifier:
 
     def ensure_ready(self, keyring: tuple[VaultMasterKey, ...]) -> None:
         self.calls.append(keyring)
+
+
+class _FailingVerifier:
+    def ensure_ready(self, keyring: tuple[VaultMasterKey, ...]) -> None:
+        _ = keyring
+        raise RuntimeError("probe failed")
 
 
 def _usecase(
@@ -125,6 +140,19 @@ def test_init_rejects_existing_unseal_metadata() -> None:
         usecase.init_keyring(passphrase="correct horse battery")
 
     assert exc_info.value.details["reason"] == "already_initialized"
+
+
+def test_init_rolls_back_unseal_metadata_when_post_verify_fails() -> None:
+    repo = _Repo()
+    usecase = _usecase(repo, _FailingVerifier())
+
+    with pytest.raises(VaultManagementOperationError) as exc_info:
+        usecase.init_keyring(passphrase="correct horse battery")
+
+    assert exc_info.value.details["reason"] == "init_failed"
+    assert repo.unseal_metadata is None
+    assert repo.get_last_rotation_result() == "failed"
+    assert repo.get_last_rotation_reason() == "init_failed"
 
 
 def test_rotate_with_wrong_old_passphrase_fails() -> None:

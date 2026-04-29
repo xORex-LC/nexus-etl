@@ -58,7 +58,7 @@ connector/
 │   ├── vault_startup_guard.py
 │   └── models.py         # VaultDekRecord, VaultUnsealMetadata
 └── infra/secrets/
-    ├── fernet_cipher.py  # FernetEnvelopeCipher
+    ├── fernet_envelope_cipher.py  # FernetEnvelopeCipher
     ├── unseal.py         # VaultUnsealService, UnsealedVaultKeyProvider
     └── sqlite/           # persisted DEK/probe/unseal metadata
 ```
@@ -208,6 +208,103 @@ passphrase соответствует persisted unseal metadata.
 - неподдерживаемый KDF/HMAC → `SecretKeyConfigError`;
 - HMAC mismatch → `SecretKeyConfigError(reason="unseal_passphrase_invalid")`.
 
+### Метод: `FernetEnvelopeCipher.encrypt()`
+
+**Расположение**: `connector/infra/secrets/fernet_envelope_cipher.py`
+
+**Сигнатура**:
+```python
+def encrypt(self, *, plaintext: str, dek_plaintext: bytes, cipher_algo: str) -> bytes:
+```
+
+**Назначение**: зашифровать plaintext секрета Data Encryption Key, не раскрывая
+master wrapping key на path шифрования пользовательского значения.
+
+**Алгоритм**:
+```text
+1. Проверить, что cipher_algo == FERNET_V1.
+2. Построить Fernet(dek_plaintext).
+3. Закодировать plaintext как UTF-8.
+4. Вернуть Fernet token bytes.
+5. Ошибки ключа маппятся в SecretKeyConfigError, ошибки token/decrypt в SecretIntegrityError.
+```
+
+**Инварианты**:
+- plaintext не логируется и не попадает в exception details;
+- `dek_plaintext` должен быть Fernet-compatible key material;
+- результат хранится как opaque ciphertext BLOB/TEXT в storage layer.
+
+### Метод: `FernetEnvelopeCipher.wrap_dek()`
+
+**Расположение**: `connector/infra/secrets/fernet_envelope_cipher.py`
+
+**Сигнатура**:
+```python
+def wrap_dek(self, *, dek_plaintext: bytes, master_key: str, wrap_algo: str) -> bytes:
+```
+
+**Назначение**: обернуть DEK текущим runtime master wrapping key.
+
+**Алгоритм**:
+```text
+1. Проверить wrap_algo == FERNET_V1.
+2. Построить Fernet(master_key).
+3. Зашифровать DEK как opaque bytes.
+4. Вернуть wrapped_dek для vault_dek.
+```
+
+**Edge cases**:
+- неверный `master_key` format → `SecretKeyConfigError`;
+- повреждённый `wrapped_dek` при unwrap → `SecretIntegrityError` или
+  `SecretDecryptionError`, в зависимости от стадии отказа.
+
+### Сквозной алгоритм записи секрета
+
+```text
+Input: dataset, match_key/source_ref, {field: plaintext}
+  ↓
+SecretVaultWriteService получает active VaultMasterKey
+  ↓
+Если active DEK отсутствует:
+  - генерирует 32 random bytes;
+  - кодирует как Fernet key;
+  - wrap_dek(DEK, active master key);
+  - сохраняет VaultDekRecord.
+  ↓
+Для каждого secret field:
+  - locator_hash = SecretLocatorService.build_locator_hash(...);
+  - ciphertext = FernetEnvelopeCipher.encrypt(plaintext, DEK);
+  - upsert VaultSecretRecord(dataset, field, locator_hash, run_id, key_version, dek_version).
+```
+
+**Свойство безопасности**: master wrapping key не шифрует пользовательские
+секреты напрямую; он используется только для wrap/unwrap DEK.
+
+### Сквозной алгоритм чтения секрета
+
+```text
+Input: dataset, field, source_ref, run_id/default_run_id
+  ↓
+SecretVaultReadService нормализует source_ref.match_key
+  ↓
+Строит locator_hash тем же алгоритмом, что write path
+  ↓
+Читает VaultSecretRecord с precedence exact run_id → global NULL
+  ↓
+Читает VaultDekRecord(record.dek_version)
+  ↓
+Пробует unwrap DEK:
+  1. ключ с wrap_key_version;
+  2. fallback keys из provider, если они есть.
+  ↓
+decrypt(ciphertext, DEK) → plaintext secret
+```
+
+**Семантика отсутствия**:
+- нет `source_ref.match_key` → `None`;
+- нет secret record → `None`;
+- есть record, но не удалось прочитать/расшифровать → controlled `Secret*Error`.
+
 ---
 
 ## 🔄 Взаимодействие с другими слоями
@@ -263,6 +360,20 @@ passphrase соответствует persisted unseal metadata.
 | Неверная unseal passphrase | HMAC mismatch до unwrap/probe |
 | HMAC прошёл, но probe не decrypt | startup guard блокирует запуск |
 | DEK wrap повреждён | read path возвращает controlled decryption/read error |
+| Ciphertext не является Fernet token | `SecretIntegrityError` без раскрытия ciphertext |
+| `vault_unseal_meta` содержит завышенные KDF params | `SecretKeyConfigError`, derive не запускает экстремальный Argon2id |
+
+### Таксономия ошибок
+
+| Ошибка | Когда используется | Безопасные details |
+|--------|--------------------|--------------------|
+| `SecretKeyConfigError` | неподдержанный algo, неверный key format, неверная passphrase, плохие KDF params | `reason`, `kdf_algo`, `param`, `key_version` |
+| `SecretIntegrityError` | malformed token/ciphertext/wrapped DEK | `reason`, `cipher_algo`, `wrap_algo` |
+| `SecretDecryptionError` | token валиден по форме, но не decrypt-ится выбранным key/DEK | `reason`, `dek_version`, `key_version` |
+| `VaultStartupKeyValidationError` | probe не открывается derived key | `reason`, `probe_name`, `dek_version` |
+
+Details не должны содержать plaintext secret, passphrase, DEK plaintext,
+master key material, HMAC digest или ciphertext bytes.
 
 ### ⚠️ Инварианты системы
 
@@ -271,12 +382,59 @@ passphrase соответствует persisted unseal metadata.
 - DEK шифрует секреты; master wrapping key шифрует DEK.
 - `vault_probe` остаётся финальной проверкой, что key реально открывает vault.
 - `mlock`, secure zeroing и `ptrace/prctl` в этой итерации не реализованы.
+- DEK создаётся через cryptographically secure random source и хранится только
+  как wrapped value.
+- `cipher_algo` и `wrap_algo` пишутся per-record, чтобы будущая crypto migration
+  могла быть явной, а не inferred из глобального состояния.
+- `key_version` в secret/probe/dek metadata нужен для трассировки и выбора
+  candidate key, но не является секретом.
 
 ### ⏱️ Performance заметки
 
 - Argon2id defaults: memory 64 MiB, `time_cost=3`, `parallelism=4`, output 32 bytes.
 - KDF выполняется при unseal/startup, а не на каждый secret read/write.
 - После первого derive `UnsealedVaultKeyProvider` кеширует active key в памяти процесса.
+- Fernet encrypt/decrypt выполняется на уровне отдельных secret fields; стоимость
+  линейна от числа secret fields и размера plaintext.
+- Rotate/re-wrap не расшифровывает пользовательские secrets: он unwrap/wrap-ит
+  только DEK, поэтому стоимость линейна от количества DEK, а не от количества
+  secret records.
+
+### Соображения по тестированию
+
+- Для unit-тестов crypto-адаптера используйте реальные Fernet keys, а не
+  hardcoded invalid strings.
+- Для domain/usecase тестов допускается `StaticVaultKeyProvider`, если тест
+  не проверяет Argon2id/HMAC.
+- Для unseal тестов проверяйте deterministic derive на одинаковой metadata и
+  failure на wrong passphrase.
+- Для storage/integration тестов проверяйте, что plaintext не появляется в
+  `vault_secrets.ciphertext`.
+- Для regression guard полезен grep по runtime markers:
+  `ANKEY_VAULT_MASTER_KEYS`, `EnvVaultKeyProvider`, `VaultManagedEnvKeyringStore`.
+
+### FAQ
+
+**Почему Fernet используется и для secret ciphertext, и для wrapped DEK?**
+Это один audited primitive в двух разных ролях. Разделение ролей задаётся ключом:
+DEK шифрует пользовательский secret, master wrapping key шифрует DEK.
+
+**Почему DEK хранится как Fernet-compatible base64 key, а не raw bytes?**
+`cryptography.fernet.Fernet` принимает именно urlsafe base64 encoded 32-byte key.
+Поэтому DEK генерируется как 32 random bytes и кодируется в формат Fernet key.
+
+**Можно ли использовать один и тот же материал для DEK и master key?**
+Нет. DEK генерируется отдельно и может rewrap-иться без перешифрования всех
+секретов. Master wrapping key выводится из passphrase и не persisted.
+
+**Что меняется при смене unseal passphrase?**
+Создаётся новая `vault_unseal_meta`, из новой passphrase выводится новый master
+wrapping key, все DEK unwrap-ятся старым key и wrap-ятся новым key. Secret
+ciphertext не меняется.
+
+**Что произойдёт, если process завершится?**
+In-memory `VaultMasterKey` исчезает. При следующем запуске оператор снова вводит
+unseal passphrase, provider выводит тот же key из metadata.
 
 ---
 
