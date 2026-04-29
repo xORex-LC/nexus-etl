@@ -1035,9 +1035,10 @@ repository.upsert_dek(new_record)
 Если зонд vault повреждён, но `vault_secrets` целы:
 1. Определить, какие значения `dek_version` существуют в `vault_secrets`.
 2. Проверить, какой версией мастер-ключа обёрнут каждый DEK (`wrap_key_version`).
-3. Убедиться, что соответствующие мастер-ключи присутствуют в `ANKEY_VAULT_MASTER_KEYS`.
-4. Удалить или восстановить строку `vault_probe`.
-5. Перезапустить: `VaultStartupGuard` пересоздаст зонд.
+3. Убедиться, что `vault_unseal_meta.key_version` соответствует active `wrap_key_version`.
+4. Проверить unseal passphrase через `vault-management status --verify`.
+5. Удалить или восстановить строку `vault_probe`.
+6. Перезапустить runtime-команду: `VaultStartupGuard` пересоздаст зонд при writable storage.
 
 ---
 

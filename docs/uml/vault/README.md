@@ -3,9 +3,10 @@
 Структура:
 
 1. `docs/uml/vault/management`
-- Диаграммы DEC-002 по lifecycle `vault-management`:
-  `init/status/rotate/rewrap/delete-key/run-maintenance`,
-  startup integration, metadata lifecycle.
+- Диаграммы vault-management lifecycle. Исторические диаграммы DEC-002 описывают
+  managed env keyring; актуальная runtime-модель закреплена в DEC-003 и
+  использует команды `init/status/rotate/rewrap` без `delete-key` и
+  `run-maintenance`.
 
 Формат хранения:
 

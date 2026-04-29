@@ -130,9 +130,9 @@ syncEmployees --config ./config.yml match --dataset employees
 syncEmployees --config ./config.yml resolve --dataset employees
 ```
 
-## Vault Management (master key lifecycle)
+## Vault Management (unseal runtime lifecycle)
 
-CLI namespace для управления lifecycle master keys:
+CLI namespace для управления unseal-derived master wrapping key:
 
 ```bash
 syncEmployees --config ./config.yml vault-management --help
@@ -144,68 +144,56 @@ syncEmployees --config ./config.yml vault-management --help
 - `status`
 - `rotate`
 - `rewrap`
-- `delete-key`
-- `run-maintenance`
 
 ### Пример конфигурации
 
 ```yaml
 vault_management:
-  managed_env_file: "./environment/vault.env"
   require_admin_password_for_manual_ops: true
   admin_password_hash_file: "./environment/vault-admin.env"
-  admin_password_hash_env_var: "ANKEY_VAULT_ADMIN_PASSWORD_HASH"
   admin_password_env_var: "ANKEY_VAULT_ADMIN_PASSWORD"
-  auto_rotate_enabled: true
-  auto_rotate_interval:
-    days: 30
-  auto_rotate_on_error: "fail_closed"
 ```
 
 Важно:
 
-- runtime precedence для keyring: `ANKEY_VAULT_MASTER_KEYS` (если задан) > `managed_env_file`.
-- steady-state keyring хранит ровно один active key.
+- master key material не хранится на диске и не читается из process ENV.
+- runtime-команды, которым нужен vault, запрашивают unseal passphrase через prompt.
+- `vault_unseal_meta` хранит Argon2id/HMAC metadata, но не хранит master key.
 - `--non-interactive` требует `--force` (confirm-step отключается только через `--force`).
 
 ### Базовые сценарии
 
 ```bash
-# 1) Инициализация keyring (one-time)
+# 1) Инициализация unseal metadata + startup probe (one-time)
 syncEmployees --config ./config.yml vault-management init --verify
 
-# 2) Текущий статус keyring/metadata/DEK
+# 2) Текущий статус metadata/DEK без unseal
 syncEmployees --config ./config.yml vault-management status
 
-# 3) Ручная ротация (new key + rewrap всех DEK + verify)
+# 3) Статус с проверкой unseal passphrase и probe
+syncEmployees --config ./config.yml vault-management status --verify
+
+# 4) Ручная ротация passphrase (new derived key + rewrap всех DEK + verify)
 syncEmployees --config ./config.yml vault-management rotate --verify
 
-# 4) Rewrap всех DEK текущим active key
+# 5) Rewrap всех DEK текущим active derived key
 syncEmployees --config ./config.yml vault-management rewrap --verify
-
-# 5) Replace-flow для active key (delete-key не удаляет "в никуда")
-syncEmployees --config ./config.yml vault-management delete-key --verify
-
-# 6) Policy-driven maintenance (due-check/recovery/rotate)
-syncEmployees --config ./config.yml vault-management run-maintenance --non-interactive --force
 ```
 
 ### Manual-operation security gate
 
-Для `vault-management` операций (`status/init/rotate/rewrap/delete-key/run-maintenance`) по умолчанию включена проверка admin password:
+Для `vault-management` операций (`status/init/rotate/rewrap`) по умолчанию включена проверка admin password:
 
 - hash (argon2id): переменная `ANKEY_VAULT_ADMIN_PASSWORD_HASH` внутри `vault_management.admin_password_hash_file`
 - plaintext для non-interactive режима: `ANKEY_VAULT_ADMIN_PASSWORD`
 
-Можно переопределить имена этих переменных через:
+Можно настроить:
 
 - `vault_management.admin_password_hash_file`
-- `vault_management.admin_password_hash_env_var`
 - `vault_management.admin_password_env_var`
 
-Hash-файл должен быть локальным secret-файлом с правами `0600` или строже. Если
-`admin_password_hash_file` не задан, сохраняется legacy-режим чтения hash из
-process ENV.
+Hash-файл должен быть локальным secret-файлом с правами `0600` или строже. Hash
+не читается из process ENV.
 
 ### Общие флаги vault-management
 
@@ -213,8 +201,6 @@ process ENV.
 - `--dry-run` — валидация и план без изменений в keyring/DB.
 - `--non-interactive` — без prompt, пароль читается из ENV.
 - `--verify/--no-verify` — включить/выключить post-operation startup verify.
-- `--managed-env-file` — CLI-override пути managed keyring файла.
-- `init --import-existing-env` — one-shot импорт текущего `ANKEY_VAULT_MASTER_KEYS` в managed env-файл.
 
 ## Артефакты выполнения
 

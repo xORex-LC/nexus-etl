@@ -1,6 +1,6 @@
 # VAULT-DEC-002: Vault Management с managed env keyring, rotate+rewrap и policy-driven auto-rotation
 
-> **Статус**: Закрыто
+> **Статус**: Заменено [VAULT-DEC-003](./VAULT-DEC-003-unseal-derived-master-key-runtime.md) для runtime key storage
 > **Дата принятия**: 2026-03-04
 > **Решает проблему**: [VAULT-PROBLEM-002](./VAULT-PROBLEM-002-missing-vault-management-and-key-lifecycle-automation.md)
 > **Участники решения**: @xorex-LC

@@ -149,6 +149,8 @@ docs/adr/
 | [VAULT-DEC-001](./vault/VAULT-DEC-001-envelope-encrypted-vault-with-hexagonal-ports.md) | Decision | Envelope-encrypted vault с hexagonal разделением crypto/storage | ✅ Закрыто | 2026-02-18 |
 | [VAULT-PROBLEM-002](./vault/VAULT-PROBLEM-002-missing-vault-management-and-key-lifecycle-automation.md) | Problem | Отсутствует управляемый lifecycle master keys (user-management, rotate/rewrap, auto-rotation) | ✅ Закрыто | 2026-03-07 |
 | [VAULT-DEC-002](./vault/VAULT-DEC-002-vault-management-managed-env-keyring-and-rotation-lifecycle.md) | Decision | Vault Management с managed env keyring, rotate+rewrap и policy-driven auto-rotation | ✅ Закрыто | 2026-03-07 |
+| [VAULT-PROBLEM-003](./vault/VAULT-PROBLEM-003-master-key-at-rest-and-unseal-runtime.md) | Problem | Master key at rest и необходимость unseal-runtime модели | ✅ Закрыто | 2026-04-28 |
+| [VAULT-DEC-003](./vault/VAULT-DEC-003-unseal-derived-master-key-runtime.md) | Decision | Unseal-derived master key в runtime памяти | ✅ Закрыто | 2026-04-28 |
 
 ### Matcher
 
