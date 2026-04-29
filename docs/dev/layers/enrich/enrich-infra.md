@@ -465,7 +465,7 @@ AppContainer
 │       └── enrich_lookup  ← implements EnrichLookupPort
 ├── vault           ← VaultContainer
 │   ├── cipher          ← FernetEnvelopeCipher (шифрование)
-│   ├── key_provider    ← EnvVaultKeyProvider (ключи из env)
+│   ├── key_provider    ← UnsealedVaultKeyProvider (ключ из runtime unseal passphrase)
 │   └── write_service   ← SecretVaultWriteService implements SecretStoreProtocol
 ├── dictionary      ← DictionaryContainer
 │   ├── backend         ← Resource (ленивая инициализация CSV/Polars)
