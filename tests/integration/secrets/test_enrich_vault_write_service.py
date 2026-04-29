@@ -5,8 +5,6 @@ from connector.config.projections import to_vault_db_config
 from dataclasses import dataclass
 from pathlib import Path
 
-from cryptography.fernet import Fernet
-
 from connector.domain.transform_dsl.build_options import EnrichDslBuildOptions
 from connector.domain.transform_dsl.loader import load_enrich_spec_for_dataset, load_sink_spec_for_dataset
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
@@ -16,9 +14,10 @@ from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.enrich import EnricherEngine
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
+from connector.infra.secrets import FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
+from tests.vault_key_provider import StaticVaultKeyProvider
 
 
 @dataclass
@@ -52,8 +51,7 @@ class _EmptyCacheRepo:
 
 
 def _build_store(tmp_path: Path):
-    master_key = Fernet.generate_key().decode("utf-8")
-    key_provider = EnvVaultKeyProvider(env={"ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}"})
+    key_provider = StaticVaultKeyProvider()
     cipher = FernetEnvelopeCipher()
     locator = SecretLocatorService()
     engine = open_sqlite(

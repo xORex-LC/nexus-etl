@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from connector.config.loader import load_app_config
@@ -14,6 +13,7 @@ from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRe
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.main import app
+from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
 
@@ -137,6 +137,7 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
+    initialize_test_vault(cache_dir)
     args = [
         "--log-dir",
         str(log_dir),
@@ -154,8 +155,8 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
         args,
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),
-            "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
         },
+        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     plan_path = report_dir / f"plan_import_{run_id}.json"
     return result.exit_code, plan_path

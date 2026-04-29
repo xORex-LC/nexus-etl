@@ -1,17 +1,17 @@
 import json
 from pathlib import Path
 
-from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from connector.config.loader import load_app_config
-from connector.config.projections import to_cache_db_config, to_identity_db_config, to_vault_db_config
+from connector.config.projections import to_cache_db_config
 from connector.infra.sqlite.engine import open_sqlite
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 
 from connector.main import app
+from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
 
@@ -31,9 +31,9 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
+    initialize_test_vault(cache_dir)
     merged_env = {
         "EMPLOYEES_SOURCE_PATH": str(csv_path),
-        "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
     }
     if env:
         merged_env.update(env)
@@ -51,6 +51,7 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
             "enrich",
         ],
         env=merged_env,
+        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     report_path = report_dir / f"report_enrich_{run_id}.json"
     return result, report_path

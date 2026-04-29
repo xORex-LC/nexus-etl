@@ -4,8 +4,6 @@ from connector.config.models import AppConfig
 from connector.config.projections import to_vault_db_config
 from pathlib import Path
 
-from cryptography.fernet import Fernet
-
 from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -15,12 +13,14 @@ from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
-from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
+from connector.infra.secrets import FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite
+from tests.vault_key_provider import StaticVaultKeyProvider
 from connector.usecases.import_apply_service import ImportApplyService
 
 CATALOG = build_catalog("employees", strict=True)
+_KEY_PROVIDER = StaticVaultKeyProvider()
 
 
 class _DummyExecutor(RequestExecutorProtocol):
@@ -102,7 +102,7 @@ def _write_secret(tmp_path: Path) -> None:
         store = SecretVaultWriteService(
             repository=SqliteVaultRepository(engine),
             cipher=FernetEnvelopeCipher(),
-            key_provider=EnvVaultKeyProvider(),
+            key_provider=_KEY_PROVIDER,
             locator=SecretLocatorService(),
         )
         store.put_many(
@@ -145,7 +145,7 @@ def _run_apply(tmp_path: Path, *, lifecycle: dict[str, object] | None, exec_ok: 
     try:
         repo = SqliteVaultRepository(engine)
         cipher = FernetEnvelopeCipher()
-        key_provider = EnvVaultKeyProvider()
+        key_provider = _KEY_PROVIDER
         locator = SecretLocatorService()
         provider = SecretVaultReadService(
             repository=repo,
@@ -172,8 +172,7 @@ def _run_apply(tmp_path: Path, *, lifecycle: dict[str, object] | None, exec_ok: 
         engine.close()
 
 
-def test_apply_retention_persistent_keeps_secret(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("ANKEY_VAULT_MASTER_KEYS", f"mk_2026:{Fernet.generate_key().decode('utf-8')}")
+def test_apply_retention_persistent_keeps_secret(tmp_path: Path):
     _write_secret(tmp_path)
 
     result = _run_apply(tmp_path, lifecycle={"mode": "persistent"}, exec_ok=True)
@@ -183,8 +182,7 @@ def test_apply_retention_persistent_keeps_secret(tmp_path: Path, monkeypatch):
     assert result.summary.retention_stats.get("kept") == 1
 
 
-def test_apply_retention_ephemeral_deletes_on_success(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("ANKEY_VAULT_MASTER_KEYS", f"mk_2026:{Fernet.generate_key().decode('utf-8')}")
+def test_apply_retention_ephemeral_deletes_on_success(tmp_path: Path):
     _write_secret(tmp_path)
 
     result = _run_apply(
@@ -198,8 +196,7 @@ def test_apply_retention_ephemeral_deletes_on_success(tmp_path: Path, monkeypatc
     assert result.summary.retention_stats.get("deleted") == 1
 
 
-def test_apply_retention_ephemeral_keeps_secret_on_failed_apply(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("ANKEY_VAULT_MASTER_KEYS", f"mk_2026:{Fernet.generate_key().decode('utf-8')}")
+def test_apply_retention_ephemeral_keeps_secret_on_failed_apply(tmp_path: Path):
     _write_secret(tmp_path)
 
     result = _run_apply(

@@ -4,10 +4,10 @@ import json
 import sqlite3
 from pathlib import Path
 
-from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from connector.main import app
+from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
 
@@ -38,7 +38,7 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
     cache_dir = tmp_path / "cache"
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
-    master_key = Fernet.generate_key().decode("utf-8")
+    initialize_test_vault(cache_dir)
 
     result = runner.invoke(
         app,
@@ -55,8 +55,8 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),
-            "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}",
         },
+        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
 
     assert result.exit_code == 0
@@ -120,7 +120,6 @@ def test_enrich_command_fails_when_vault_mode_off_and_dataset_has_secret_fields(
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),
-            "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
         },
     )
 

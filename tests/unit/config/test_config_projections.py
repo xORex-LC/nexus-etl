@@ -20,7 +20,6 @@ from connector.config.projections import (
     to_vault_rollout_policy_settings,
     to_vault_rollout_thresholds,
 )
-from connector.domain.secrets.policy.rotation_policy import VaultRotationInterval
 from connector.domain.secrets.policy.rollout_metrics import VaultRolloutThresholds
 from connector.domain.secrets.policy.rollout_policy import VaultRolloutPolicySettings
 from connector.domain.transform.matcher.match_deps import MatchBatchSettings
@@ -259,33 +258,18 @@ def test_to_identity_db_config_uses_global_defaults_only() -> None:
 def test_to_vault_management_settings_maps_fields() -> None:
     cfg = AppConfig.model_validate({
         "vault_management": {
-            "managed_env_file": "./cache/vault.env",
             "require_admin_password_for_manual_ops": True,
             "admin_password_hash_file": "./environment/vault-admin.env",
-            "admin_password_hash_env_var": "ANKEY_VAULT_ADMIN_PASSWORD_HASH",
             "admin_password_env_var": "ANKEY_VAULT_ADMIN_PASSWORD",
-            "auto_rotate_enabled": True,
-            "auto_rotate_interval": {
-                "hours": 12,
-                "days": 1,
-                "months": 0,
-                "years": 0,
-            },
-            "auto_rotate_on_error": "fail_open",
         }
     })
 
     result = to_vault_management_settings(cfg)
 
     assert isinstance(result, VaultManagementSettings)
-    assert result.managed_env_file == "./cache/vault.env"
     assert result.require_admin_password_for_manual_ops is True
     assert result.admin_password_hash_file == "./environment/vault-admin.env"
-    assert result.admin_password_hash_env_var == "ANKEY_VAULT_ADMIN_PASSWORD_HASH"
     assert result.admin_password_env_var == "ANKEY_VAULT_ADMIN_PASSWORD"
-    assert result.auto_rotate_enabled is True
-    assert result.auto_rotate_on_error == "fail_open"
-    assert result.auto_rotate_interval == VaultRotationInterval(hours=12, days=1, months=0, years=0)
 
 
 def test_to_vault_management_settings_defaults_follow_config_defaults() -> None:
@@ -293,9 +277,6 @@ def test_to_vault_management_settings_defaults_follow_config_defaults() -> None:
 
     result = to_vault_management_settings(cfg)
 
-    assert result.managed_env_file is None
     assert result.require_admin_password_for_manual_ops is True
     assert result.admin_password_hash_file is None
-    assert result.auto_rotate_enabled is False
-    assert result.auto_rotate_on_error == "fail_closed"
-    assert result.auto_rotate_interval == VaultRotationInterval(days=30)
+    assert result.admin_password_env_var == "ANKEY_VAULT_ADMIN_PASSWORD"

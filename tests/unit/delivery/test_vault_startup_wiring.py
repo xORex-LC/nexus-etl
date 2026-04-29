@@ -87,6 +87,7 @@ def _plan() -> Plan:
 
 
 def test_enrich_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.MonkeyPatch, tmp_path, capsys):
+    monkeypatch.setattr(enrich_command, "provide_runtime_unseal_passphrase", lambda _ctx: None)
     container = MagicMock()
     container.sqlite.vault_ready.init.side_effect = VaultStartupKeyValidationError(
         details={"reason": "probe_decrypt_failed"},
@@ -104,6 +105,7 @@ def test_enrich_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.Mon
 
 
 def test_import_plan_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.MonkeyPatch, tmp_path, capsys):
+    monkeypatch.setattr(import_plan_command, "provide_runtime_unseal_passphrase", lambda _ctx: None)
     container = MagicMock()
     container.sqlite.vault_ready.init.side_effect = VaultStartupKeyValidationError(
         details={"reason": "probe_decrypt_failed"},
@@ -120,6 +122,7 @@ def test_import_plan_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytes
 
 
 def test_import_apply_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.MonkeyPatch, tmp_path, capsys):
+    monkeypatch.setattr(import_apply_command, "provide_runtime_unseal_passphrase", lambda _ctx: None)
     monkeypatch.setattr(import_apply_command, "readPlanFile", lambda _path: _plan())
     container = MagicMock()
     container.sqlite.vault_ready.init.side_effect = VaultStartupKeyValidationError(
