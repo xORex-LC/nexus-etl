@@ -6,7 +6,6 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from cryptography.fernet import Fernet
 
 from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.catalog import build_catalog
@@ -16,15 +15,17 @@ from connector.domain.ports.target.execution import ExecutionResult, RequestExec
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
-from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
+from connector.infra.secrets import FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite
+from tests.vault_key_provider import StaticVaultKeyProvider
 from connector.usecases.apply.models import ApplyResult
 from connector.usecases.import_apply_service import ImportApplyService
 
 CATALOG = build_catalog("employees", strict=True)
 DEFAULT_MATCH_KEY = "Doe|John|M|100"
 DEFAULT_RUN_ID = "run-stage-05"
+_KEY_PROVIDER = StaticVaultKeyProvider()
 
 
 class _DummyExecutor(RequestExecutorProtocol):
@@ -97,12 +98,6 @@ def _make_plan(
     )
 
 
-def _set_master_key(monkeypatch: pytest.MonkeyPatch, *, key_version: str = "mk_2026") -> str:
-    key = Fernet.generate_key().decode("utf-8")
-    monkeypatch.setenv("ANKEY_VAULT_MASTER_KEYS", f"{key_version}:{key}")
-    return key
-
-
 def _write_vault_secret(
     *,
     tmp_path: Path,
@@ -110,7 +105,9 @@ def _write_vault_secret(
     run_id: str = DEFAULT_RUN_ID,
     secret_value: str = "TopSecret123",
 ) -> None:
-    _set_master_key(monkeypatch)
+    _ = monkeypatch
+    key_provider = _KEY_PROVIDER
+    monkeypatch.setattr(_run_apply, "_key_provider", key_provider, raising=False)
     engine = open_sqlite(
         to_vault_db_config(AppConfig()),
         _vault_db_path(tmp_path),
@@ -119,7 +116,7 @@ def _write_vault_secret(
         store = SecretVaultWriteService(
             repository=SqliteVaultRepository(engine),
             cipher=FernetEnvelopeCipher(),
-            key_provider=EnvVaultKeyProvider(),
+            key_provider=key_provider,
             locator=SecretLocatorService(),
         )
         store.put_many(
@@ -145,7 +142,7 @@ def _run_apply(
         provider = SecretVaultReadService(
             repository=SqliteVaultRepository(engine),
             cipher=FernetEnvelopeCipher(),
-            key_provider=EnvVaultKeyProvider(),
+            key_provider=getattr(_run_apply, "_key_provider"),
             locator=SecretLocatorService(),
             default_run_id=plan.meta.run_id,
         )
@@ -183,7 +180,7 @@ def test_apply_vault_missing_required_secret_blocks_target(
     monkeypatch: pytest.MonkeyPatch,
     op: str,
 ):
-    _set_master_key(monkeypatch)
+    monkeypatch.setattr(_run_apply, "_key_provider", _KEY_PROVIDER, raising=False)
     plan = _make_plan(op=op, secret_fields=["password"])
 
     result, executor = _run_apply(tmp_path=tmp_path, plan=plan)
@@ -236,7 +233,12 @@ def test_apply_vault_read_error_blocks_target(tmp_path: Path, monkeypatch: pytes
 
 def test_apply_vault_decryption_error_blocks_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     _write_vault_secret(tmp_path=tmp_path, monkeypatch=monkeypatch)
-    _set_master_key(monkeypatch, key_version="mk_2027")
+    monkeypatch.setattr(
+        _run_apply,
+        "_key_provider",
+        StaticVaultKeyProvider(key_version=_KEY_PROVIDER.key.key_version),
+        raising=False,
+    )
 
     plan = _make_plan(op=Operation.CREATE, secret_fields=["password"])
     result, executor = _run_apply(tmp_path=tmp_path, plan=plan)

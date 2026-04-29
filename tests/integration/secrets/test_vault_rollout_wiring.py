@@ -5,15 +5,15 @@ from connector.config.projections import to_vault_db_config
 import json
 from pathlib import Path
 
-from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
-from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
+from connector.infra.secrets import FernetEnvelopeCipher, UnsealedVaultKeyProvider, VaultUnsealService
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite
 from connector.main import app
+from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
 _MATCH_KEY = "Doe|John|M|100"
@@ -101,15 +101,21 @@ def _write_ephemeral_plan(path: Path, *, run_id: str) -> None:
 
 
 def _seed_vault_secret(*, tmp_path: Path, run_id: str) -> None:
+    initialize_test_vault(tmp_path / "cache")
     engine = open_sqlite(
         to_vault_db_config(AppConfig()),
         str(tmp_path / "cache" / "ankey_vault.sqlite3"),
     )
     try:
+        repository = SqliteVaultRepository(engine)
         store = SecretVaultWriteService(
-            repository=SqliteVaultRepository(engine),
+            repository=repository,
             cipher=FernetEnvelopeCipher(),
-            key_provider=EnvVaultKeyProvider(),
+            key_provider=UnsealedVaultKeyProvider(
+                repository=repository,
+                unseal_service=VaultUnsealService(),
+                passphrase=TEST_UNSEAL_PASSPHRASE,
+            ),
             locator=SecretLocatorService(),
         )
         store.put_many(
@@ -150,6 +156,7 @@ def test_import_apply_staging_rollout_forces_dry_run(tmp_path: Path) -> None:
     plan_path = tmp_path / "plan.json"
     run_id = "stage9-rollout-staging"
     _write_empty_plan(plan_path, run_id=run_id)
+    initialize_test_vault(tmp_path / "cache")
 
     result = runner.invoke(
         app,
@@ -178,9 +185,9 @@ def test_import_apply_staging_rollout_forces_dry_run(tmp_path: Path) -> None:
             "on",
         ],
         env={
-            "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
             "ANKEY_VAULT_ROLLOUT__MODE": "staging_dry_run",
         },
+        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     assert result.exit_code == 0
 
@@ -198,8 +205,6 @@ def test_import_apply_explicit_dry_run_keeps_ephemeral_secret(tmp_path: Path, mo
     run_id = "stage9-rollout-dry-run-no-retention"
     _write_ephemeral_plan(plan_path, run_id=run_id)
 
-    master_key = Fernet.generate_key().decode("utf-8")
-    monkeypatch.setenv("ANKEY_VAULT_MASTER_KEYS", f"mk_2026:{master_key}")
     _seed_vault_secret(tmp_path=tmp_path, run_id=run_id)
 
     result = runner.invoke(
@@ -229,7 +234,7 @@ def test_import_apply_explicit_dry_run_keeps_ephemeral_secret(tmp_path: Path, mo
             "--vault-mode",
             "on",
         ],
-        env={"ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}"},
+        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     assert result.exit_code == 0
     assert _vault_secret_exists(tmp_path=tmp_path, run_id=run_id) is True
@@ -246,8 +251,6 @@ def test_import_apply_staging_dry_run_keeps_ephemeral_secret(tmp_path: Path, mon
     run_id = "stage9-rollout-staging-no-retention"
     _write_ephemeral_plan(plan_path, run_id=run_id)
 
-    master_key = Fernet.generate_key().decode("utf-8")
-    monkeypatch.setenv("ANKEY_VAULT_MASTER_KEYS", f"mk_2026:{master_key}")
     _seed_vault_secret(tmp_path=tmp_path, run_id=run_id)
 
     result = runner.invoke(
@@ -277,9 +280,9 @@ def test_import_apply_staging_dry_run_keeps_ephemeral_secret(tmp_path: Path, mon
             "on",
         ],
         env={
-            "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}",
             "ANKEY_VAULT_ROLLOUT__MODE": "staging_dry_run",
         },
+        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     assert result.exit_code == 0
     assert _vault_secret_exists(tmp_path=tmp_path, run_id=run_id) is True
@@ -326,7 +329,6 @@ def test_import_apply_canary_percent_zero_blocks_requested_vault(tmp_path: Path)
             "on",
         ],
         env={
-            "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{Fernet.generate_key().decode('utf-8')}",
             "ANKEY_VAULT_ROLLOUT__MODE": "canary",
             "ANKEY_VAULT_ROLLOUT__CANARY_PERCENT": "0",
             "ANKEY_VAULT_ROLLOUT__CANARY_DATASETS": "employees",

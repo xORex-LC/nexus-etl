@@ -4,18 +4,13 @@ from connector.config.models import AppConfig
 from connector.config.projections import to_vault_db_config
 from pathlib import Path
 
-from cryptography.fernet import Fernet
-
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
-from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
+from connector.infra.secrets import FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
-
-
-def _new_key() -> str:
-    return Fernet.generate_key().decode("utf-8")
+from tests.vault_key_provider import StaticVaultKeyProvider
 
 
 def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, SqliteEngine]:
@@ -27,7 +22,7 @@ def _build_repo(tmp_path: Path) -> tuple[SqliteVaultRepository, SqliteEngine]:
 
 
 def _write_secret(repo: SqliteVaultRepository, *, value: str = "TopSecret123", run_id: str = "run-1") -> None:
-    key_provider = EnvVaultKeyProvider(env={"ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{_new_key()}"})
+    key_provider = StaticVaultKeyProvider()
     store = SecretVaultWriteService(
         repository=repo,
         cipher=FernetEnvelopeCipher(),
@@ -143,4 +138,3 @@ def test_retention_maintenance_hooks_are_available(tmp_path: Path):
         }
     finally:
         engine.close()
-

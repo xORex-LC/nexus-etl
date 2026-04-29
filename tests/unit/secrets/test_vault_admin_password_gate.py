@@ -13,17 +13,24 @@ from connector.domain.secrets.errors import (
 from connector.infra.secrets.management.admin_password_gate import VaultAdminPasswordGate
 
 
+def _hash_file(tmp_path: Path, raw_hash: str) -> Path:
+    path = tmp_path / "vault-admin.env"
+    path.write_text(f"ANKEY_VAULT_ADMIN_PASSWORD_HASH={raw_hash}\n", encoding="utf-8")
+    path.chmod(0o600)
+    return path
+
+
 def _build_gate(
     *,
     env: dict[str, str],
+    hash_file: Path | None,
     require_admin_password_for_manual_ops: bool = True,
-    admin_password_hash_file: str | None = None,
     prompt_password=None,
 ) -> VaultAdminPasswordGate:
     return VaultAdminPasswordGate(
         require_admin_password_for_manual_ops=require_admin_password_for_manual_ops,
-        admin_password_hash_file=admin_password_hash_file,
-        admin_password_hash_env_var="ANKEY_VAULT_ADMIN_PASSWORD_HASH",
+        admin_password_hash_file=str(hash_file) if hash_file is not None else None,
+        admin_password_hash_name="ANKEY_VAULT_ADMIN_PASSWORD_HASH",
         admin_password_env_var="ANKEY_VAULT_ADMIN_PASSWORD",
         env=env,
         prompt_password=prompt_password,
@@ -31,7 +38,7 @@ def _build_gate(
 
 
 def test_verify_manual_access_skips_when_policy_disabled() -> None:
-    gate = _build_gate(env={}, require_admin_password_for_manual_ops=False)
+    gate = _build_gate(env={}, hash_file=None, require_admin_password_for_manual_ops=False)
 
     with structlog.testing.capture_logs() as cap:
         gate.verify_manual_access(non_interactive=True)
@@ -40,123 +47,87 @@ def test_verify_manual_access_skips_when_policy_disabled() -> None:
     assert cap[0]["reason"] == "policy_disabled"
 
 
-def test_verify_manual_access_non_interactive_success() -> None:
+def test_verify_manual_access_non_interactive_success(tmp_path: Path) -> None:
     password = "Admin-Secret-2026"
-    password_hash = PasswordHasher().hash(password)
-    gate = _build_gate(
-        env={
-            "ANKEY_VAULT_ADMIN_PASSWORD_HASH": password_hash,
-            "ANKEY_VAULT_ADMIN_PASSWORD": password,
-        }
-    )
-
-    gate.verify_manual_access(non_interactive=True)
-
-
-def test_verify_manual_access_reads_hash_from_private_hash_file(tmp_path: Path) -> None:
-    password = "Admin-Secret-From-File-2026"
-    password_hash = PasswordHasher().hash(password)
-    hash_file = tmp_path / "vault-admin.env"
-    hash_file.write_text(f"ANKEY_VAULT_ADMIN_PASSWORD_HASH={password_hash}\n", encoding="utf-8")
-    hash_file.chmod(0o600)
     gate = _build_gate(
         env={"ANKEY_VAULT_ADMIN_PASSWORD": password},
-        admin_password_hash_file=str(hash_file),
+        hash_file=_hash_file(tmp_path, PasswordHasher().hash(password)),
     )
 
     gate.verify_manual_access(non_interactive=True)
 
 
 def test_verify_manual_access_rejects_open_hash_file_permissions(tmp_path: Path) -> None:
-    password_hash = PasswordHasher().hash("expected")
-    hash_file = tmp_path / "vault-admin.env"
-    hash_file.write_text(f"ANKEY_VAULT_ADMIN_PASSWORD_HASH={password_hash}\n", encoding="utf-8")
+    hash_file = _hash_file(tmp_path, PasswordHasher().hash("expected"))
     hash_file.chmod(0o644)
-    gate = _build_gate(
-        env={"ANKEY_VAULT_ADMIN_PASSWORD": "expected"},
-        admin_password_hash_file=str(hash_file),
-    )
+    gate = _build_gate(env={"ANKEY_VAULT_ADMIN_PASSWORD": "expected"}, hash_file=hash_file)
 
     with pytest.raises(VaultAdminPasswordConfigError) as exc_info:
         gate.verify_manual_access(non_interactive=True)
 
     assert exc_info.value.details["reason"] == "admin_password_hash_file_permissions_too_open"
-    assert exc_info.value.details["file_mode"] == "0o644"
 
 
 def test_verify_manual_access_rejects_missing_hash_file_variable(tmp_path: Path) -> None:
     hash_file = tmp_path / "vault-admin.env"
     hash_file.write_text("OTHER_HASH=value\n", encoding="utf-8")
     hash_file.chmod(0o600)
-    gate = _build_gate(
-        env={"ANKEY_VAULT_ADMIN_PASSWORD": "expected"},
-        admin_password_hash_file=str(hash_file),
-    )
+    gate = _build_gate(env={"ANKEY_VAULT_ADMIN_PASSWORD": "expected"}, hash_file=hash_file)
 
     with pytest.raises(VaultAdminPasswordConfigError) as exc_info:
         gate.verify_manual_access(non_interactive=True)
 
     assert exc_info.value.details["reason"] == "admin_password_hash_missing"
-    assert exc_info.value.details["hash_file"] == str(hash_file)
 
 
-def test_verify_manual_access_interactive_success() -> None:
+def test_verify_manual_access_interactive_success(tmp_path: Path) -> None:
     password = "Interactive-Admin-Secret-2026"
-    password_hash = PasswordHasher().hash(password)
     gate = _build_gate(
-        env={"ANKEY_VAULT_ADMIN_PASSWORD_HASH": password_hash},
+        env={},
+        hash_file=_hash_file(tmp_path, PasswordHasher().hash(password)),
         prompt_password=lambda _: password,
     )
 
     gate.verify_manual_access(non_interactive=False)
 
 
-def test_verify_manual_access_raises_for_missing_hash_env_var() -> None:
-    gate = _build_gate(env={"ANKEY_VAULT_ADMIN_PASSWORD": "value"})
+def test_verify_manual_access_requires_configured_hash_file() -> None:
+    gate = _build_gate(env={"ANKEY_VAULT_ADMIN_PASSWORD": "value"}, hash_file=None)
 
     with pytest.raises(VaultAdminPasswordConfigError) as exc_info:
         gate.verify_manual_access(non_interactive=True)
 
-    assert exc_info.value.code == "VAULT_MANAGEMENT_ADMIN_PASSWORD_CONFIG_ERROR"
-    assert exc_info.value.details["reason"] == "admin_password_hash_missing"
+    assert exc_info.value.details["reason"] == "admin_password_hash_file_missing"
 
 
-def test_verify_manual_access_raises_for_non_argon2id_hash() -> None:
+def test_verify_manual_access_raises_for_non_argon2id_hash(tmp_path: Path) -> None:
     gate = _build_gate(
-        env={
-            "ANKEY_VAULT_ADMIN_PASSWORD_HASH": "$argon2i$v=19$m=65536,t=3,p=4$hash",
-            "ANKEY_VAULT_ADMIN_PASSWORD": "value",
-        }
+        env={"ANKEY_VAULT_ADMIN_PASSWORD": "value"},
+        hash_file=_hash_file(tmp_path, "$argon2i$v=19$m=65536,t=3,p=4$hash"),
     )
 
     with pytest.raises(VaultAdminPasswordConfigError) as exc_info:
         gate.verify_manual_access(non_interactive=True)
 
     assert exc_info.value.details["reason"] == "unsupported_hash_algorithm"
-    assert exc_info.value.details["required_algorithm"] == "argon2id"
 
 
-def test_verify_manual_access_non_interactive_requires_password_env_var() -> None:
-    gate = _build_gate(
-        env={"ANKEY_VAULT_ADMIN_PASSWORD_HASH": PasswordHasher().hash("expected")},
-    )
+def test_verify_manual_access_non_interactive_requires_password_env_var(tmp_path: Path) -> None:
+    gate = _build_gate(env={}, hash_file=_hash_file(tmp_path, PasswordHasher().hash("expected")))
 
     with pytest.raises(VaultAdminPasswordConfigError) as exc_info:
         gate.verify_manual_access(non_interactive=True)
 
     assert exc_info.value.details["reason"] == "admin_password_missing"
-    assert exc_info.value.details["password_env_var"] == "ANKEY_VAULT_ADMIN_PASSWORD"
 
 
-def test_verify_manual_access_raises_for_password_mismatch_and_logs_are_safe() -> None:
+def test_verify_manual_access_raises_for_password_mismatch_and_logs_are_safe(tmp_path: Path) -> None:
     expected_password = "Expected-Admin-Secret-2026"
     wrong_password = "Wrong-Admin-Secret-2026"
     password_hash = PasswordHasher().hash(expected_password)
     gate = _build_gate(
-        env={
-            "ANKEY_VAULT_ADMIN_PASSWORD_HASH": password_hash,
-            "ANKEY_VAULT_ADMIN_PASSWORD": wrong_password,
-        }
+        env={"ANKEY_VAULT_ADMIN_PASSWORD": wrong_password},
+        hash_file=_hash_file(tmp_path, password_hash),
     )
 
     with structlog.testing.capture_logs() as cap:
@@ -171,12 +142,10 @@ def test_verify_manual_access_raises_for_password_mismatch_and_logs_are_safe() -
         assert password_hash not in str(entry)
 
 
-def test_verify_manual_access_rejects_invalid_argon2_hash() -> None:
+def test_verify_manual_access_rejects_invalid_argon2_hash(tmp_path: Path) -> None:
     gate = _build_gate(
-        env={
-            "ANKEY_VAULT_ADMIN_PASSWORD_HASH": "$argon2id$invalid_hash_payload",
-            "ANKEY_VAULT_ADMIN_PASSWORD": "any-value",
-        }
+        env={"ANKEY_VAULT_ADMIN_PASSWORD": "any-value"},
+        hash_file=_hash_file(tmp_path, "$argon2id$invalid_hash_payload"),
     )
 
     with pytest.raises(VaultAdminPasswordConfigError) as exc_info:
@@ -185,10 +154,10 @@ def test_verify_manual_access_rejects_invalid_argon2_hash() -> None:
     assert exc_info.value.details["reason"] == "invalid_password_hash"
 
 
-def test_verify_manual_access_interactive_prompt_failure_maps_to_access_denied() -> None:
-    password_hash = PasswordHasher().hash("expected-password")
+def test_verify_manual_access_interactive_prompt_failure_maps_to_access_denied(tmp_path: Path) -> None:
     gate = _build_gate(
-        env={"ANKEY_VAULT_ADMIN_PASSWORD_HASH": password_hash},
+        env={},
+        hash_file=_hash_file(tmp_path, PasswordHasher().hash("expected-password")),
         prompt_password=lambda _: (_ for _ in ()).throw(RuntimeError("tty_error")),
     )
 

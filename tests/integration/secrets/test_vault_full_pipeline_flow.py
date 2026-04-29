@@ -13,7 +13,6 @@ from connector.config.projections import to_cache_db_config, to_identity_db_conf
 import json
 from pathlib import Path
 
-from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from connector.domain.transform.matcher.identity_keys import format_identity_key
@@ -24,6 +23,7 @@ from connector.infra.cache.repository.cache_repository import SqliteCacheReposit
 from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.main import app
+from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 
 runner = CliRunner()
@@ -57,9 +57,9 @@ def _run_import_plan(
     tmp_path: Path,
     run_id: str,
     csv_path: Path,
-    master_key: str,
 ):
     cache_dir = tmp_path / "cache"
+    initialize_test_vault(cache_dir)
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     result = runner.invoke(
@@ -78,8 +78,8 @@ def _run_import_plan(
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),
-            "ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}",
         },
+        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     return result, report_dir / f"plan_import_{run_id}.json"
 
@@ -89,7 +89,6 @@ def _run_import_apply(
     tmp_path: Path,
     run_id: str,
     plan_path: Path,
-    master_key: str,
 ):
     cache_dir = tmp_path / "cache"
     log_dir = tmp_path / "logs"
@@ -121,7 +120,7 @@ def _run_import_apply(
             "--vault-mode",
             "on",
         ],
-        env={"ANKEY_VAULT_MASTER_KEYS": f"mk_2026:{master_key}"},
+        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     return result, report_dir / f"report_import-apply_{run_id}.json"
 
@@ -210,7 +209,6 @@ def _seed_organization_identities(
 
 
 def test_vault_full_pipeline_create_flow(tmp_path: Path):
-    master_key = Fernet.generate_key().decode("utf-8")
     csv_path = tmp_path / "employees-create.csv"
     _write_minimal_employees_csv(csv_path, phone="+123456", password="SECRET_CREATE")
     _seed_organization_identities(cache_dir=tmp_path / "cache", resolved_org_id=10)
@@ -219,7 +217,6 @@ def test_vault_full_pipeline_create_flow(tmp_path: Path):
         tmp_path=tmp_path,
         run_id="vault-flow-create-plan",
         csv_path=csv_path,
-        master_key=master_key,
     )
     assert plan_result.exit_code == 0
     assert plan_path.exists()
@@ -232,7 +229,6 @@ def test_vault_full_pipeline_create_flow(tmp_path: Path):
         tmp_path=tmp_path,
         run_id="vault-flow-create-apply",
         plan_path=plan_path,
-        master_key=master_key,
     )
     assert apply_result.exit_code == 0
     assert apply_report_path.exists()
@@ -243,7 +239,6 @@ def test_vault_full_pipeline_create_flow(tmp_path: Path):
 
 
 def test_vault_full_pipeline_update_flow(tmp_path: Path):
-    master_key = Fernet.generate_key().decode("utf-8")
     csv_path = tmp_path / "employees-update.csv"
     _write_minimal_employees_csv(csv_path, phone="+123456", password="SECRET_UPDATE")
     _seed_organization_identities(cache_dir=tmp_path / "cache", resolved_org_id=10)
@@ -252,7 +247,6 @@ def test_vault_full_pipeline_update_flow(tmp_path: Path):
         tmp_path=tmp_path,
         run_id="vault-flow-update-probe",
         csv_path=csv_path,
-        master_key=master_key,
     )
     assert probe_result.exit_code == 0
     probe_plan = _read_json(probe_plan_path)
@@ -264,7 +258,6 @@ def test_vault_full_pipeline_update_flow(tmp_path: Path):
         tmp_path=tmp_path,
         run_id="vault-flow-update-plan",
         csv_path=csv_path,
-        master_key=master_key,
     )
     assert plan_result.exit_code == 0
     assert plan_path.exists()
@@ -277,7 +270,6 @@ def test_vault_full_pipeline_update_flow(tmp_path: Path):
         tmp_path=tmp_path,
         run_id="vault-flow-update-apply",
         plan_path=plan_path,
-        master_key=master_key,
     )
     assert apply_result.exit_code == 0
     assert apply_report_path.exists()

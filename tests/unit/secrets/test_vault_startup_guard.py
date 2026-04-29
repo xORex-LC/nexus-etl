@@ -13,8 +13,9 @@ from connector.domain.secrets.errors import (
     VaultStartupStorageReadonlyError,
     VaultStartupUninitializedReadonlyError,
 )
+from connector.domain.ports.secrets.key_provider import VaultMasterKey
 from connector.domain.secrets.vault_startup_guard import DEFAULT_PROBE_NAME, VaultStartupGuard
-from connector.infra.secrets import EnvVaultKeyProvider, FernetEnvelopeCipher
+from connector.infra.secrets import FernetEnvelopeCipher
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite, SqliteEngine
 
@@ -31,6 +32,20 @@ class _WritableStorageProbe:
 class _ReadonlyStorageProbe:
     def is_readonly(self) -> bool:
         return True
+
+
+class _StaticKeyProvider:
+    def __init__(self, key: VaultMasterKey) -> None:
+        self._key = key
+
+    def get_active_key(self) -> VaultMasterKey:
+        return self._key
+
+    def get_all_keys(self) -> tuple[VaultMasterKey, ...]:
+        return (self._key,)
+
+    def find_key(self, key_version: str) -> VaultMasterKey | None:
+        return self._key if self._key.key_version == key_version else None
 
 
 def _build_repo(tmp_path: Path) -> tuple[SqliteEngine, SqliteVaultRepository]:
@@ -50,7 +65,7 @@ def _build_guard(
 ) -> VaultStartupGuard:
     if storage_probe is None:
         storage_probe = _WritableStorageProbe()
-    key_provider = EnvVaultKeyProvider(env={"ANKEY_VAULT_MASTER_KEYS": f"{key_version}:{key_material}"})
+    key_provider = _StaticKeyProvider(VaultMasterKey(key_version=key_version, key_material=key_material, is_active=True))
     return VaultStartupGuard(
         repository=repository,
         cipher=FernetEnvelopeCipher(),
