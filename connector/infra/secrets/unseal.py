@@ -31,6 +31,11 @@ DEFAULT_UNSEAL_MEMORY_COST_KIB = 65536
 DEFAULT_UNSEAL_PARALLELISM = 4
 DEFAULT_UNSEAL_HASH_LEN = 32
 DEFAULT_UNSEAL_SALT_LEN = 32
+MAX_UNSEAL_TIME_COST = 10
+MAX_UNSEAL_MEMORY_COST_KIB = 1048576
+MAX_UNSEAL_PARALLELISM = 16
+MIN_UNSEAL_SALT_LEN = 16
+MAX_UNSEAL_SALT_LEN = 128
 _HMAC_MESSAGE_PREFIX = b"ankey-vault-unseal-v1"
 
 
@@ -88,6 +93,7 @@ class VaultUnsealService:
                 "Unsupported vault unseal KDF",
                 details={"reason": "unsupported_unseal_kdf", "kdf_algo": metadata.kdf_algo},
             )
+        self._validate_kdf_params(metadata)
         if metadata.kdf_hash_len != DEFAULT_UNSEAL_HASH_LEN:
             raise SecretKeyConfigError(
                 "Unsupported vault unseal key length",
@@ -108,6 +114,29 @@ class VaultUnsealService:
                 "Failed to derive vault unseal key",
                 details={"reason": "unseal_kdf_failed", "error_type": type(exc).__name__},
             ) from exc
+
+    def _validate_kdf_params(self, metadata: VaultUnsealMetadata) -> None:
+        salt_len = len(_bytes(metadata.kdf_salt))
+        if not MIN_UNSEAL_SALT_LEN <= salt_len <= MAX_UNSEAL_SALT_LEN:
+            raise SecretKeyConfigError(
+                "Unsupported vault unseal KDF salt length",
+                details={"reason": "unsupported_unseal_kdf_params", "param": "kdf_salt"},
+            )
+        if not 1 <= metadata.kdf_time_cost <= MAX_UNSEAL_TIME_COST:
+            raise SecretKeyConfigError(
+                "Unsupported vault unseal KDF time cost",
+                details={"reason": "unsupported_unseal_kdf_params", "param": "kdf_time_cost"},
+            )
+        if not 8192 <= metadata.kdf_memory_cost_kib <= MAX_UNSEAL_MEMORY_COST_KIB:
+            raise SecretKeyConfigError(
+                "Unsupported vault unseal KDF memory cost",
+                details={"reason": "unsupported_unseal_kdf_params", "param": "kdf_memory_cost_kib"},
+            )
+        if not 1 <= metadata.kdf_parallelism <= MAX_UNSEAL_PARALLELISM:
+            raise SecretKeyConfigError(
+                "Unsupported vault unseal KDF parallelism",
+                details={"reason": "unsupported_unseal_kdf_params", "param": "kdf_parallelism"},
+            )
 
     def _build_hmac(self, *, raw_key: bytes, metadata: VaultUnsealMetadata) -> bytes:
         if metadata.hmac_algo != HMAC_SHA256:

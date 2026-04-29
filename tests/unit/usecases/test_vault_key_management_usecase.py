@@ -194,3 +194,16 @@ def test_status_without_unseal_reports_initialized_state() -> None:
 
     assert status.initialized is True
     assert status.active_key_version == "mk_new"
+
+
+def test_verify_unseal_runs_post_verify_probe() -> None:
+    repo = _Repo()
+    verifier = _Verifier()
+    usecase = _usecase(repo, verifier)
+    usecase.init_keyring(passphrase="current passphrase")
+
+    active_key = usecase.verify_unseal(passphrase="current passphrase")
+
+    assert active_key.key_version == "mk_new"
+    assert len(verifier.calls) == 2
+    assert verifier.calls[1][0].key_version == "mk_new"

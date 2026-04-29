@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from connector.domain.secrets.errors import SecretKeyConfigError
@@ -40,6 +42,22 @@ def test_wrong_unseal_passphrase_fails_hmac_check() -> None:
         service.derive_key(passphrase="wrong passphrase", metadata=metadata)
 
     assert exc_info.value.details["reason"] == "unseal_passphrase_invalid"
+
+
+def test_unseal_rejects_excessive_kdf_params_before_derivation() -> None:
+    service = VaultUnsealService()
+    metadata, _ = service.create_metadata(
+        passphrase="correct horse battery",
+        key_version="mk_2026",
+        now_utc="2026-04-28T00:00:00+00:00",
+    )
+    metadata = replace(metadata, kdf_memory_cost_kib=1048577)
+
+    with pytest.raises(SecretKeyConfigError) as exc_info:
+        service.derive_key(passphrase="correct horse battery", metadata=metadata)
+
+    assert exc_info.value.details["reason"] == "unsupported_unseal_kdf_params"
+    assert exc_info.value.details["param"] == "kdf_memory_cost_kib"
 
 
 def test_unsealed_key_provider_returns_single_active_key() -> None:
