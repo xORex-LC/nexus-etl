@@ -15,6 +15,7 @@ from connector.delivery.commands.common import (
     sqlite_cache_error_result,
     vault_startup_error_result,
 )
+from connector.delivery.commands.vault_unseal import provide_runtime_unseal_passphrase
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_builder import PlanBuilder
@@ -102,6 +103,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
 
         secret_store = None
         if rollout_decision.vault_enabled:
+            provide_runtime_unseal_passphrase(ctx)
             ctx.container.sqlite.vault_ready.init()
             secret_store = ctx.container.vault.write_service()
 

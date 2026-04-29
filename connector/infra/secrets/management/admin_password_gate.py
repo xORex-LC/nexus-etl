@@ -2,8 +2,8 @@
     Password-gate для операций vault-management.
 
 Граница ответственности:
-    - Проверяет доступ администратора по паролю и argon2id-хешу из managed
-      hash-файла или legacy ENV-источника.
+    - Проверяет доступ администратора по паролю и argon2id-хешу из configured
+      hash-файла.
     - Проверяет filesystem-права hash-файла перед использованием.
     - Поддерживает interactive и non-interactive режимы получения пароля.
     - Логирует только безопасную операционную телеметрию (без secret/hash leakage).
@@ -76,10 +76,8 @@ class VaultAdminPasswordGate:
 
     Инварианты:
         - При `require_admin_password_for_manual_ops=False` проверка пропускается.
-        - Если задан `admin_password_hash_file`, hash берётся из него и файл
-          обязан быть доступен только владельцу (`0600` или строже).
-        - Если hash-файл не задан, поддерживается legacy ENV-источник
-          `admin_password_hash_env_var`.
+        - Hash берётся только из `admin_password_hash_file`; файл обязан быть
+          доступен только владельцу (`0600` или строже).
         - Поддерживаются только hash-строки с префиксом `$argon2id$`.
         - Пароль не логируется и не добавляется в details исключений.
     """
@@ -88,8 +86,8 @@ class VaultAdminPasswordGate:
         self,
         *,
         require_admin_password_for_manual_ops: bool,
-        admin_password_hash_env_var: str,
         admin_password_env_var: str,
+        admin_password_hash_name: str,
         admin_password_hash_file: str | None = None,
         env: Mapping[str, str] | None = None,
         prompt_password: PromptFn | None = None,
@@ -97,7 +95,7 @@ class VaultAdminPasswordGate:
     ) -> None:
         self._require_admin_password_for_manual_ops = require_admin_password_for_manual_ops
         self._admin_password_hash_file = admin_password_hash_file
-        self._admin_password_hash_env_var = admin_password_hash_env_var
+        self._admin_password_hash_name = admin_password_hash_name
         self._admin_password_env_var = admin_password_env_var
         self._env = env if env is not None else os.environ
         self._prompt_password = prompt_password or getpass.getpass
@@ -111,8 +109,7 @@ class VaultAdminPasswordGate:
         Контракт:
             - `non_interactive=True`: пароль читается из `admin_password_env_var`.
             - `non_interactive=False`: пароль запрашивается через prompt.
-            - Hash читается из configured hash-файла, если он задан, иначе из
-              legacy ENV-источника.
+            - Hash читается из configured hash-файла.
             - При неуспехе выбрасывает `VaultAdminPasswordConfigError` или
               `VaultAdminAccessDeniedError`.
         """
@@ -138,28 +135,19 @@ class VaultAdminPasswordGate:
         if self._admin_password_hash_file is not None:
             raw_hash = VaultAdminPasswordHashStore(
                 hash_file=self._admin_password_hash_file,
-                env_var=self._admin_password_hash_env_var,
+                hash_name=self._admin_password_hash_name,
             ).load_hash(mode=mode)
             return self._validate_password_hash(raw_hash=raw_hash, mode=mode, source="file")
 
-        raw_hash = self._env.get(self._admin_password_hash_env_var)
-        if raw_hash is None or not raw_hash.strip():
-            self._logger.warning(
-                "vault_admin_password_gate_failed",
-                reason="admin_password_hash_missing",
-                mode=mode,
-                hash_env_var=self._admin_password_hash_env_var,
-            )
-            raise VaultAdminPasswordConfigError(
-                "Vault admin password hash is missing",
-                details={
-                    "reason": "admin_password_hash_missing",
-                    "mode": mode,
-                    "hash_env_var": self._admin_password_hash_env_var,
-                },
-            )
-
-        return self._validate_password_hash(raw_hash=raw_hash, mode=mode, source="env")
+        self._logger.warning(
+            "vault_admin_password_gate_failed",
+            reason="admin_password_hash_file_missing",
+            mode=mode,
+        )
+        raise VaultAdminPasswordConfigError(
+            "Vault admin password hash file is not configured",
+            details={"reason": "admin_password_hash_file_missing", "mode": mode},
+        )
 
     def _validate_password_hash(self, *, raw_hash: str, mode: str, source: str) -> str:
         normalized_hash = raw_hash.strip()
@@ -168,7 +156,6 @@ class VaultAdminPasswordGate:
                 "vault_admin_password_gate_failed",
                 reason="unsupported_hash_algorithm",
                 mode=mode,
-                hash_env_var=self._admin_password_hash_env_var,
                 hash_source=source,
             )
             raise VaultAdminPasswordConfigError(
@@ -176,7 +163,6 @@ class VaultAdminPasswordGate:
                 details={
                     "reason": "unsupported_hash_algorithm",
                     "mode": mode,
-                    "hash_env_var": self._admin_password_hash_env_var,
                     "hash_source": source,
                     "required_algorithm": "argon2id",
                 },
@@ -248,14 +234,12 @@ class VaultAdminPasswordGate:
                     "vault_admin_password_gate_failed",
                     reason="invalid_password_hash",
                     mode=mode,
-                    hash_env_var=self._admin_password_hash_env_var,
                 )
                 raise VaultAdminPasswordConfigError(
                     "Vault admin password hash is invalid",
                     details={
                         "reason": "invalid_password_hash",
                         "mode": mode,
-                        "hash_env_var": self._admin_password_hash_env_var,
                     },
                 ) from exc
             if _VERIFICATION_ERRORS and isinstance(exc, _VERIFICATION_ERRORS):
@@ -264,7 +248,6 @@ class VaultAdminPasswordGate:
                         "vault_admin_password_gate_failed",
                         reason="invalid_password_hash",
                         mode=mode,
-                        hash_env_var=self._admin_password_hash_env_var,
                         error_type=type(exc).__name__,
                     )
                     raise VaultAdminPasswordConfigError(
@@ -272,7 +255,6 @@ class VaultAdminPasswordGate:
                         details={
                             "reason": "invalid_password_hash",
                             "mode": mode,
-                            "hash_env_var": self._admin_password_hash_env_var,
                         },
                     ) from exc
                 self._logger.warning(
@@ -303,17 +285,17 @@ class VaultAdminPasswordGate:
 
 class VaultAdminPasswordHashStore:
     """Назначение:
-        Прочитать argon2id hash из локального managed env-файла.
+        Прочитать argon2id hash из локального admin hash-файла.
 
     Контракт:
-        - Файл имеет dotenv/shell-like формат и содержит переменную `env_var`.
+        - Файл имеет dotenv/shell-like формат и содержит `ANKEY_VAULT_ADMIN_PASSWORD_HASH`.
         - POSIX-права не должны давать доступ group/other (`0600`, `0400` и т.п.).
         - Значение hash не логируется и не попадает в exception details.
     """
 
-    def __init__(self, *, hash_file: str, env_var: str) -> None:
+    def __init__(self, *, hash_file: str, hash_name: str) -> None:
         self._path = Path(hash_file)
-        self._env_var = env_var
+        self._hash_name = hash_name
         self._logger = structlog.get_logger(__name__)
 
     def load_hash(self, *, mode: str) -> str:
@@ -327,7 +309,6 @@ class VaultAdminPasswordHashStore:
                 reason="admin_password_hash_file_read_failed",
                 mode=mode,
                 hash_file=str(self._path),
-                hash_env_var=self._env_var,
                 errno=getattr(exc, "errno", None),
             )
             raise VaultAdminPasswordConfigError(
@@ -336,13 +317,12 @@ class VaultAdminPasswordHashStore:
                     "reason": "admin_password_hash_file_read_failed",
                     "mode": mode,
                     "hash_file": str(self._path),
-                    "hash_env_var": self._env_var,
                     "errno": getattr(exc, "errno", None),
                 },
             ) from exc
 
         for raw_line in content.splitlines():
-            value = _extract_env_value(raw_line, env_var=self._env_var)
+            value = _extract_env_value(raw_line, env_var=self._hash_name)
             if value is not None and value.strip():
                 return value
 
@@ -351,7 +331,6 @@ class VaultAdminPasswordHashStore:
             reason="admin_password_hash_missing",
             mode=mode,
             hash_file=str(self._path),
-            hash_env_var=self._env_var,
         )
         raise VaultAdminPasswordConfigError(
             "Vault admin password hash is missing",
@@ -359,7 +338,6 @@ class VaultAdminPasswordHashStore:
                 "reason": "admin_password_hash_missing",
                 "mode": mode,
                 "hash_file": str(self._path),
-                "hash_env_var": self._env_var,
             },
         )
 
@@ -372,7 +350,6 @@ class VaultAdminPasswordHashStore:
                 reason="admin_password_hash_file_missing",
                 mode=mode,
                 hash_file=str(self._path),
-                hash_env_var=self._env_var,
                 errno=getattr(exc, "errno", None),
             )
             raise VaultAdminPasswordConfigError(
@@ -381,7 +358,6 @@ class VaultAdminPasswordHashStore:
                     "reason": "admin_password_hash_file_missing",
                     "mode": mode,
                     "hash_file": str(self._path),
-                    "hash_env_var": self._env_var,
                     "errno": getattr(exc, "errno", None),
                 },
             ) from exc
@@ -392,7 +368,6 @@ class VaultAdminPasswordHashStore:
                 reason="admin_password_hash_file_not_regular",
                 mode=mode,
                 hash_file=str(self._path),
-                hash_env_var=self._env_var,
             )
             raise VaultAdminPasswordConfigError(
                 "Vault admin password hash path must be a regular file",
@@ -400,7 +375,6 @@ class VaultAdminPasswordHashStore:
                     "reason": "admin_password_hash_file_not_regular",
                     "mode": mode,
                     "hash_file": str(self._path),
-                    "hash_env_var": self._env_var,
                 },
             )
 
@@ -411,7 +385,6 @@ class VaultAdminPasswordHashStore:
                 reason="admin_password_hash_file_permissions_too_open",
                 mode=mode,
                 hash_file=str(self._path),
-                hash_env_var=self._env_var,
                 file_mode=oct(permissions),
             )
             raise VaultAdminPasswordConfigError(
@@ -420,7 +393,6 @@ class VaultAdminPasswordHashStore:
                     "reason": "admin_password_hash_file_permissions_too_open",
                     "mode": mode,
                     "hash_file": str(self._path),
-                    "hash_env_var": self._env_var,
                     "file_mode": oct(permissions),
                     "required": "0600 or stricter",
                 },

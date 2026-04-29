@@ -9,14 +9,12 @@
 """
 
 from connector.usecases.management.vault import (
-    KeyMaterialFactory,
     KeyVersionFactory,
     NowFactory,
     RunIdFactory,
     VaultKeyManagementResult,
     VaultKeyManagementStatus,
     VaultKeyManagementUseCase,
-    VaultManagedKeyringStoreProtocol,
     VaultPostVerifyProtocol,
     VaultStartupGuardPostVerifier,
 )
@@ -24,13 +22,10 @@ from connector.usecases.management.vault import (
 __all__ = [
     "RunIdFactory",
     "NowFactory",
-    "KeyMaterialFactory",
     "KeyVersionFactory",
-    "VaultManagedKeyringStoreProtocol",
     "VaultPostVerifyProtocol",
     "VaultKeyManagementStatus",
     "VaultKeyManagementResult",
     "VaultStartupGuardPostVerifier",
     "VaultKeyManagementUseCase",
 ]
-

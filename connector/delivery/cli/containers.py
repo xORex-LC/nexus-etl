@@ -28,9 +28,8 @@
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, Literal
+from typing import TYPE_CHECKING, Any, Iterator
 
 from dependency_injector import containers, providers
 
@@ -42,7 +41,6 @@ from connector.config.projections import (
     to_vault_management_settings,
     to_vault_db_config,
 )
-from connector.domain.secrets.policy.rotation_policy import VaultRotationPolicy
 from connector.domain.transform.matcher.match_deps import MatchBatchSettings, MatchScopeService
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.diagnostics import build_catalog
@@ -57,7 +55,6 @@ from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
 from connector.domain.secrets.secret_vault_read_service import SecretVaultReadService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
-from connector.domain.secrets.errors import VaultManagementOperationError
 from connector.domain.secrets.vault_startup_guard import VaultStartupGuard
 from connector.domain.transform.context import PipelineMetadata, StageExecutionContext
 from connector.domain.transform.providers import ProviderGateway
@@ -91,13 +88,11 @@ from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.infra.secrets import (
-    EnvVaultKeyProvider,
     FernetEnvelopeCipher,
+    UnsealedVaultKeyProvider,
     VaultAdminPasswordGate,
-    VaultManagedEnvKeyringStore,
-    parse_master_keyring,
+    VaultUnsealService,
 )
-from connector.infra.secrets.env_key_provider import DEFAULT_MASTER_KEYS_ENV
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
@@ -107,7 +102,6 @@ from connector.infra.target.core.factory import (
 )
 from connector.usecases.management.vault import (
     VaultKeyManagementUseCase,
-    VaultMaintenanceUseCase,
     VaultStartupGuardPostVerifier,
 )
 
@@ -152,107 +146,19 @@ def _make_identity_engine(app_config: AppConfig, cache_dir: str) -> SqliteEngine
     return open_sqlite(to_identity_db_config(app_config), _identity_db_path(cache_dir, app_config.sqlite))
 
 
-def _serialize_master_keyring(keys: tuple) -> str:
-    return ",".join(f"{item.key_version}:{item.key_material}" for item in keys)
-
-
-def _preload_effective_vault_keyring(
-    *,
-    keyring_store: VaultManagedEnvKeyringStore | None,
-) -> Literal["env", "managed_env", "none"]:
-    raw_runtime_keyring = os.environ.get(DEFAULT_MASTER_KEYS_ENV)
-    if raw_runtime_keyring and raw_runtime_keyring.strip():
-        parse_master_keyring(raw_runtime_keyring, env_var=DEFAULT_MASTER_KEYS_ENV)
-        return "env"
-
-    if keyring_store is None:
-        return "none"
-
-    keyring = keyring_store.load_keyring()
-    os.environ[DEFAULT_MASTER_KEYS_ENV] = _serialize_master_keyring(keyring)
-    return "managed_env"
-
-
-def _sync_runtime_env_from_managed_keyring(
-    *,
-    keyring_store: VaultManagedEnvKeyringStore,
-) -> None:
-    keyring = keyring_store.load_keyring()
-    os.environ[DEFAULT_MASTER_KEYS_ENV] = _serialize_master_keyring(keyring)
-
-
-def _resolve_required_managed_env_file(path: str | None) -> str:
+def vault_startup_resource(
+    engine: SqliteEngine,
+    app_config: AppConfig,
+    unseal_passphrase: str | None,
+) -> Iterator[None]:
     """
     Назначение:
-        Нормализовать managed env path и выбросить предсказуемую ошибку при отсутствии.
-
-    Контракт:
-        - Возвращает непустой path для `VaultManagedEnvKeyringStore`.
-        - Не назначает fallback-путь: источник должен быть явно задан через
-          `CLI > ENV > config.yml > defaults`.
-    """
-    normalized = (path or "").strip()
-    if normalized:
-        return normalized
-    raise VaultManagementOperationError(
-        "Managed vault env file path is not configured",
-        details={"reason": "managed_env_file_not_configured"},
-    )
-
-
-def _run_vault_maintenance_with_policy(
-    *,
-    repository: SqliteVaultRepository,
-    cipher: FernetEnvelopeCipher,
-    storage_probe: SqliteEngine,
-    settings,
-    keyring_source: Literal["env", "managed_env", "none"],
-    keyring_store: VaultManagedEnvKeyringStore | None,
-) -> None:
-    if not settings.auto_rotate_enabled:
-        return
-
-    if keyring_source == "env":
-        return
-
-    if keyring_store is None:
-        if settings.auto_rotate_on_error == "fail_open":
-            return
-        raise RuntimeError("Vault maintenance requires managed_env_file when auto_rotate_enabled=true")
-
-    try:
-        key_management = VaultKeyManagementUseCase(
-            repository=repository,
-            cipher=cipher,
-            keyring_store=keyring_store,
-            post_verify=VaultStartupGuardPostVerifier(
-                repository=repository,
-                cipher=cipher,
-                storage_probe=storage_probe,
-            ),
-        )
-        maintenance = VaultMaintenanceUseCase(
-            key_management=key_management,
-            rotation_policy=VaultRotationPolicy(interval=settings.auto_rotate_interval),
-        )
-        maintenance.run_if_due()
-        _sync_runtime_env_from_managed_keyring(keyring_store=keyring_store)
-    except Exception:  # noqa: BLE001
-        if settings.auto_rotate_on_error == "fail_open":
-            return
-        raise
-
-
-def vault_startup_resource(engine: SqliteEngine, app_config: AppConfig) -> Iterator[None]:
-    """
-    Назначение:
-        Resource-генератор для vault DB: schema + optional maintenance + startup guard.
+        Resource-генератор для vault DB: schema + unseal + startup guard.
 
     Контракт:
         - ensure_vault_schema: создать/обновить схему vault.
-        - keyring source precedence: runtime ENV -> managed env file.
-        - optional auto-maintenance: due-check, recovery, rotate по policy.
-        - VaultStartupGuard.ensure_ready(): финальная fail-fast проверка keyring/probe.
+        - unseal_passphrase: operator-provided secret, не хранится на диске.
+        - VaultStartupGuard.ensure_ready(): финальная fail-fast проверка key/probe.
         - yield: container держит engine живым во время runtime.
         - teardown: engine.close().
 
@@ -262,29 +168,15 @@ def vault_startup_resource(engine: SqliteEngine, app_config: AppConfig) -> Itera
     ensure_vault_schema(engine)
     repository = SqliteVaultRepository(engine)
     cipher = FernetEnvelopeCipher()
-    settings = to_vault_management_settings(app_config)
-    keyring_store = (
-        VaultManagedEnvKeyringStore(settings.managed_env_file)
-        if settings.managed_env_file
-        else None
-    )
-    keyring_source = _preload_effective_vault_keyring(
-        keyring_store=keyring_store,
-    )
-
-    _run_vault_maintenance_with_policy(
-        repository=repository,
-        cipher=cipher,
-        storage_probe=engine,
-        settings=settings,
-        keyring_source=keyring_source,
-        keyring_store=keyring_store,
-    )
-
+    _ = app_config
     guard = VaultStartupGuard(
         repository=repository,
         cipher=cipher,
-        key_provider=EnvVaultKeyProvider(),
+        key_provider=UnsealedVaultKeyProvider(
+            repository=repository,
+            unseal_service=VaultUnsealService(),
+            passphrase=unseal_passphrase,
+        ),
         storage_probe=engine,
     )
     guard.ensure_ready()
@@ -345,6 +237,7 @@ class SqliteContainer(containers.DeclarativeContainer):
     app_config = providers.Dependency(instance_of=AppConfig)
     cache_dir = providers.Dependency(instance_of=str)
     cache_specs = providers.Dependency(instance_of=list)
+    unseal_passphrase = providers.Dependency()
 
     cache_engine = providers.Singleton(
         _make_cache_engine,
@@ -368,6 +261,7 @@ class SqliteContainer(containers.DeclarativeContainer):
         vault_startup_resource,
         engine=vault_engine,
         app_config=app_config,
+        unseal_passphrase=unseal_passphrase,
     )
 
     vault_schema_ready = providers.Resource(
@@ -411,13 +305,20 @@ class VaultContainer(containers.DeclarativeContainer):
     """
 
     vault_engine = providers.Dependency(instance_of=SqliteEngine)
+    unseal_passphrase = providers.Dependency()
 
     cipher = providers.Singleton(FernetEnvelopeCipher)
-    key_provider = providers.Singleton(EnvVaultKeyProvider)
+    unseal_service = providers.Singleton(VaultUnsealService)
     locator = providers.Singleton(SecretLocatorService)
     repository = providers.Singleton(
         SqliteVaultRepository,
         engine=vault_engine,
+    )
+    key_provider = providers.Singleton(
+        UnsealedVaultKeyProvider,
+        repository=repository,
+        unseal_service=unseal_service,
+        passphrase=unseal_passphrase,
     )
 
     read_service = providers.Factory(
@@ -913,15 +814,12 @@ class AppContainer(containers.DeclarativeContainer):
     """
 
     app_config = providers.Dependency(instance_of=AppConfig)
+    vault_unseal_passphrase = providers.Object(None)
 
     _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_config)
     _api_settings = providers.Callable(lambda s: s.api, s=app_config)
     _dictionary_cfg = providers.Callable(lambda s: s.dictionary, s=app_config)
     _vault_management_settings = providers.Callable(to_vault_management_settings, config=app_config)
-    _vault_rotation_interval = providers.Callable(
-        lambda s: s.auto_rotate_interval,
-        s=_vault_management_settings,
-    )
 
     cache_dsl = providers.Singleton(load_cache_dsl_runtime)
     _cache_specs = providers.Callable(lambda b: list(b.cache_specs), b=cache_dsl)
@@ -931,6 +829,7 @@ class AppContainer(containers.DeclarativeContainer):
         app_config=app_config,
         cache_dir=_cache_dir,
         cache_specs=_cache_specs,
+        unseal_passphrase=vault_unseal_passphrase,
     )
 
     cache = providers.Container(
@@ -943,6 +842,7 @@ class AppContainer(containers.DeclarativeContainer):
     vault = providers.Container(
         VaultContainer,
         vault_engine=sqlite.vault_engine,
+        unseal_passphrase=vault_unseal_passphrase,
     )
 
     vault_admin_password_gate = providers.Singleton(
@@ -955,24 +855,13 @@ class AppContainer(containers.DeclarativeContainer):
             lambda s: s.admin_password_hash_file,
             s=_vault_management_settings,
         ),
-        admin_password_hash_env_var=providers.Callable(
-            lambda s: s.admin_password_hash_env_var,
+        admin_password_hash_name=providers.Callable(
+            lambda s: s.admin_password_hash_name,
             s=_vault_management_settings,
         ),
         admin_password_env_var=providers.Callable(
             lambda s: s.admin_password_env_var,
             s=_vault_management_settings,
-        ),
-    )
-
-    vault_managed_keyring_store = providers.Factory(
-        VaultManagedEnvKeyringStore,
-        managed_env_file=providers.Callable(
-            _resolve_required_managed_env_file,
-            path=providers.Callable(
-                lambda s: s.managed_env_file,
-                s=_vault_management_settings,
-            ),
         ),
     )
 
@@ -987,19 +876,8 @@ class AppContainer(containers.DeclarativeContainer):
         VaultKeyManagementUseCase,
         repository=vault.repository,
         cipher=vault.cipher,
-        keyring_store=vault_managed_keyring_store,
+        unseal_service=vault.unseal_service,
         post_verify=vault_post_verifier,
-    )
-
-    vault_rotation_policy = providers.Factory(
-        VaultRotationPolicy,
-        interval=_vault_rotation_interval,
-    )
-
-    vault_maintenance_usecase = providers.Factory(
-        VaultMaintenanceUseCase,
-        key_management=vault_key_management_usecase,
-        rotation_policy=vault_rotation_policy,
     )
 
     target = providers.Container(

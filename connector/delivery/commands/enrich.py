@@ -13,6 +13,7 @@ from connector.delivery.commands.common import (
     sqlite_cache_error_result,
     vault_startup_error_result,
 )
+from connector.delivery.commands.vault_unseal import provide_runtime_unseal_passphrase
 from connector.delivery.cli.containers import (
     build_dataset_spec,
     build_diagnostics_catalog,
@@ -104,6 +105,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     secret_store = None
     if rollout_decision.vault_enabled:
         try:
+            provide_runtime_unseal_passphrase(ctx)
             ctx.container.sqlite.vault_ready.init()
         except _STARTUP_ERRORS as exc:
             return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)

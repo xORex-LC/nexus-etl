@@ -9,28 +9,15 @@
 
 from __future__ import annotations
 
-from typing import Callable, ContextManager, Protocol
+from typing import Callable, Protocol
 
 from connector.domain.ports.secrets.key_provider import VaultMasterKey
+from connector.domain.secrets.models import VaultUnsealMetadata
 from connector.usecases.management.vault.models import VaultKeyManagementResult, VaultKeyManagementStatus
 
 RunIdFactory = Callable[[], str]
 NowFactory = Callable[[], str]
-KeyMaterialFactory = Callable[[], str]
 KeyVersionFactory = Callable[[], str]
-
-
-class VaultManagedKeyringStoreProtocol(Protocol):
-    """Контракт managed keyring store для lifecycle usecase."""
-
-    def lifecycle_lock(self) -> ContextManager[None]:
-        ...
-
-    def load_keyring(self) -> tuple[VaultMasterKey, ...]:
-        ...
-
-    def save_keyring(self, keys: tuple[VaultMasterKey, ...]) -> None:
-        ...
 
 
 class VaultKeyManagementProtocol(Protocol):
@@ -38,9 +25,13 @@ class VaultKeyManagementProtocol(Protocol):
 
     def status(self) -> VaultKeyManagementStatus: ...
 
-    def rotate_and_rewrap(self, *, run_id: str | None = None) -> VaultKeyManagementResult: ...
-
-    def finalize_inflight_bridge(self, *, run_id: str | None = None) -> VaultKeyManagementResult | None: ...
+    def rotate_and_rewrap(
+        self,
+        *,
+        current_passphrase: str,
+        new_passphrase: str,
+        run_id: str | None = None,
+    ) -> VaultKeyManagementResult: ...
 
 
 class VaultPostVerifyProtocol(Protocol):
@@ -50,13 +41,27 @@ class VaultPostVerifyProtocol(Protocol):
         ...
 
 
+class VaultUnsealServiceProtocol(Protocol):
+    """Контракт crypto-сервиса unseal-модели."""
+
+    def create_metadata(
+        self,
+        *,
+        passphrase: str,
+        key_version: str,
+        now_utc: str,
+    ) -> tuple[VaultUnsealMetadata, VaultMasterKey]:
+        ...
+
+    def derive_key(self, *, passphrase: str, metadata: VaultUnsealMetadata) -> VaultMasterKey:
+        ...
+
+
 __all__ = [
     "RunIdFactory",
     "NowFactory",
-    "KeyMaterialFactory",
     "KeyVersionFactory",
     "VaultKeyManagementProtocol",
-    "VaultManagedKeyringStoreProtocol",
     "VaultPostVerifyProtocol",
+    "VaultUnsealServiceProtocol",
 ]
-

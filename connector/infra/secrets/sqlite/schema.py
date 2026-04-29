@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from connector.infra.sqlite.engine import SqliteEngine
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def ensure_vault_schema(engine: SqliteEngine) -> int:
@@ -85,6 +85,7 @@ def _reset_vault_schema(engine: SqliteEngine) -> None:
 def _create_vault_tables(engine: SqliteEngine) -> None:
     """Создать полный набор vault-таблиц для bootstrap нового хранилища."""
     _create_vault_core_tables(engine)
+    _create_vault_unseal_meta_table(engine)
     _create_vault_management_meta_table(engine)
 
 
@@ -166,9 +167,33 @@ def _create_vault_management_meta_table(engine: SqliteEngine) -> None:
     )
 
 
+def _create_vault_unseal_meta_table(engine: SqliteEngine) -> None:
+    """Создать metadata-таблицу unseal-модели master wrapping key."""
+    engine.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vault_unseal_meta (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            key_version TEXT NOT NULL,
+            kdf_algo TEXT NOT NULL,
+            kdf_salt BLOB NOT NULL,
+            kdf_time_cost INTEGER NOT NULL,
+            kdf_memory_cost_kib INTEGER NOT NULL,
+            kdf_parallelism INTEGER NOT NULL,
+            kdf_hash_len INTEGER NOT NULL,
+            hmac_algo TEXT NOT NULL,
+            hmac_salt BLOB NOT NULL,
+            hmac_digest BLOB NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
+
 def _drop_vault_tables(engine: SqliteEngine) -> None:
     """Удалить все vault-таблицы данных для полной пересборки схемы."""
     engine.execute("DROP TABLE IF EXISTS vault_probe")
     engine.execute("DROP TABLE IF EXISTS vault_secrets")
     engine.execute("DROP TABLE IF EXISTS vault_dek")
+    engine.execute("DROP TABLE IF EXISTS vault_unseal_meta")
     engine.execute("DROP TABLE IF EXISTS vault_management_meta")

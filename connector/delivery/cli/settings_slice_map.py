@@ -39,8 +39,6 @@ COMMAND_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
     "vault-management-status": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
     "vault-management-rotate": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
     "vault-management-rewrap": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
-    "vault-management-delete-key": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
-    "vault-management-run-maintenance": (VaultManagementConfig, ObservabilityConfig, PathsConfig),
 }
 
 USECASE_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
@@ -62,7 +60,6 @@ USECASE_SETTINGS_SLICE_MAP: Final[dict[str, tuple[type, ...]]] = {
     ),
     "ImportApplyService": (DatasetConfig, ExecutionConfig, ObservabilityConfig, VaultRolloutConfig),
     "VaultKeyManagementUseCase": (VaultManagementConfig, ObservabilityConfig),
-    "VaultMaintenanceUseCase": (VaultManagementConfig, ObservabilityConfig),
 }
 
 COMMAND_TO_USECASE: Final[dict[str, str]] = {
@@ -80,6 +77,4 @@ COMMAND_TO_USECASE: Final[dict[str, str]] = {
     "vault-management-status": "VaultKeyManagementUseCase",
     "vault-management-rotate": "VaultKeyManagementUseCase",
     "vault-management-rewrap": "VaultKeyManagementUseCase",
-    "vault-management-delete-key": "VaultKeyManagementUseCase",
-    "vault-management-run-maintenance": "VaultMaintenanceUseCase",
 }
