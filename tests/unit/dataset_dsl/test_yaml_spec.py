@@ -125,6 +125,8 @@ class TestYamlDatasetSpecAdapters:
         assert spec.get_apply_adapter().operation_alias == "users.upsert"
         source = spec.build_record_source()
         assert source.has_header is True
+        assert source.delimiter == ","
+        assert source.encoding == "utf-8-sig"
 
 
 class TestRegistryValidation:

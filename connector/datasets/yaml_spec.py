@@ -70,7 +70,13 @@ class YamlDatasetSpec:
                 f"{self.dataset_name} source spec must be file/csv for current runtime"
             )
         source_path = resolve_source_location(source_spec)
-        return CsvRecordSource(source_path, source_spec.source.has_header)
+        csv_options = source_spec.source.csv_options()
+        return CsvRecordSource(
+            source_path,
+            source_spec.source.has_header,
+            delimiter=csv_options.delimiter,
+            encoding=csv_options.encoding,
+        )
 
     def get_report_adapter(self) -> ReportAdapter:
         r = self._artifacts.dataset_dsl.report

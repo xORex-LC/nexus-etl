@@ -30,6 +30,7 @@ from connector.domain.transform_dsl.loader import (
 )
 from connector.domain.transform_dsl.specs import (
     ConditionalCheck,
+    CsvSourceOptions,
     EnrichBlock,
     EnrichRule,
     EnrichSpec,
@@ -79,6 +80,7 @@ __all__ = [
     "MappingSchema",
     "MappingBlock",
     "MappingSpec",
+    "CsvSourceOptions",
     "SourceFieldSpec",
     "SourceConfig",
     "SourceSpec",
