@@ -13,14 +13,23 @@ class CsvRecordSource:
         Универсальный CSV-источник: читает строки и отдаёт SourceRecord без привязки к датасету.
     """
 
-    def __init__(self, path: str, has_header: bool) -> None:
+    def __init__(
+        self,
+        path: str,
+        has_header: bool,
+        *,
+        delimiter: str = ",",
+        encoding: str = "utf-8-sig",
+    ) -> None:
         self.path = path
         self.has_header = has_header
+        self.delimiter = delimiter
+        self.encoding = encoding
 
     def __iter__(self) -> Iterable[SourceRecord]:
-        with open(self.path, "r", encoding="utf-8-sig", newline="") as f:
+        with open(self.path, "r", encoding=self.encoding, newline="") as f:
             if self.has_header:
-                reader = csv.DictReader(f, delimiter=",")
+                reader = csv.DictReader(f, delimiter=self.delimiter)
                 if reader.fieldnames is None:
                     raise CsvFormatError("Missing header in source CSV")
                 for csv_line_no, row in enumerate(reader, start=2):
@@ -41,7 +50,7 @@ class CsvRecordSource:
                     yield record
                 return
 
-            reader = csv.reader(f, delimiter=",")
+            reader = csv.reader(f, delimiter=self.delimiter)
             expected_len: int | None = None
             for csv_line_no, row in enumerate(reader, start=1):
                 if not row:

@@ -51,6 +51,7 @@ from connector.domain.transform_dsl.specs.sink import (
     SinkSpec,
 )
 from connector.domain.transform_dsl.specs.source import (
+    CsvSourceOptions,
     SourceConfig,
     SourceFieldSpec,
     SourceSpec,
@@ -70,6 +71,7 @@ __all__ = [
     "MappingBlock",
     "MappingSpec",
     # Source
+    "CsvSourceOptions",
     "SourceFieldSpec",
     "SourceConfig",
     "SourceSpec",
