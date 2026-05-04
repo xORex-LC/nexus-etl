@@ -11,63 +11,72 @@ from connector.domain.transform_dsl.compilers.mapping import MapperDsl
 from connector.domain.transform.mapping import MapperEngine
 
 
-def test_employees_dsl_mapper_maps_record() -> None:
+def test_employees_dsl_mapper_maps_record(employees_registry_path) -> None:
     catalog = build_catalog("employees", strict=True)
     mapper = MapperEngine.from_dataset(catalog=catalog, dataset="employees")
     record = SourceRecord(
         line_no=1,
         record_id="line:1",
         values={
-            "raw_id": "u-001",
-            "full_name": "Doe, John M.",
-            "login": "jdoe",
-            "email_or_phone": "john.doe@example.com",
-            "contacts": "+1-202-555-0100",
-            "org": "Org:Engineering",
-            "manager": "manager: 42",
-            "flags": "disabled=false",
-            "employment": "role=Engineer",
-            "extra": "password=secret;org_id=77;tab=TAB-01",
+            "Таб.№": "4001182",
+            "Пользователи": "Гапоненко Михаил Викторович",
+            "Орг. единица уровня 1": "Подразделения при администрации",
+            "Орг. единица уровня 2": "Служба информационно-управляющих систем",
+            "Орг. единица уровня 3": "Отдел администрирования, сопровождения и развития локальных ИУС",
+            "Орг. единица уровня 4": "",
+            "Орг. единица уровня 5": "",
+            "Организационная единица": "Отдел администрирования, сопровождения и",
+            "Штатная должность": "Начальник отдела",
+            "Поступл.": "",
+            "Contract Number": "014т/18",
+            "Догвр:нач.": "03.02.2018",
+            "Название руководящей должности": "Начальник отдела",
+            "ДатаРожд": "04.05.1985",
+            "Пол": "мужской",
         },
     )
     result = mapper.map(record)
 
     assert result.row is not None
-    assert result.row["personnel_number"] == "u-001"
-    assert result.row["last_name"] == "Doe"
-    assert result.row["first_name"] == "John"
-    assert result.row["middle_name"] == "M."
-    assert result.row["email"] == "john.doe@example.com"
-    assert result.row["phone"] == "+1-202-555-0100"
-    assert result.row["manager_id"] == "42"
+    assert result.row["personnel_number"] == "4001182"
+    assert result.row["last_name"] == "Гапоненко"
+    assert result.row["first_name"] == "Михаил"
+    assert result.row["middle_name"] == "Викторович"
+    assert result.row["email"] is None
+    assert result.row["phone"] == "014т/18"
+    assert result.row["manager_id"] is None
     assert result.row["is_logon_disable"] == "false"
-    assert result.row["position"] == "Engineer"
-    assert result.row["organization_id"] == "77"
-    assert result.row["usr_org_tab_num"] == "TAB-01"
+    assert result.row["position"] == "Начальник отдела"
+    assert result.row["organization_id"] == [
+        "Подразделения при администрации",
+        "Служба информационно-управляющих систем",
+        "Отдел администрирования, сопровождения и развития локальных ИУС",
+        "",
+        "",
+        "Отдел администрирования, сопровождения и",
+    ]
+    assert result.row["usr_org_tab_num"] == 461462
     assert result.row["avatar_id"] is None
     assert result.secret_candidates == {}
     assert result.row is not None
-    assert result.row["password"] == "secret"
+    assert result.row["password"] == "577qq7"
     assert result.meta.get("link_keys") is None
     assert result.errors == ()
 
 
-def test_employees_dsl_mapper_missing_source_column() -> None:
+def test_employees_dsl_mapper_missing_source_column(employees_registry_path) -> None:
     catalog = build_catalog("employees", strict=True)
     mapper = MapperEngine.from_dataset(catalog=catalog, dataset="employees")
     record = SourceRecord(
         line_no=1,
         record_id="line:1",
         values={
-            "raw_id": "u-001",
-            # full_name отсутствует -> ошибка missing_source_column
-            "login": "jdoe",
-            "email_or_phone": "john.doe@example.com",
-            "contacts": "+1-202-555-0100",
-            "manager": "manager: 42",
-            "flags": "disabled=false",
-            "employment": "role=Engineer",
-            "extra": "password=secret;org_id=77;tab=TAB-01",
+            "Таб.№": "4001182",
+            # Пользователи отсутствует -> ошибка missing_source_column
+            "Орг. единица уровня 1": "Подразделения при администрации",
+            "Организационная единица": "Отдел администрирования, сопровождения и",
+            "Штатная должность": "Начальник отдела",
+            "Contract Number": "014т/18",
         },
     )
     result = mapper.map(record)

@@ -14,8 +14,9 @@ CATALOG = build_catalog("employees", strict=True)
 SOURCE_COLUMNS = load_mapping_spec_for_dataset("employees").source_columns
 
 
-def _make_record(values: list[str | None], line_no: int = 1) -> SourceRecord:
-    mapped = dict(zip(SOURCE_COLUMNS, values))
+def _make_record(values: dict[str, str | None], line_no: int = 1) -> SourceRecord:
+    mapped = {column: "" for column in SOURCE_COLUMNS}
+    mapped.update(values)
     return SourceRecord(
         line_no=line_no,
         record_id=f"line:{line_no}",
@@ -44,18 +45,13 @@ def _run_mapping(records: list[SourceRecord]):
 
 def test_mapping_reports_missing_match_key():
     row = _make_record(
-        [
-            "100",
-            "",
-            "jdoe",
-            "user@example.com",
-            "+111111",
-            "Org=Engineering",
-            "",
-            "disabled=false",
-            "role=Engineer",
-            "password=secret;org_id=10;tab=TAB-100",
-        ]
+        {
+            "Таб.№": "100",
+            "Пользователи": "",
+            "Организационная единица": "Org 10",
+            "Штатная должность": "Engineer",
+            "Contract Number": "+111111",
+        }
     )
     _result, report = _run_mapping([row])
 
@@ -66,18 +62,13 @@ def test_mapping_reports_missing_match_key():
 
 def test_mapping_reports_secret_candidates():
     row = _make_record(
-        [
-            "100",
-            "Doe John M",
-            "jdoe",
-            "user@example.com",
-            "+111111",
-            "Org=Engineering",
-            "",
-            "disabled=false",
-            "role=Engineer",
-            "password=secret;org_id=10;tab=TAB-100",
-        ]
+        {
+            "Таб.№": "100",
+            "Пользователи": "Doe John M",
+            "Организационная единица": "Org 10",
+            "Штатная должность": "Engineer",
+            "Contract Number": "+111111",
+        }
     )
     _result, report = _run_mapping([row])
 
@@ -87,18 +78,13 @@ def test_mapping_reports_secret_candidates():
 
 def test_mapping_reports_mapped_ok():
     row = _make_record(
-        [
-            "100",
-            "Doe John M",
-            "jdoe",
-            "user@example.com",
-            "+111111",
-            "Org=Engineering",
-            "",
-            "disabled=false",
-            "role=Engineer",
-            "password=secret;org_id=10;tab=TAB-100",
-        ]
+        {
+            "Таб.№": "100",
+            "Пользователи": "Doe John M",
+            "Организационная единица": "Org 10",
+            "Штатная должность": "Engineer",
+            "Contract Number": "+111111",
+        }
     )
     _result, report = _run_mapping([row])
 

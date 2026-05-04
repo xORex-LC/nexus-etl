@@ -30,7 +30,7 @@ def _employees_source(**overrides):
 
 class TestEmployeesPayloadContract:
     @pytest.fixture()
-    def builder(self):
+    def builder(self, employees_registry_path):
         return get_spec("employees").get_apply_adapter().payload_builder
 
     def test_happy_path_payload_matches_expected_contract(self, builder):
@@ -110,7 +110,7 @@ class TestEmployeesPayloadContract:
         with pytest.raises(ValueError, match="Missing required fields"):
             builder(_employees_source(email=None, user_name=None))
 
-    def test_apply_adapter_builds_request_with_expected_payload(self):
+    def test_apply_adapter_builds_request_with_expected_payload(self, employees_registry_path):
         adapter = get_spec("employees").get_apply_adapter()
         item = PlanItem(
             row_id="line:1",

@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from connector.domain.models import RowRef
-from connector.domain.ports.transform.sources import SourceMapper
-from connector.domain.transform.core.result import TransformResult
+from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.transform.core.source_record import SourceRecord
-from connector.domain.diagnostics import build_catalog
 from connector.domain.transform.mapping import MapperEngine
+from connector.domain.transform.normalize import NormalizerEngine
 
 
-def test_employees_source_mapper_builds_secrets(employees_registry_path):
-    catalog = build_catalog("employees", strict=True)
-    record = SourceRecord(
+def _source2_record_1() -> SourceRecord:
+    return SourceRecord(
         line_no=1,
         record_id="line:1",
         values={
@@ -33,20 +28,10 @@ def test_employees_source_mapper_builds_secrets(employees_registry_path):
             "Пол": "мужской",
         },
     )
-    result = MapperEngine.from_dataset(catalog=catalog, dataset="employees").map(record)
-
-    assert result.errors == ()
-    assert result.match_key is None
-    assert result.secret_candidates == {}
-    assert result.row is not None
-    assert result.row.get("password") == "577qq7"
-    assert result.row["email"] is None
-    assert result.row_ref is None
 
 
-def test_employees_source_mapper_does_not_add_match_key_errors(employees_registry_path):
-    catalog = build_catalog("employees", strict=True)
-    record = SourceRecord(
+def _source2_record_2() -> SourceRecord:
+    return SourceRecord(
         line_no=2,
         record_id="line:2",
         values={
@@ -67,33 +52,37 @@ def test_employees_source_mapper_does_not_add_match_key_errors(employees_registr
             "Пол": "мужской",
         },
     )
-    result = MapperEngine.from_dataset(catalog=catalog, dataset="employees").map(record)
-
-    codes = {issue.code for issue in result.errors}
-    assert "MATCH_KEY_MISSING" not in codes
-    assert result.match_key is None
 
 
-def test_no_secrets_source_mapper_keeps_secret_candidates_empty():
-    @dataclass
-    class CarRowPublic:
-        vin: str
+def test_source2_normalize_selects_last_non_empty_organization_unit(employees_registry_path) -> None:
+    catalog = build_catalog("employees", strict=False)
+    mapper = MapperEngine.from_dataset(catalog=catalog, dataset="employees")
+    normalizer = NormalizerEngine.from_dataset(dataset="employees", catalog=catalog)
 
-    class CarsSourceMapper(SourceMapper[CarRowPublic]):
-        def map(self, record: SourceRecord) -> TransformResult[CarRowPublic]:
-            row_ref = RowRef(
-                line_no=record.line_no,
-                row_id=record.record_id,
-                identity_primary=None,
-                identity_value=None,
-            )
-            return TransformResult(
-                record=record,
-                row=CarRowPublic(vin="VIN-1"),
-                row_ref=row_ref,
-                match_key=None,
-            )
+    mapped = mapper.map(_source2_record_1())
+    result = normalizer.normalize(mapped)
 
-    record = SourceRecord(line_no=1, record_id="line:1", values={})
-    result = CarsSourceMapper().map(record)
-    assert result.secret_candidates == {}
+    assert result.row is not None
+    assert result.row["organization_id"] == "Отдел администрирования, сопровождения и"
+    assert result.row["is_logon_disable"] is False
+    assert result.row["last_name"] == "Гапоненко"
+    assert result.row["first_name"] == "Михаил"
+    assert result.row["middle_name"] == "Викторович"
+    assert result.row["position"] == "Начальник Отдела"
+    assert result.errors == ()
+    assert any(w.code == "SINK_TYPE_INVALID" and w.field == "organization_id" for w in result.warnings)
+
+
+def test_source2_normalize_uses_declared_last_non_empty_rule_for_other_rows(employees_registry_path) -> None:
+    catalog = build_catalog("employees", strict=False)
+    mapper = MapperEngine.from_dataset(catalog=catalog, dataset="employees")
+    normalizer = NormalizerEngine.from_dataset(dataset="employees", catalog=catalog)
+
+    mapped = mapper.map(_source2_record_2())
+    result = normalizer.normalize(mapped)
+
+    assert result.row is not None
+    assert result.row["organization_id"] == "Отдел информационной безопасности"
+    assert result.row["is_logon_disable"] is False
+    assert result.errors == ()
+    assert any(w.code == "SINK_TYPE_INVALID" and w.field == "organization_id" for w in result.warnings)

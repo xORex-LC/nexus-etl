@@ -20,22 +20,22 @@ from connector.domain.transform_dsl.specs import (
 
 
 class TestAutoDiscovery:
-    def test_get_spec_returns_yaml_spec(self):
+    def test_get_spec_returns_yaml_spec(self, employees_registry_path):
         spec = get_spec("employees")
         assert isinstance(spec, YamlDatasetSpec)
 
-    def test_get_spec_unknown_dataset(self):
+    def test_get_spec_unknown_dataset(self, employees_registry_path):
         with pytest.raises(ValueError, match="Unsupported dataset"):
             get_spec("nonexistent")
 
-    def test_list_specs_contains_employees(self):
+    def test_list_specs_contains_employees(self, employees_registry_path):
         specs = list_specs()
         assert any(s.dataset_name == "employees" for s in specs)
 
 
 class TestYamlDatasetSpecBuildSpecFor:
     @pytest.fixture()
-    def spec(self):
+    def spec(self, employees_registry_path):
         return get_spec("employees")
 
     def test_map(self, spec):
@@ -82,7 +82,7 @@ class TestYamlDatasetSpecBuildSpecFor:
 
 class TestYamlDatasetSpecAdapters:
     @pytest.fixture()
-    def spec(self):
+    def spec(self, employees_registry_path):
         return get_spec("employees")
 
     def test_report_adapter(self, spec):
@@ -105,7 +105,12 @@ class TestYamlDatasetSpecAdapters:
         assert catalog.contains("INVALID_EMAIL")
         assert catalog.contains("INVALID_BOOLEAN")
 
-    def test_accessors_do_not_reload_yaml_after_construction(self, monkeypatch, tmp_path):
+    def test_accessors_do_not_reload_yaml_after_construction(
+        self,
+        monkeypatch,
+        tmp_path,
+        employees_registry_path,
+    ):
         artifacts = load_yaml_dataset_artifacts("employees")
         spec = YamlDatasetSpec(artifacts)
 

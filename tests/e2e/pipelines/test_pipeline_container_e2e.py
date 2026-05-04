@@ -25,7 +25,25 @@ from connector.infra.sqlite.config import SqliteDbConfig
 from connector.infra.sqlite.engine import open_sqlite
 
 
-HEADER = "raw_id,full_name,login,email_or_phone,contacts,org,manager,flags,employment,extra"
+HEADER = ";".join(
+    [
+        "Таб.№",
+        "Пользователи",
+        "Орг. единица уровня 1",
+        "Орг. единица уровня 2",
+        "Орг. единица уровня 3",
+        "Орг. единица уровня 4",
+        "Орг. единица уровня 5",
+        "Организационная единица",
+        "Штатная должность",
+        "Поступл.",
+        "Contract Number",
+        "Догвр:нач.",
+        "Название руководящей должности",
+        "ДатаРожд",
+        "Пол",
+    ]
+)
 
 
 def _make_engine():
@@ -48,7 +66,7 @@ def _build_cache_roles():
 def _write_csv(path: Path, rows: list[list[str]]) -> None:
     lines = [HEADER]
     for row in rows:
-        lines.append(",".join(row))
+        lines.append(";".join(row))
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -76,8 +94,8 @@ class TestPipelineContainerE2E:
         """map + normalize → produces transform results from real CSV."""
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
-            ["1", "Ivanov Ivan", "iivanov", "iivanov@example.com", "", "IT Dept", "", "", "", ""],
-            ["2", "Petrov Petr", "ppetrov", "ppetrov@example.com", "", "HR Dept", "", "", "", ""],
+            ["1", "Ivanov Ivan Ivanovich", "", "", "", "", "", "IT Dept", "Engineer", "", "+111", "", "", "", ""],
+            ["2", "Petrov Petr Petrovich", "", "", "", "", "", "HR Dept", "Analyst", "", "+222", "", "", "", ""],
         ])
         container, catalog = _build_container(monkeypatch, csv_path)
 
@@ -97,7 +115,7 @@ class TestPipelineContainerE2E:
         """map + normalize + enrich → produces enriched results."""
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
-            ["1", "Ivanov Ivan", "iivanov", "iivanov@example.com", "", "IT Dept", "", "", "", ""],
+            ["1", "Ivanov Ivan Ivanovich", "", "", "", "", "", "IT Dept", "Engineer", "", "+111", "", "", "", ""],
         ])
         container, catalog = _build_container(monkeypatch, csv_path)
 
@@ -116,7 +134,7 @@ class TestPipelineContainerE2E:
         """All stages produced by PipelineContainer implement StageContract."""
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
-            ["1", "Test User", "tuser", "t@e.com", "", "IT", "", "", "", ""],
+            ["1", "Test User Tester", "", "", "", "", "", "IT", "Engineer", "", "+111", "", "", "", ""],
         ])
         container, catalog = _build_container(monkeypatch, csv_path)
 
@@ -138,9 +156,9 @@ class TestPipelineContainerE2E:
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
             # First row: incomplete data (will produce errors)
-            ["", "", "", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
             # Second row: valid data
-            ["1", "Ivanov Ivan", "iivanov", "iivanov@example.com", "", "IT Dept", "", "", "", ""],
+            ["1", "Ivanov Ivan Ivanovich", "", "", "", "", "", "IT Dept", "Engineer", "", "+111", "", "", "", ""],
         ])
         container, catalog = _build_container(monkeypatch, csv_path)
 
@@ -156,9 +174,9 @@ class TestPipelineContainerE2E:
         """Partially consuming and closing the pipeline generator doesn't raise."""
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
-            ["1", "Ivanov Ivan", "iivanov", "i@e.com", "", "IT", "", "", "", ""],
-            ["2", "Petrov Petr", "ppetrov", "p@e.com", "", "HR", "", "", "", ""],
-            ["3", "Sidorov Sid", "ssidorov", "s@e.com", "", "QA", "", "", "", ""],
+            ["1", "Ivanov Ivan Ivanovich", "", "", "", "", "", "IT", "Engineer", "", "+111", "", "", "", ""],
+            ["2", "Petrov Petr Petrovich", "", "", "", "", "", "HR", "Analyst", "", "+222", "", "", "", ""],
+            ["3", "Sidorov Sid Sidorovich", "", "", "", "", "", "QA", "QA Lead", "", "+333", "", "", "", ""],
         ])
         container, catalog = _build_container(monkeypatch, csv_path)
 
