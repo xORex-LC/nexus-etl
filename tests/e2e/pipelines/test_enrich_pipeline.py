@@ -15,7 +15,25 @@ from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vau
 
 runner = CliRunner()
 
-HEADER = "raw_id,full_name,login,email_or_phone,contacts,org,manager,flags,employment,extra"
+HEADER = ";".join(
+    [
+        "Таб.№",
+        "Пользователи",
+        "Орг. единица уровня 1",
+        "Орг. единица уровня 2",
+        "Орг. единица уровня 3",
+        "Орг. единица уровня 4",
+        "Орг. единица уровня 5",
+        "Организационная единица",
+        "Штатная должность",
+        "Поступл.",
+        "Contract Number",
+        "Догвр:нач.",
+        "Название руководящей должности",
+        "ДатаРожд",
+        "Пол",
+    ]
+)
 
 
 def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) -> None:
@@ -23,7 +41,7 @@ def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) ->
     if include_header:
         lines.append(HEADER)
     for row in rows:
-        lines.append(",".join(row))
+        lines.append(";".join(row))
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -90,19 +108,24 @@ def make_row(
     org: str = "Org=Engineering",
     manager: str = "",
 ) -> list[str]:
-    extra = f"password={password};org_id={org_id};tab={tab}"
-    employment = f"role={role}"
+    _ = (login, email_or_phone, flags, password, tab)
+    organization_name = f"Org {org_id}"
     return [
         raw_id,
         full_name,
-        login,
-        email_or_phone,
+        "",
+        "",
+        "",
+        "",
+        "",
+        organization_name,
+        role,
+        "",
         contacts,
-        org,
-        manager,
-        flags,
-        employment,
-        extra,
+        "",
+        "",
+        "",
+        "",
     ]
 
 

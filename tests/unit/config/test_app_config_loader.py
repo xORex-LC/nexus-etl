@@ -25,13 +25,17 @@ def test_load_from_nested_yaml(tmp_path: object) -> None:
     assert result.app_config.api.port == 8443
 
 
-def test_load_dataset_registry_path_from_yaml(tmp_path: object) -> None:
+def test_load_dataset_registry_path_from_yaml(
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
     cfg_file.write_text(
         "dataset:\n"
         "  registry_path: ./datasets/registry.yml\n",
         encoding="utf-8",
     )
+    monkeypatch.delenv("ANKEY_DATASET__REGISTRY_PATH", raising=False)
 
     result = load_app_config(str(cfg_file))
 

@@ -28,7 +28,25 @@ from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vau
 
 runner = CliRunner()
 
-HEADER = "raw_id,full_name,login,email_or_phone,contacts,org,manager,flags,employment,extra"
+HEADER = ";".join(
+    [
+        "Таб.№",
+        "Пользователи",
+        "Орг. единица уровня 1",
+        "Орг. единица уровня 2",
+        "Орг. единица уровня 3",
+        "Орг. единица уровня 4",
+        "Орг. единица уровня 5",
+        "Организационная единица",
+        "Штатная должность",
+        "Поступл.",
+        "Contract Number",
+        "Догвр:нач.",
+        "Название руководящей должности",
+        "ДатаРожд",
+        "Пол",
+    ]
+)
 
 
 def _write_minimal_employees_csv(
@@ -37,19 +55,25 @@ def _write_minimal_employees_csv(
     phone: str,
     password: str,
 ) -> None:
+    _ = password
     row = [
         "1001",
         "Doe John M",
-        "jdoe",
-        "john.doe@example.com",
-        phone,
-        "Org=Engineering",
         "",
-        "disabled=false",
-        "role=Engineer",
-        f"password={password};org_id=10;tab=5001",
+        "",
+        "",
+        "",
+        "",
+        "Org 10",
+        "Engineer",
+        "",
+        phone,
+        "",
+        "",
+        "",
+        "",
     ]
-    path.write_text("\n".join([HEADER, ",".join(row)]), encoding="utf-8")
+    path.write_text("\n".join([HEADER, ";".join(row)]), encoding="utf-8")
 
 
 def _run_import_plan(
@@ -196,6 +220,7 @@ def _seed_organization_identities(
     Добавить identity-index записи для organization link-resolve в employees resolve flow.
     """
     value = str(resolved_org_id)
+    organization_name = f"Org {resolved_org_id}"
     identity_db_path = str(Path(cache_dir) / "identity.sqlite3")
     engine = open_sqlite(to_identity_db_config(AppConfig()), identity_db_path)
     try:
@@ -203,7 +228,7 @@ def _seed_organization_identities(
         identity_repo = SqliteIdentityRepository(engine)
         with engine.transaction():
             identity_repo.upsert_identity("organizations", format_identity_key("_ouid", value), value)
-            identity_repo.upsert_identity("organizations", format_identity_key("name", value), value)
+            identity_repo.upsert_identity("organizations", format_identity_key("name", organization_name), value)
     finally:
         engine.close()
 

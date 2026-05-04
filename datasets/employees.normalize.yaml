@@ -8,15 +8,23 @@ normalize:
     - field: last_name
       ops:
         - op: trim
+        - op: title
     - field: first_name
       ops:
         - op: trim
+        - op: title
     - field: middle_name
       ops:
         - op: trim
+        - op: title
     - field: is_logon_disable
       ops:
-        - op: to_bool
+        - op: parse_bool
+          args:
+            true_values: ["true", "1", "yes", "y"]
+            false_values: ["false", "0", "no", "n"]
+            casefold: true
+            trim: true
     - field: user_name
       ops:
         - op: trim
@@ -34,10 +42,16 @@ normalize:
         - op: trim
     - field: organization_id
       ops:
-        - op: int_if_digits
+        - op: map_each
+          args:
+            ops:
+              - op: trim
+        - op: compact
+        - op: last
     - field: position
       ops:
         - op: trim
+        - op: title
     - field: avatar_id
       ops:
         - op: trim

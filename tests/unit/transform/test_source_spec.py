@@ -6,7 +6,7 @@ from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve
 from connector.domain.transform_dsl.specs import SourceSpec
 
 
-def test_load_source_spec_for_dataset() -> None:
+def test_load_source_spec_for_dataset(employees_registry_path) -> None:
     spec = load_source_spec_for_dataset("employees")
     assert spec.dataset == "employees"
     assert spec.source.type == "file"
@@ -71,13 +71,13 @@ def test_source_spec_rejects_unknown_csv_encoding() -> None:
         )
 
 
-def test_resolve_source_location_from_env(monkeypatch) -> None:
+def test_resolve_source_location_from_env(monkeypatch, employees_registry_path) -> None:
     monkeypatch.setenv("EMPLOYEES_SOURCE_PATH", "/tmp/employees.csv")
     spec = load_source_spec_for_dataset("employees")
     assert resolve_source_location(spec) == "/tmp/employees.csv"
 
 
-def test_resolve_source_location_raises_when_missing(monkeypatch) -> None:
+def test_resolve_source_location_raises_when_missing(monkeypatch, employees_registry_path) -> None:
     monkeypatch.delenv("EMPLOYEES_SOURCE_PATH", raising=False)
     spec = load_source_spec_for_dataset("employees")
     try:

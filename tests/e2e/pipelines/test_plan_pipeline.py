@@ -18,23 +18,28 @@ from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vau
 runner = CliRunner()
 
 CSV_HEADER = (
-    "raw_id",
-    "full_name",
-    "login",
-    "email_or_phone",
-    "contacts",
-    "org",
-    "manager",
-    "flags",
-    "employment",
-    "extra",
+    "Таб.№",
+    "Пользователи",
+    "Орг. единица уровня 1",
+    "Орг. единица уровня 2",
+    "Орг. единица уровня 3",
+    "Орг. единица уровня 4",
+    "Орг. единица уровня 5",
+    "Организационная единица",
+    "Штатная должность",
+    "Поступл.",
+    "Contract Number",
+    "Догвр:нач.",
+    "Название руководящей должности",
+    "ДатаРожд",
+    "Пол",
 )
 
 def _write_csv(path: Path, rows: list[list[str | None]]) -> None:
     with path.open("w", encoding="utf-8") as f:
-        f.write(",".join(CSV_HEADER) + "\n")
+        f.write(";".join(CSV_HEADER) + "\n")
         for row in rows:
-            f.write(",".join("" if v is None else str(v) for v in row) + "\n")
+            f.write(";".join("" if v is None else str(v) for v in row) + "\n")
 
 
 def make_row(
@@ -52,19 +57,24 @@ def make_row(
     org: str = "Org=Engineering",
     manager: str = "",
 ) -> list[str | None]:
-    extra = f"password={password};org_id={org_id};tab={tab}"
-    employment = f"role={role}"
+    _ = (login, email_or_phone, flags, password, org, manager, tab)
+    organization_name = f"Org {org_id}"
     return [
         raw_id,
         full_name,
-        login,
-        email_or_phone,
+        "",
+        "",
+        "",
+        "",
+        "",
+        organization_name,
+        role,
+        "",
         contacts,
-        org,
-        manager,
-        flags,
-        employment,
-        extra,
+        "",
+        "",
+        "",
+        "",
     ]
 
 def _build_repo(db_path: str) -> SqliteCacheRepository:
@@ -114,9 +124,9 @@ def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: 
                     "middle_name": "M",
                     "match_key": match_key,
                     "mail": "john@example.com",
-                    "user_name": "jdoe",
+                    "user_name": "100",
                     "phone": phone,
-                    "usr_org_tab_num": "TAB-100",
+                    "usr_org_tab_num": "461462",
                     "organization_id": organization_id,
                     "account_status": "active",
                     "deletion_date": None,
@@ -262,7 +272,7 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
     assert plan["items"][0]["op"] == "update"
     assert "phone" in plan["items"][0]["changes"]
 
-def test_plan_skip_when_no_diff(tmp_path: Path):
+def test_plan_update_when_existing_mail_conflicts_with_source2_null_email(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
     repo = _build_repo(db_path)
@@ -291,9 +301,11 @@ def test_plan_skip_when_no_diff(tmp_path: Path):
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert plan["summary"]["planned_update"] == 0
-    assert plan["summary"]["skipped"] == 1
-    assert plan["items"] == []
+    assert plan["summary"]["planned_update"] == 1
+    assert plan["summary"]["skipped"] == 0
+    assert len(plan["items"]) == 1
+    assert plan["items"][0]["op"] == "update"
+    assert plan["items"][0]["changes"] == {"mail": None}
 
 def test_plan_conflict_when_multiple_same_match_key(tmp_path: Path):
     cache_dir = tmp_path / "cache"

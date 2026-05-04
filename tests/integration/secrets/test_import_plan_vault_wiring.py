@@ -11,23 +11,46 @@ from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vau
 
 runner = CliRunner()
 
-HEADER = "raw_id,full_name,login,email_or_phone,contacts,org,manager,flags,employment,extra"
+HEADER = ";".join(
+    [
+        "Таб.№",
+        "Пользователи",
+        "Орг. единица уровня 1",
+        "Орг. единица уровня 2",
+        "Орг. единица уровня 3",
+        "Орг. единица уровня 4",
+        "Орг. единица уровня 5",
+        "Организационная единица",
+        "Штатная должность",
+        "Поступл.",
+        "Contract Number",
+        "Догвр:нач.",
+        "Название руководящей должности",
+        "ДатаРожд",
+        "Пол",
+    ]
+)
 
 
 def _write_minimal_employees_csv(path: Path) -> None:
     row = [
         "1001",
         "Doe John M",
-        "jdoe",
-        "john.doe@example.com",
-        "+123456",
-        "Org=Engineering",
         "",
-        "disabled=false",
-        "role=Engineer",
-        "password=SECRET1;org_id=10;tab=5001",
+        "",
+        "",
+        "",
+        "",
+        "Org 10",
+        "Engineer",
+        "",
+        "+123456",
+        "",
+        "",
+        "",
+        "",
     ]
-    content = "\n".join([HEADER, ",".join(row)])
+    content = "\n".join([HEADER, ";".join(row)])
     path.write_text(content, encoding="utf-8")
 
 
