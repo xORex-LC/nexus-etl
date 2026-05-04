@@ -56,6 +56,7 @@ def test_registry_loader_accepts_empty_items_mapping(
         """
 dictionaries:
   version: 1
+  manifest: dictionaries/manifest.custom.yaml
   items: {}
 """.strip(),
     )
@@ -64,6 +65,7 @@ dictionaries:
     spec = dictionary_loader.load_dictionary_registry_spec_for_runtime()
 
     assert spec.version == 1
+    assert spec.manifest == "dictionaries/manifest.custom.yaml"
     assert spec.items == {}
 
 
@@ -94,6 +96,7 @@ def test_load_enabled_dictionary_specs_wraps_invalid_spec(
         """
 dictionaries:
   version: 1
+  manifest: dictionaries/manifest.custom.yaml
   items:
     organizations:
       spec: dictionaries/organizations.dictionary.yaml
@@ -129,6 +132,7 @@ def test_load_enabled_dictionary_specs_validates_registry_key_matches_spec(
         """
 dictionaries:
   version: 1
+  manifest: dictionaries/manifest.custom.yaml
   items:
     organizations:
       spec: dictionaries/organizations.dictionary.yaml
@@ -165,6 +169,7 @@ def test_manifest_loader_raises_missing_code_when_file_absent(
         """
 dictionaries:
   version: 1
+  manifest: dictionaries/manifest.custom.yaml
   items: {}
 """.strip(),
     )
@@ -181,7 +186,16 @@ def test_manifest_loader_wraps_invalid_structure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "dictionaries" / "manifest.yml",
+        tmp_path / "datasets" / "registry.yml",
+        """
+dictionaries:
+  version: 1
+  manifest: dictionaries/manifest.custom.yaml
+  items: {}
+""".strip(),
+    )
+    _write(
+        tmp_path / "datasets" / "dictionaries" / "manifest.custom.yaml",
         """
 - bad
 """.strip(),
@@ -199,7 +213,16 @@ def test_manifest_loader_loads_valid_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "dictionaries" / "manifest.yml",
+        tmp_path / "datasets" / "registry.yml",
+        """
+dictionaries:
+  version: 1
+  manifest: dictionaries/manifest.custom.yaml
+  items: {}
+""".strip(),
+    )
+    _write(
+        tmp_path / "datasets" / "dictionaries" / "manifest.custom.yaml",
         """
 version: 1
 items:

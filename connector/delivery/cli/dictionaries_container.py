@@ -23,7 +23,7 @@ from connector.domain.dictionary_dsl import (
     DictionaryRegistrySpec,
     DictionarySpec,
     load_dictionary_manifest_spec,
-    load_dictionary_manifest_spec_for_runtime,
+    load_dictionary_manifest_spec_for_registry,
     load_dictionary_registry_spec,
     load_dictionary_spec,
     load_enabled_dictionary_specs_for_runtime,
@@ -66,7 +66,7 @@ def _load_runtime_bundle_optional(
         if registry is None:
             return None
         specs = load_enabled_dictionary_specs_for_runtime()
-        manifest = load_dictionary_manifest_spec_for_runtime()
+        manifest = load_dictionary_manifest_spec_for_registry(registry)
         return build_dictionary_dsl_runtime(specs=specs, manifest_spec=manifest)
 
     registry_path = root / "registry.yml"
@@ -75,7 +75,7 @@ def _load_runtime_bundle_optional(
 
     registry = load_dictionary_registry_spec(registry_path)
     specs = _load_enabled_specs_from_registry(registry=registry, datasets_root=root)
-    manifest = load_dictionary_manifest_spec(root / "dictionaries" / "manifest.yml")
+    manifest = load_dictionary_manifest_spec(root / registry.manifest)
     return build_dictionary_dsl_runtime(specs=specs, manifest_spec=manifest)
 
 

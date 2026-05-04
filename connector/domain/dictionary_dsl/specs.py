@@ -63,7 +63,13 @@ class DictionaryRegistrySpec(DslBaseModel):
     """
 
     version: Literal[1]
+    manifest: str
     items: dict[str, DictionaryRegistryItemSpec] = Field(default_factory=dict)
+
+    @field_validator("manifest", mode="after")
+    @classmethod
+    def _validate_manifest_path(cls, value: str) -> str:
+        return _require_non_blank(value, field_name="manifest")
 
     @model_validator(mode="after")
     def _validate_items_keys(self) -> "DictionaryRegistrySpec":
@@ -182,7 +188,8 @@ class DictionarySpec(DslBaseModel):
 class DictionaryManifestItemSpec(DslBaseModel):
     """
     Назначение:
-        Метаданные snapshot-файла словаря из `datasets/dictionaries/manifest.yml`.
+        Метаданные snapshot-файла словаря из manifest-файла, путь к которому
+        объявлен в dictionary registry.
     """
 
     csv_path: str
@@ -235,4 +242,3 @@ __all__ = [
     "DictionarySourceSpec",
     "DictionarySpec",
 ]
-

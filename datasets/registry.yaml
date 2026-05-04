@@ -161,6 +161,8 @@ cache:
 dictionaries:
   # Dictionary registry version.
   version: 1
+  # Dictionary manifest path relative to datasets/.
+  manifest: dictionaries/ankey.dictionary.manifest.yaml
   # Dictionary entries.
   items:
     # Dictionary key.
