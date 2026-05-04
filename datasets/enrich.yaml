@@ -1,0 +1,66 @@
+# Dataset identifier used by registry entries that point to this enrich spec.
+dataset: dataset_name
+
+# Enrichment rules applied after normalization.
+enrich:
+  # Optional match key builder.
+  match_key:
+    # Fields joined to produce match_key.
+    fields: [identity_field]
+    # Whether every field must be non-empty.
+    strict: true
+  # Optional secret extraction policy.
+  secrets:
+    # Fields treated as secret candidates.
+    fields: []
+  # Generated/enriched fields.
+  generate:
+    # Rule name used in diagnostics and trace metadata.
+    - name: generated_field
+      # Row field to write.
+      target: generated_field
+      # Optional provider reference for runtime data lookup/generation.
+      provider:
+        # Provider registry name.
+        name: provider.name
+        # Provider-specific arguments.
+        args: {}
+      # Optional path in provider result to read.
+      value_path: value
+      # Optional single source field/path.
+      source: source_field
+      # Optional multiple source fields/paths.
+      sources: null
+      # Operation pipeline applied to source/provider value.
+      ops: []
+      # Diagnostic behavior for this rule. Supported: error, warn.
+      on_error: error
+      # Merge behavior. Supported: recompute_always, fill_only_if_empty, never_override,
+      # override_if_empty, override_if_authoritative.
+      merge: fill_only_if_empty
+      # Optional uniqueness/existence check.
+      exists:
+        # Provider used for exists check.
+        provider:
+          # Provider registry name.
+          name: provider.exists
+          # Provider-specific arguments.
+          args: {}
+      # Optional allow condition as operation call or operation name string.
+      allow_if:
+        # Operation name for condition.
+        op: equals_path
+        # Operation arguments for condition.
+        args: {}
+      # Optional retry attempts for generated value conflicts.
+      max_attempts: 1
+      # Whether rule runs when previous errors exist. Supported: never, if_any, always.
+      run_when_errors: never
+      # Diagnostic code emitted when required generated value is missing.
+      missing_error_code: GENERATED_VALUE_MISSING
+      # Diagnostic code emitted on exists/conflict failure.
+      conflict_error_code: GENERATED_VALUE_CONFLICT
+      # Target field name used in diagnostics.
+      error_field: generated_field
+  # Lookup/enrichment rules with the same EnrichRule shape as generate.
+  lookup: []

@@ -17,3 +17,22 @@ environment/*.env.lock
 .VSCode*
 .coverage
 docs/uml/pipeline/diagnostic_layer/diagnostic_layer_requirements.md
+examples/sources/*
+
+# Dataset-local YAML specs are operator/project data, not repository templates.
+# Keep generic templates below trackable; ignore concrete dataset/target/dictionary specs.
+datasets/*.yaml
+datasets/**/*.yaml
+datasets/dictionaries/*.yml
+!datasets/source.yaml
+!datasets/registry.yaml
+!datasets/mapping.yaml
+!datasets/normalize.yaml
+!datasets/enrich.yaml
+!datasets/validate.yaml
+!datasets/match.yaml
+!datasets/resolve.yaml
+!datasets/sink.yaml
+!datasets/cache.yaml
+!datasets/dictionary.yaml
+!datasets/target.yaml

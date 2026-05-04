@@ -25,6 +25,8 @@ observability:
 
 dataset:
   dataset_name: employees
+  # Optional path to the dataset registry YAML. If omitted, runtime uses datasets/registry.yml.
+  registry_path: "./datasets/employees.registry.yaml"
   include_deleted: false
 
 execution:

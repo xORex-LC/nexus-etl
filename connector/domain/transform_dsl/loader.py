@@ -15,10 +15,10 @@ from connector.domain.dsl.build_options import (
 )
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.loader._common import (
+    _datasets_root,
     _load_registry_or_raise,
     _load_spec_from_path,
     _read_yaml_or_raise,
-    _repo_root,
     _validate_spec_or_raise,
 )
 from connector.domain.transform_dsl.build_options import (
@@ -223,7 +223,7 @@ def _resolve_dataset_path(registry: dict[str, Any], dataset: str, stage: str) ->
             message=f"Dataset '{dataset}' does not define '{stage}' in registry.yml",
             details={"dataset": dataset, "stage": stage},
         )
-    return _repo_root() / "datasets" / filename
+    return _datasets_root() / filename
 
 
 def _load_dataset_stage_spec(

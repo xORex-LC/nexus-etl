@@ -124,9 +124,10 @@ class TestYamlDatasetSpecAdapters:
         assert isinstance(spec.build_spec_for("map"), MappingSpec)
         assert spec.get_apply_adapter().operation_alias == "users.upsert"
         source = spec.build_record_source()
+        csv_options = artifacts.source_spec.source.csv_options()
         assert source.has_header is True
-        assert source.delimiter == ","
-        assert source.encoding == "utf-8-sig"
+        assert source.delimiter == csv_options.delimiter
+        assert source.encoding == csv_options.encoding
 
 
 class TestRegistryValidation:

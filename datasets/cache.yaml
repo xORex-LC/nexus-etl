@@ -1,0 +1,128 @@
+# Dataset identifier for this cache spec.
+dataset: dataset_name
+# Physical cache table name.
+table: cache_table_name
+
+# Cache table schema.
+schema:
+  # Primary key column or composite primary key list.
+  primary_key: _id
+  # Snapshot table columns.
+  columns:
+    # Cache column name.
+    - name: _id
+      # Column type. Supported: string, int, float, bool, datetime, json.
+      type: string
+      # Whether column must be present/non-empty.
+      required: true
+      # Optional default value.
+      default: null
+      # Optional source path used by sync/projection.
+      source: id
+  # Cache indexes.
+  indexes:
+    # Index name.
+    - name: idx_cache_field
+      # Indexed fields. Must not be empty.
+      fields: [_id]
+      # Whether index is unique.
+      unique: true
+
+# Optional target-to-cache sync contract.
+sync:
+  # Optional dataset override for sync metadata.
+  dataset: dataset_name
+  # Target operation alias used to list source rows.
+  list_operation_alias: entity.list
+  # Report entity label.
+  report_entity: entity
+  # Expression that builds cache item key.
+  item_key:
+    # Single source path.
+    source: id
+    # Multiple source paths alternative to source.
+    sources: null
+    # Constant value alternative to source/sources.
+    value: null
+    # Operation pipeline.
+    ops: []
+    # Whether expression result is required.
+    required: true
+    # Error behavior. Supported: error, warn, skip, set_null.
+    on_error: error
+  # Optional deletion flag expression.
+  is_deleted: null
+  # Optional soft-delete policy, mutually exclusive with is_deleted.
+  soft_delete:
+    # Rule composition mode. Supported: any_of, all_of.
+    mode: any_of
+    # Soft-delete rules.
+    rules:
+      # Rule type. Supported: field_equals, field_not_null.
+      - type: field_equals
+        # Source field/path.
+        field: deleted
+        # Required for field_equals.
+        value: true
+        # Normalization pipeline for source value.
+        normalize: []
+  # Projection from target payload into cache row.
+  projection:
+    # Cache column to write.
+    - target: _id
+      # Single source path.
+      source: id
+      # Multiple source paths alternative to source.
+      sources: null
+      # Constant value alternative to source/sources.
+      value: null
+      # Operation pipeline.
+      ops: []
+      # Whether projection result is required.
+      required: true
+      # Error behavior. Supported: error, warn, skip, set_null.
+      on_error: error
+  # Whether deleted rows are included by default.
+  include_deleted_default: false
+
+# Dataset cache flags.
+flags:
+  # Whether deleted rows are included in cache table.
+  include_deleted: false
+
+# Optional dataset-level policy overrides.
+policy_overrides:
+  # Refresh policy override.
+  refresh:
+    # Default for refresh with dependencies.
+    with_deps_default: true
+  # Schema drift policy override.
+  drift:
+    # Drift mode. Supported: strict, soft.
+    mode: strict
+    # Hash mismatch behavior. Supported: fail, rebuild.
+    on_hash_mismatch: fail
+    # Rebuild scope. Supported: dataset, all.
+    rebuild_scope: dataset
+  # Clear policy override.
+  clear:
+    # Whether clear cascades to dependent datasets by default.
+    cascade_default: false
+    # Whether service tables are preserved.
+    preserve_service_tables: true
+    # Whether metadata is reset on clear.
+    reset_meta_on_clear: true
+  # Status policy override.
+  status:
+    # Whether orphan checks are enabled.
+    enable_orphan_check: true
+    # Whether hash mismatch marks status degraded.
+    degraded_on_hash_mismatch: true
+  # Runtime retention policy override.
+  retention:
+    # Pending row retention in days.
+    pending_retention_days: null
+    # Identity row retention in days.
+    identity_retention_days: null
+    # Retention sweep interval in seconds.
+    sweep_interval_seconds: null

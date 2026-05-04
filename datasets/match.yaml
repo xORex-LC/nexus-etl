@@ -1,0 +1,45 @@
+# Dataset identifier used by registry entries that point to this match spec.
+dataset: dataset_name
+
+# Matching policy.
+match:
+  # Ordered identity rules. At least one rule is required.
+  identity_rules:
+    # Identity rule name.
+    - name: identity_key
+      # Fields used to build this identity key.
+      fields: [identity_field]
+      # Optional primary field; must be one of fields.
+      primary: identity_field
+  # Fields ignored by matcher diff/scoring policies.
+  ignored_fields: []
+  # Source duplicate policy before target matching.
+  source_dedup:
+    # Whether source deduplication is enabled.
+    enabled: true
+    # Diagnostic behavior for duplicate identity rows. Supported: warn, error.
+    on_duplicate: warn
+    # Diagnostic behavior for conflicting duplicate rows. Supported: warn, error.
+    on_conflict: error
+  # Fuzzy/scoring matcher policy.
+  fuzzy:
+    # Whether fuzzy matching is enabled.
+    enabled: false
+    # Identity/index keys used to fetch candidate rows.
+    blocking_keys: []
+    # Field comparator map. Supported comparators: exact, casefold, similarity.
+    comparators: {}
+    # Field weights. Must define the same fields as comparators.
+    weights: {}
+    # Score threshold for automatic accept.
+    accept_threshold: 0.90
+    # Score threshold for review candidate.
+    review_threshold: 0.70
+    # Max score delta treated as a tie.
+    tie_delta: 0.05
+    # Max candidates fetched for scoring.
+    max_candidates: 50
+    # Number of best candidates retained.
+    top_k: 3
+    # Decimal places for score rounding.
+    score_round: 4

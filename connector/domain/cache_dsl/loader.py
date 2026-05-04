@@ -10,7 +10,7 @@ from typing import Any
 
 from connector.domain.dsl.build_options import build_options_from_mapping
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader._common import _load_registry_or_raise, _read_yaml, _repo_root
+from connector.domain.dsl.loader._common import _datasets_root, _load_registry_or_raise, _read_yaml, _registry_path
 from connector.domain.cache_dsl.build_options import CacheDslBuildOptions
 from connector.domain.cache_dsl.specs import CacheDatasetSpec, CacheRegistrySpec
 
@@ -29,7 +29,7 @@ def load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpe
         raise DslLoadError(
             code="CACHE_DSL_REGISTRY_INVALID",
             message=f"Failed to read cache registry: {exc}",
-            details={"path": str(path) if path is not None else "datasets/registry.yml"},
+            details={"path": str(path) if path is not None else str(_registry_path())},
         ) from exc
 
     cache_payload = _extract_cache_registry_payload(raw)
@@ -39,7 +39,7 @@ def load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpe
         raise DslLoadError(
             code="CACHE_DSL_REGISTRY_INVALID",
             message=f"Invalid cache registry DSL: {exc}",
-            details={"path": str(path) if path is not None else "datasets/registry.yml"},
+            details={"path": str(path) if path is not None else str(_registry_path())},
         ) from exc
 
 
@@ -87,7 +87,7 @@ def load_cache_dataset_spec_for_dataset(dataset: str) -> CacheDatasetSpec:
             message=f"Dataset '{dataset}' is not present in cache registry",
             details={"dataset": dataset},
         )
-    spec_path = _repo_root() / "datasets" / dataset_entry.cache_spec
+    spec_path = _datasets_root() / dataset_entry.cache_spec
     spec = load_cache_dataset_spec(spec_path)
     if spec.dataset != dataset:
         raise DslLoadError(

@@ -1,0 +1,78 @@
+# Target provider type identifier.
+target_type: target_type_name
+
+# Provider capabilities. Supported: check, execute, read_paged.
+capabilities: [check, execute, read_paged]
+
+# Fault classification rules.
+fault_rules:
+  # Resulting fault kind. Supported: SPEC, AUTH, PERMISSION, DATA, NOT_FOUND,
+  # CONFLICT, THROTTLE, TRANSIENT, UNKNOWN.
+  - fault_kind: UNKNOWN
+    # Exact HTTP/status match.
+    match_status: 500
+    # Inclusive status range alternative to match_status.
+    match_status_range: null
+    # Target-specific error code alternative.
+    match_error_code: null
+
+# Retry decision rules.
+retry_rules:
+  # Retry directive. Supported: NO_RETRY, RETRY_BACKOFF, RETRY_AFTER, ESCALATE.
+  - directive: NO_RETRY
+    # Optional fault kind matcher.
+    match_fault: DATA
+    # Optional status matcher.
+    match_status: null
+    # Optional reason matcher.
+    match_reason: null
+    # Optional mutation name matcher.
+    mutation: null
+
+# Retry timing configuration.
+retry_config:
+  # Number of retries, excluding the first attempt.
+  max_attempts: 3
+  # Initial backoff in seconds.
+  backoff_base: 0.5
+  # Max backoff in seconds.
+  backoff_max: 30.0
+  # Whether retry jitter is enabled.
+  jitter: true
+
+# Safe logging and payload redaction configuration.
+redaction:
+  # Metadata/header keys that must be redacted.
+  forbidden_metadata_keys: [authorization, cookie, set-cookie, x-api-key, x-ankey-password]
+  # Payload field names that must be redacted.
+  forbidden_fields: [password, token, secret, api_key]
+  # Body logging mode. Supported: none, keys_only, truncated.
+  body_mode: truncated
+
+# Health-check operation configuration.
+health:
+  # Operation alias used for health checks. Must exist in operations.
+  operation_alias: health.check
+
+# Operation catalog keyed by alias.
+operations:
+  # Operation key must match operation.alias.
+  health.check:
+    # Operation alias.
+    alias: health.check
+    # Operation kind. Current target integrations commonly use http.
+    kind: http
+    # Expected successful statuses.
+    expected_statuses: [200]
+    # Optional operation timeout in milliseconds.
+    timeout_ms: null
+    # Optional retry profile identifier.
+    retry_profile: null
+    # Optional operation-level redaction override.
+    redaction_override: null
+    # Transport-specific operation payload.
+    data:
+      # HTTP method for HTTP transport compilers.
+      method: GET
+      # HTTP path for HTTP transport compilers.
+      path: /health
