@@ -59,9 +59,12 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_trim,
         op_lower,
         op_upper,
+        op_title,
+        op_capitalize,
         op_to_int,
         op_to_float,
         op_to_bool,
+        op_parse_bool,
         op_to_string,
         op_int_if_digits,
         op_uuid,
@@ -73,11 +76,22 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_coalesce,
         op_concat,
         op_build_delimited_key,
+        op_first,
+        op_last,
+        op_at,
+        op_compact,
+        op_unique,
+        op_count,
+        op_map_each,
         op_extract_patterns,
         op_regex_extract,
+        op_filter_regex,
+        op_reject_regex,
         op_regex_replace,
         op_split_name,
         op_split,
+        op_digits_only,
+        op_format_mask,
         op_parse_kv_pairs,
         op_map_dict,
         op_build_link_keys,
@@ -87,9 +101,12 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("trim", op_trim)
     registry.register("lower", op_lower)
     registry.register("upper", op_upper)
+    registry.register("title", op_title)
+    registry.register("capitalize", op_capitalize)
     registry.register("to_int", op_to_int)
     registry.register("to_float", op_to_float)
     registry.register("to_bool", op_to_bool)
+    registry.register("parse_bool", op_parse_bool)
     registry.register("to_string", op_to_string)
     registry.register("int_if_digits", op_int_if_digits)
     registry.register("uuid", op_uuid)
@@ -101,11 +118,22 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("coalesce", op_coalesce)
     registry.register("concat", op_concat)
     registry.register("build_delimited_key", op_build_delimited_key)
+    registry.register("first", op_first)
+    registry.register("last", op_last)
+    registry.register("at", op_at)
+    registry.register("compact", op_compact)
+    registry.register("unique", op_unique)
+    registry.register("count", op_count)
+    registry.register("map_each", op_map_each)
     registry.register("extract_patterns", op_extract_patterns)
     registry.register("split", op_split)
     registry.register("split_name", op_split_name)
     registry.register("regex_extract", op_regex_extract)
+    registry.register("filter_regex", op_filter_regex)
+    registry.register("reject_regex", op_reject_regex)
     registry.register("regex_replace", op_regex_replace)
+    registry.register("digits_only", op_digits_only)
+    registry.register("format_mask", op_format_mask)
     registry.register("parse_kv_pairs", op_parse_kv_pairs)
     registry.register("map_dict", op_map_dict)
     registry.register("build_link_keys", op_build_link_keys)
