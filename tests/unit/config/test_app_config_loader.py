@@ -25,6 +25,20 @@ def test_load_from_nested_yaml(tmp_path: object) -> None:
     assert result.app_config.api.port == 8443
 
 
+def test_load_dataset_registry_path_from_yaml(tmp_path: object) -> None:
+    cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
+    cfg_file.write_text(
+        "dataset:\n"
+        "  registry_path: ./datasets/registry.yml\n",
+        encoding="utf-8",
+    )
+
+    result = load_app_config(str(cfg_file))
+
+    assert result.app_config.dataset.registry_path == "./datasets/registry.yml"
+    assert result.source_trace["dataset.registry_path"] == "config"
+
+
 def test_env_override_nested_naming(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
     """ANKEY_API__HOST=x переопределяет значение из YAML."""
     cfg_file = tmp_path / "config.yml"  # type: ignore[operator]

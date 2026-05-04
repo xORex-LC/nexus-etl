@@ -1,0 +1,94 @@
+# Dataset identifier used by registry entries that point to this resolve spec.
+dataset: dataset_name
+
+# Resolve policy converts matched rows into plan items.
+resolve:
+  # Desired state projection.
+  desired_state:
+    # Projection mode. Supported: project_fields.
+    mode: project_fields
+    # Fields copied into desired_state. Must not be empty.
+    fields: [sink_field]
+    # Fields removed from desired_state after projection.
+    drop_fields: []
+  # Source reference projection from identity.
+  source_ref:
+    # Source ref mode. Supported: from_identity.
+    mode: from_identity
+    # Identity fields included in source_ref.
+    fields: []
+    # Whether identity primary is included.
+    include_primary: true
+  # Diff policy.
+  diff:
+    # Diff mode. Supported: compare_fields.
+    mode: compare_fields
+    # Explicit diff fields.
+    fields:
+      # Desired-state field to compare.
+      - field: sink_field
+        # Existing row field/path. Defaults to field when omitted.
+        existing: target_field
+        # Output field name in change set. Defaults to field when omitted.
+        output: sink_field
+        # Comparison normalization. Supported: none, text, bool.
+        normalize: none
+    # Fields ignored by diff.
+    ignore_fields: []
+    # Optional generation of diff fields from sink spec.
+    from_sink:
+      # Whether sink fields are used to generate diff fields.
+      enabled: false
+      # Sink fields excluded from generated diff fields.
+      exclude_fields: []
+      # Whether normalization is inferred from sink field type.
+      normalize_by_type: true
+  # Merge policy.
+  merge:
+    # Merge mode. Supported: none, fill_empty_from_existing.
+    mode: none
+    # Merge fields for fill_empty_from_existing mode.
+    fields:
+      # Desired-state field to fill.
+      - field: sink_field
+        # Existing row field/path. Defaults to field when omitted.
+        existing: target_field
+        # Merge normalization. Supported: none, text, bool.
+        normalize: none
+  # Secret resolve policy.
+  secrets:
+    # Secret mode. Supported: none, by_op.
+    mode: none
+    # Secret fields used for create operations.
+    create: []
+    # Secret fields used for update operations.
+    update: []
+    # Secret lifecycle policy.
+    lifecycle:
+      # Lifecycle mode. Supported: persistent, ephemeral.
+      mode: persistent
+      # Whether secret is deleted after successful apply.
+      delete_on_success: null
+      # Optional secret TTL in seconds.
+      ttl_seconds: null
+  # Link resolution rules.
+  links:
+    # Field that contains link value to resolve.
+    - field: linked_field
+      # Dataset whose cache/identity index is used as target.
+      target_dataset: target_dataset_name
+      # Ordered keys used to resolve link.
+      resolve_keys:
+        # Resolve key name.
+        - name: identity_key
+          # Source field/path used as key value.
+          field: linked_field
+      # Deduplication key groups used when multiple target rows match.
+      dedup_rules:
+        - [dedup_field]
+      # Field in target row that contains resolved id.
+      target_id_field: _id
+      # Optional coercion for resolved id. Supported: int, str.
+      coerce: int
+      # Behavior when link is unresolved. Supported: pending, hard_error.
+      on_unresolved: pending

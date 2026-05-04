@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from connector.config.models import (
     ApiConfig,
     AppConfig,
+    DatasetConfig,
     MatchingRuntimeConfig,
     ResolverConfig,
     VaultRolloutConfig,
@@ -83,6 +84,12 @@ def test_matching_runtime_config_has_only_match_fields() -> None:
     # Match поля присутствуют
     assert mr.match_batch_size == 500
     assert mr.match_flush_interval_ms == 500
+
+
+def test_dataset_config_accepts_registry_path() -> None:
+    cfg = DatasetConfig(registry_path="./datasets/registry.yml")
+
+    assert cfg.registry_path == "./datasets/registry.yml"
 
 
 def test_app_config_extra_forbid_unknown_section() -> None:

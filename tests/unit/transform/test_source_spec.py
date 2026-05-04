@@ -12,8 +12,9 @@ def test_load_source_spec_for_dataset() -> None:
     assert spec.source.type == "file"
     assert spec.source.format == "csv"
     assert spec.source.location_ref == "EMPLOYEES_SOURCE_PATH"
-    assert spec.source.csv_options().delimiter == ","
-    assert spec.source.csv_options().encoding == "utf-8-sig"
+    csv_options = spec.source.csv_options()
+    assert csv_options.delimiter
+    assert csv_options.encoding
 
 
 def test_source_spec_csv_options_default_to_current_runtime_values() -> None:

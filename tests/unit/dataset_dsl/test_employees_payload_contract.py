@@ -64,6 +64,14 @@ class TestEmployeesPayloadContract:
 
         assert payload["avatarId"] is None
 
+    def test_nullable_payload_fields_are_present_with_null(self, builder):
+        payload = builder(_employees_source(email=None, phone=None, position=None))
+
+        assert payload["mail"] is None
+        assert payload["phone"] is None
+        assert payload["position"] is None
+        assert payload["avatarId"] is None
+
     def test_manager_id_nullable_int_contract(self, builder):
         payload = builder(_employees_source(manager_id="42"))
         assert payload["managerId"] == 42
@@ -100,7 +108,7 @@ class TestEmployeesPayloadContract:
 
     def test_missing_required_fields_raise_value_error(self, builder):
         with pytest.raises(ValueError, match="Missing required fields"):
-            builder(_employees_source(email="", user_name=None))
+            builder(_employees_source(email=None, user_name=None))
 
     def test_apply_adapter_builds_request_with_expected_payload(self):
         adapter = get_spec("employees").get_apply_adapter()

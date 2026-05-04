@@ -18,7 +18,7 @@ from typing import Callable
 import polars as pl
 
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader._common import _repo_root
+from connector.domain.dsl.loader._common import _datasets_root
 from connector.infra.dictionaries.backends.polars_backend import PolarsDictionaryBackend
 from connector.infra.dictionaries.versioning import DictionaryVersionInfo
 from connector.infra.dictionaries.versioning import build_content_sha256_bytes
@@ -63,7 +63,7 @@ class CsvDictionaryLoader:
         datasets_root: str | Path | None = None,
         on_dictionary_loaded: DictionaryCsvLoadCallback | None = None,
     ) -> None:
-        self._datasets_root = Path(datasets_root) if datasets_root is not None else _repo_root() / "datasets"
+        self._datasets_root = Path(datasets_root) if datasets_root is not None else _datasets_root()
         self._on_dictionary_loaded = on_dictionary_loaded
 
     def load_into(self, backend: PolarsDictionaryBackend) -> None:

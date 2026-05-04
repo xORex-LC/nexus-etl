@@ -14,6 +14,7 @@ import yaml
 from connector.domain.dsl.issues import DslLoadError
 
 TSpec = TypeVar("TSpec")
+_registry_path_override: Path | None = None
 
 
 def _read_yaml(path: str | Path) -> dict[str, Any]:
@@ -46,19 +47,52 @@ def _repo_root() -> Path:
     return current.parents[4]
 
 
+def _configure_registry_path(path: str | Path | None) -> None:
+    """
+    Назначение:
+        Настроить runtime registry-файл для всех DSL loaders.
+
+    Контракт:
+        - None сбрасывает настройку к историческому datasets/registry.yml;
+        - относительный путь интерпретируется относительно текущего working directory;
+        - смена пути сбрасывает кеш загруженного registry.
+    """
+    global _registry_path_override
+    _registry_path_override = None if path is None else Path(path).expanduser().resolve()
+    _load_registry_or_raise.cache_clear()
+
+
+def _registry_path() -> Path:
+    """
+    Назначение:
+        Вернуть активный registry-файл.
+    """
+    if _registry_path_override is not None:
+        return _registry_path_override
+    return _repo_root() / "datasets" / "registry.yml"
+
+
+def _datasets_root() -> Path:
+    """
+    Назначение:
+        Вернуть директорию, относительно которой registry ссылается на YAML-спеки.
+    """
+    return _registry_path().parent
+
+
 @lru_cache(maxsize=1)
 def _load_registry_or_raise() -> dict[str, Any]:
     """
     Назначение:
-        Загрузить datasets/registry.yml с error handling.
+        Загрузить активный registry YAML с error handling.
     """
-    registry_path = _repo_root() / "datasets" / "registry.yml"
+    registry_path = _registry_path()
     try:
         return _read_yaml(registry_path)
     except Exception as exc:
         raise DslLoadError(
             code="DSL_REGISTRY_INVALID",
-            message=f"Failed to read registry.yml: {exc}",
+            message=f"Failed to read registry file: {exc}",
             details={"path": str(registry_path)},
         ) from exc
 
@@ -118,5 +152,4 @@ def _load_spec_from_path(path: str | Path, spec_cls: type[TSpec], *, code: str) 
     path_obj = Path(path)
     raw = _read_yaml_or_raise(path_obj, code=code)
     return _validate_spec_or_raise(raw, spec_cls, code=code, details={"path": str(path_obj)})
-
 

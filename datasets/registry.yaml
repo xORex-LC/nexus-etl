@@ -1,0 +1,171 @@
+# Target provider registry. Keys are target type names.
+targets:
+  # Path to target provider spec relative to datasets/.
+  target_type: targets/target_type.target.yaml
+
+# Dataset registry. Keys are dataset names.
+datasets:
+  # Dataset entry name.
+  dataset_name:
+    # Optional app config field, not part of registry itself: dataset.registry_path points to this file.
+    # Runtime default remains datasets/registry.yml when config does not override it.
+    # Source spec path relative to datasets/.
+    source: dataset_name.source.yaml
+    # Mapping spec path relative to datasets/.
+    mapping: dataset_name.mapping.yaml
+    # Normalize spec path relative to datasets/.
+    normalize: dataset_name.normalize.yaml
+    # Enrich spec path relative to datasets/.
+    enrich: dataset_name.enrich.yaml
+    # Validate spec path relative to datasets/.
+    validate: dataset_name.validate.yaml
+    # Match spec path relative to datasets/.
+    match: dataset_name.match.yaml
+    # Resolve spec path relative to datasets/.
+    resolve: dataset_name.resolve.yaml
+    # Sink spec path relative to datasets/.
+    sink: dataset_name.sink.yaml
+    # Dataset-level build option overrides by stage.
+    build_options:
+      # Mapping compile-policy overrides.
+      mapping:
+        # Whether build-options handling should be strict.
+        strict: false
+        # Whether every mapping target must exist in sink spec.
+        require_targets_exist_in_sink_spec: false
+        # Whether unknown DSL operations fail during compile.
+        fail_on_unknown_ops: false
+      # Normalize compile-policy overrides.
+      normalize:
+        # Whether build-options handling should be strict.
+        strict: false
+        # Whether sink validation checks only fields touched by normalize rules.
+        validate_only_touched_fields: false
+        # Whether unknown DSL operations fail during compile.
+        fail_on_unknown_ops: false
+      # Enrich compile-policy overrides.
+      enrich:
+        # Whether build-options handling should be strict.
+        strict: false
+        # Whether enrich compile requires match_key configuration.
+        require_match_key: false
+        # Whether unknown DSL operations fail during compile.
+        fail_on_unknown_ops: false
+      # Match compile-policy overrides.
+      match:
+        # Whether build-options handling should be strict.
+        strict: false
+        # Whether matcher requires a primary identity rule.
+        require_primary_identity_rule: false
+        # Whether unknown DSL operations fail during compile.
+        fail_on_unknown_ops: false
+      # Resolve compile-policy overrides.
+      resolve:
+        # Whether build-options handling should be strict.
+        strict: false
+        # Whether pending links are allowed for unresolved references.
+        allow_pending_links: true
+        # Whether unknown DSL operations fail during compile.
+        fail_on_unknown_ops: false
+    # Report adapter configuration.
+    report:
+      # Human-readable identity label used in reports.
+      identity_label: identity_key
+      # Diagnostic/report conflict code.
+      conflict_code: MATCH_CONFLICT
+      # Target/report field used for conflict details.
+      conflict_field: identityField
+    # Apply adapter configuration.
+    apply:
+      # Target operation alias used by apply adapter.
+      operation_alias: entity.upsert
+      # Payload building configuration.
+      payload:
+        # Payload source. Supported: sink.
+        source: sink
+        # Constant fields injected into payload after sink field mapping.
+        defaults: {}
+        # Fields included only when non-empty.
+        conditional_fields: []
+      # Operation params building configuration.
+      params:
+        # Params mode. Supported: target_id, none.
+        mode: target_id
+    # Dataset diagnostic catalog entries.
+    diagnostics:
+      # Dataset diagnostic code.
+      - code: DATA_INVALID
+        # System diagnostic code/category.
+        system_code: DATA_INVALID
+        # Diagnostic severity.
+        severity: error
+        # Human-readable message.
+        message: "Invalid data"
+
+# Cache registry configuration.
+cache:
+  # Cache registry version.
+  version: 1
+  # Global cache runtime policies.
+  policy:
+    # Refresh policy.
+    refresh:
+      # Default for refresh with dependencies.
+      with_deps_default: true
+    # Schema drift policy.
+    drift:
+      # Drift mode. Supported: strict, soft.
+      mode: strict
+      # Hash mismatch behavior. Supported: fail, rebuild.
+      on_hash_mismatch: fail
+      # Rebuild scope. Supported: dataset, all.
+      rebuild_scope: dataset
+    # Clear policy.
+    clear:
+      # Whether clear cascades to dependent datasets by default.
+      cascade_default: false
+      # Whether service tables are preserved.
+      preserve_service_tables: true
+      # Whether metadata is reset on clear.
+      reset_meta_on_clear: true
+    # Status policy.
+    status:
+      # Whether orphan checks are enabled.
+      enable_orphan_check: true
+      # Whether hash mismatch marks status degraded.
+      degraded_on_hash_mismatch: true
+    # Runtime retention policy.
+    retention:
+      # Pending row retention in days.
+      pending_retention_days: null
+      # Identity row retention in days.
+      identity_retention_days: null
+      # Retention sweep interval in seconds.
+      sweep_interval_seconds: null
+  # Cache dataset entries.
+  datasets:
+    # Cache dataset key.
+    dataset_name:
+      # Cache dataset spec path relative to datasets/.
+      cache_spec: dataset_name.cache.yaml
+      # Cache datasets that must refresh before this one.
+      depends_on: []
+      # Ordering hint for cache refresh scheduling.
+      order_hint: 100
+      # Whether partial refresh is allowed.
+      allow_partial_refresh: false
+      # Whether cache dataset is enabled.
+      enabled: true
+
+# Dictionary registry configuration.
+dictionaries:
+  # Dictionary registry version.
+  version: 1
+  # Dictionary entries.
+  items:
+    # Dictionary key.
+    dictionary_name:
+      # Dictionary spec path relative to datasets/.
+      spec: dictionaries/dictionary_name.dictionary.yaml
+      # Whether dictionary is enabled.
+      enabled: true

@@ -1,0 +1,51 @@
+# Dataset identifier used by registry entries that point to this mapping spec.
+dataset: dataset_name
+
+# Ordered source columns. Also maps headerless col_0/col_1/... records to logical names.
+source_columns:
+  - source_field
+
+# Source-to-sink mapping rules.
+mapping:
+  # Optional mapping output schema check.
+  schema:
+    # Fields that must be present after mapping.
+    required: []
+    # Whether fields outside the schema are allowed.
+    allow_extra: true
+  # Ordered mapping rules.
+  rules:
+    # Single-target rule.
+    - target: sink_field
+      # Multi-target alternative to target.
+      targets: null
+      # Single source field.
+      source: source_field
+      # Multiple source fields alternative to source.
+      sources: null
+      # Short operation form. If ops is empty, op+args are converted to one operation call.
+      op: copy
+      # Arguments for op short form.
+      args: {}
+      # Full operation pipeline form.
+      ops: []
+      # Whether produced target value must be non-empty.
+      required: false
+      # Diagnostic behavior for rule errors. Supported: error, warn.
+      on_error: error
+  # Optional meta values generated from source or mapped row.
+  meta:
+    # Meta target path. Dot notation creates nested meta objects.
+    - target: meta.path
+      # Single source path.
+      source: source_field
+      # Multiple source paths alternative to source.
+      sources: null
+      # Short operation form.
+      op: copy
+      # Arguments for op short form.
+      args: {}
+      # Full operation pipeline form.
+      ops: []
+      # Diagnostic behavior for meta rule errors. Supported: error, warn.
+      on_error: warn

@@ -34,6 +34,7 @@ from connector.delivery.commands import (
     vault_management as vault_management_command,
 )
 from connector.domain.models import DiagnosticStage
+from connector.domain.dsl.loader import configure_registry_path
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cache_app = typer.Typer(no_args_is_help=True)
@@ -165,6 +166,7 @@ def main(
             field = f" ({diag.field})" if diag.field else ""
             typer.echo(f"- [{diag.code}]{field} {diag.message}", err=True)
         raise typer.Exit(code=2) from exc
+    configure_registry_path(loaded_app.app_config.dataset.registry_path)
     _ensure_dir(loaded_app.app_config.paths.log_dir)
     _ensure_dir(loaded_app.app_config.paths.report_dir)
     _ensure_dir(loaded_app.app_config.paths.cache_dir)

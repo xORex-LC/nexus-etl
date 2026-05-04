@@ -74,6 +74,7 @@ class DatasetConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     dataset_name: str = "employees"
+    registry_path: str | None = None
     include_deleted: bool = False
 
 

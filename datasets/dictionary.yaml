@@ -1,0 +1,33 @@
+# Dictionary identifier.
+dictionary: dictionary_name
+
+# Dictionary source configuration.
+source:
+  # Source format. Supported: csv.
+  format: csv
+  # Source location.
+  location: "/path/to/dictionary.csv"
+  # CSV-specific source options.
+  csv:
+    # CSV delimiter.
+    delimiter: ","
+    # Whether CSV contains header row.
+    has_header: true
+    # Python codec name used to read dictionary CSV.
+    encoding: "utf-8"
+
+# Dictionary lookup schema.
+schema:
+  # Column used as lookup key.
+  key_column: key
+  # Columns returned as lookup value payload.
+  value_columns: [value]
+  # Optional normalization for lookup key.
+  normalized_key:
+    # Operation pipeline. Allowed ops: trim, lower, upper, to_string, regex_replace.
+    ops: []
+
+# Lookup runtime behavior.
+lookup:
+  # Whether duplicate normalized keys are allowed.
+  allow_duplicates: false
