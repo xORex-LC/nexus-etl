@@ -72,11 +72,13 @@ def test_dictionary_registry_items_can_be_empty() -> None:
     spec = DictionaryRegistrySpec.model_validate(
         {
             "version": 1,
+            "manifest": "dictionaries/manifest.custom.yaml",
             "items": {},
         }
     )
 
     assert spec.items == {}
+    assert spec.manifest == "dictionaries/manifest.custom.yaml"
 
 
 def test_dictionary_manifest_items_can_be_empty() -> None:
@@ -88,4 +90,3 @@ def test_dictionary_manifest_items_can_be_empty() -> None:
     )
 
     assert spec.items == {}
-

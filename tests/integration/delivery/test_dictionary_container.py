@@ -21,6 +21,7 @@ pytest.importorskip("polars")
 
 from connector.config.models import DictionaryConfig
 from connector.delivery.cli.dictionaries_container import DictionaryContainer
+from connector.domain.dsl.loader import configure_registry_path
 from connector.domain.dictionary_dsl.specs import DictionarySpec
 from connector.domain.dsl.issues import DslLoadError
 from connector.infra.dictionaries.backends.polars_backend import PolarsDictionaryBackend
@@ -80,6 +81,7 @@ def _write_datasets_fixture(
             "datasets": {},
             "dictionaries": {
                 "version": 1,
+                "manifest": "dictionaries/manifest.custom.yaml",
                 "items": (
                     {}
                     if empty_dictionary_items
@@ -124,7 +126,7 @@ def _write_datasets_fixture(
                 }
             ),
         }
-        (dictionaries_dir / "manifest.yml").write_text(
+        (dictionaries_dir / "manifest.custom.yaml").write_text(
             yaml.safe_dump(manifest_payload, sort_keys=False),
             encoding="utf-8",
         )
@@ -218,7 +220,8 @@ def test_dictionary_container_empty_items_registry_is_valid_empty_runtime(tmp_pa
         container.shutdown_resources()
 
 
-def test_dictionary_container_bootstrap_fixtures_from_repo_init_success() -> None:
+def test_dictionary_container_bootstrap_from_active_registry_path_init_success(tmp_path: Path) -> None:
+    datasets_root = _write_datasets_fixture(tmp_path)
     container = DictionaryContainer()
     container.settings.override(
         DictionaryConfig(
@@ -227,17 +230,18 @@ def test_dictionary_container_bootstrap_fixtures_from_repo_init_success() -> Non
             lookup_miss_sample_percent=0,
         )
     )
-    # datasets_root=None -> canonical repo datasets/ path.
     container.datasets_root.override(None)
     try:
+        configure_registry_path(datasets_root / "registry.yml")
         container.init_resources()
         backend = container.backend()
         provider = container.provider()
         assert isinstance(backend, PolarsDictionaryBackend)
         assert provider is not None
-        # Bootstrap fixture must expose organizations dictionary through runtime.
-        assert "organizations" in backend.get_loaded_dict_names()
+        assert backend.get_loaded_dict_names() == backend.get_declared_dict_names()
+        assert backend.get_loaded_dict_names()
     finally:
+        configure_registry_path(None)
         container.shutdown_resources()
 
 

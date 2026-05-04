@@ -153,16 +153,29 @@ def load_enabled_dictionary_specs_for_runtime() -> dict[str, DictionarySpec]:
     return specs
 
 
-def load_dictionary_manifest_spec(path: str | Path | None = None) -> DictionaryManifestSpec:
+def load_dictionary_manifest_spec_for_registry(
+    registry: DictionaryRegistrySpec,
+    *,
+    datasets_root: str | Path | None = None,
+) -> DictionaryManifestSpec:
     """
     Назначение:
-        Загрузить `datasets/dictionaries/manifest.yml` (или альтернативный путь).
+        Загрузить manifest по пути, объявленному в dictionary registry.
+    """
+    root = Path(datasets_root) if datasets_root is not None else _datasets_root()
+    return load_dictionary_manifest_spec(root / registry.manifest)
+
+
+def load_dictionary_manifest_spec(path: str | Path) -> DictionaryManifestSpec:
+    """
+    Назначение:
+        Загрузить manifest по явному пути.
 
     Контракт:
         - Отсутствующий файл -> `DICT_SOURCE_MANIFEST_MISSING`.
         - Ошибка чтения/структуры/валидации -> `DICT_SOURCE_MANIFEST_INVALID`.
     """
-    manifest_path = Path(path) if path is not None else _manifest_path()
+    manifest_path = Path(path)
     try:
         raw = _read_yaml(manifest_path)
     except FileNotFoundError as exc:
@@ -191,9 +204,10 @@ def load_dictionary_manifest_spec(path: str | Path | None = None) -> DictionaryM
 def load_dictionary_manifest_spec_for_runtime() -> DictionaryManifestSpec:
     """
     Назначение:
-        Runtime helper для канонического пути `datasets/dictionaries/manifest.yml`.
+        Runtime helper для manifest path, объявленного в active dictionary registry.
     """
-    return load_dictionary_manifest_spec(None)
+    registry = load_dictionary_registry_spec_for_runtime()
+    return load_dictionary_manifest_spec_for_registry(registry)
 
 
 def _registry_path() -> Path:
@@ -214,10 +228,6 @@ def _datasets_root() -> Path:
 
 def _repo_root() -> Path:
     return _default_repo_root()
-
-
-def _manifest_path() -> Path:
-    return _datasets_root() / "dictionaries" / "manifest.yml"
 
 
 def _extract_dictionary_registry_payload(
@@ -283,6 +293,7 @@ def _validate_registry_key_matches_spec(
 
 __all__ = [
     "load_dictionary_manifest_spec",
+    "load_dictionary_manifest_spec_for_registry",
     "load_dictionary_manifest_spec_for_runtime",
     "load_dictionary_registry_spec",
     "load_dictionary_registry_spec_for_runtime",

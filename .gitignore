@@ -18,12 +18,16 @@ environment/*.env.lock
 .coverage
 docs/uml/pipeline/diagnostic_layer/diagnostic_layer_requirements.md
 examples/sources/*
+dictionaries/*.csv
 
 # Dataset-local YAML specs are operator/project data, not repository templates.
 # Keep generic templates below trackable; ignore concrete dataset/target/dictionary specs.
 datasets/*.yaml
 datasets/**/*.yaml
 datasets/dictionaries/*.yml
+datasets/dictionaries/*.manifest.yaml
+datasets/dictionaries/*.csv
+datasets/dictionaries/*.dictionary.yaml
 !datasets/source.yaml
 !datasets/registry.yaml
 !datasets/mapping.yaml
@@ -34,5 +38,6 @@ datasets/dictionaries/*.yml
 !datasets/resolve.yaml
 !datasets/sink.yaml
 !datasets/cache.yaml
-!datasets/dictionary.yaml
 !datasets/target.yaml
+!datasets/dictionaries/manifest.yaml
+!datasets/dictionaries/dictionary.yaml
