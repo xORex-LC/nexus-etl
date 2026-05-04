@@ -47,7 +47,9 @@ from connector.domain.transform_dsl.specs.resolve import (
 )
 from connector.domain.transform_dsl.specs.sink import (
     SinkBlock,
+    SinkBoolLiteralMapSpec,
     SinkFieldSpec,
+    SinkFieldSerializeSpec,
     SinkSpec,
 )
 from connector.domain.transform_dsl.specs.source import (
@@ -76,6 +78,8 @@ __all__ = [
     "SourceConfig",
     "SourceSpec",
     # Sink
+    "SinkBoolLiteralMapSpec",
+    "SinkFieldSerializeSpec",
     "SinkFieldSpec",
     "SinkBlock",
     "SinkSpec",

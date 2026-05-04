@@ -3,25 +3,16 @@
     SinkSpec-driven payload builder — generic payload compilation из SinkSpec field metadata.
 
 Граница ответственности:
-    - Owns: валидация required полей, field name mapping, type coercion, defaults.
+    - Owns: валидация required полей, field name mapping, orchestration output serialization, defaults.
     - Does NOT: секреты (hydration — ответственность OperationApplyAdapter).
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
-from connector.domain.dataset_dsl.coercions import to_bool, to_float_or_none, to_int_or_none
+from connector.domain.dataset_dsl.field_serialization import serialize_sink_field_value
 from connector.domain.transform_dsl.specs import SinkSpec
-
-_COERCIONS: dict[str, Callable[[Any], Any]] = {
-    "string": lambda v: v,
-    "bool": to_bool,
-    "int": to_int_or_none,
-    "float": to_float_or_none,
-    "object": lambda v: v,
-    "list": lambda v: v,
-}
 
 
 class SinkDrivenPayloadBuilder:
@@ -33,7 +24,7 @@ class SinkDrivenPayloadBuilder:
         - Для каждого SinkFieldSpec из sink_spec.sink.fields:
           - field.name → ключ в source dict
           - field.target or field.name → ключ в payload
-          - field.type → dispatch coercion
+          - field.type + field.serialize → delegated field serialization
           - field.required (кроме conditional_fields) → validate non-empty
         - conditional_fields → skip field если value is None/empty
         - defaults → inject constant values в payload
@@ -88,11 +79,10 @@ class SinkDrivenPayloadBuilder:
                     continue
 
             target_key = field.target or field.name
-            coerce = _COERCIONS.get(field.type, lambda v: v)
 
             if value is None and field.nullable:
                 payload[target_key] = None
             else:
-                payload[target_key] = coerce(value)
+                payload[target_key] = serialize_sink_field_value(field, value)
 
         return payload
