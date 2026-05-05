@@ -424,6 +424,31 @@ def op_coalesce(values: Any, *, default: Any | None = None) -> Any:
     return default
 
 
+def op_pick_when_blank(
+    values: Any,
+    *,
+    guard_index: int,
+    value_index: int,
+    else_value: Any | None = None,
+) -> Any:
+    """
+    Назначение:
+        Вернуть элемент `value_index`, только если guard-элемент пустой.
+
+    Контракт:
+        - вход трактуется как tolerant sequence;
+        - blank guard (`None` или пустая строка) разрешает возврат целевого значения;
+        - непустой guard возвращает `else_value` без ошибок.
+    """
+    sequence = _as_sequence(values)
+    guard = sequence[guard_index] if 0 <= guard_index < len(sequence) else None
+    if not _is_blank_scalar(guard):
+        return else_value
+    if 0 <= value_index < len(sequence):
+        return sequence[value_index]
+    return None
+
+
 def op_concat(values: Any, *, sep: str = "") -> str | None:
     """
     Назначение:

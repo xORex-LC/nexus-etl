@@ -101,7 +101,7 @@ def _build_result() -> TransformResult:
         "position": "Engineer",
         "avatar_id": None,
         "usr_org_tab_num": "TAB-100",
-        "target_id": "RID-1",
+        "target_id": None,
     }
     return TransformResult(
         record=SourceRecord(line_no=1, record_id="line:1", values={}),

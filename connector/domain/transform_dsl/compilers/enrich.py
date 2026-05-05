@@ -204,6 +204,11 @@ def build_enricher_spec_from_dsl(
     """
     Назначение:
         Построить EnricherSpec из EnrichSpec (DSL).
+
+    Порядок операций:
+        - сначала match_key;
+        - затем lookup-операции, чтобы cache-backed значения могли стать входом для generate;
+        - затем generate-операции в декларативном порядке.
     """
 
     try:
@@ -224,6 +229,9 @@ def build_enricher_spec_from_dsl(
             )
 
         secrets_spec = enrich_spec.enrich.secrets or SecretsSpec()
+        for rule in enrich_spec.enrich.lookup:
+            operations.append(_build_lookup_operation(rule, engine, providers))
+
         for rule in enrich_spec.enrich.generate:
             operations.append(
                 _build_generate_operation(
@@ -233,9 +241,6 @@ def build_enricher_spec_from_dsl(
                     providers,
                 )
             )
-
-        for rule in enrich_spec.enrich.lookup:
-            operations.append(_build_lookup_operation(rule, engine, providers))
 
         return EnricherSpec(
             operations=tuple(operations),
@@ -326,12 +331,11 @@ def _build_base_generator(rule: EnrichRule, engine: TransformationEngine) -> Val
 
     def _generator(result, deps):
         _ = deps
-        row = result.row
-        if row is None:
+        if result.row is None:
             return None
         if block is not None:
-            return _resolve_block_value(row, block, engine)
-        return _resolve_rule_value(row, rule.source, rule.sources, rule.ops, engine)
+            return _resolve_block_value(result, block, engine)
+        return _resolve_rule_value(result, rule.source, rule.sources, rule.ops, engine)
 
     return _generator
 
@@ -343,10 +347,9 @@ def _build_condition(rule: EnrichRule, engine: TransformationEngine) -> Predicat
 
     def _condition(result, deps):
         _ = deps
-        row = result.row
-        if row is None:
+        if result.row is None:
             return False
-        value = _resolve_block_value(row, block, engine)
+        value = _resolve_block_value(result, block, engine)
         return bool(value)
 
     return _condition
@@ -359,10 +362,9 @@ def _build_append_generator(rule: EnrichRule, engine: TransformationEngine) -> V
 
     def _append(result, deps):
         _ = deps
-        row = result.row
-        if row is None:
+        if result.row is None:
             return None
-        return _resolve_block_value(row, block, engine)
+        return _resolve_block_value(result, block, engine)
 
     return _append
 
@@ -394,8 +396,7 @@ class _DslLookupProvider:
 
     def fetch(self, ctx, result, deps, key_values):  # noqa: ANN001
         _ = (ctx, key_values)
-        row = result.row
-        if row is None:
+        if result.row is None:
             return []
         if not self.rule.provider:
             raise DslLoadError(
@@ -404,7 +405,13 @@ class _DslLookupProvider:
                 details={"rule": self.rule.name, "target": self.rule.target},
             )
 
-        value = _read_rule_value(row, self.rule)
+        value = _resolve_rule_value(
+            result,
+            self.rule.source,
+            self.rule.sources,
+            [],
+            None,
+        )
         if self.rule.ops:
             resolved, op_issues = apply_ops(self.engine, value, self.rule.ops)
             if any(issue.severity == DslSeverity.ERROR for issue in op_issues):
@@ -446,21 +453,20 @@ class _DslLookupProvider:
         ]
 
 
-def _read_rule_value(row: Any, rule: EnrichRule) -> Any:
-    return _resolve_rule_value(row, rule.source, rule.sources, rule.ops, None)
-
-
 def _resolve_rule_value(
-    row: Any,
+    result: TransformResult[Any],
     source: str | None,
     sources: list[str] | None,
     ops: list[OperationCall],
     engine: TransformationEngine | None,
 ) -> Any:
+    row = result.row
+    if row is None:
+        return None
     if sources:
-        value = [read_value_path(row, name) for name in sources]
+        value = [_read_result_path(result, name) for name in sources]
     elif source:
-        value = read_value_path(row, source)
+        value = _read_result_path(result, source)
     else:
         value = None
     if not ops or engine is None:
@@ -471,8 +477,28 @@ def _resolve_rule_value(
     return resolved
 
 
-def _resolve_block_value(row: Any, block: SourceOpsBlock, engine: TransformationEngine) -> Any:
-    return _resolve_rule_value(row, block.source, block.sources, block.ops, engine)
+def _resolve_block_value(result: TransformResult[Any], block: SourceOpsBlock, engine: TransformationEngine) -> Any:
+    return _resolve_rule_value(result, block.source, block.sources, block.ops, engine)
+
+
+def _read_result_path(result: TransformResult[Any], path: str) -> Any:
+    """
+    Назначение:
+        Прочитать enrich source-path из compiled runtime context.
+
+    Поддерживает:
+        - `match_key` как значение из TransformResult;
+        - `meta.<path>` как доступ к enrich meta;
+        - обычные row-path через `read_value_path`.
+    """
+    if path == "match_key":
+        return result.match_key.value if result.match_key is not None else None
+    if path.startswith("meta."):
+        return read_value_path(result.meta, path.split("meta.", 1)[1])
+    row = result.row
+    if row is None:
+        return None
+    return read_value_path(row, path)
 
 
 def _iter_rule_op_calls(rule: EnrichRule) -> list[OperationCall]:

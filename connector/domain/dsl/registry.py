@@ -75,6 +75,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_copy,
         op_const,
         op_coalesce,
+        op_pick_when_blank,
         op_concat,
         op_build_delimited_key,
         op_first,
@@ -121,6 +122,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("copy", op_copy)
     registry.register("const", op_const)
     registry.register("coalesce", op_coalesce)
+    registry.register("pick_when_blank", op_pick_when_blank)
     registry.register("concat", op_concat)
     registry.register("build_delimited_key", op_build_delimited_key)
     registry.register("first", op_first)
