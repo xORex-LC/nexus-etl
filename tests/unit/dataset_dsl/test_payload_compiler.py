@@ -264,3 +264,37 @@ class TestSinkDrivenPayloadBuilder:
         result = builder({"email": "a@b.com"})
         assert "target_id" not in result
 
+    def test_build_preview_skips_required_validation_and_ignores_helper_fields(self):
+        spec = _make_sink_spec([
+            {"name": "email", "type": "string", "required": True, "target": "mail"},
+            {"name": "user_name", "type": "string", "required": True, "target": "userName"},
+        ])
+        builder = SinkDrivenPayloadBuilder(spec)
+
+        result = builder.build_preview(
+            {
+                "email": None,
+                "user_name": "jdoe",
+                "password_stem": "John",
+                "generated_password": "John!23*(3671^84",
+            }
+        )
+
+        assert result == {"mail": None, "userName": "jdoe"}
+
+    def test_build_preview_keeps_projection_on_field_serialization_error(self):
+        spec = _make_sink_spec([
+            {"name": "organization_id", "type": "int", "required": True, "target": "organizationId"},
+            {"name": "user_name", "type": "string", "required": True, "target": "userName"},
+        ])
+        builder = SinkDrivenPayloadBuilder(spec)
+
+        result = builder.build_preview(
+            {
+                "organization_id": "Org 10",
+                "user_name": "jdoe",
+                "random_usr_org_tab_num": "12345678",
+            }
+        )
+
+        assert result == {"organizationId": "Org 10", "userName": "jdoe"}

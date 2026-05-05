@@ -170,6 +170,7 @@ class EnricherCore(Generic[T, D]):
                 outcome=EnrichOutcome.FAILED,
                 code="ENRICH_MULTI_TARGET_UNSUPPORTED",
                 message="operation targets must contain exactly one field",
+                reason="invalid_operation",
             )
 
         key_values = {}
@@ -182,6 +183,7 @@ class EnricherCore(Generic[T, D]):
                 outcome=strictness.on_missing_key,
                 code="ENRICH_MISSING_KEY",
                 message="required key is missing",
+                reason="missing_key",
             )
 
         candidates, op_error = self._collect_candidates(ctx, current, op, key_values)
@@ -193,6 +195,7 @@ class EnricherCore(Generic[T, D]):
                 code=op_error.code,
                 message=op_error.message,
                 field=op_error.field,
+                reason="provider_error",
             )
         if not candidates:
             if op.op_type == EnrichOperationType.COMPUTE and op.missing_error_code:
@@ -203,6 +206,7 @@ class EnricherCore(Generic[T, D]):
                     code=op.missing_error_code,
                     message="computed value is missing",
                     field=op.error_field,
+                    reason="missing_value",
                 )
             return self._report_by_policy(
                 builder=builder,
@@ -210,6 +214,7 @@ class EnricherCore(Generic[T, D]):
                 outcome=strictness.on_no_candidates,
                 code="ENRICH_NO_CANDIDATES",
                 message="no candidates available",
+                reason="no_candidates",
             )
 
         decision = self.conflict_resolver.decide(candidates)
@@ -227,6 +232,8 @@ class EnricherCore(Generic[T, D]):
                 outcome=strictness.on_ambiguous,
                 code="ENRICH_AMBIGUOUS",
                 message="ambiguous candidates",
+                reason="ambiguous",
+                details={"candidates_count": len(decision.candidates)},
             )
             report.resolve_hints.append(hint)
             return report
@@ -238,6 +245,7 @@ class EnricherCore(Generic[T, D]):
                 outcome=strictness.on_no_candidates,
                 code="ENRICH_NO_CANDIDATES",
                 message="no candidates available",
+                reason="no_candidates",
             )
 
         return self._apply_candidates(builder, op, decision.selected, merge_policy, tracker)
@@ -521,6 +529,7 @@ class EnricherCore(Generic[T, D]):
                     code=issue.code,
                     message=issue.message,
                     field=issue.field or sink_field,
+                    reason="sink_validation",
                 )
             self._set_field_value(builder, target_field, candidate.value)
             tracker.register(target_field, op.name)
@@ -599,14 +608,42 @@ class EnricherCore(Generic[T, D]):
         code: str,
         message: str,
         field: str | None = None,
+        *,
+        reason: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> OperationReport:
         resolved = outcome if isinstance(outcome, EnrichOutcome) else EnrichOutcome(outcome)
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
+        resolved_field = field or op.error_field or (op.targets[0] if op.targets else None)
+        resolved_details = {
+            "rule": op.name,
+            "target": op.targets[0] if op.targets else None,
+        }
+        if reason is not None:
+            resolved_details["reason"] = reason
+        if details:
+            resolved_details.update(details)
         if resolved == EnrichOutcome.FAILED:
-            errors.append(self._make_error(builder, code=code, message=message, field=field))
+            errors.append(
+                self._make_error(
+                    builder,
+                    code=code,
+                    message=message,
+                    field=resolved_field,
+                    details=resolved_details,
+                )
+            )
         elif resolved in (EnrichOutcome.WARNED, EnrichOutcome.NEEDS_RESOLVE):
-            warnings.append(self._make_warning(builder, code=code, message=message, field=field))
+            warnings.append(
+                self._make_warning(
+                    builder,
+                    code=code,
+                    message=message,
+                    field=resolved_field,
+                    details=resolved_details,
+                )
+            )
         return OperationReport(op=op.name, outcome=resolved, warnings=warnings, errors=errors)
 
     def _make_error(
@@ -615,6 +652,7 @@ class EnricherCore(Generic[T, D]):
         code: str,
         message: str,
         field: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> DiagnosticItem:
         return diag_error(
             stage=DiagnosticStage.ENRICH,
@@ -622,6 +660,7 @@ class EnricherCore(Generic[T, D]):
             field=field,
             message=message,
             record_ref=builder.row_ref,
+            details=details,
             catalog=self.catalog,
         )
 
@@ -631,6 +670,7 @@ class EnricherCore(Generic[T, D]):
         code: str,
         message: str,
         field: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> DiagnosticItem:
         return diag_warning(
             stage=DiagnosticStage.ENRICH,
@@ -638,6 +678,7 @@ class EnricherCore(Generic[T, D]):
             field=field,
             message=message,
             record_ref=builder.row_ref,
+            details=details,
             catalog=self.catalog,
         )
 
