@@ -11,6 +11,8 @@ import uuid
 from functools import lru_cache
 from typing import Any, Iterable
 
+from anyascii import anyascii
+
 
 def _normalize_whitespace(value: object | None, *, empty_to_none: bool = False) -> str | None:
     if value is None:
@@ -179,6 +181,27 @@ def op_capitalize(value: Any, **_: Any) -> str | None:
     if value is None:
         return None
     return str(value).capitalize()
+
+
+def op_transliterate(value: Any, **_: Any) -> str | None:
+    """
+    Назначение:
+        Детерминированно преобразовать строку в ASCII-представление.
+
+    Контракт:
+        - `None -> None`
+        - пустая строка сохраняется пустой строкой
+        - ASCII-строка возвращается без изменений
+        - non-ASCII строка преобразуется через `anyascii`
+    """
+    if value is None:
+        return None
+    text = str(value)
+    if text == "":
+        return ""
+    if text.isascii():
+        return text
+    return anyascii(text)
 
 
 def op_upper(value: Any, **_: Any) -> str | None:
@@ -460,6 +483,26 @@ def op_at(value: Any, *, index: int) -> Any:
     return value if index == 0 else None
 
 
+def op_substring(value: Any, *, start: int, length: int | None = None) -> str | None:
+    """
+    Назначение:
+        Универсально извлечь подстроку из строкового значения.
+
+    Контракт:
+        - `None -> None`
+        - если `length` не задан, возвращается остаток строки от `start`
+        - выход за диапазон не считается ошибкой
+    """
+    if value is None:
+        return None
+    text = str(value)
+    if length is None:
+        return text[start:]
+    if length < 0:
+        raise ValueError("length must be >= 0")
+    return text[start : start + length]
+
+
 def op_compact(value: Any, **_: Any) -> list[Any]:
     """
     Назначение:
@@ -533,6 +576,20 @@ def op_filter_regex(
         raise ValueError("match_mode must be 'search' or 'fullmatch'")
     matcher = compiled.search if match_mode == "search" else compiled.fullmatch
     return [item for item in _as_sequence(value) if matcher(str(item))]
+
+
+def op_contains_non_ascii(value: Any, **_: Any) -> bool | None:
+    """
+    Назначение:
+        Проверить, содержит ли строковое значение хотя бы один non-ASCII символ.
+
+    Контракт:
+        - `None -> None`
+        - результат используется как predicate и не меняет само значение
+    """
+    if value is None:
+        return None
+    return not str(value).isascii()
 
 
 def op_reject_regex(
@@ -615,6 +672,21 @@ def op_digits_only(value: Any, **_: Any) -> str | None:
         return None
     digits = "".join(ch for ch in str(value) if ch.isdigit())
     return digits or None
+
+
+def op_random_digits(_: Any, *, length: int) -> str:
+    """
+    Назначение:
+        Сгенерировать случайную строку из цифр заданной длины.
+
+    Контракт:
+        - входное значение не участвует в генерации
+        - результат состоит только из цифр
+        - длина результата строго совпадает с `length`
+    """
+    if length <= 0:
+        raise ValueError("length must be > 0")
+    return "".join(secrets.choice("0123456789") for _ in range(length))
 
 
 def op_split_name(

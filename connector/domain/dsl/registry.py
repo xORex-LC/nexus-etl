@@ -61,6 +61,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_upper,
         op_title,
         op_capitalize,
+        op_transliterate,
         op_to_int,
         op_to_float,
         op_to_bool,
@@ -79,18 +80,21 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_first,
         op_last,
         op_at,
+        op_substring,
         op_compact,
         op_unique,
         op_count,
         op_map_each,
         op_extract_patterns,
         op_regex_extract,
+        op_contains_non_ascii,
         op_filter_regex,
         op_reject_regex,
         op_regex_replace,
         op_split_name,
         op_split,
         op_digits_only,
+        op_random_digits,
         op_format_mask,
         op_parse_kv_pairs,
         op_map_dict,
@@ -103,6 +107,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("upper", op_upper)
     registry.register("title", op_title)
     registry.register("capitalize", op_capitalize)
+    registry.register("transliterate", op_transliterate)
     registry.register("to_int", op_to_int)
     registry.register("to_float", op_to_float)
     registry.register("to_bool", op_to_bool)
@@ -121,6 +126,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("first", op_first)
     registry.register("last", op_last)
     registry.register("at", op_at)
+    registry.register("substring", op_substring)
     registry.register("compact", op_compact)
     registry.register("unique", op_unique)
     registry.register("count", op_count)
@@ -129,10 +135,12 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("split", op_split)
     registry.register("split_name", op_split_name)
     registry.register("regex_extract", op_regex_extract)
+    registry.register("contains_non_ascii", op_contains_non_ascii)
     registry.register("filter_regex", op_filter_regex)
     registry.register("reject_regex", op_reject_regex)
     registry.register("regex_replace", op_regex_replace)
     registry.register("digits_only", op_digits_only)
+    registry.register("random_digits", op_random_digits)
     registry.register("format_mask", op_format_mask)
     registry.register("parse_kv_pairs", op_parse_kv_pairs)
     registry.register("map_dict", op_map_dict)
