@@ -15,6 +15,7 @@ from connector.domain.transform.enrich import (
 )
 from connector.domain.transform_dsl.build_options import EnrichDslBuildOptions
 from connector.domain.transform_dsl.compilers.enrich import (
+    CompiledConflictPolicy,
     EnricherSpec,
     EnrichmentOperation,
     KeyRegistry,
@@ -23,6 +24,7 @@ from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform_dsl import load_enrich_spec_for_dataset
 from connector.domain.transform_dsl import load_sink_spec_for_dataset
+from connector.domain.transform.ids.match_key import MatchKey
 from connector.datasets.registry import get_spec
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.diagnostics.catalog import build_catalog
@@ -523,6 +525,144 @@ def test_enricher_warns_when_candidate_violates_sink_type():
     warning_codes = {issue.code for issue in enriched.warnings}
     assert "SINK_TYPE_INVALID" in warning_codes
     assert enriched.row.organization_id == 10
+
+
+def test_enricher_compiled_generate_appends_then_value_when_condition_true():
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="user_name",
+                op_type=EnrichOperationType.GENERATE,
+                targets=("user_name",),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
+                base_generator=lambda _r, _d: "Ivan",
+                condition=lambda _r, _d: True,
+                append_generator=lambda _r, _d: "II",
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
+    result = _build_result({"user_name": None})
+
+    enriched = enricher.enrich(result)
+
+    assert enriched.errors == ()
+    assert enriched.row["user_name"] == "IvanII"
+
+
+def test_enricher_allow_if_runs_before_conflict_policy():
+    exists_calls: list[str] = []
+
+    def _exists(_deps, value):
+        exists_calls.append(value)
+        if value == "Ivan":
+            return {"match_key": "A"}
+        return None
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="user_name",
+                op_type=EnrichOperationType.GENERATE,
+                targets=("user_name",),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
+                base_generator=lambda _r, _d: "Ivan",
+                exists=_exists,
+                allow_if=lambda result, existing: result.match_key is not None and existing["match_key"] == result.match_key.value,
+                conflict_policy=CompiledConflictPolicy(
+                    strategy="retry_with_suffixes",
+                    suffixes=("_2", "_3"),
+                    attempts=3,
+                ),
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
+    result = _build_result({"user_name": None})
+    result = result.with_match_key(MatchKey("A"))
+
+    enriched = enricher.enrich(result)
+
+    assert enriched.errors == ()
+    assert enriched.row["user_name"] == "Ivan"
+    assert exists_calls == ["Ivan"]
+
+
+def test_enricher_retries_suffixes_from_base_value() -> None:
+    exists_calls: list[str] = []
+
+    def _exists(_deps, value):
+        exists_calls.append(value)
+        if value in {"Ivan", "Ivan_2"}:
+            return {"match_key": "OTHER"}
+        return None
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="user_name",
+                op_type=EnrichOperationType.GENERATE,
+                targets=("user_name",),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
+                base_generator=lambda _r, _d: "Ivan",
+                exists=_exists,
+                conflict_policy=CompiledConflictPolicy(
+                    strategy="retry_with_suffixes",
+                    suffixes=("_2", "_3"),
+                    attempts=3,
+                ),
+                conflict_error_code="USR_ORG_TAB_CONFLICT",
+                error_field="user_name",
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
+
+    enriched = enricher.enrich(_build_result({"user_name": None}))
+
+    assert enriched.errors == ()
+    assert enriched.row["user_name"] == "Ivan_3"
+    assert exists_calls == ["Ivan", "Ivan_2", "Ivan_3"]
+
+
+def test_enricher_returns_conflict_error_when_compiled_policy_is_exhausted():
+    def _exists(_deps, value):
+        _ = value
+        return {"match_key": "OTHER"}
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="user_name",
+                op_type=EnrichOperationType.GENERATE,
+                targets=("user_name",),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
+                base_generator=lambda _r, _d: "Ivan",
+                exists=_exists,
+                conflict_policy=CompiledConflictPolicy(
+                    strategy="retry_with_suffixes",
+                    suffixes=("_2",),
+                    attempts=2,
+                ),
+                conflict_error_code="USR_ORG_TAB_CONFLICT",
+                error_field="user_name",
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_EmptyCacheRepo()), None, "employees", catalog=CATALOG)
+
+    enriched = enricher.enrich(_build_result({"user_name": None}))
+
+    codes = {issue.code for issue in enriched.errors}
+    assert "USR_ORG_TAB_CONFLICT" in codes
 
 
 def test_employees_spec_sink_spec_has_dataset():
