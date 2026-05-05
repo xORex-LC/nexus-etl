@@ -20,6 +20,7 @@ from connector.domain.dictionary_dsl.loader import (
 )
 from connector.domain.dictionary_dsl.specs import (
     DICTIONARY_NORMALIZED_KEY_OPS_WHITELIST,
+    DictionaryKeyColumnSpec,
     DictionaryLookupSpec,
     DictionaryManifestItemSpec,
     DictionaryManifestSpec,
@@ -30,10 +31,12 @@ from connector.domain.dictionary_dsl.specs import (
     DictionarySourceCsvSpec,
     DictionarySourceSpec,
     DictionarySpec,
+    DictionaryValueColumnSpec,
 )
 
 __all__ = [
     "DICTIONARY_NORMALIZED_KEY_OPS_WHITELIST",
+    "DictionaryKeyColumnSpec",
     "DictionaryLookupSpec",
     "DictionaryManifestItemSpec",
     "DictionaryManifestSpec",
@@ -44,6 +47,7 @@ __all__ = [
     "DictionarySourceCsvSpec",
     "DictionarySourceSpec",
     "DictionarySpec",
+    "DictionaryValueColumnSpec",
     "load_dictionary_manifest_spec",
     "load_dictionary_manifest_spec_for_registry",
     "load_dictionary_manifest_spec_for_runtime",

@@ -7,6 +7,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from connector.main import app
+from tests.integration.secrets._temp_registry import build_temp_employees_registry_with_temp_dictionaries
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
@@ -55,6 +56,9 @@ def _write_minimal_employees_csv(path: Path) -> None:
 
 
 def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path):
+    registry_path, (units_dictionary_name, titles_dictionary_name) = (
+        build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    )
     csv_path = tmp_path / "employees.csv"
     _write_minimal_employees_csv(csv_path)
 
@@ -78,6 +82,7 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),
+            "ANKEY_DATASET__REGISTRY_PATH": str(registry_path),
         },
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
@@ -93,11 +98,16 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
     assert dictionary_ctx.get("backend") == "polars"
     assert "aggregate" in dictionary_ctx
     assert "dictionaries_detail" in dictionary_ctx
-    org_detail = dictionary_ctx["dictionaries_detail"].get("organizations")
-    assert isinstance(org_detail, dict)
-    assert org_detail.get("row_count") is not None
-    assert org_detail.get("fingerprint_kind") == "content_sha256"
-    assert isinstance(org_detail.get("version_info"), dict)
+    units_detail = dictionary_ctx["dictionaries_detail"].get(units_dictionary_name)
+    titles_detail = dictionary_ctx["dictionaries_detail"].get(titles_dictionary_name)
+    assert isinstance(units_detail, dict)
+    assert isinstance(titles_detail, dict)
+    assert units_detail.get("row_count") is not None
+    assert units_detail.get("fingerprint_kind") == "content_sha256"
+    assert isinstance(units_detail.get("version_info"), dict)
+    assert titles_detail.get("row_count") is not None
+    assert titles_detail.get("fingerprint_kind") == "content_sha256"
+    assert isinstance(titles_detail.get("version_info"), dict)
 
     vault_db_path = cache_dir / "ankey_vault.sqlite3"
     assert vault_db_path.exists()
@@ -123,6 +133,7 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
 
 
 def test_enrich_command_fails_when_vault_mode_off_and_dataset_has_secret_fields(tmp_path: Path):
+    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
     csv_path = tmp_path / "employees.csv"
     _write_minimal_employees_csv(csv_path)
 
@@ -143,6 +154,7 @@ def test_enrich_command_fails_when_vault_mode_off_and_dataset_has_secret_fields(
         ],
         env={
             "EMPLOYEES_SOURCE_PATH": str(csv_path),
+            "ANKEY_DATASET__REGISTRY_PATH": str(registry_path),
         },
     )
 

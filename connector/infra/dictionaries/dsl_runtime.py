@@ -65,11 +65,19 @@ class CompiledDictionarySpec:
 
     @property
     def key_column(self) -> str:
-        return self.spec.data_schema.key_column
+        return self.spec.data_schema.key_column.name
 
     @property
     def value_columns(self) -> tuple[str, ...]:
-        return tuple(self.spec.data_schema.value_columns)
+        return tuple(column.name for column in self.spec.data_schema.value_columns)
+
+    @property
+    def nullable_value_columns(self) -> frozenset[str]:
+        return frozenset(
+            column.name
+            for column in self.spec.data_schema.value_columns
+            if column.nullable
+        )
 
     @property
     def allowed_columns(self) -> tuple[str, ...]:
@@ -94,6 +102,10 @@ class CompiledDictionarySpec:
     @property
     def csv_encoding(self) -> str:
         return self.spec.source.csv.encoding
+
+    @property
+    def csv_null_values(self) -> tuple[str, ...]:
+        return tuple(self.spec.source.csv.null_values)
 
     def normalize_key(self, value: Any) -> Any:
         """
@@ -243,4 +255,3 @@ __all__ = [
     "NormalizerFunc",
     "build_dictionary_dsl_runtime",
 ]
-

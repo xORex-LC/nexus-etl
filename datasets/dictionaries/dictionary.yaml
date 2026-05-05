@@ -15,13 +15,20 @@ source:
     has_header: true
     # Python codec name used to read the CSV.
     encoding: "utf-8"
+    # Optional file-level null markers. Default runtime marker is `NULL`.
+    # Example:
+    # null_values: ["NULL", "", "N/A"]
+    null_values: ["NULL"]
 
 # Dictionary lookup schema parsed by DictionarySchemaSpec.
 schema:
   # Source column used as the lookup key.
-  key_column: key
+  key_column:
+    name: key
   # Source columns returned by lookup/canonicalize as row payload.
-  value_columns: [value]
+  value_columns:
+    - name: value
+      nullable: false
   # Optional key normalization pipeline applied both on load and on lookup.
   normalized_key:
     # Allowed ops: trim, lower, upper, to_string, regex_replace.

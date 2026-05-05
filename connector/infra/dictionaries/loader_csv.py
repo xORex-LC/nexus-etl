@@ -20,6 +20,7 @@ import polars as pl
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.loader._common import _datasets_root
 from connector.infra.dictionaries.backends.polars_backend import PolarsDictionaryBackend
+from connector.infra.dictionaries.dsl_runtime import CompiledDictionarySpec
 from connector.infra.dictionaries.versioning import DictionaryVersionInfo
 from connector.infra.dictionaries.versioning import build_content_sha256_bytes
 
@@ -116,6 +117,7 @@ class CsvDictionaryLoader:
             delimiter=compiled.csv_delimiter,
             has_header=compiled.csv_has_header,
             encoding=compiled.csv_encoding,
+            null_values=compiled.csv_null_values,
             path=file_path,
         )
 
@@ -130,6 +132,12 @@ class CsvDictionaryLoader:
                     "actual_row_count": frame.height,
                 },
             )
+
+        self._validate_frame_nullability_or_raise(
+            compiled=compiled,
+            frame=frame,
+            path=file_path,
+        )
 
         version_info = backend.load_dictionary_frame(
             dict_name=dict_name,
@@ -162,6 +170,7 @@ class CsvDictionaryLoader:
         delimiter: str,
         has_header: bool,
         encoding: str,
+        null_values: tuple[str, ...],
         path: Path,
     ) -> pl.DataFrame:
         try:
@@ -170,6 +179,7 @@ class CsvDictionaryLoader:
                 StringIO(text),
                 separator=delimiter,
                 has_header=has_header,
+                null_values=list(null_values),
             )
         except DslLoadError:
             raise
@@ -179,6 +189,64 @@ class CsvDictionaryLoader:
                 message=f"Failed to parse dictionary CSV for '{dict_name}': {exc}",
                 details={"dict_name": dict_name, "path": str(path)},
             ) from exc
+
+    def _validate_frame_nullability_or_raise(
+        self,
+        *,
+        compiled: CompiledDictionarySpec,
+        frame: pl.DataFrame,
+        path: Path,
+    ) -> None:
+        """
+        Назначение:
+            Проверить nullable-контракт dictionary schema после CSV parsing.
+
+        Граница:
+            - Работает уже с parsed `DataFrame`, где null-маркеры преобразованы в `None`.
+            - Не строит backend index и не валидирует lookup semantics.
+        """
+        if compiled.key_column in frame.columns:
+            key_nulls = int(frame.select(pl.col(compiled.key_column).is_null().sum()).item())
+        else:
+            key_nulls = 0
+        if key_nulls > 0:
+            raise DslLoadError(
+                code="DICT_SOURCE_NULLABILITY_INVALID",
+                message=f"Dictionary key column contains nulls for '{compiled.dict_name}'",
+                details={
+                    "dict_name": compiled.dict_name,
+                    "path": str(path),
+                    "column": compiled.key_column,
+                    "null_count": key_nulls,
+                    "column_role": "key",
+                },
+            )
+
+        non_nullable_value_columns = [
+            column
+            for column in compiled.value_columns
+            if column not in compiled.nullable_value_columns
+        ]
+        for column in non_nullable_value_columns:
+            if column not in frame.columns:
+                continue
+            null_count = int(frame.select(pl.col(column).is_null().sum()).item())
+            if null_count <= 0:
+                continue
+            raise DslLoadError(
+                code="DICT_SOURCE_NULLABILITY_INVALID",
+                message=(
+                    f"Dictionary non-nullable value column contains nulls "
+                    f"for '{compiled.dict_name}'"
+                ),
+                details={
+                    "dict_name": compiled.dict_name,
+                    "path": str(path),
+                    "column": column,
+                    "null_count": null_count,
+                    "column_role": "value",
+                },
+            )
 
     def _emit_load_event(
         self,

@@ -37,11 +37,19 @@ def _dictionary_spec_payload() -> dict[str, Any]:
         "source": {
             "format": "csv",
             "location": "dictionaries/organizations.csv",
-            "csv": {"delimiter": ",", "has_header": True, "encoding": "utf-8"},
+            "csv": {
+                "delimiter": ",",
+                "has_header": True,
+                "encoding": "utf-8",
+                "null_values": ["NULL"],
+            },
         },
         "schema": {
-            "key_column": "code",
-            "value_columns": ["name", "ouid"],
+            "key_column": {"name": "code"},
+            "value_columns": [
+                {"name": "name", "nullable": False},
+                {"name": "ouid", "nullable": False},
+            ],
             "normalized_key": {"ops": [{"op": "trim"}, {"op": "lower"}]},
         },
         "lookup": {"allow_duplicates": False},
