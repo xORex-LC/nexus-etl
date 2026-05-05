@@ -55,6 +55,23 @@ class SinkDrivenPayloadBuilder:
             payload[key] = value
         return payload
 
+    def build_preview(self, source: dict[str, Any]) -> dict[str, Any]:
+        """
+        Назначение:
+            Построить payload preview без required-validation.
+
+        Контракт:
+            - использует те же field mappings и serialization rules, что и основной builder;
+            - не выбрасывает ошибку из-за отсутствующих required полей;
+            - не валится на field-level serialization errors: в preview сохраняется исходное
+              значение под целевым sink key;
+            - применяется для report/debug preview, а не для apply boundary.
+        """
+        payload = self._build_payload(source, preview=True)
+        for key, value in self._defaults.items():
+            payload[key] = value
+        return payload
+
     def _validate_required(self, source: dict[str, Any]) -> None:
         missing = [
             f.name
@@ -69,7 +86,7 @@ class SinkDrivenPayloadBuilder:
                 f"Missing required fields for payload: {', '.join(missing)}"
             )
 
-    def _build_payload(self, source: dict[str, Any]) -> dict[str, Any]:
+    def _build_payload(self, source: dict[str, Any], *, preview: bool = False) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         for field in self._fields:
             value = source.get(field.name)
@@ -83,6 +100,11 @@ class SinkDrivenPayloadBuilder:
             if value is None and field.nullable:
                 payload[target_key] = None
             else:
-                payload[target_key] = serialize_sink_field_value(field, value)
+                try:
+                    payload[target_key] = serialize_sink_field_value(field, value)
+                except Exception:
+                    if not preview:
+                        raise
+                    payload[target_key] = value
 
         return payload

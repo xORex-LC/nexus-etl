@@ -46,12 +46,18 @@ def _from_item(item: DiagnosticItem | ReportDiagnostic, fallback_severity: str) 
     if isinstance(item, ReportDiagnostic):
         return item
     severity = item.severity.value if getattr(item, "severity", None) is not None else fallback_severity
+    details = getattr(item, "details", None)
+    rule = getattr(item, "rule", None)
+    if rule is None and isinstance(details, dict):
+        candidate = details.get("rule")
+        if isinstance(candidate, str) and candidate:
+            rule = candidate
     return ReportDiagnostic(
         severity=severity,
         stage=item.stage,
         code=item.code,
         field=item.field,
         message=item.message,
-        rule=getattr(item, "rule", None),
-        details=getattr(item, "details", None),
+        rule=rule,
+        details=details,
     )

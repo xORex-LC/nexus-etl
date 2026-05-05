@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from connector.datasets.registry import get_spec
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
@@ -40,6 +41,7 @@ class EnrichUseCase:
         report_policy: ReportPolicy,
         catalog: ErrorCatalog,
     ) -> CommandResult:
+        payload_builder = _build_enrich_report_payload_builder(dataset)
         reporter = StageResultReporter(
             sink=report_sink,
             report_policy=report_policy,
@@ -47,7 +49,7 @@ class EnrichUseCase:
             context_key=ReportContextKey.ENRICH,
             ok_label="enriched_ok",
             failed_label="enrich_failed",
-            strategy=TransformStageReportStrategy(),
+            strategy=TransformStageReportStrategy(payload_builder=payload_builder),
             report_stage=DiagnosticStage.ENRICH,
             include_upstream_diagnostics=False,
         )
@@ -58,3 +60,31 @@ class EnrichUseCase:
 
         stats = reporter.publish_context()
         return StageCommandResultResolver().resolve(stats)
+
+
+def _build_enrich_report_payload_builder(dataset: str):
+    """
+    Назначение:
+        Собрать sink-aware payload preview для enrich report items.
+
+    Причина:
+        Enrich runtime может хранить промежуточные служебные поля в row, но report payload
+        должен показывать только то, что реально пройдет в apply payload boundary.
+    """
+    dataset_spec = get_spec(dataset)
+    apply_adapter = dataset_spec.get_apply_adapter()
+    raw_builder = getattr(apply_adapter, "payload_builder", None)
+
+    def _payload_builder(result):
+        row = result.row
+        if row is None or not isinstance(row, dict) or raw_builder is None:
+            return row
+        preview_builder = getattr(raw_builder, "build_preview", None)
+        if callable(preview_builder):
+            return preview_builder(dict(row))
+        try:
+            return raw_builder(dict(row))
+        except Exception:  # noqa: BLE001
+            return row
+
+    return _payload_builder

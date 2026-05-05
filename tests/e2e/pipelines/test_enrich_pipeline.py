@@ -154,6 +154,12 @@ def test_enrich_ok_returns_0(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["rows_blocked"] == 0
     assert report["summary"]["rows_total"] == 1
+    payload = report["items"][0]["payload"]
+    assert "password_stem" not in payload
+    assert "generated_password" not in payload
+    assert "password_candidate" not in payload
+    assert "random_usr_org_tab_num" not in payload
+    assert "target_id" not in payload
 
 
 def test_enrich_missing_required_returns_0(tmp_path: Path):
@@ -179,6 +185,17 @@ def test_enrich_missing_required_returns_0(tmp_path: Path):
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["rows_blocked"] == 0
+    diagnostics = report["items"][0]["diagnostics"]
+    no_candidate_warnings = [
+        item for item in diagnostics
+        if item["code"] == "ENRICH_NO_CANDIDATES"
+    ]
+    assert no_candidate_warnings
+    for item in no_candidate_warnings:
+        assert item["field"] is not None
+        assert item["rule"] is not None
+        assert isinstance(item["details"], dict)
+        assert item["details"]["reason"] == "no_candidates"
 
 
 def test_enrich_invalid_boolean_returns_0(tmp_path: Path):

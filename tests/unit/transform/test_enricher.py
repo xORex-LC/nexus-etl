@@ -506,6 +506,36 @@ def test_enricher_warns_on_candidate_field_mismatch():
     assert "ENRICH_TARGET_MISMATCH" in codes
 
 
+def test_enricher_no_candidates_warning_includes_field_rule_and_reason():
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="email_from_cache",
+                op_type=EnrichOperationType.LOOKUP,
+                targets=("email",),
+                providers=(),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_no_candidates=EnrichOutcome.WARNED),
+                error_field="email",
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_MemoryCacheRepo()), None, "employees", catalog=CATALOG)
+
+    enriched = enricher.enrich(_build_result({"email": None}))
+
+    assert len(enriched.warnings) == 1
+    warning = enriched.warnings[0]
+    assert warning.code == "ENRICH_NO_CANDIDATES"
+    assert warning.field == "email"
+    assert warning.details == {
+        "rule": "email_from_cache",
+        "target": "email",
+        "reason": "no_candidates",
+    }
+
+
 def test_enricher_stop_on_failed_prevents_followup_ops():
     @dataclass
     class _Row:
