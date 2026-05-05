@@ -19,8 +19,8 @@ enrich:
     - name: generated_field
       # Row field to write.
       target: generated_field
-      # Optional base-value builder. Planned enrich DSL extension for conditional/branching
-      # generate rules. When omitted, legacy source/sources + ops shape is used.
+      # Optional base-value builder for complex generate rules.
+      # Must declare exactly one of source/sources.
       build:
         # Optional single source field/path used to construct the base value.
         source: source_field
@@ -28,7 +28,7 @@ enrich:
         sources: null
         # Operation pipeline applied to the base input.
         ops: []
-      # Optional conditional branch. Planned enrich DSL extension.
+      # Optional condition for append-style branching. Must declare exactly one of source/sources.
       when:
         # Field/path checked by the condition.
         source: source_field
@@ -36,8 +36,8 @@ enrich:
         ops:
           - op: contains_non_ascii
             args: {}
-      # Optional branch body executed when `when` condition is truthy. Planned enrich DSL
-      # extension used for cases like conditional suffixes or initials.
+      # Optional branch body executed when `when` condition is truthy.
+      # In the current contract this block forms append value for the base result.
       then:
         # Optional multiple source fields/paths used by branch body.
         sources: null
@@ -78,13 +78,13 @@ enrich:
         op: equals_path
         # Operation arguments for condition.
         args: {}
-      # Optional conflict policy for exists collisions. Planned enrich DSL extension.
+      # Optional conflict policy for exists collisions. Generate-only contract.
       on_conflict:
-        # Supported planned strategies:
+        # Supported strategies:
         #   - error
         #   - retry_with_suffixes
         strategy: error
-        # Optional suffixes appended to the previously built value on retry.
+        # Optional suffixes appended to the base generated value on retry.
         suffixes: ["_2"]
       # Optional retry attempts for generated value conflicts.
       max_attempts: 1
@@ -96,7 +96,6 @@ enrich:
       conflict_error_code: GENERATED_VALUE_CONFLICT
       # Target field name used in diagnostics.
       error_field: generated_field
-  # Lookup/enrichment rules with the same current EnrichRule shape as generate.
-  # Planned generate-only extensions above (`build`, `when`, `then`, `on_conflict`) are shown
-  # as forward-looking examples and are not part of the current lookup contract.
+  # Lookup/enrichment rules keep the current source/sources + ops contract.
+  # Generate-only extensions above (`build`, `when`, `then`, `on_conflict`) do not apply to lookup.
   lookup: []

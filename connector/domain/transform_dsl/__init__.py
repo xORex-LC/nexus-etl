@@ -31,6 +31,8 @@ from connector.domain.transform_dsl.loader import (
 from connector.domain.transform_dsl.specs import (
     ConditionalCheck,
     CsvSourceOptions,
+    EnrichConditionalBlock,
+    EnrichConflictPolicy,
     EnrichBlock,
     EnrichRule,
     EnrichSpec,
@@ -98,6 +100,8 @@ __all__ = [
     "SecretsSpec",
     "ProviderRef",
     "ExistsRef",
+    "EnrichConditionalBlock",
+    "EnrichConflictPolicy",
     "EnrichRule",
     "EnrichBlock",
     "EnrichSpec",
