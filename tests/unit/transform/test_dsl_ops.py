@@ -7,6 +7,7 @@ from connector.domain.dsl.ops import (
     op_at,
     op_capitalize,
     op_compact,
+    op_contains_non_ascii,
     op_count,
     op_digits_only,
     op_filter_regex,
@@ -15,9 +16,12 @@ from connector.domain.dsl.ops import (
     op_last,
     op_map_dict,
     op_parse_bool,
+    op_random_digits,
     op_reject_regex,
+    op_substring,
     op_title,
     op_to_bool,
+    op_transliterate,
     op_unique,
 )
 from connector.domain.dsl.specs import OperationCall
@@ -119,6 +123,30 @@ def test_op_title_and_capitalize_transform_case() -> None:
     assert op_capitalize("иванов иван") == "Иванов иван"
 
 
+def test_op_transliterate_returns_ascii_and_preserves_ascii_input() -> None:
+    assert op_transliterate("Ivan") == "Ivan"
+    assert op_transliterate("Иван") == "Ivan"
+    assert op_transliterate(None) is None
+    assert op_transliterate("") == ""
+
+
+def test_op_substring_extracts_slice_without_failing_on_bounds() -> None:
+    assert op_substring("Ivan", start=0, length=1) == "I"
+    assert op_substring("Ivan", start=2) == "an"
+    assert op_substring("Ivan", start=10, length=2) == ""
+
+
+def test_op_substring_rejects_negative_length() -> None:
+    with pytest.raises(ValueError, match="length must be >= 0"):
+        op_substring("Ivan", start=0, length=-1)
+
+
+def test_op_contains_non_ascii_is_predicate_only() -> None:
+    assert op_contains_non_ascii("Ivan") is False
+    assert op_contains_non_ascii("Иван") is True
+    assert op_contains_non_ascii(None) is None
+
+
 def test_op_to_bool_remains_strict() -> None:
     assert op_to_bool("true") is True
     assert op_to_bool("false") is False
@@ -160,6 +188,18 @@ def test_op_parse_bool_rejects_unknown_value() -> None:
 def test_op_digits_only_extracts_digits() -> None:
     assert op_digits_only("+7 (999) 123-45-67") == "79991234567"
     assert op_digits_only("abc") is None
+
+
+def test_op_random_digits_returns_exact_digit_string() -> None:
+    result = op_random_digits(None, length=8)
+
+    assert len(result) == 8
+    assert result.isdigit()
+
+
+def test_op_random_digits_rejects_non_positive_length() -> None:
+    with pytest.raises(ValueError, match="length must be > 0"):
+        op_random_digits(None, length=0)
 
 
 def test_op_format_mask_formats_canonical_input() -> None:
@@ -226,16 +266,20 @@ def test_register_core_ops_exposes_new_stage_one_operations() -> None:
         "first",
         "last",
         "at",
+        "substring",
         "compact",
         "unique",
         "count",
         "map_each",
+        "transliterate",
+        "contains_non_ascii",
         "filter_regex",
         "reject_regex",
         "title",
         "capitalize",
         "parse_bool",
         "digits_only",
+        "random_digits",
         "format_mask",
     }:
         assert engine.registry.get(name) is not None
