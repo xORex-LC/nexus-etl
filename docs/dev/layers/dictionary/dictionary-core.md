@@ -779,7 +779,7 @@ new_content_sha256 = build_content_sha256_for_file("datasets/dictionaries/organi
 
 print(f"schema_hash:    {new_schema_hash}")
 print(f"content_sha256: {new_content_sha256}")
-# Обновить datasets/dictionaries/manifest.yml вручную
+# Обновить актуальный manifest-файл словарей вручную
 ```
 
 ---
@@ -832,7 +832,7 @@ actual_hash = build_dictionary_schema_hash(spec)
 
 # Шаг 2: Прочитать hash из manifest
 import yaml
-with open("datasets/dictionaries/manifest.yml") as f:
+with open("datasets/dictionaries/ankey.dictionary.manifest.yaml") as f:
     manifest = yaml.safe_load(f)
 manifest_hash = manifest["items"]["organizations"]["schema_hash"]
 
@@ -920,3 +920,4 @@ print(f"Manifest: {manifest_hash}")
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-02-27 | Первоначальное создание документа | xORex-LC |
+| 2026-05-05 | Обновлены примеры manifest-path под актуальный общий dictionary manifest | xORex-LC |

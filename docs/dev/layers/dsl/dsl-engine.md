@@ -229,7 +229,7 @@ else:
 
 ## 🎯 DSL
 
-### Каталог операций (25 Core Operations)
+### Каталог операций (40 Core Operations)
 
 Все операции регистрируются в `register_core_ops()` (`registry.py` line 51).
 
@@ -240,6 +240,7 @@ else:
 | `to_int` | Строгое преобразование в int | scalar | `int \| None` | ✅ → None | `ValueError` на bool, пустую строку |
 | `to_float` | Строгое преобразование в float | scalar | `float \| None` | ✅ → None | `ValueError` на bool, пустую строку |
 | `to_bool` | Строгое: только "true"/"false" | scalar | `bool \| None` | ✅ → None | `ValueError` на невалидные значения |
+| `parse_bool` | Декларативный разбор source-side bool literals | scalar | `bool \| None` | ✅ → None | `ValueError` если значение не входит в `true_values/false_values` |
 | `to_string` | В строку + trim, пустая → None | scalar | `str \| None` | ✅ → None | — |
 | `int_if_digits` | В int если число, иначе строка | scalar | `int \| str \| None` | ✅ → None | — |
 
@@ -247,6 +248,10 @@ else:
 ```yaml
 ops:
   - op: to_int        # "42" → 42
+  - op: parse_bool
+    args:
+      true_values: ["1", "yes", "true"]
+      false_values: ["0", "no", "false"]
   - op: to_string     # 42 → "42"
   - op: int_if_digits # "42" → 42, "abc" → "abc"
 ```
@@ -258,6 +263,8 @@ ops:
 | `trim` | Нормализация пробелов, пустая → None | str | `str \| None` | ✅ → None | — |
 | `lower` | Приведение к нижнему регистру | str | `str \| None` | ✅ → None | — |
 | `upper` | Приведение к верхнему регистру | str | `str \| None` | ✅ → None | — |
+| `title` | Title-case для каждого слова | str | `str \| None` | ✅ → None | — |
+| `capitalize` | Capitalize для всей строки | str | `str \| None` | ✅ → None | — |
 | `concat` | Склейка списка значений в строку | list | `str \| None` | ✅ (пропускает None элементы) | `sep: str = ""` |
 | `split` | Разделение строки по разделителю | str | `list[str] \| None` | ✅ → None | `sep: str = ","` |
 | `split_name` | Разбор составного поля на части | str | `dict[str, str \| None] \| None` | ✅ → None | `fields`, `separator`, `allow_comma_format`, `max_parts` |
@@ -267,6 +274,7 @@ ops:
 ops:
   - op: trim                                     # "  hello  " → "hello"
   - op: lower                                    # "HELLO" → "hello"
+  - op: title                                    # "иванов иван" → "Иванов Иван"
   - op: concat
     args: { sep: " " }                           # ["John", "Doe"] → "John Doe"
   - op: split_name
@@ -307,6 +315,33 @@ ops:
     args: { default: "N/A" }                       # [None, "", "hello"] → "hello"
 ```
 
+#### List / Collection (операции над коллекциями)
+
+| Op | Описание | Вход | Выход | None-safe | Параметры |
+|----|----------|------|-------|-----------|-----------|
+| `first` | Первый элемент списка; scalar passthrough | list/scalar | Any | ✅ | — |
+| `last` | Последний элемент списка; scalar passthrough | list/scalar | Any | ✅ | — |
+| `at` | Элемент по индексу | list/scalar | Any | ✅ | `index: int` |
+| `compact` | Удалить `None`, `""`, строки из пробелов | list/scalar | `list[Any]` | ✅ | — |
+| `unique` | Дедупликация с сохранением порядка | list/scalar | `list[Any]` | ✅ | — |
+| `count` | Количество элементов | list/scalar | `int` | ✅ | — |
+| `map_each` | Применить вложенный pipeline к каждому элементу | list/scalar | `list[Any] \| None` | ✅ | `ops: list[OperationCall]` |
+| `filter_regex` | Оставить элементы, совпавшие с regex | list/scalar | `list[Any]` | ✅ | `pattern`, `flags`, `match_mode` |
+| `reject_regex` | Исключить элементы, совпавшие с regex | list/scalar | `list[Any]` | ✅ | `pattern`, `flags`, `match_mode` |
+
+**YAML пример**:
+```yaml
+ops:
+  - op: split
+    args: { sep: ";" }
+  - op: map_each
+    args:
+      ops:
+        - op: trim
+  - op: compact
+  - op: last
+```
+
 #### Key Building (построение ключей)
 
 | Op | Описание | Вход | Выход | None-safe | Параметры |
@@ -329,6 +364,8 @@ ops:
 |----|----------|------|-------|-----------|-----------|
 | `extract_patterns` | Извлечь значения по regex из набора строк | list/str | `dict[str, str \| None] \| None` | ✅ → None | `patterns`, `split_pattern`, `keyed_prefixes` |
 | `regex_extract` | Извлечь группу regex | str | `str \| None` | ✅ → None | `pattern: str`, `group: int = 0` |
+| `digits_only` | Оставить только цифры | str | `str \| None` | ✅ → None | — |
+| `format_mask` | Отформатировать строку по маске | str | `str \| None` | ✅ → None | `mask`, `placeholder: str = "#"` |
 | `regex_replace` | Заменить по regex | str | `str \| None` | ✅ → None | `pattern: str`, `repl: str` |
 
 **YAML пример**:
@@ -497,15 +534,18 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
 
 ```
 1. Import (lines 56-82)
-   Lazy import всех 25 функций из connector.domain.dsl.ops
+   Lazy import всех 40 функций из connector.domain.dsl.ops
 
 2. Register (lines 84-108)
    Для каждой функции: registry.register("имя", op_функция)
-   Порядок: trim, lower, upper, to_int, to_float, to_bool, to_string,
-            int_if_digits, uuid, default_uuid, default_prefixed_uuid,
+   Порядок: trim, lower, upper, title, capitalize, to_int, to_float,
+            to_bool, parse_bool, to_string, int_if_digits, uuid,
+            default_uuid, default_prefixed_uuid, default_password,
             copy, const, coalesce, concat, build_delimited_key,
-            extract_patterns, split, split_name, regex_extract, regex_replace,
-            parse_kv_pairs, map_dict, build_link_keys, equals_path
+            first, last, at, compact, unique, count, map_each,
+            extract_patterns, split, split_name, regex_extract,
+            filter_regex, reject_regex, regex_replace, digits_only,
+            format_mask, parse_kv_pairs, map_dict, build_link_keys, equals_path
 
 3. Return (line 109)
    RETURN registry (для цепочки вызовов)
@@ -837,3 +877,4 @@ result = engine.apply("hello", [
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-02-12 | Создан документ | xORex-LC |
+| 2026-05-05 | Обновлён каталог shared DSL operations: добавлены list-oriented ops, `parse_bool`, string case ops и formatting helpers | xORex-LC |

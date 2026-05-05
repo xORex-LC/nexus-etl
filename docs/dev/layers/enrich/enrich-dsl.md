@@ -689,8 +689,8 @@ dsl_options = load_enrich_build_options_for_dataset(dataset)  # EnrichDslBuildOp
 ```yaml
 datasets:
   employees:
-    source:    employees.source.yaml
-    mapping:   employees.mapping.yaml
+    source:    employees/source_2/source.yaml
+    mapping:   employees/source_2/mapping.yaml
     normalize: employees.normalize.yaml
     enrich:    employees.enrich.yaml      # ← DSL-файл enrich-стадии
     sink:      employees.sink.yaml
@@ -1047,3 +1047,4 @@ lookup.org_name:
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-03-01 | Создан документ — DSL-спецификации enrich-слоя | xORex-LC |
+| 2026-05-05 | Обновлены примеры registry wiring под текущий `source_2` layout employees dataset | xORex-LC |

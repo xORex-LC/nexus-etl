@@ -31,7 +31,7 @@
 
 **Ключевая ответственность**:
 - Определение структуры всех DSL-конфигураций как типизированных Pydantic-моделей
-- Загрузка YAML через `datasets/registry.yml` с валидацией и шаблонизацией
+- Загрузка YAML через активный registry-файл (`dataset.registry_path` или default `datasets/registry.yml`) с валидацией и шаблонизацией
 - Merge-priority слияние build options: `defaults → global.base → global.stages[stage] → dataset-specific`
 - Раннее выявление ошибок конфигурации (parse-time через `@model_validator`)
 
@@ -392,22 +392,24 @@ CachePolicySpec                         # Контейнер всех полит
 
 ### Структура registry.yml
 
-**Назначение**: Центральный файл, связывающий датасеты с YAML-файлами стадий
+**Назначение**: Активный registry-файл связывает датасеты с YAML-файлами стадий.
+По умолчанию loader использует `datasets/registry.yml`, но runtime может переключить
+путь через `dataset.registry_path` / `ANKEY_DATASET__REGISTRY_PATH`.
 
 ```yaml
-# datasets/registry.yml
+# active registry file
 
 datasets:
   employees:
     dataset: employees
-    source: employees/employees.source.yaml       # → SourceSpec
-    mapping: employees/employees.mapping.yaml      # → MappingSpec
-    normalize: employees/employees.normalize.yaml  # → NormalizeSpec
-    enrich: employees/employees.enrich.yaml        # → EnrichSpec
-    validate: employees/employees.validate.yaml    # → ValidationSpec
-    match: employees/employees.match.yaml          # → MatchSpec
-    resolve: employees/employees.resolve.yaml      # → ResolveSpec
-    sink: employees/employees.sink.yaml            # → SinkSpec
+    source: employees/source_2/source.yaml         # → SourceSpec
+    mapping: employees/source_2/mapping.yaml       # → MappingSpec
+    normalize: employees.normalize.yaml            # → NormalizeSpec
+    enrich: employees.enrich.yaml                  # → EnrichSpec
+    validate: employees.validate.yaml              # → ValidationSpec
+    match: employees.match.yaml                    # → MatchSpec
+    resolve: employees.resolve.yaml                # → ResolveSpec
+    sink: employees.sink.yaml                      # → SinkSpec
     build_options:                                 # Per-dataset overrides
       mapping:
         strict: true
@@ -440,9 +442,9 @@ load_mapping_spec_for_dataset("employees")
     ↓
 _load_dataset_stage_spec(dataset="employees", stage="mapping")
     ↓
-_load_registry_or_raise()  →  registry.yml
+_load_registry_or_raise()  →  active registry file
     ↓
-_resolve_dataset_path()  →  "datasets/employees/employees.mapping.yaml"
+_resolve_dataset_path()  →  "datasets/employees/source_2/mapping.yaml"
     ↓
 _read_yaml()  →  raw dict
     ↓
@@ -490,12 +492,12 @@ def _load_dataset_stage_spec(
 ```
 1. Load registry (line 463)
    registry = _load_registry_or_raise()
-   → Читает datasets/registry.yml
+   → Читает активный registry file (`dataset.registry_path` или default `datasets/registry.yml`)
    → Если файл не найден или невалиден → DslLoadError("DSL_REGISTRY_INVALID")
 
 2. Resolve path (line 464)
    stage_path = _resolve_dataset_path(registry, dataset, stage)
-   → datasets[dataset][stage] → "employees/employees.mapping.yaml"
+   → datasets[dataset][stage] → "employees/source_2/mapping.yaml"
    → Если dataset не найден → DslLoadError("DSL_REGISTRY_INVALID")
    → Если stage не найден → DslLoadError("DSL_REGISTRY_INVALID")
 
@@ -830,8 +832,8 @@ spec = load_mapping_spec_for_dataset("employees")
 ```
 
 **Что происходит под капотом**:
-1. Читает `datasets/registry.yml`
-2. Находит `datasets.employees.mapping` → `"employees/employees.mapping.yaml"`
+1. Читает active registry file (`dataset.registry_path` или default `datasets/registry.yml`)
+2. Находит `datasets.employees.mapping` → `"employees/source_2/mapping.yaml"`
 3. Читает YAML файл
 4. Валидирует через `MappingSpec.model_validate(raw)`
 
@@ -963,3 +965,4 @@ EnrichRule(
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-02-12 | Создан документ | xORex-LC |
+| 2026-05-05 | Уточнена загрузка через active registry path и обновлены примеры stage-path под `employees/source_2` | xORex-LC |
