@@ -26,6 +26,7 @@
 
 **Ключевая ответственность**:
 - Чтение CSV-файлов с верификацией `content_sha256` и `row_count` из manifest
+- Преобразование file-level `null_values` в `None` и post-parse проверка nullability value-колонок
 - Парсинг CSV в `polars.DataFrame` с BOM-safe декодированием
 - Построение in-memory key-index: `normalized_key → tuple[row_indexes]`
 - Выполнение lookup/contains/canonicalize запросов через index O(1)
@@ -178,14 +179,15 @@ loader.load_into(backend)
 CsvDictionaryLoader.load_dictionary_into(backend, dict_name)
     ├── 1. read_bytes(datasets_root / spec.source_location)
     ├── 2. verify content_sha256  ← build_content_sha256_bytes()
-    ├── 3. polars.read_csv(decoded_text)
+    ├── 3. polars.read_csv(decoded_text, null_values=...)
     ├── 4. verify row_count
-    ├── 5. backend.load_dictionary_frame(dict_name, frame, content_sha256)
+    ├── 5. validate parsed nullability against spec
+    ├── 6. backend.load_dictionary_frame(dict_name, frame, content_sha256)
     │       ├── _validate_columns()
     │       ├── _build_key_index()  ← normalize + index all rows
     │       ├── check allow_duplicates
     │       └── build_dictionary_version_info()
-    └── 6. _emit_load_event(callback)
+    └── 7. _emit_load_event(callback)
 
 PolarsDictionaryBackend.lookup(dict_name, key, ...)
     ├── is_empty_runtime() → [] (disabled mode)
@@ -314,7 +316,7 @@ def load_dictionary_into(
     """
 ```
 
-**Назначение**: Оркестрирует полный цикл загрузки одного словаря: чтение файла → верификация fingerprints → парсинг CSV → загрузка в backend → emit event.
+**Назначение**: Оркестрирует полный цикл загрузки одного словаря: чтение файла → верификация fingerprints → парсинг CSV → post-parse nullability validation → загрузка в backend → emit event.
 
 **Алгоритм**:
 ```
@@ -337,9 +339,9 @@ def load_dictionary_into(
                         details: expected/actual sha256, path)
 
 5. Parse CSV (lines 113-120)
-   frame = _parse_csv_or_raise(raw_bytes, delimiter, has_header, encoding)
+   frame = _parse_csv_or_raise(raw_bytes, delimiter, has_header, encoding, null_values)
    → _decode_text(raw_bytes, encoding)  # BOM-safe decode
-   → polars.read_csv(StringIO(text), separator, has_header)
+   → polars.read_csv(StringIO(text), separator, has_header, null_values=...)
    IF parse error → RAISE DslLoadError(DICT_SOURCE_READ_FAILED)
 
 6. Verify row_count (lines 122-132)
@@ -347,7 +349,14 @@ def load_dictionary_into(
      RAISE DslLoadError(DICT_SOURCE_FINGERPRINT_MISMATCH,
                         details: expected/actual row_count, path)
 
-7. Load into backend (lines 134-138)
+7. Validate nullability contract (post-parse, pre-backend)
+   _validate_frame_nullability_or_raise(compiled, frame, path)
+   - key_column nulls here are invalid
+   - non-nullable value_columns nulls here are invalid
+   - nullable value_columns may contain None
+   IF violation → RAISE DslLoadError(DICT_SOURCE_NULLABILITY_INVALID)
+
+8. Load into backend (lines 134-138)
    version_info = backend.load_dictionary_frame(
        dict_name=dict_name,
        frame=frame,
@@ -355,7 +364,7 @@ def load_dictionary_into(
    )
    → Внутри: validate columns, build key_index, check duplicates
 
-8. Emit load event (lines 139-145)
+9. Emit load event (lines 139-145)
    _emit_load_event(dict_name, path, row_count, content_sha256, version_info)
    → callback(DictionaryCsvLoadEvent(...))
 ```
@@ -365,10 +374,13 @@ def load_dictionary_into(
 2. Верифицируются и `content_sha256`, и `row_count` — оба fingerprint
 3. Ошибки оборачиваются в `DslLoadError` с dict_name и path в details
 4. Callback вызывается только при успешной загрузке
+5. File-level `null_values` применяются до схемной проверки nullability
 
 **Edge cases**:
 - **BOM в UTF-8 файле**: `_decode_text()` использует `"utf-8-sig"` для strip BOM
 - **Пустой CSV** (0 строк): допустим если `manifest.row_count == 0`; устанавливает `source_empty=True` в event
+- **`NULL` в nullable value column**: допустим, если literal объявлен в `source.csv.null_values`
+- **`NULL` в non-nullable value column**: fail-fast с `DICT_SOURCE_NULLABILITY_INVALID`
 - **Неизвестный dict_name**: `backend.bundle.get()` возвращает `KeyError` — ошибка wiring
 
 ---
@@ -888,9 +900,10 @@ backend.load_dictionary_frame("organizations", frame, sha256)
 
 | Исключение | Условие возникновения | Поведение системы | Как обработать |
 |------------|----------------------|-------------------|---------------|
-| `DslLoadError(DICT_SOURCE_READ_FAILED)` | CSV-файл не найден или ошибка чтения | Fail-fast при `load_dictionary_into()` | Проверить путь в `source.location`, наличие файла |
+| `DslLoadError(DICT_SOURCE_READ_FAILED)` | CSV-файл не найден, ошибка чтения или CSV parse error | Fail-fast при `load_dictionary_into()` | Проверить путь в `source.location`, наличие файла, delimiter/encoding/null markers |
 | `DslLoadError(DICT_SOURCE_FINGERPRINT_MISMATCH)` — content | SHA-256 файла не совпадает с manifest | Fail-fast при загрузке | Обновить `content_sha256` в manifest или восстановить CSV |
 | `DslLoadError(DICT_SOURCE_FINGERPRINT_MISMATCH)` — row_count | Количество строк не совпадает с manifest | Fail-fast при загрузке | Обновить `row_count` в manifest или восстановить CSV |
+| `DslLoadError(DICT_SOURCE_NULLABILITY_INVALID)` | В parsed frame обнаружен `None` в key column или non-nullable value column | Fail-fast до backend load | Исправить CSV, `schema.value_columns[*].nullable` или `source.csv.null_values` |
 | `DslLoadError(DICT_SCHEMA_INVALID)` — missing columns | CSV не содержит объявленных колонок | Fail-fast при `load_dictionary_frame()` | Исправить CSV или spec: проверить `key_column` и `value_columns` |
 | `DslLoadError(DICT_SCHEMA_INVALID)` — duplicates | Дублирующиеся normalized ключи при `allow_duplicates=false` | Fail-fast при `load_dictionary_frame()` | Убрать дубликаты из CSV или установить `allow_duplicates: true` |
 | `DslLoadError(DICT_SCHEMA_INVALID)` — unknown fields | В `fields` projection указана колонка вне `allowed_columns` | Fail-fast при `lookup()` | Исправить список `fields` в вызове lookup |
@@ -976,3 +989,4 @@ backend.load_dictionary_frame("organizations", frame, sha256)
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-02-27 | Первоначальное создание документа | xORex-LC |
+| 2026-05-05 | Добавлено описание CSV `null_values` и post-parse nullability validation с `DICT_SOURCE_NULLABILITY_INVALID` | xORex-LC |
