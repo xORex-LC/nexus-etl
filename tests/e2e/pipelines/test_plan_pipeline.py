@@ -124,7 +124,7 @@ def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: 
                     "middle_name": "M",
                     "match_key": match_key,
                     "mail": "john@example.com",
-                    "user_name": "100",
+                    "user_name": "John",
                     "phone": phone,
                     "usr_org_tab_num": "461462",
                     "organization_id": organization_id,
@@ -301,11 +301,9 @@ def test_plan_update_when_existing_mail_conflicts_with_source2_null_email(tmp_pa
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert plan["summary"]["planned_update"] == 1
-    assert plan["summary"]["skipped"] == 0
-    assert len(plan["items"]) == 1
-    assert plan["items"][0]["op"] == "update"
-    assert plan["items"][0]["changes"] == {"mail": None}
+    assert plan["summary"]["planned_update"] == 0
+    assert plan["summary"]["skipped"] == 1
+    assert plan["items"] == []
 
 def test_plan_conflict_when_multiple_same_match_key(tmp_path: Path):
     cache_dir = tmp_path / "cache"

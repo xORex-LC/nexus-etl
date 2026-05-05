@@ -16,6 +16,7 @@ from connector.domain.dsl.ops import (
     op_last,
     op_map_dict,
     op_parse_bool,
+    op_pick_when_blank,
     op_random_digits,
     op_reject_regex,
     op_substring,
@@ -200,6 +201,12 @@ def test_op_random_digits_returns_exact_digit_string() -> None:
 def test_op_random_digits_rejects_non_positive_length() -> None:
     with pytest.raises(ValueError, match="length must be > 0"):
         op_random_digits(None, length=0)
+
+
+def test_op_pick_when_blank_returns_value_only_for_blank_guard() -> None:
+    assert op_pick_when_blank([None, "secret"], guard_index=0, value_index=1) == "secret"
+    assert op_pick_when_blank(["existing", "secret"], guard_index=0, value_index=1) is None
+    assert op_pick_when_blank(["", "secret"], guard_index=0, value_index=1) == "secret"
 
 
 def test_op_format_mask_formats_canonical_input() -> None:

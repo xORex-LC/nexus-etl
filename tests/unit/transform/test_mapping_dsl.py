@@ -42,6 +42,7 @@ def test_employees_dsl_mapper_maps_record(employees_registry_path) -> None:
     assert result.row["last_name"] == "Гапоненко"
     assert result.row["first_name"] == "Михаил"
     assert result.row["middle_name"] == "Викторович"
+    assert result.row["user_name"] is None
     assert result.row["email"] is None
     assert result.row["phone"] == "014т/18"
     assert result.row["manager_id"] is None
@@ -55,11 +56,11 @@ def test_employees_dsl_mapper_maps_record(employees_registry_path) -> None:
         "",
         "Отдел администрирования, сопровождения и",
     ]
-    assert result.row["usr_org_tab_num"] == 461462
+    assert result.row["usr_org_tab_num"] is None
     assert result.row["avatar_id"] is None
     assert result.secret_candidates == {}
     assert result.row is not None
-    assert result.row["password"] == "577qq7"
+    assert result.row["password"] is None
     assert result.meta.get("link_keys") is None
     assert result.errors == ()
 

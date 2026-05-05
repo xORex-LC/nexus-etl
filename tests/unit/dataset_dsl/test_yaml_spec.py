@@ -99,6 +99,7 @@ class TestYamlDatasetSpecAdapters:
         catalog = spec.get_diagnostic_catalog(strict=False)
         assert catalog.contains("INVALID_AVATAR_ID")
         assert catalog.contains("USR_ORG_TAB_CONFLICT")
+        assert catalog.contains("USER_NAME_CONFLICT")
         assert catalog.contains("TARGET_ID_MISSING")
         assert catalog.contains("MATCH_KEY_MISSING")
         assert catalog.contains("INVALID_INT")

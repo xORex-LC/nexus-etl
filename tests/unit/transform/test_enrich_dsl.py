@@ -200,6 +200,39 @@ def test_lookup_rule_supports_nested_value_path() -> None:
     assert candidates[0].value == "nested-1"
 
 
+def test_compiler_orders_lookup_before_generate_for_cache_backed_generate_flows() -> None:
+    raw = {
+        "dataset": "employees",
+        "enrich": {
+            "generate": [
+                {
+                    "name": "target_id",
+                    "target": "target_id",
+                    "source": "target_id",
+                    "ops": [{"op": "default_uuid"}],
+                }
+            ],
+            "lookup": [
+                {
+                    "name": "target_id_from_cache",
+                    "target": "target_id",
+                    "source": "match_key",
+                    "provider": {
+                        "name": "cache.by_field",
+                        "args": {"dataset": "employees", "field": "match_key"},
+                    },
+                    "value_path": "_id",
+                    "on_error": "warn",
+                }
+            ],
+        },
+    }
+
+    spec = _build_enricher_spec(raw)
+
+    assert [op.name for op in spec.operations] == ["target_id_from_cache", "target_id"]
+
+
 def test_lookup_rule_requires_provider_code() -> None:
     raw = {
         "dataset": "employees",

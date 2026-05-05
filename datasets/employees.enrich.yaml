@@ -6,6 +6,131 @@ enrich:
   secrets:
     fields: [password]
   generate:
+    - name: password_stem
+      target: password_stem
+      build:
+        source: first_name
+        ops:
+          - op: trim
+          - op: transliterate
+      when:
+        source: first_name
+        ops:
+          - op: contains_non_ascii
+      then:
+        sources: [last_name, middle_name]
+        ops:
+          - op: map_each
+            args:
+              ops:
+                - op: transliterate
+                - op: substring
+                  args:
+                    start: 0
+                    length: 1
+          - op: compact
+          - op: concat
+            args:
+              sep: ""
+      merge: recompute_always
+      on_error: warn
+
+    - name: generated_password
+      target: generated_password
+      build:
+        source: password_stem
+        ops:
+          - op: trim
+      when:
+        source: password_stem
+        ops:
+          - op: trim
+      then:
+        source: password_stem
+        ops:
+          - op: const
+            args:
+              value: "!23*(3671^84"
+      merge: recompute_always
+      on_error: warn
+
+    - name: password_candidate
+      target: password_candidate
+      build:
+        sources: [password, generated_password]
+        ops:
+          - op: coalesce
+      merge: recompute_always
+      on_error: warn
+
+    - name: random_usr_org_tab_num
+      target: random_usr_org_tab_num
+      build:
+        source: personnel_number
+        ops:
+          - op: random_digits
+            args:
+              length: 8
+      merge: recompute_always
+      on_error: warn
+
+    - name: user_name
+      target: user_name
+      build:
+        source: first_name
+        ops:
+          - op: trim
+          - op: transliterate
+      when:
+        source: first_name
+        ops:
+          - op: contains_non_ascii
+      then:
+        sources: [last_name, middle_name]
+        ops:
+          - op: map_each
+            args:
+              ops:
+                - op: transliterate
+                - op: substring
+                  args:
+                    start: 0
+                    length: 1
+          - op: compact
+          - op: concat
+            args:
+              sep: ""
+      merge: fill_only_if_empty
+      exists:
+        provider:
+          name: cache.exists_by_field
+          args:
+            dataset: employees
+            field: user_name
+            include_deleted: true
+      allow_if:
+        op: equals_path
+        args:
+          left: existing.match_key
+          right: match_key
+      on_conflict:
+        strategy: retry_with_suffixes
+        suffixes: ["_2"]
+      conflict_error_code: USER_NAME_CONFLICT
+      error_field: user_name
+
+    - name: password
+      target: password
+      build:
+        sources: [target_id, password_candidate]
+        ops:
+          - op: pick_when_blank
+            args:
+              guard_index: 0
+              value_index: 1
+      merge: recompute_always
+      on_error: warn
+
     - name: target_id
       target: target_id
       source: target_id
@@ -19,24 +144,28 @@ enrich:
             dataset: employees
             field: _id
             include_deleted: true
-      max_attempts: 3
-      merge: recompute_always
-      missing_error_code: TARGET_ID_MISSING
-      conflict_error_code: TARGET_ID_CONFLICT
-      error_field: target_id
-    - name: usr_org_tab_num
-      target: usr_org_tab_num
-      source: usr_org_tab_num
-      ops:
-        - op: trim
-        - op: default_prefixed_uuid
-          args:
-            prefix: "TAB-"
       allow_if:
         op: equals_path
         args:
-          left: match_key
-          right: existing.match_key
+          left: existing.match_key
+          right: match_key
+      max_attempts: 3
+      merge: fill_only_if_empty
+      missing_error_code: TARGET_ID_MISSING
+      conflict_error_code: TARGET_ID_CONFLICT
+      error_field: target_id
+
+    - name: usr_org_tab_num
+      target: usr_org_tab_num
+      build:
+        sources: [usr_org_tab_num, random_usr_org_tab_num]
+        ops:
+          - op: coalesce
+      allow_if:
+        op: equals_path
+        args:
+          left: existing.match_key
+          right: match_key
       exists:
         provider:
           name: cache.exists_by_field
@@ -44,16 +173,98 @@ enrich:
             dataset: employees
             field: usr_org_tab_num
             include_deleted: true
-      max_attempts: 3
       merge: recompute_always
       conflict_error_code: USR_ORG_TAB_CONFLICT
       error_field: usrOrgTabNum
-    - name: password
-      target: password
-      source: password
-      ops:
-        - op: trim
-        - op: default_password
+
+  lookup:
+    - name: target_id_from_cache
+      target: target_id
+      source: match_key
+      provider:
+        name: cache.by_field
+        args:
+          dataset: employees
+          field: match_key
+          include_deleted: true
+      value_path: _id
       merge: fill_only_if_empty
       on_error: warn
-  lookup: []
+
+    - name: email_from_cache
+      target: email
+      source: match_key
+      provider:
+        name: cache.by_field
+        args:
+          dataset: employees
+          field: match_key
+          include_deleted: true
+      value_path: mail
+      merge: fill_only_if_empty
+      on_error: warn
+
+    - name: phone_from_cache
+      target: phone
+      source: match_key
+      provider:
+        name: cache.by_field
+        args:
+          dataset: employees
+          field: match_key
+          include_deleted: true
+      value_path: phone
+      merge: fill_only_if_empty
+      on_error: warn
+
+    - name: is_logon_disable_from_cache
+      target: is_logon_disable
+      source: match_key
+      provider:
+        name: cache.by_field
+        args:
+          dataset: employees
+          field: match_key
+          include_deleted: true
+      value_path: is_logon_disabled
+      merge: fill_only_if_empty
+      on_error: warn
+
+    - name: usr_org_tab_num_from_cache
+      target: usr_org_tab_num
+      source: match_key
+      provider:
+        name: cache.by_field
+        args:
+          dataset: employees
+          field: match_key
+          include_deleted: true
+      value_path: usr_org_tab_num
+      merge: fill_only_if_empty
+      on_error: warn
+
+    - name: manager_id
+      target: manager_id
+      source: manager_id
+      provider:
+        name: cache.by_field
+        args:
+          dataset: employees
+          field: _ouid
+          include_deleted: true
+      value_path: _ouid
+      merge: never_override
+      on_error: warn
+
+    - name: organization_id
+      target: organization_id
+      source: organization_id
+      provider:
+        name: cache.by_field
+        args:
+          dataset: organizations
+          field: name
+          include_deleted: true
+      value_path: _ouid
+      merge: recompute_always
+      on_error: warn

@@ -39,7 +39,7 @@ def test_employees_source_mapper_builds_secrets(employees_registry_path):
     assert result.match_key is None
     assert result.secret_candidates == {}
     assert result.row is not None
-    assert result.row.get("password") == "577qq7"
+    assert result.row.get("password") is None
     assert result.row["email"] is None
     assert result.row_ref is None
 
