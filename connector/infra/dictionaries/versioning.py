@@ -47,10 +47,21 @@ def build_dictionary_schema_hash(spec: DictionarySpec) -> str:
         "dictionary": spec.dictionary,
         "source": {
             "format": spec.source.format,
+            "csv": {
+                "null_values": list(spec.source.csv.null_values),
+            },
         },
         "schema": {
-            "key_column": spec.data_schema.key_column,
-            "value_columns": list(spec.data_schema.value_columns),
+            "key_column": {
+                "name": spec.data_schema.key_column.name,
+            },
+            "value_columns": [
+                {
+                    "name": column.name,
+                    "nullable": column.nullable,
+                }
+                for column in spec.data_schema.value_columns
+            ],
             "normalized_key": {
                 "ops": _normalized_key_ops_payload(spec),
             },
@@ -151,4 +162,3 @@ __all__ = [
     "build_dictionary_version_id",
     "build_dictionary_version_info",
 ]
-

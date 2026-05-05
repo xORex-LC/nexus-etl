@@ -111,7 +111,8 @@ source:
   format: csv
   location: dictionaries/organizations.csv
 schema:
-  key_column: code
+  key_column:
+    name: code
   value_columns: []
 """.strip(),
     )
@@ -147,8 +148,11 @@ source:
   format: csv
   location: dictionaries/organizations.csv
 schema:
-  key_column: code
-  value_columns: [name]
+  key_column:
+    name: code
+  value_columns:
+    - name: name
+      nullable: false
 """.strip(),
     )
     _patch_repo_root(monkeypatch, tmp_path)

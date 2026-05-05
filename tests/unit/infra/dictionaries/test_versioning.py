@@ -16,10 +16,14 @@ def _spec() -> DictionarySpec:
             "source": {
                 "format": "csv",
                 "location": "dictionaries/organizations.csv",
+                "csv": {"null_values": ["NULL"]},
             },
             "schema": {
-                "key_column": "code",
-                "value_columns": ["ouid", "name"],
+                "key_column": {"name": "code"},
+                "value_columns": [
+                    {"name": "ouid", "nullable": False},
+                    {"name": "name", "nullable": False},
+                ],
                 "normalized_key": {
                     "ops": [
                         {"op": "trim"},
@@ -44,6 +48,29 @@ def test_schema_hash_changes_when_lookup_semantics_change() -> None:
         {
             **_spec().model_dump(),
             "lookup": {"allow_duplicates": True},
+        }
+    )
+
+    assert build_dictionary_schema_hash(spec_a) != build_dictionary_schema_hash(spec_b)
+
+
+def test_schema_hash_changes_when_nullability_or_null_markers_change() -> None:
+    spec_a = _spec()
+    dumped = _spec().model_dump(by_alias=True)
+    spec_b = DictionarySpec.model_validate(
+        {
+            **dumped,
+            "source": {
+                **dumped["source"],
+                "csv": {"null_values": ["N/A"]},
+            },
+            "schema": {
+                **dumped["schema"],
+                "value_columns": [
+                    {"name": "ouid", "nullable": False},
+                    {"name": "name", "nullable": True},
+                ],
+            },
         }
     )
 
@@ -80,4 +107,3 @@ def test_build_dictionary_version_info_sets_v1_defaults() -> None:
     assert info.fingerprint_kind == "content_sha256"
     assert info.source_format == "csv"
     assert info.loaded_at == "2026-02-23T12:00:00Z"
-

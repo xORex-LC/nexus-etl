@@ -29,11 +29,19 @@ def _spec(*, encoding: str = "utf-8") -> DictionarySpec:
             "source": {
                 "format": "csv",
                 "location": "dictionaries/organizations.csv",
-                "csv": {"delimiter": ",", "has_header": True, "encoding": encoding},
+                "csv": {
+                    "delimiter": ",",
+                    "has_header": True,
+                    "encoding": encoding,
+                    "null_values": ["NULL"],
+                },
             },
             "schema": {
-                "key_column": "code",
-                "value_columns": ["name", "ouid"],
+                "key_column": {"name": "code"},
+                "value_columns": [
+                    {"name": "name", "nullable": False},
+                    {"name": "ouid", "nullable": False},
+                ],
                 "normalized_key": {"ops": [{"op": "trim"}, {"op": "lower"}]},
             },
             "lookup": {"allow_duplicates": False},
@@ -169,3 +177,121 @@ def test_csv_loader_emits_source_empty_load_event_for_empty_csv(tmp_path: Path) 
     assert event.row_count == 0
     assert event.source_empty is True
     assert event.version_info.row_count == 0
+
+
+def test_csv_loader_treats_declared_null_marker_as_none_for_nullable_value_column(tmp_path: Path) -> None:
+    spec = DictionarySpec.model_validate(
+        {
+            "dictionary": "organizations",
+            "source": {
+                "format": "csv",
+                "location": "dictionaries/organizations.csv",
+                "csv": {
+                    "delimiter": ",",
+                    "has_header": True,
+                    "encoding": "utf-8",
+                    "null_values": ["NULL"],
+                },
+            },
+            "schema": {
+                "key_column": {"name": "code"},
+                "value_columns": [
+                    {"name": "name", "nullable": False},
+                    {"name": "parent_id", "nullable": True},
+                ],
+            },
+            "lookup": {"allow_duplicates": False},
+        }
+    )
+    raw = b"code,name,parent_id\nORG-1,Org One,NULL\n"
+    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+
+    backend = _backend_for(
+        spec=spec,
+        content_sha256=build_content_sha256_bytes(raw),
+        row_count=1,
+    )
+    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+
+    loader.load_into(backend)
+
+    assert backend.lookup("organizations", "ORG-1") == [
+        {"code": "ORG-1", "name": "Org One", "parent_id": None}
+    ]
+
+
+def test_csv_loader_raises_on_null_in_non_nullable_value_column(tmp_path: Path) -> None:
+    spec = _spec()
+    raw = b"code,name,ouid\nORG-1,NULL,100\n"
+    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+
+    backend = _backend_for(
+        spec=spec,
+        content_sha256=build_content_sha256_bytes(raw),
+        row_count=1,
+    )
+    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+
+    with pytest.raises(DslLoadError) as exc_info:
+        loader.load_into(backend)
+
+    assert exc_info.value.code == "DICT_SOURCE_NULLABILITY_INVALID"
+
+
+def test_csv_loader_raises_on_null_in_key_column(tmp_path: Path) -> None:
+    spec = _spec()
+    raw = b"code,name,ouid\nNULL,Org One,100\n"
+    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+
+    backend = _backend_for(
+        spec=spec,
+        content_sha256=build_content_sha256_bytes(raw),
+        row_count=1,
+    )
+    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+
+    with pytest.raises(DslLoadError) as exc_info:
+        loader.load_into(backend)
+
+    assert exc_info.value.code == "DICT_SOURCE_NULLABILITY_INVALID"
+
+
+def test_csv_loader_supports_custom_null_marker_list(tmp_path: Path) -> None:
+    spec = DictionarySpec.model_validate(
+        {
+            "dictionary": "organizations",
+            "source": {
+                "format": "csv",
+                "location": "dictionaries/organizations.csv",
+                "csv": {
+                    "delimiter": ",",
+                    "has_header": True,
+                    "encoding": "utf-8",
+                    "null_values": ["N/A"],
+                },
+            },
+            "schema": {
+                "key_column": {"name": "code"},
+                "value_columns": [
+                    {"name": "name", "nullable": False},
+                    {"name": "parent_id", "nullable": True},
+                ],
+            },
+            "lookup": {"allow_duplicates": False},
+        }
+    )
+    raw = b"code,name,parent_id\nORG-1,Org One,N/A\n"
+    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+
+    backend = _backend_for(
+        spec=spec,
+        content_sha256=build_content_sha256_bytes(raw),
+        row_count=1,
+    )
+    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+
+    loader.load_into(backend)
+
+    assert backend.lookup("organizations", "ORG-1") == [
+        {"code": "ORG-1", "name": "Org One", "parent_id": None}
+    ]

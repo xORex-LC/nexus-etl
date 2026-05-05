@@ -100,11 +100,21 @@ def _make_dictionary_fixture(*, label: str, row_count: int) -> DictionaryBenchFi
             "source": {
                 "format": "csv",
                 "location": csv_rel_path,
-                "csv": {"delimiter": ",", "has_header": True, "encoding": "utf-8"},
+                "csv": {
+                    "delimiter": ",",
+                    "has_header": True,
+                    "encoding": "utf-8",
+                    "null_values": ["NULL"],
+                },
             },
             "schema": {
-                "key_column": "code",
-                "value_columns": ["name", "ouid", "status", "dept"],
+                "key_column": {"name": "code"},
+                "value_columns": [
+                    {"name": "name", "nullable": False},
+                    {"name": "ouid", "nullable": False},
+                    {"name": "status", "nullable": False},
+                    {"name": "dept", "nullable": False},
+                ],
                 "normalized_key": {"ops": [{"op": "trim"}, {"op": "lower"}]},
             },
             "lookup": {"allow_duplicates": False},

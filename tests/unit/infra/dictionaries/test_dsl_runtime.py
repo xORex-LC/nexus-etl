@@ -23,11 +23,15 @@ def _dictionary_spec() -> DictionarySpec:
                     "delimiter": ",",
                     "has_header": True,
                     "encoding": "utf-8",
+                    "null_values": ["NULL"],
                 },
             },
             "schema": {
-                "key_column": "code",
-                "value_columns": ["name", "ouid"],
+                "key_column": {"name": "code"},
+                "value_columns": [
+                    {"name": "name", "nullable": False},
+                    {"name": "ouid", "nullable": False},
+                ],
                 "normalized_key": {
                     "ops": [
                         {"op": "trim"},
@@ -69,6 +73,9 @@ def test_build_dictionary_dsl_runtime_compiles_normalized_key_ops() -> None:
     assert compiled.schema_hash == build_dictionary_schema_hash(spec)
     assert [op.name for op in compiled.normalized_key_ops] == ["trim", "lower"]
     assert compiled.normalize_key(" ORG-1 ") == "org-1"
+    assert compiled.key_column == "code"
+    assert compiled.value_columns == ("name", "ouid")
+    assert compiled.csv_null_values == ("NULL",)
 
 
 def test_build_dictionary_dsl_runtime_raises_on_manifest_missing_entry() -> None:
@@ -113,4 +120,3 @@ def test_build_dictionary_dsl_runtime_raises_on_unresolved_op_in_registry() -> N
         )
 
     assert exc_info.value.code == "DICT_DSL_SPEC_INVALID"
-

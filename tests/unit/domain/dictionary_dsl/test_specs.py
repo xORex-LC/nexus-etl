@@ -20,11 +20,15 @@ def _valid_dictionary_spec_payload() -> dict:
                 "delimiter": ",",
                 "has_header": True,
                 "encoding": "utf-8",
+                "null_values": ["NULL"],
             },
         },
         "schema": {
-            "key_column": "code",
-            "value_columns": ["ouid", "name"],
+            "key_column": {"name": "code"},
+            "value_columns": [
+                {"name": "ouid", "nullable": False},
+                {"name": "name", "nullable": False},
+            ],
             "normalized_key": {
                 "ops": [
                     {"op": "trim"},
@@ -54,7 +58,10 @@ def test_dictionary_normalized_key_ops_whitelist_rejects_unknown_op() -> None:
 
 def test_dictionary_schema_rejects_key_column_conflict() -> None:
     payload = _valid_dictionary_spec_payload()
-    payload["schema"]["value_columns"] = ["code", "name"]
+    payload["schema"]["value_columns"] = [
+        {"name": "code", "nullable": False},
+        {"name": "name", "nullable": False},
+    ]
 
     with pytest.raises(ValidationError, match="schema.key_column must not be present"):
         DictionarySpec.model_validate(payload)
@@ -65,6 +72,38 @@ def test_dictionary_schema_requires_non_empty_value_columns() -> None:
     payload["schema"]["value_columns"] = []
 
     with pytest.raises(ValidationError, match="schema.value_columns must not be empty"):
+        DictionarySpec.model_validate(payload)
+
+
+def test_dictionary_source_csv_defaults_null_marker_to_null_literal() -> None:
+    payload = _valid_dictionary_spec_payload()
+    payload["source"]["csv"].pop("null_values")
+
+    spec = DictionarySpec.model_validate(payload)
+
+    assert spec.source.csv.null_values == ["NULL"]
+
+
+def test_dictionary_schema_allows_nullable_value_column() -> None:
+    payload = _valid_dictionary_spec_payload()
+    payload["schema"]["value_columns"] = [
+        {"name": "id", "nullable": False},
+        {"name": "parent_id", "nullable": True},
+    ]
+
+    spec = DictionarySpec.model_validate(payload)
+
+    assert spec.data_schema.value_columns[1].nullable is True
+
+
+def test_dictionary_schema_rejects_duplicate_value_columns() -> None:
+    payload = _valid_dictionary_spec_payload()
+    payload["schema"]["value_columns"] = [
+        {"name": "name", "nullable": False},
+        {"name": "name", "nullable": True},
+    ]
+
+    with pytest.raises(ValidationError, match="duplicate column"):
         DictionarySpec.model_validate(payload)
 
 
