@@ -37,15 +37,15 @@ def test_resolve_dsl_compile_matches_employees_contract():
     sink_spec = load_sink_spec_for_dataset("employees")
     compiled = ResolveDsl().compile(spec, sink_spec=sink_spec)
 
-    assert len(compiled.link_rules.fields) == 2
-    manager_rule = compiled.link_rules.fields[0]
-    assert manager_rule.field == "manager_id"
-    assert manager_rule.target_dataset == "employees"
-    assert manager_rule.on_unresolved == "pending"
-    assert tuple(key.name for key in manager_rule.resolve_keys) == ("match_key",)
-    assert manager_rule.dedup_rules == (("organization_id",),)
-    assert manager_rule.target_id_field == "_ouid"
-    assert manager_rule.coerce == "int"
+    assert len(compiled.link_rules.fields) == 1
+    organization_rule = compiled.link_rules.fields[0]
+    assert organization_rule.field == "organization_id"
+    assert organization_rule.target_dataset == "organizations"
+    assert organization_rule.on_unresolved == "hard_error"
+    assert tuple(key.name for key in organization_rule.resolve_keys) == ("name", "_ouid")
+    assert organization_rule.dedup_rules == (("code",),)
+    assert organization_rule.target_id_field == "_ouid"
+    assert organization_rule.coerce == "int"
 
     assert compiled.resolve_rules.diff_policy is not None
     assert compiled.resolve_rules.build_source_ref is not None
@@ -189,4 +189,4 @@ def test_resolve_engine_wraps_lookup_core():
         codec=PendingCodecAdapter(),
     )
     assert engine.resolve_rules.diff_policy is not None
-    assert len(engine.link_rules.fields) == 2
+    assert len(engine.link_rules.fields) == 1

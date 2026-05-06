@@ -16,10 +16,12 @@ resolve:
       - position
       - avatar_id
       - usr_org_tab_num
+
   source_ref:
     mode: from_identity
     fields:
       - match_key
+
   diff:
     mode: compare_fields
     from_sink:
@@ -36,25 +38,16 @@ resolve:
       - field: is_logon_disable
         existing: is_logon_disabled
         normalize: bool
-      - field: manager_id
-        existing: manager_ouid
+
   merge:
     mode: none
+
   secrets:
     mode: by_op
     create: [password]
     update: []
+
   links:
-    - field: manager_id
-      target_dataset: employees
-      resolve_keys:
-        - name: match_key
-          field: manager_id
-      dedup_rules:
-        - [organization_id]
-      target_id_field: _ouid
-      coerce: int
-      on_unresolved: pending
     - field: organization_id
       target_dataset: organizations
       resolve_keys:
@@ -66,4 +59,4 @@ resolve:
         - [code]
       target_id_field: _ouid
       coerce: int
-      on_unresolved: pending
+      on_unresolved: hard_error

@@ -70,6 +70,7 @@ enrich:
         ops:
           - op: trim
           - op: transliterate
+          - op: upper
       when:
         source: first_name
         ops:
@@ -85,6 +86,7 @@ enrich:
                   args:
                     start: 0
                     length: 1
+                - op: upper
           - op: compact
           - op: concat
             args:
