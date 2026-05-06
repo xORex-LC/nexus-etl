@@ -18,6 +18,7 @@ from typing import Iterator
 import yaml
 from dependency_injector import containers, providers
 
+from connector.common.runtime_paths import resolve_registry_path_for_datasets_root
 from connector.config.models import DictionaryConfig
 from connector.domain.dictionary_dsl import (
     DictionaryRegistrySpec,
@@ -69,7 +70,7 @@ def _load_runtime_bundle_optional(
         manifest = load_dictionary_manifest_spec_for_registry(registry)
         return build_dictionary_dsl_runtime(specs=specs, manifest_spec=manifest)
 
-    registry_path = root / "registry.yml"
+    registry_path = resolve_registry_path_for_datasets_root(root)
     if not _has_dictionaries_section_or_raise(registry_path):
         return None
 
