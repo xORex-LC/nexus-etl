@@ -14,8 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader._common import _datasets_root as _active_datasets_root
-from connector.domain.dsl.loader._common import _read_yaml, _registry_path as _active_registry_path
+from connector.domain.dsl.loader._common import (
+    _read_yaml,
+    _registry_path as _active_registry_path,
+    _resolve_dictionary_manifest_path,
+    _resolve_dictionary_spec_path,
+)
 from connector.domain.dictionary_dsl.specs import (
     DictionaryManifestSpec,
     DictionaryRegistrySpec,
@@ -116,7 +120,7 @@ def load_dictionary_spec_for_runtime(dict_name: str) -> DictionarySpec:
             message=f"Dictionary '{dict_name}' is not present in dictionary registry",
             details={"dict_name": dict_name, "path": str(_registry_path())},
         )
-    spec_path = _datasets_root() / entry.spec
+    spec_path = _resolve_dictionary_spec_path(entry.spec)
     spec = load_dictionary_spec(spec_path)
     _validate_registry_key_matches_spec(dict_name=dict_name, spec=spec, path=spec_path)
     return spec
@@ -138,7 +142,7 @@ def load_enabled_dictionary_specs_for_runtime() -> dict[str, DictionarySpec]:
     for dict_name, entry in registry.items.items():
         if not entry.enabled:
             continue
-        spec_path = _datasets_root() / entry.spec
+        spec_path = _resolve_dictionary_spec_path(entry.spec)
         spec = load_dictionary_spec(spec_path)
         _validate_registry_key_matches_spec(dict_name=dict_name, spec=spec, path=spec_path)
         if spec.dictionary in seen_declared_names:
@@ -161,8 +165,10 @@ def load_dictionary_manifest_spec_for_registry(
     Назначение:
         Загрузить manifest по пути, объявленному в dictionary registry.
     """
-    root = Path(datasets_root) if datasets_root is not None else _datasets_root()
-    return load_dictionary_manifest_spec(root / registry.manifest)
+    if datasets_root is not None:
+        root = Path(datasets_root)
+        return load_dictionary_manifest_spec(root / registry.manifest)
+    return load_dictionary_manifest_spec(_resolve_dictionary_manifest_path(registry.manifest))
 
 
 def load_dictionary_manifest_spec(path: str | Path) -> DictionaryManifestSpec:
@@ -211,15 +217,6 @@ def load_dictionary_manifest_spec_for_runtime() -> DictionaryManifestSpec:
 
 def _registry_path() -> Path:
     return _active_registry_path()
-
-
-def _datasets_root() -> Path:
-    return _active_datasets_root()
-
-
-def _repo_root() -> Path:
-    return _datasets_root().parent
-
 
 def _extract_dictionary_registry_payload(
     raw: dict[str, Any],

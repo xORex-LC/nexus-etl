@@ -7,6 +7,7 @@
 """
 
 from connector.domain.dsl.loader._common import (
+    _configure_runtime_paths as configure_runtime_paths,
     _configure_registry_path as configure_registry_path,
     _datasets_root as datasets_root,
     _load_registry_or_raise as load_registry,
@@ -22,6 +23,7 @@ __all__ = [
     "find_repo_root",
     "registry_path",
     "datasets_root",
+    "configure_runtime_paths",
     "configure_registry_path",
     "load_registry",
     "validate_spec",

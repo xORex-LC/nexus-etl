@@ -11,11 +11,16 @@ from typing import Any, TypeVar
 
 import yaml
 
-from connector.common.runtime_paths import get_runtime_paths
+from connector.common.runtime_paths import (
+    RuntimePathOverrides,
+    RuntimePaths,
+    detect_runtime_paths,
+)
 from connector.domain.dsl.issues import DslLoadError
 
 TSpec = TypeVar("TSpec")
 _registry_path_override: Path | None = None
+_runtime_path_overrides: RuntimePathOverrides | None = None
 
 
 def _read_yaml(path: str | Path) -> dict[str, Any]:
@@ -32,6 +37,11 @@ def _read_yaml(path: str | Path) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=1)
+def _runtime_paths() -> RuntimePaths:
+    return detect_runtime_paths(overrides=_runtime_path_overrides)
+
+
+@lru_cache(maxsize=1)
 def _repo_root() -> Path:
     """
     Назначение:
@@ -41,7 +51,23 @@ def _repo_root() -> Path:
         - В dev-режиме может совпадать с корнем checkout.
         - В standalone-режиме указывает на runtime root дистрибутива.
     """
-    return get_runtime_paths().root
+    return _runtime_paths().root
+
+
+def _configure_runtime_paths(overrides: RuntimePathOverrides | None) -> None:
+    """
+    Назначение:
+        Настроить runtime roots для DSL loaders из composition root.
+
+    Контракт:
+        - `None` сбрасывает runtime roots к autodetect policy.
+        - Смена overrides сбрасывает все кеши path resolution и registry loading.
+    """
+    global _runtime_path_overrides
+    _runtime_path_overrides = overrides
+    _runtime_paths.cache_clear()
+    _repo_root.cache_clear()
+    _load_registry_or_raise.cache_clear()
 
 
 def _configure_registry_path(path: str | Path | None) -> None:
@@ -50,7 +76,7 @@ def _configure_registry_path(path: str | Path | None) -> None:
         Настроить runtime registry-файл для всех DSL loaders.
 
     Контракт:
-        - None сбрасывает настройку к историческому datasets/registry.yml;
+        - None сбрасывает настройку к default registry, вычисляемому runtime resolver'ом;
         - относительный путь интерпретируется относительно текущего working directory;
         - смена пути сбрасывает кеш загруженного registry.
     """
@@ -66,17 +92,73 @@ def _registry_path() -> Path:
     """
     if _registry_path_override is not None:
         return _registry_path_override
-    return get_runtime_paths().default_registry_path
+    return _runtime_paths().default_registry_path
 
 
 def _datasets_root() -> Path:
     """
     Назначение:
-        Вернуть директорию, относительно которой registry ссылается на YAML-спеки.
+        Вернуть активный root для registry-relative compatibility mode.
     """
     if _registry_path_override is not None:
         return _registry_path_override.parent
-    return get_runtime_paths().datasets_root
+    return _runtime_paths().datasets_root
+
+
+def _resolve_dataset_stage_path(ref: str | Path) -> Path:
+    if _registry_path_override is not None:
+        return _resolve_ref_against_active_registry(ref)
+    return _runtime_paths().resolve_dataset_stage_ref(ref)
+
+
+def _resolve_source_projection_path(ref: str | Path) -> Path:
+    if _registry_path_override is not None:
+        return _resolve_ref_against_active_registry(ref)
+    return _resolve_with_legacy_datasets_fallback(
+        primary=_runtime_paths().resolve_source_projection_ref(ref),
+        legacy_ref=ref,
+    )
+
+
+def _resolve_target_projection_path(ref: str | Path) -> Path:
+    if _registry_path_override is not None:
+        return _resolve_ref_against_active_registry(ref)
+    return _resolve_with_legacy_datasets_fallback(
+        primary=_runtime_paths().resolve_target_projection_ref(ref),
+        legacy_ref=ref,
+    )
+
+
+def _resolve_dictionary_spec_path(ref: str | Path) -> Path:
+    if _registry_path_override is not None:
+        return _resolve_ref_against_active_registry(ref)
+    return _resolve_with_legacy_datasets_fallback(
+        primary=_runtime_paths().resolve_dictionary_spec_ref(ref),
+        legacy_ref=ref,
+    )
+
+
+def _resolve_dictionary_manifest_path(ref: str | Path) -> Path:
+    if _registry_path_override is not None:
+        return _resolve_ref_against_active_registry(ref)
+    return _resolve_with_legacy_datasets_fallback(
+        primary=_runtime_paths().resolve_dictionary_manifest_ref(ref),
+        legacy_ref=ref,
+    )
+
+
+def _resolve_ref_against_active_registry(ref: str | Path) -> Path:
+    path = Path(ref).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (_datasets_root() / path).resolve()
+
+
+def _resolve_with_legacy_datasets_fallback(*, primary: Path, legacy_ref: str | Path) -> Path:
+    legacy_path = _runtime_paths().resolve_dataset_stage_ref(legacy_ref)
+    if primary.exists() or not legacy_path.exists():
+        return primary
+    return legacy_path
 
 
 @lru_cache(maxsize=1)

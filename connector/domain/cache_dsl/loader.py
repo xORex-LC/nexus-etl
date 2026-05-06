@@ -10,7 +10,12 @@ from typing import Any
 
 from connector.domain.dsl.build_options import build_options_from_mapping
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader._common import _datasets_root, _load_registry_or_raise, _read_yaml, _registry_path
+from connector.domain.dsl.loader._common import (
+    _load_registry_or_raise,
+    _read_yaml,
+    _registry_path,
+    _resolve_dataset_stage_path,
+)
 from connector.domain.cache_dsl.build_options import CacheDslBuildOptions
 from connector.domain.cache_dsl.specs import CacheDatasetSpec, CacheRegistrySpec
 
@@ -87,7 +92,7 @@ def load_cache_dataset_spec_for_dataset(dataset: str) -> CacheDatasetSpec:
             message=f"Dataset '{dataset}' is not present in cache registry",
             details={"dataset": dataset},
         )
-    spec_path = _datasets_root() / dataset_entry.cache_spec
+    spec_path = _resolve_dataset_stage_path(dataset_entry.cache_spec)
     spec = load_cache_dataset_spec(spec_path)
     if spec.dataset != dataset:
         raise DslLoadError(

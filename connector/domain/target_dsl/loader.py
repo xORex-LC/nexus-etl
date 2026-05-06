@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader import datasets_root, load_registry, read_yaml
+from connector.domain.dsl.loader import load_registry, read_yaml
+from connector.domain.dsl.loader._common import _resolve_target_projection_path
 from connector.domain.target_dsl.spec_models import TargetSpec
 
 
@@ -63,7 +64,7 @@ def _resolve_target_path(registry: dict[str, Any], target_type: str) -> Path:
             message=f"Target provider '{target_type}' has empty path in registry.yml",
             details={"target_type": target_type},
         )
-    return datasets_root() / relative
+    return _resolve_target_projection_path(relative)
 
 
 def _read_target_yaml(path: Path, target_type: str) -> dict[str, Any]:
