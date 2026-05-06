@@ -26,7 +26,7 @@ schema:
       required: true
     - name: mail
       type: string
-      required: true
+      required: false
     - name: user_name
       type: string
       required: true
@@ -155,10 +155,12 @@ sync:
       required: true
       on_error: error
     - target: match_key
-      sources: [match_key, matchKey, _id, id]
+      sources: [lastName, firstName, middleName, personnelNumber]
       ops:
-        - op: coalesce
-        - op: trim
+        - op: build_delimited_key
+          args:
+            sep: "|"
+            strict: true
       required: true
       on_error: error
     - target: mail
@@ -166,8 +168,7 @@ sync:
       ops:
         - op: coalesce
         - op: trim
-      required: true
-      on_error: error
+      on_error: set_null
     - target: user_name
       sources: [user_name, userName, username, login]
       ops:

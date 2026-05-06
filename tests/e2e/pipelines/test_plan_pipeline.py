@@ -124,7 +124,7 @@ def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: 
                     "middle_name": "M",
                     "match_key": match_key,
                     "mail": "john@example.com",
-                    "user_name": "John",
+                    "user_name": "JOHN",
                     "phone": phone,
                     "usr_org_tab_num": "461462",
                     "organization_id": organization_id,
