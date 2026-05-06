@@ -15,6 +15,7 @@ from connector.config.models import (
     DatasetConfig,
     MatchingRuntimeConfig,
     ResolverConfig,
+    RuntimeConfig,
     VaultRolloutConfig,
 )
 
@@ -24,6 +25,7 @@ def test_app_config_defaults_all_sections() -> None:
     cfg = AppConfig()
 
     assert cfg.api is not None
+    assert cfg.runtime is not None
     assert cfg.paths is not None
     assert cfg.observability is not None
     assert cfg.dataset is not None
@@ -87,9 +89,21 @@ def test_matching_runtime_config_has_only_match_fields() -> None:
 
 
 def test_dataset_config_accepts_registry_path() -> None:
-    cfg = DatasetConfig(registry_path="./datasets/registry.yml")
+    cfg = DatasetConfig(registry_path="./datasets/registry.yaml")
 
-    assert cfg.registry_path == "./datasets/registry.yml"
+    assert cfg.registry_path == "./datasets/registry.yaml"
+
+
+def test_runtime_config_defaults_follow_standalone_layout() -> None:
+    cfg = RuntimeConfig()
+
+    assert cfg.runtime_root == "."
+    assert cfg.config_root == "./etc"
+    assert cfg.datasets_root == "./datasets"
+    assert cfg.dictionary_specs_root == "./etc/dictionaries"
+    assert cfg.dictionary_data_root == "./dictionaries"
+    assert cfg.source_projection_root == "./etc/source-projection"
+    assert cfg.target_projection_root == "./etc/target-projection"
 
 
 def test_app_config_extra_forbid_unknown_section() -> None:
@@ -144,3 +158,9 @@ def test_app_config_defaults_regression() -> None:
     assert cfg.sqlite.vault_transaction_mode == "immediate"
     assert cfg.sqlite.cache_transaction_mode == "deferred"
     assert cfg.sqlite.vault_schema_retry_count == 2
+
+    # Runtime/paths defaults
+    assert cfg.runtime.datasets_root == "./datasets"
+    assert cfg.paths.cache_dir == "./var/cache"
+    assert cfg.paths.log_dir == "./var/logs"
+    assert cfg.paths.report_dir == "./reports"

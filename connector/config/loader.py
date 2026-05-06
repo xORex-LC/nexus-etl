@@ -42,7 +42,18 @@ from connector.config.models import AppConfig
 # ENV prefix и разделитель уровней: ANKEY_API__HOST → section=api, field=host
 _ENV_PREFIX = "ANKEY_"
 _LEVEL_SEP = "__"
-_ENV_OVERRIDE_DENIED_SECTIONS = frozenset({"vault_management"})
+_ENV_OVERRIDE_DENIED_SECTIONS = frozenset({"vault_management", "runtime"})
+_ENV_OVERRIDE_DENIED_FIELDS = frozenset(
+    {
+        "paths.cache_dir",
+        "paths.log_dir",
+        "paths.report_dir",
+        "dataset.registry_path",
+        "sqlite.vault_db_path",
+        "sqlite.cache_db_path",
+        "sqlite.identity_db_path",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -161,6 +172,9 @@ def _collect_env_overrides() -> dict[str, Any]:
             # disabled or redirected by process environment variables.
             continue
         field_key = field_raw.lower()
+        dotted_key = f"{section}.{field_key}"
+        if dotted_key in _ENV_OVERRIDE_DENIED_FIELDS:
+            continue
         if section not in result:
             result[section] = {}
         result[section][field_key] = stripped

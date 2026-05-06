@@ -10,9 +10,18 @@ api:
   retry_backoff_seconds: 0.5
   resource_exists_retries: 3
 
+runtime:
+  runtime_root: "."
+  config_root: "./etc"
+  datasets_root: "./datasets"
+  dictionary_specs_root: "./etc/dictionaries"
+  dictionary_data_root: "./dictionaries"
+  source_projection_root: "./etc/source-projection"
+  target_projection_root: "./etc/target-projection"
+
 paths:
-  cache_dir: "./cache"
-  log_dir: "./logs"
+  cache_dir: "./var/cache"
+  log_dir: "./var/logs"
   report_dir: "./reports"
 
 observability:
@@ -25,7 +34,8 @@ observability:
 
 dataset:
   dataset_name: employees
-  # Optional path to the dataset registry YAML. If omitted, runtime uses datasets/registry.yml.
+  # Optional explicit dataset registry YAML. If omitted, runtime resolves
+  # runtime.datasets_root/registry.yaml (with temporary registry.yml fallback).
   registry_path: "./datasets/employees.registry.yaml"
   include_deleted: false
 
