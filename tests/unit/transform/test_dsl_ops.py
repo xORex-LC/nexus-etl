@@ -13,6 +13,7 @@ from connector.domain.dsl.ops import (
     op_filter_regex,
     op_first,
     op_format_mask,
+    op_is_blank,
     op_last,
     op_map_dict,
     op_parse_bool,
@@ -146,6 +147,15 @@ def test_op_contains_non_ascii_is_predicate_only() -> None:
     assert op_contains_non_ascii("Ivan") is False
     assert op_contains_non_ascii("Иван") is True
     assert op_contains_non_ascii(None) is None
+
+
+def test_op_is_blank_uses_tolerant_blank_contract() -> None:
+    assert op_is_blank(None) is True
+    assert op_is_blank("") is True
+    assert op_is_blank("   ") is True
+    assert op_is_blank("value") is False
+    assert op_is_blank(0) is False
+    assert op_is_blank(False) is False
 
 
 def test_op_to_bool_remains_strict() -> None:

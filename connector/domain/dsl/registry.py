@@ -89,6 +89,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_extract_patterns,
         op_regex_extract,
         op_contains_non_ascii,
+        op_is_blank,
         op_filter_regex,
         op_reject_regex,
         op_regex_replace,
@@ -138,6 +139,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("split_name", op_split_name)
     registry.register("regex_extract", op_regex_extract)
     registry.register("contains_non_ascii", op_contains_non_ascii)
+    registry.register("is_blank", op_is_blank)
     registry.register("filter_regex", op_filter_regex)
     registry.register("reject_regex", op_reject_regex)
     registry.register("regex_replace", op_regex_replace)

@@ -63,17 +63,6 @@ enrich:
       merge: recompute_always
       on_error: warn
 
-    - name: random_usr_org_tab_num
-      target: random_usr_org_tab_num
-      build:
-        source: personnel_number
-        ops:
-          - op: random_digits
-            args:
-              length: 8
-      merge: recompute_always
-      on_error: warn
-
     - name: user_name
       target: user_name
       build:
@@ -158,9 +147,17 @@ enrich:
     - name: usr_org_tab_num
       target: usr_org_tab_num
       build:
-        sources: [usr_org_tab_num, random_usr_org_tab_num]
+        source: usr_org_tab_num
+      when:
+        source: usr_org_tab_num
         ops:
-          - op: coalesce
+          - op: is_blank
+      then:
+        source: personnel_number
+        ops:
+          - op: random_digits
+            args:
+              length: 8
       allow_if:
         op: equals_path
         args:
@@ -189,7 +186,8 @@ enrich:
           include_deleted: true
       value_path: _id
       merge: fill_only_if_empty
-      on_error: warn
+      on_no_candidates: skip
+      on_provider_error: warn
 
     - name: email_from_cache
       target: email
@@ -202,7 +200,8 @@ enrich:
           include_deleted: true
       value_path: mail
       merge: fill_only_if_empty
-      on_error: warn
+      on_no_candidates: skip
+      on_provider_error: warn
 
     - name: phone_from_cache
       target: phone
@@ -215,7 +214,8 @@ enrich:
           include_deleted: true
       value_path: phone
       merge: fill_only_if_empty
-      on_error: warn
+      on_no_candidates: skip
+      on_provider_error: warn
 
     - name: is_logon_disable_from_cache
       target: is_logon_disable
@@ -228,7 +228,8 @@ enrich:
           include_deleted: true
       value_path: is_logon_disabled
       merge: fill_only_if_empty
-      on_error: warn
+      on_no_candidates: skip
+      on_provider_error: warn
 
     - name: usr_org_tab_num_from_cache
       target: usr_org_tab_num
@@ -241,7 +242,8 @@ enrich:
           include_deleted: true
       value_path: usr_org_tab_num
       merge: fill_only_if_empty
-      on_error: warn
+      on_no_candidates: skip
+      on_provider_error: warn
 
     - name: manager_id
       target: manager_id
@@ -254,7 +256,9 @@ enrich:
           include_deleted: true
       value_path: _ouid
       merge: never_override
-      on_error: warn
+      on_no_candidates: needs_resolve
+      on_ambiguous: needs_resolve
+      on_provider_error: warn
 
     - name: organization_id
       target: organization_id
@@ -267,4 +271,6 @@ enrich:
           include_deleted: true
       value_path: _ouid
       merge: recompute_always
-      on_error: warn
+      on_no_candidates: needs_resolve
+      on_ambiguous: needs_resolve
+      on_provider_error: warn

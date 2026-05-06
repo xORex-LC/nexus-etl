@@ -233,6 +233,35 @@ def test_compiler_orders_lookup_before_generate_for_cache_backed_generate_flows(
     assert [op.name for op in spec.operations] == ["target_id_from_cache", "target_id"]
 
 
+def test_compiler_maps_explicit_no_candidates_and_provider_error_policies() -> None:
+    raw = {
+        "dataset": "employees",
+        "enrich": {
+            "lookup": [
+                {
+                    "name": "email_from_cache",
+                    "target": "email",
+                    "source": "match_key",
+                    "provider": {
+                        "name": "cache.by_field",
+                        "args": {"dataset": "employees", "field": "match_key"},
+                    },
+                    "value_path": "mail",
+                    "on_no_candidates": "skip",
+                    "on_provider_error": "warn",
+                }
+            ],
+        },
+    }
+
+    spec = _build_enricher_spec(raw)
+    op = spec.operations[0]
+
+    assert op.strictness is not None
+    assert op.strictness.on_no_candidates == "SKIPPED"
+    assert op.strictness.on_provider_error == "WARNED"
+
+
 def test_lookup_rule_requires_provider_code() -> None:
     raw = {
         "dataset": "employees",

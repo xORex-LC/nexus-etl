@@ -392,29 +392,36 @@ class EnricherCore(Generic[T, D]):
             - retry_with_suffixes строится от base value, а не от предыдущей попытки;
             - then трактуется как append-stage.
         """
-        base_candidate = self._build_compiled_base_candidate(result, op)
-        if self._is_missing_candidate(base_candidate):
-            if op.missing_error_code:
-                return [], _EnrichOpError(
-                    code=op.missing_error_code,
-                    message="required value is missing",
-                    field=op.error_field,
-                )
-            return [], None
+        policy = op.conflict_policy
+        attempts = policy.attempts if policy is not None else max(1, op.max_attempts)
 
-        for candidate in self._iter_compiled_candidates(base_candidate, op):
-            current = self._apply_postprocess(candidate, op)
-            if self._is_missing_candidate(current):
-                continue
-            if op.exists is None:
-                return [self._generated_candidate(op, current)], None
+        for _ in range(attempts):
+            base_candidate = self._build_compiled_base_candidate(result, op)
+            if self._is_missing_candidate(base_candidate):
+                if op.missing_error_code:
+                    return [], _EnrichOpError(
+                        code=op.missing_error_code,
+                        message="required value is missing",
+                        field=op.error_field,
+                    )
+                return [], None
 
-            existing = op.exists(self.deps, current)
-            if existing is None:
-                return [self._generated_candidate(op, current)], None
+            for candidate in self._iter_compiled_candidates(base_candidate, op):
+                current = self._apply_postprocess(candidate, op)
+                if self._is_missing_candidate(current):
+                    continue
+                if op.exists is None:
+                    return [self._generated_candidate(op, current)], None
 
-            if op.allow_if and op.allow_if(result, existing):
-                return [self._generated_candidate(op, current)], None
+                existing = op.exists(self.deps, current)
+                if existing is None:
+                    return [self._generated_candidate(op, current)], None
+
+                if op.allow_if and op.allow_if(result, existing):
+                    return [self._generated_candidate(op, current)], None
+
+            if policy is not None:
+                break
 
         if op.conflict_error_code:
             return [], _EnrichOpError(
@@ -436,15 +443,14 @@ class EnricherCore(Generic[T, D]):
         else:
             return None
 
-        if self._is_missing_candidate(base_value):
-            return base_value
-
         if op.condition is None or not op.condition(result, self.deps):
             return base_value
 
         append_value = op.append_generator(result, self.deps) if op.append_generator else None
         if self._is_missing_candidate(append_value):
             return base_value
+        if self._is_missing_candidate(base_value):
+            return append_value
         return f"{base_value}{append_value}"
 
     def _iter_compiled_candidates(

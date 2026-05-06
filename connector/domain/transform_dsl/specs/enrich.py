@@ -82,6 +82,10 @@ class EnrichRule(DslBaseModel):
     sources: list[str] | None = None
     ops: list[OperationCall] = Field(default_factory=list)
     on_error: Literal["error", "warn"] = "error"
+    on_missing_key: Literal["skip", "warn", "error", "needs_resolve"] | None = None
+    on_no_candidates: Literal["skip", "warn", "error", "needs_resolve"] | None = None
+    on_ambiguous: Literal["skip", "warn", "error", "needs_resolve"] | None = None
+    on_provider_error: Literal["warn", "error"] | None = None
     merge: Literal[
         "recompute_always",
         "fill_only_if_empty",
