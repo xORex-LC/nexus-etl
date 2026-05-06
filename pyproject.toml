@@ -48,4 +48,4 @@ addopts = "-q -m 'not performance'"
 python_files = ["test_*.py"]
 
 [project.scripts]
-syncEmployees = "connector.main:app"
+nexus = "connector.main:app"

@@ -129,7 +129,7 @@ def create_command_logger(command_name: str, log_dir: str, run_id: str, log_leve
 
     log_file_path = str(Path(log_dir) / f"{command_name}_{run_id}.log")
 
-    logger_name = f"syncEmployees.{command_name}.{run_id}"
+    logger_name = f"nexus.{command_name}.{run_id}"
     logger = logging.getLogger(logger_name)
     logger.handlers.clear()
     logger.propagate = False

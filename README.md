@@ -24,7 +24,7 @@ pip install -e ".[dev]"
 Проверка CLI:
 
 ```bash
-syncEmployees --help
+nexus --help
 # или
 python -m connector.main --help
 ```
@@ -43,7 +43,7 @@ python -m connector.main --help
 
 ```bash
 cp examples/configs/config_example.yml ./config.yml
-syncEmployees --config ./config.yml --help
+nexus --config ./config.yml --help
 ```
 
 ### Минимально нужное для API-команд
@@ -80,14 +80,14 @@ export EMPLOYEES_SOURCE_PATH=/path/to/employees.csv
 ### Проверка подключения к target API
 
 ```bash
-syncEmployees --config ./config.yml check-api
+nexus --config ./config.yml check-api
 ```
 
 ### Обновление кэша
 
 ```bash
-syncEmployees --config ./config.yml cache refresh --dataset employees
-syncEmployees --config ./config.yml cache status --dataset employees
+nexus --config ./config.yml cache refresh --dataset employees
+nexus --config ./config.yml cache status --dataset employees
 ```
 
 Полезные override-параметры:
@@ -102,7 +102,7 @@ syncEmployees --config ./config.yml cache status --dataset employees
 ### Построение плана импорта
 
 ```bash
-syncEmployees --config ./config.yml import plan --dataset employees
+nexus --config ./config.yml import plan --dataset employees
 ```
 
 Результат плана пишется в `reports/` (путь логируется и попадает в report).
@@ -110,7 +110,7 @@ syncEmployees --config ./config.yml import plan --dataset employees
 ### Применение плана импорта
 
 ```bash
-syncEmployees --config ./config.yml import apply --plan ./reports/plan_import_<run_id>.json
+nexus --config ./config.yml import apply --plan ./reports/plan_import_<run_id>.json
 ```
 
 Полезные флаги:
@@ -123,11 +123,11 @@ syncEmployees --config ./config.yml import apply --plan ./reports/plan_import_<r
 ### Отладка отдельных стадий
 
 ```bash
-syncEmployees --config ./config.yml mapping --dataset employees
-syncEmployees --config ./config.yml normalize --dataset employees
-syncEmployees --config ./config.yml enrich --dataset employees
-syncEmployees --config ./config.yml match --dataset employees
-syncEmployees --config ./config.yml resolve --dataset employees
+nexus --config ./config.yml mapping --dataset employees
+nexus --config ./config.yml normalize --dataset employees
+nexus --config ./config.yml enrich --dataset employees
+nexus --config ./config.yml match --dataset employees
+nexus --config ./config.yml resolve --dataset employees
 ```
 
 ## Vault Management (unseal runtime lifecycle)
@@ -135,7 +135,7 @@ syncEmployees --config ./config.yml resolve --dataset employees
 CLI namespace для управления unseal-derived master wrapping key:
 
 ```bash
-syncEmployees --config ./config.yml vault-management --help
+nexus --config ./config.yml vault-management --help
 ```
 
 Поддерживаемые subcommands:
@@ -165,19 +165,19 @@ vault_management:
 
 ```bash
 # 1) Инициализация unseal metadata + startup probe (one-time)
-syncEmployees --config ./config.yml vault-management init --verify
+nexus --config ./config.yml vault-management init --verify
 
 # 2) Текущий статус metadata/DEK без unseal
-syncEmployees --config ./config.yml vault-management status
+nexus --config ./config.yml vault-management status
 
 # 3) Статус с проверкой unseal passphrase и probe
-syncEmployees --config ./config.yml vault-management status --verify
+nexus --config ./config.yml vault-management status --verify
 
 # 4) Ручная ротация passphrase (new derived key + rewrap всех DEK + verify)
-syncEmployees --config ./config.yml vault-management rotate --verify
+nexus --config ./config.yml vault-management rotate --verify
 
 # 5) Rewrap всех DEK текущим active derived key
-syncEmployees --config ./config.yml vault-management rewrap --verify
+nexus --config ./config.yml vault-management rewrap --verify
 ```
 
 ### Manual-operation security gate
