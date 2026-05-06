@@ -33,7 +33,7 @@
 - Хранение и выдача операций DSL по имени (реестр)
 - Последовательное применение цепочки операций к значению (движок)
 - Фиксация ошибок runtime как `DslIssue` с fail-fast семантикой
-- Предоставление 25 базовых операций для стадий mapping/normalize/enrich
+- Предоставление 45 базовых операций для стадий mapping/normalize/enrich/match/resolve
 
 **Расположение в кодовой базе**:
 - `connector/domain/dsl/engine.py` — движок трансформаций
@@ -51,7 +51,7 @@
 dsl/
 ├── registry.py    # 110 строк: OperationRegistry + register_core_ops()
 ├── engine.py      #  83 строки: TransformationEngine + EngineResult
-├── ops.py         # 477 строк: 25 функций-операций
+├── ops.py         # Базовые stage-agnostic операции
 └── helpers.py     #  26 строк: apply_ops() convenience wrapper
 ```
 
@@ -73,7 +73,7 @@ dsl/
 **Реализация в коде**:
 - **Registry**: `OperationRegistry` в `connector/domain/dsl/registry.py`
 - **Entry**: `Operation` (frozen dataclass: `name` + `func`)
-- **Bootstrap**: `register_core_ops()` регистрирует все 25 базовых операций
+- **Bootstrap**: `register_core_ops()` регистрирует все 45 базовых операций
 
 **Пример использования**:
 ```python
@@ -132,7 +132,7 @@ result = engine.apply(value, ops)
 ```
 [OperationCall]  (из specs/_base.py, re-export через specs/__init__.py)
        ↓
-[OperationRegistry] ← register_core_ops() ← [ops.py: 25 функций]
+[OperationRegistry] ← register_core_ops() ← [ops.py: 45 функций]
        ↓
 [TransformationEngine]
        ↓
@@ -158,7 +158,7 @@ result = engine.apply(value, ops)
 
 | Функция | Роль | Расположение |
 |---------|------|-------------|
-| `register_core_ops()` | Регистрирует 25 базовых операций в реестре | `registry.py` line 51 |
+| `register_core_ops()` | Регистрирует 45 базовых операций в реестре | `registry.py` line 51 |
 | `apply_ops()` | Convenience wrapper: engine.apply() → (value, issues) | `helpers.py` line 15 |
 
 ---
@@ -229,7 +229,7 @@ else:
 
 ## 🎯 DSL
 
-### Каталог операций (40 Core Operations)
+### Каталог операций (45 Core Operations)
 
 Все операции регистрируются в `register_core_ops()` (`registry.py` line 51).
 
@@ -265,9 +265,11 @@ ops:
 | `upper` | Приведение к верхнему регистру | str | `str \| None` | ✅ → None | — |
 | `title` | Title-case для каждого слова | str | `str \| None` | ✅ → None | — |
 | `capitalize` | Capitalize для всей строки | str | `str \| None` | ✅ → None | — |
+| `transliterate` | Детерминированная transliteration в ASCII через `anyascii` | str | `str \| None` | ✅ → None | — |
 | `concat` | Склейка списка значений в строку | list | `str \| None` | ✅ (пропускает None элементы) | `sep: str = ""` |
 | `split` | Разделение строки по разделителю | str | `list[str] \| None` | ✅ → None | `sep: str = ","` |
 | `split_name` | Разбор составного поля на части | str | `dict[str, str \| None] \| None` | ✅ → None | `fields`, `separator`, `allow_comma_format`, `max_parts` |
+| `substring` | Вырезать подстроку по `start/length` | str | `str \| None` | ✅ → None | `start`, `length` |
 
 **YAML пример**:
 ```yaml
@@ -275,8 +277,11 @@ ops:
   - op: trim                                     # "  hello  " → "hello"
   - op: lower                                    # "HELLO" → "hello"
   - op: title                                    # "иванов иван" → "Иванов Иван"
+  - op: transliterate                            # "Иван" → "Ivan"
   - op: concat
     args: { sep: " " }                           # ["John", "Doe"] → "John Doe"
+  - op: substring
+    args: { start: 0, length: 1 }                # "John" → "J"
   - op: split_name
     args: { fields: [last, first], separator: " " }  # "Doe John" → {last: "Doe", first: "John"}
 ```
@@ -304,6 +309,7 @@ ops:
 | `copy` | Возвращает значение без изменений | Any | Any | ✅ → None | — |
 | `const` | Возвращает константу из args | Any (игнорируется) | Any | — | `value: Any` (обязательный) |
 | `coalesce` | Первое непустое значение из списка | list/scalar | Any | ✅ → default | `default: Any = None` |
+| `pick_when_blank` | Для списка: вернуть первое непустое значение, иначе fallback | list/scalar | Any | ✅ | `fallback: Any = None` |
 
 **YAML пример**:
 ```yaml
@@ -313,6 +319,8 @@ ops:
     args: { value: "active" }                      # → "active" (всегда)
   - op: coalesce
     args: { default: "N/A" }                       # [None, "", "hello"] → "hello"
+  - op: pick_when_blank
+    args: { fallback: "unknown" }                  # [None, "", "hello"] → "hello"
 ```
 
 #### List / Collection (операции над коллекциями)
@@ -364,7 +372,9 @@ ops:
 |----|----------|------|-------|-----------|-----------|
 | `extract_patterns` | Извлечь значения по regex из набора строк | list/str | `dict[str, str \| None] \| None` | ✅ → None | `patterns`, `split_pattern`, `keyed_prefixes` |
 | `regex_extract` | Извлечь группу regex | str | `str \| None` | ✅ → None | `pattern: str`, `group: int = 0` |
+| `contains_non_ascii` | Проверить, есть ли в строке non-ASCII символы | str | `bool` | ✅ (`None` → `False`) | — |
 | `digits_only` | Оставить только цифры | str | `str \| None` | ✅ → None | — |
+| `random_digits` | Сгенерировать строку из случайных цифр | Any (игнорируется) | `str` | — | `length: int` |
 | `format_mask` | Отформатировать строку по маске | str | `str \| None` | ✅ → None | `mask`, `placeholder: str = "#"` |
 | `regex_replace` | Заменить по regex | str | `str \| None` | ✅ → None | `pattern: str`, `repl: str` |
 
@@ -373,6 +383,9 @@ ops:
 ops:
   - op: regex_extract
     args: { pattern: "\\d+", group: 0 }            # "emp-42-test" → "42"
+  - op: contains_non_ascii                         # "Иван" → true
+  - op: random_digits
+    args: { length: 8 }                            # → "48392015"
   - op: regex_replace
     args: { pattern: "[^\\d]", repl: "" }           # "emp-42-test" → "42"
   - op: extract_patterns
@@ -431,7 +444,7 @@ ops:
 | Метод | Строк | Сложность | Назначение |
 |-------|-------|-----------|------------|
 | `TransformationEngine.apply()` | 25 | O(k) | Последовательное применение k операций к значению |
-| `register_core_ops()` | 59 | O(1) | Регистрация 25 базовых операций |
+| `register_core_ops()` | 59 | O(1) | Регистрация 45 базовых операций |
 | `op_extract_patterns()` | 43 | O(c×t×p) | Извлечение паттернов из набора строк |
 | `op_split_name()` | 32 | O(n) | Разбор составного имени на поля |
 | `op_build_delimited_key()` | 35 | O(n) | Построение составного ключа |
@@ -528,7 +541,7 @@ EngineResult(value=final, issues=())
 def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
 ```
 
-**Назначение**: Зарегистрировать 25 базовых операций DSL в переданном реестре.
+**Назначение**: Зарегистрировать 45 базовых операций DSL в переданном реестре.
 
 **Алгоритм**: Последовательно импортирует все функции из `ops.py` и регистрирует каждую под именем:
 
@@ -878,3 +891,4 @@ result = engine.apply("hello", [
 |------|-----------|-------|
 | 2026-02-12 | Создан документ | xORex-LC |
 | 2026-05-05 | Обновлён каталог shared DSL operations: добавлены list-oriented ops, `parse_bool`, string case ops и formatting helpers | xORex-LC |
+| 2026-05-06 | Документ синхронизирован с enrich/source_2 изменениями: добавлены `transliterate`, `substring`, `contains_non_ascii`, `random_digits`, `pick_when_blank`; обновлён размер core registry до 45 операций | xORex-LC |

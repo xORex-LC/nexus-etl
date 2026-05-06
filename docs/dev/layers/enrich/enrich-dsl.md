@@ -83,8 +83,8 @@ EnricherDsl.compile(spec)
   └── build_enricher_spec_from_dsl()
         │
         ├── 1. _build_match_key_operation()   → run_when_errors=ALWAYS, первая
-        ├── 2. _build_generate_operation(x N) → secret: prefix injection
-        └── 3. _build_lookup_operation(x N)   → provider wrapping
+        ├── 2. _build_lookup_operation(x N)   → provider wrapping
+        └── 3. _build_generate_operation(x N) → secret: prefix injection, conditional build
         │
         ▼
 EnricherSpec (frozen compiled)
@@ -177,6 +177,9 @@ if target in secrets_spec.fields:
 class EnrichRule(DslBaseModel):
     name: str
     target: str
+    build: SourceOpsBlock | None = None
+    when: EnrichConditionalBlock | None = None
+    then: EnrichConditionalBlock | None = None
     provider: ProviderRef | None = None
     value_path: str | None = None
     source: str | None = None
@@ -186,6 +189,7 @@ class EnrichRule(DslBaseModel):
     merge: Literal[...] | None = None
     exists: ExistsRef | None = None
     allow_if: OperationCall | str | None = None
+    on_conflict: EnrichConflictPolicy | None = None
     max_attempts: int | None = None
     run_when_errors: Literal["never", "if_any", "always"] | None = None
     missing_error_code: str | None = None
@@ -199,6 +203,9 @@ class EnrichRule(DslBaseModel):
 |------|----------------|----------|
 | `name` | Да | Уникальный идентификатор операции. Используется в `enrich_events` и диагностике |
 | `target` | Да | Поле назначения в `row` (или `"match_key"` для match_key операции) |
+| `build` | Нет | Базовый source/sources + ops pipeline для `generate` |
+| `when` | Нет | Predicate block для условного append в `generate` |
+| `then` | Нет | Append block; выполняется только если `when == true` |
 | `provider` | Нет | Ссылка на провайдер (обязателен для `lookup` правил) |
 | `value_path` | Нет | Путь к значению в ответе провайдера (`"_id"`, `"org_code"`) |
 | `source` | Нет | Имя поля из `row` — входное значение для ops/provider |
@@ -208,6 +215,7 @@ class EnrichRule(DslBaseModel):
 | `merge` | Нет | Политика слияния |
 | `exists` | Нет | Проверка уникальности (только для generate) |
 | `allow_if` | Нет | Условие принятия при конфликте exists |
+| `on_conflict` | Нет | enrich-specific политика `error` / `retry_with_suffixes` |
 | `max_attempts` | Нет (`3` при compile) | Количество попыток при конфликте uniqueness |
 | `run_when_errors` | Нет (`"never"`) | Политика запуска при наличии ошибок |
 | `missing_error_code` | Нет | Кастомный код ошибки при пустом результате |
@@ -216,28 +224,45 @@ class EnrichRule(DslBaseModel):
 
 ### Два типа правил: `generate` vs `lookup`
 
-**`generate` правила** — генерируют значение через ops-цепочку с проверкой уникальности:
+**`generate` правила** — генерируют значение через ops-цепочку или через расширенный `build/when/then` контракт с проверкой уникальности:
 
 ```yaml
 generate:
-  - name: target_id
-    target: target_id
-    source: target_id            # Входное значение для ops
-    ops:
-      - op: trim
-      - op: default_uuid         # Если пусто — генерировать UUID
+  - name: user_name
+    target: user_name
+    build:
+      source: first_name
+      ops:
+        - op: trim
+        - op: transliterate
+    when:
+      source: first_name
+      ops:
+        - op: contains_non_ascii
+    then:
+      sources: [last_name, middle_name]
+      ops:
+        - op: map_each
+          args:
+            ops:
+              - op: transliterate
+              - op: substring
+                args: { start: 0, length: 1 }
+        - op: compact
+        - op: concat
     exists:                      # Проверить что значение уникально
       provider:
         name: cache.exists_by_field
         args:
           dataset: employees
-          field: _id
-          include_deleted: true
-    max_attempts: 3
-    merge: recompute_always
-    missing_error_code: TARGET_ID_MISSING
-    conflict_error_code: TARGET_ID_CONFLICT
-    error_field: target_id
+          field: user_name
+    allow_if: equals_path
+    on_conflict:
+      strategy: retry_with_suffixes
+      suffixes: ["_2", "_3"]
+    merge: fill_only_if_empty
+    conflict_error_code: USER_NAME_CONFLICT
+    error_field: user_name
 ```
 
 **`lookup` правила** — запрашивают значения из внешних источников:
@@ -260,6 +285,20 @@ lookup:
 **Ключевое отличие:**
 - `generate`: `ops` применяются к `source`-значению → генерируют новое; `exists` проверяет уникальность
 - `lookup`: `ops` применяются к ключу поиска; провайдер возвращает кандидатов; `value_path` извлекает нужное поле
+
+### `build / when / then / on_conflict` — новый generate-контракт
+
+- `build` формирует **base value**.
+- `when` вычисляет predicate по `source/sources + ops`.
+- `then` формирует **append value** и не заменяет base value.
+- итоговый candidate для compiled-пути: `base_value + append_value`.
+- `on_conflict.retry_with_suffixes` пробует `base`, затем `base + suffix` для каждого suffix.
+
+**Ограничения первой версии:**
+- один `when` и один `then` на правило;
+- `then` нельзя использовать без `when`;
+- `then` не получает прямой доступ к `base_value`;
+- `lookup` не поддерживает `build/when/then/on_conflict`.
 
 ### `allow_if` — условное принятие при конфликте exists
 
@@ -571,15 +610,15 @@ def _expand_enrich_templates(raw):
        missing_error_code="MATCH_KEY_MISSING",
    )
 
-4. secrets_spec = enrich_spec.enrich.secrets or SecretsSpec()
+4. for rule in enrich.lookup:
+   operations.append(_build_lookup_operation(rule, engine, providers))
+
+5. secrets_spec = enrich_spec.enrich.secrets or SecretsSpec()
    for rule in enrich.generate:
        target = rule.target
        if target in secrets_spec.fields:
            target = f"secret:{target}"         # ← secret: prefix injection
        operations.append(_build_generate_operation(rule, engine, secrets_spec, providers))
-
-5. for rule in enrich.lookup:
-   operations.append(_build_lookup_operation(rule, engine, providers))
 
 6. return EnricherSpec(
        operations=tuple(operations),
@@ -591,7 +630,13 @@ def _expand_enrich_templates(raw):
 
 **Файл:** `connector/domain/transform_dsl/compilers/enrich.py`
 
-Создаёт callable `generator(result, deps)` из цепочки ops:
+Создаёт либо legacy `generator(result, deps)` из цепочки ops, либо compiled generate-поля:
+- `base_generator`
+- `condition`
+- `append_generator`
+- `conflict_policy`
+
+Legacy path:
 
 ```python
 def _build_rule_generator(rule, engine):
@@ -603,6 +648,13 @@ def _build_rule_generator(rule, engine):
             raise ValueError(eng_result.issues[0].message)
         return eng_result.value
     return _generator
+```
+
+Compiled path использует helper-строители:
+
+```python
+def _build_source_ops_generator(block, engine): ...
+def _build_source_ops_predicate(block, engine): ...
 ```
 
 Callable `exists(deps, candidate)` для проверки уникальности:
@@ -971,13 +1023,13 @@ lookup.org_name:
 | Деталь | Описание |
 |--------|----------|
 | match_key всегда первая | Компилируется первой, `run_when_errors=ALWAYS` — выполняется даже при ошибках |
-| Порядок: generate → lookup | Сначала generate (генерация), потом lookup (поиск) — важно если lookup ссылается на generated поля |
+| Порядок: lookup → generate | Сначала lookup, затем generate — generate может опираться на cache-backed значения, полученные lookup-правилами |
 | `secret:` prefix — compile-time | Присваивается при компиляции, не при runtime — менять только через `secrets.fields` в YAML |
 | `exists` только для generate | `lookup`-правила не поддерживают `exists` |
 | `max_attempts` дефолт | Если не задан — компилятор ставит дефолт из `EnrichmentOperation` = 3 |
 | template vs preset | `lookup_templates` и `lookup_presets` — синонимы; `template` и `preset` в правиле тоже синонимы |
 | ops в lookup vs generate | В lookup `ops` применяются к ключу поиска; в generate — к source-значению для генерации нового |
-| `fail_on_unknown_ops` | Проверяет ops в правилах И op в `allow_if` — обе позиции |
+| `fail_on_unknown_ops` | Проверяет ops в правилах, `build/when/then` и op в `allow_if` |
 
 ---
 
@@ -1048,3 +1100,4 @@ lookup.org_name:
 |------|-----------|-------|
 | 2026-03-01 | Создан документ — DSL-спецификации enrich-слоя | xORex-LC |
 | 2026-05-05 | Обновлены примеры registry wiring под текущий `source_2` layout employees dataset | xORex-LC |
+| 2026-05-06 | Документ синхронизирован с новым generate-контрактом: добавлены `build/when/then/on_conflict`, обновлён порядок compile/runtime (`lookup → generate`) и приведены примеры `source_2` enrich-правил | xORex-LC |
