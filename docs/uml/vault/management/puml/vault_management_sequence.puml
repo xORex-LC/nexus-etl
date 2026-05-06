@@ -20,7 +20,7 @@ participant "SqliteVaultRepository" as Repo
 participant "SecretCipherPort\n(FernetEnvelopeCipher)" as Cipher
 participant "VaultStartupGuardPostVerifier" as Verify
 
-Operator -> CLI : syncEmployees vault-management rotate --verify
+Operator -> CLI : nexus vault-management rotate --verify
 CLI -> Handler : rotate_handler(ctx, opts)
 Handler -> Gate : verify_manual_access(non_interactive)
 Gate --> Handler : ok
