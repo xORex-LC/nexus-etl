@@ -58,6 +58,14 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
 
+    source_spec_path = employees_source_dir / "source.yaml"
+    source_spec_payload = yaml.safe_load(source_spec_path.read_text(encoding="utf-8"))
+    source_spec_payload["source"]["location"] = "employees.csv"
+    source_spec_path.write_text(
+        yaml.safe_dump(source_spec_payload, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
     registry_payload = yaml.safe_load((repo_datasets / "employees.registry.yaml").read_text(encoding="utf-8"))
 
     departments_name = "runtime_units"
@@ -91,7 +99,7 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
     for spec_src, csv_src, dict_name, spec_filename, csv_filename in dictionary_blueprints:
         spec_payload = yaml.safe_load(spec_src.read_text(encoding="utf-8"))
         spec_payload["dictionary"] = dict_name
-        spec_payload["source"]["location"] = f"../dictionaries/{csv_filename}"
+        spec_payload["source"]["location"] = csv_filename
 
         spec_model = DictionarySpec.model_validate(spec_payload)
         csv_bytes = csv_src.read_bytes()
@@ -103,7 +111,7 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
         (dictionary_sources_dir / csv_filename).write_bytes(csv_bytes)
 
         manifest_items[dict_name] = {
-            "csv_path": f"../dictionaries/{csv_filename}",
+            "csv_path": csv_filename,
             "content_sha256": build_content_sha256_bytes(csv_bytes),
             "schema_hash": build_dictionary_schema_hash(spec_model),
             "row_count": sum(1 for _ in csv_bytes.decode("utf-8-sig").splitlines()[1:] if _.strip()),
@@ -111,11 +119,11 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
             "owner": "tests",
         }
         registry_items[dict_name] = {
-            "spec": f"dictionaries/{spec_filename}",
+            "spec": spec_filename,
             "enabled": True,
         }
 
-    registry_payload["dictionaries"]["manifest"] = f"dictionaries/{manifest_name}"
+    registry_payload["dictionaries"]["manifest"] = manifest_name
     registry_payload["dictionaries"]["items"] = registry_items
 
     (datasets_root / "employees.registry.yaml").write_text(

@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +18,7 @@ from connector.domain.dsl.loader._common import (
     _load_spec_from_path,
     _read_yaml_or_raise,
     _resolve_dataset_stage_path,
+    _resolve_source_data_path,
     _resolve_source_projection_path,
     _validate_spec_or_raise,
 )
@@ -83,22 +83,20 @@ def resolve_source_location(spec: SourceSpec) -> str:
     Назначение:
         Разрешить путь/локацию источника из source-spec.
 
-    Алгоритм:
-        - Если задан `location_ref`, берём значение из env.
-        - Если env-переменная пуста, fallback на `location`.
-        - Если итоговое значение пустое, бросаем DslLoadError.
+    Контракт:
+        - file-source использует logical/relative ref из `source.location`;
+        - relative ref резолвится через runtime `source_data_root`;
+        - absolute path допускается как explicit escape hatch;
+        - process ENV больше не участвует в runtime path resolution.
     """
-    ref = spec.source.location_ref
-    if ref:
-        ref_value = os.getenv(ref)
-        if ref_value and ref_value.strip():
-            return ref_value.strip()
     location = spec.source.location
     if location and location.strip():
+        if spec.source.type == "file":
+            return str(_resolve_source_data_path(location))
         return location.strip()
     raise DslLoadError(
         code="SOURCE_DSL_LOCATION_INVALID",
-        message="source location is not configured (location_ref/location)",
+        message="source location is not configured",
         details={"dataset": spec.dataset},
     )
 

@@ -159,14 +159,14 @@ def load_enabled_dictionary_specs_for_runtime() -> dict[str, DictionarySpec]:
 def load_dictionary_manifest_spec_for_registry(
     registry: DictionaryRegistrySpec,
     *,
-    datasets_root: str | Path | None = None,
+    dictionary_specs_root: str | Path | None = None,
 ) -> DictionaryManifestSpec:
     """
     Назначение:
         Загрузить manifest по пути, объявленному в dictionary registry.
     """
-    if datasets_root is not None:
-        root = Path(datasets_root)
+    if dictionary_specs_root is not None:
+        root = Path(dictionary_specs_root)
         return load_dictionary_manifest_spec(root / registry.manifest)
     return load_dictionary_manifest_spec(_resolve_dictionary_manifest_path(registry.manifest))
 

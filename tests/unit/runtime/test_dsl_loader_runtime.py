@@ -24,8 +24,10 @@ def _write(path: Path, content: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_loader_runtime_state() -> None:
+    configure_registry_path(None)
     configure_runtime_paths(None)
     yield
+    configure_registry_path(None)
     configure_runtime_paths(None)
 
 

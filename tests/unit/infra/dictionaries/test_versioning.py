@@ -15,7 +15,7 @@ def _spec() -> DictionarySpec:
             "dictionary": "organizations",
             "source": {
                 "format": "csv",
-                "location": "dictionaries/organizations.csv",
+                "location": "organizations.csv",
                 "csv": {"null_values": ["NULL"]},
             },
             "schema": {

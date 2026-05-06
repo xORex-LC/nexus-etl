@@ -41,3 +41,4 @@ datasets/dictionaries/*.dictionary.yaml
 !datasets/target.yaml
 !datasets/dictionaries/manifest.yaml
 !datasets/dictionaries/dictionary.yaml
+var/*

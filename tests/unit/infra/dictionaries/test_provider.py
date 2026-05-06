@@ -18,7 +18,7 @@ def _spec(*, allow_duplicates: bool = False) -> DictionarySpec:
             "dictionary": "organizations",
             "source": {
                 "format": "csv",
-                "location": "dictionaries/organizations.csv",
+                "location": "organizations.csv",
                 "csv": {
                     "delimiter": ",",
                     "has_header": True,

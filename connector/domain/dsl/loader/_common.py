@@ -120,6 +120,10 @@ def _resolve_source_projection_path(ref: str | Path) -> Path:
     )
 
 
+def _resolve_source_data_path(ref: str | Path) -> Path:
+    return _runtime_paths().resolve_source_data_ref(ref)
+
+
 def _resolve_target_projection_path(ref: str | Path) -> Path:
     if _registry_path_override is not None:
         return _resolve_ref_against_active_registry(ref)
@@ -130,8 +134,6 @@ def _resolve_target_projection_path(ref: str | Path) -> Path:
 
 
 def _resolve_dictionary_spec_path(ref: str | Path) -> Path:
-    if _registry_path_override is not None:
-        return _resolve_ref_against_active_registry(ref)
     return _resolve_with_legacy_datasets_fallback(
         primary=_runtime_paths().resolve_dictionary_spec_ref(ref),
         legacy_ref=ref,
@@ -139,8 +141,6 @@ def _resolve_dictionary_spec_path(ref: str | Path) -> Path:
 
 
 def _resolve_dictionary_manifest_path(ref: str | Path) -> Path:
-    if _registry_path_override is not None:
-        return _resolve_ref_against_active_registry(ref)
     return _resolve_with_legacy_datasets_fallback(
         primary=_runtime_paths().resolve_dictionary_manifest_ref(ref),
         legacy_ref=ref,

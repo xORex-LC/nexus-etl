@@ -57,6 +57,7 @@ def test_load_runtime_roots_from_yaml(tmp_path: object, monkeypatch: pytest.Monk
 
     assert result.app_config.runtime.runtime_root == "/opt/nexus"
     assert result.app_config.runtime.dictionary_data_root == "./dictionaries"
+    assert result.app_config.runtime.source_data_root == "./examples/sources"
     assert result.source_trace["runtime.runtime_root"] == "config"
 
 

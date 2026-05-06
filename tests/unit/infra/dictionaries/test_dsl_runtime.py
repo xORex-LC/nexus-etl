@@ -18,7 +18,7 @@ def _dictionary_spec() -> DictionarySpec:
             "dictionary": "organizations",
             "source": {
                 "format": "csv",
-                "location": "dictionaries/organizations.csv",
+                "location": "organizations.csv",
                 "csv": {
                     "delimiter": ",",
                     "has_header": True,
@@ -90,7 +90,7 @@ def test_build_dictionary_dsl_runtime_raises_on_manifest_missing_entry() -> None
 
 def test_build_dictionary_dsl_runtime_raises_on_manifest_csv_path_mismatch() -> None:
     spec = _dictionary_spec()
-    manifest = _manifest_for(spec, csv_path="dictionaries/other.csv")
+    manifest = _manifest_for(spec, csv_path="other.csv")
 
     with pytest.raises(DslLoadError) as exc_info:
         build_dictionary_dsl_runtime(specs={"organizations": spec}, manifest_spec=manifest)

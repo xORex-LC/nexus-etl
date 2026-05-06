@@ -15,7 +15,7 @@ def _valid_dictionary_spec_payload() -> dict:
         "dictionary": "organizations",
         "source": {
             "format": "csv",
-            "location": "dictionaries/organizations.csv",
+            "location": "organizations.csv",
             "csv": {
                 "delimiter": ",",
                 "has_header": True,
@@ -111,13 +111,13 @@ def test_dictionary_registry_items_can_be_empty() -> None:
     spec = DictionaryRegistrySpec.model_validate(
         {
             "version": 1,
-            "manifest": "dictionaries/manifest.custom.yaml",
+            "manifest": "manifest.custom.yaml",
             "items": {},
         }
     )
 
     assert spec.items == {}
-    assert spec.manifest == "dictionaries/manifest.custom.yaml"
+    assert spec.manifest == "manifest.custom.yaml"
 
 
 def test_dictionary_manifest_items_can_be_empty() -> None:

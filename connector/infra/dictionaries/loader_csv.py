@@ -17,8 +17,8 @@ from typing import Callable
 
 import polars as pl
 
+from connector.common.runtime_paths import get_runtime_paths
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader._common import _datasets_root
 from connector.infra.dictionaries.backends.polars_backend import PolarsDictionaryBackend
 from connector.infra.dictionaries.dsl_runtime import CompiledDictionarySpec
 from connector.infra.dictionaries.versioning import DictionaryVersionInfo
@@ -61,10 +61,13 @@ class CsvDictionaryLoader:
     def __init__(
         self,
         *,
-        datasets_root: str | Path | None = None,
+        dictionary_data_root: str | Path | None = None,
         on_dictionary_loaded: DictionaryCsvLoadCallback | None = None,
     ) -> None:
-        self._datasets_root = Path(datasets_root) if datasets_root is not None else _datasets_root()
+        if dictionary_data_root is None:
+            self._dictionary_data_root = get_runtime_paths().dictionary_data_root
+        else:
+            self._dictionary_data_root = Path(dictionary_data_root).expanduser().resolve()
         self._on_dictionary_loaded = on_dictionary_loaded
 
     def load_into(self, backend: PolarsDictionaryBackend) -> None:
@@ -73,7 +76,8 @@ class CsvDictionaryLoader:
             Прочитать все CSV snapshot'ы из runtime bundle и загрузить их в backend.
 
         Algorithm:
-            1) Для каждого compiled dictionary читается raw bytes из `datasets_root/source.location`.
+            1) Для каждого compiled dictionary читается raw bytes из
+               `dictionary_data_root/source.location`.
             2) Проверяется `content_sha256` (manifest -> факт).
             3) CSV декодируется с BOM-safe поведением и парсится в `polars.DataFrame`.
             4) Проверяется `row_count` against manifest.
@@ -95,7 +99,7 @@ class CsvDictionaryLoader:
             return
 
         compiled = backend.bundle.get(dict_name)
-        file_path = self._datasets_root / compiled.source_location
+        file_path = (self._dictionary_data_root / compiled.source_data_ref).resolve()
         raw_bytes = self._read_file_bytes_or_raise(file_path, dict_name=dict_name)
 
         content_sha256 = build_content_sha256_bytes(raw_bytes)

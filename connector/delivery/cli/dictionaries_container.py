@@ -18,7 +18,10 @@ from typing import Iterator
 import yaml
 from dependency_injector import containers, providers
 
-from connector.common.runtime_paths import resolve_registry_path_for_datasets_root
+from connector.common.runtime_paths import (
+    get_runtime_paths,
+    resolve_registry_path_for_datasets_root,
+)
 from connector.config.models import DictionaryConfig
 from connector.domain.dictionary_dsl import (
     DictionaryRegistrySpec,
@@ -30,6 +33,7 @@ from connector.domain.dictionary_dsl import (
     load_enabled_dictionary_specs_for_runtime,
     load_optional_dictionary_registry_spec_for_runtime,
 )
+from connector.domain.dsl.loader import registry_path as active_dsl_registry_path
 from connector.domain.dsl.issues import DslLoadError
 from connector.infra.dictionaries.backends.polars_backend import PolarsDictionaryBackend
 from connector.infra.dictionaries.dsl_runtime import (
@@ -41,15 +45,16 @@ from connector.infra.dictionaries.provider import PolarsDictionaryProvider
 from connector.infra.dictionaries.telemetry import DictionaryTelemetry
 
 
-def _normalize_datasets_root(datasets_root: str | Path | None) -> Path | None:
-    if datasets_root is None:
+def _normalize_optional_path(path: str | Path | None) -> Path | None:
+    if path is None:
         return None
-    return Path(datasets_root)
+    return Path(path).expanduser().resolve()
 
 
 def _load_runtime_bundle_optional(
     *,
-    datasets_root: str | Path | None,
+    registry_path: str | Path | None,
+    dictionary_specs_root: str | Path | None,
 ) -> DictionaryDslRuntimeBundle | None:
     """
     Назначение:
@@ -60,9 +65,10 @@ def _load_runtime_bundle_optional(
         - Пустой registry (`items:{}` / all disabled) -> валидный empty runtime bundle.
         - Ошибки DSL/manifest/compile не подавляются (`DslLoadError` fail-fast).
     """
-    root = _normalize_datasets_root(datasets_root)
+    registry_override = _normalize_optional_path(registry_path)
+    dictionary_specs_root_override = _normalize_optional_path(dictionary_specs_root)
 
-    if root is None:
+    if registry_override is None and dictionary_specs_root_override is None:
         registry = load_optional_dictionary_registry_spec_for_runtime()
         if registry is None:
             return None
@@ -70,13 +76,20 @@ def _load_runtime_bundle_optional(
         manifest = load_dictionary_manifest_spec_for_registry(registry)
         return build_dictionary_dsl_runtime(specs=specs, manifest_spec=manifest)
 
-    registry_path = resolve_registry_path_for_datasets_root(root)
-    if not _has_dictionaries_section_or_raise(registry_path):
+    active_registry_path = registry_override
+    if active_registry_path is None:
+        active_registry_path = active_dsl_registry_path()
+
+    if not _has_dictionaries_section_or_raise(active_registry_path):
         return None
 
-    registry = load_dictionary_registry_spec(registry_path)
-    specs = _load_enabled_specs_from_registry(registry=registry, datasets_root=root)
-    manifest = load_dictionary_manifest_spec(root / registry.manifest)
+    specs_root = dictionary_specs_root_override
+    if specs_root is None:
+        specs_root = get_runtime_paths().dictionary_specs_root
+
+    registry = load_dictionary_registry_spec(active_registry_path)
+    specs = _load_enabled_specs_from_registry(registry=registry, dictionary_specs_root=specs_root)
+    manifest = load_dictionary_manifest_spec(specs_root / registry.manifest)
     return build_dictionary_dsl_runtime(specs=specs, manifest_spec=manifest)
 
 
@@ -109,11 +122,11 @@ def _has_dictionaries_section_or_raise(registry_path: Path) -> bool:
 def _load_enabled_specs_from_registry(
     *,
     registry: DictionaryRegistrySpec,
-    datasets_root: Path,
+    dictionary_specs_root: Path,
 ) -> dict[str, DictionarySpec]:
     """
     Назначение:
-        Загрузить enabled dictionary spec'и для кастомного `datasets_root` (tests/fixtures).
+        Загрузить enabled dictionary spec'и для кастомного `dictionary_specs_root`.
     """
     specs: dict[str, DictionarySpec] = {}
     seen_declared_names: set[str] = set()
@@ -121,7 +134,7 @@ def _load_enabled_specs_from_registry(
     for dict_name, entry in registry.items.items():
         if not entry.enabled:
             continue
-        spec_path = datasets_root / entry.spec
+        spec_path = dictionary_specs_root / entry.spec
         spec = load_dictionary_spec(spec_path)
         if spec.dictionary != dict_name:
             raise DslLoadError(
@@ -145,11 +158,11 @@ def _load_enabled_specs_from_registry(
 
 def _build_csv_loader(
     *,
-    datasets_root: str | Path | None,
+    dictionary_data_root: str | Path | None,
     telemetry: DictionaryTelemetry,
 ) -> CsvDictionaryLoader:
     return CsvDictionaryLoader(
-        datasets_root=datasets_root,
+        dictionary_data_root=dictionary_data_root,
         on_dictionary_loaded=telemetry.record_dictionary_loaded,
     )
 
@@ -241,11 +254,14 @@ class DictionaryContainer(containers.DeclarativeContainer):
     """
 
     settings = providers.Dependency(instance_of=DictionaryConfig)
-    datasets_root = providers.Dependency()
+    registry_path = providers.Dependency()
+    dictionary_specs_root = providers.Dependency()
+    dictionary_data_root = providers.Dependency()
 
     dsl_runtime_bundle = providers.Singleton(
         _load_runtime_bundle_optional,
-        datasets_root=datasets_root,
+        registry_path=registry_path,
+        dictionary_specs_root=dictionary_specs_root,
     )
 
     telemetry = providers.Singleton(
@@ -255,7 +271,7 @@ class DictionaryContainer(containers.DeclarativeContainer):
 
     csv_loader = providers.Singleton(
         _build_csv_loader,
-        datasets_root=datasets_root,
+        dictionary_data_root=dictionary_data_root,
         telemetry=telemetry,
     )
 

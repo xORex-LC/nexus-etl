@@ -16,6 +16,7 @@ runtime:
   datasets_root: "./datasets"
   dictionary_specs_root: "./etc/dictionaries"
   dictionary_data_root: "./dictionaries"
+  source_data_root: "./examples/sources"
   source_projection_root: "./etc/source-projection"
   target_projection_root: "./etc/target-projection"
 

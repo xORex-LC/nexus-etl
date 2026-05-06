@@ -13,6 +13,11 @@ from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRe
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.main import app
+from tests.runtime_test_support import (
+    prepare_tracked_employees_source_file,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
@@ -148,7 +153,18 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
     initialize_test_vault(cache_dir)
+    runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
+    roots = tracked_employees_runtime_roots()
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        source_data_root=runtime_csv_path.parent,
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
     args = [
+        "--config",
+        str(config_path),
         "--log-dir",
         str(log_dir),
         "--report-dir",
@@ -160,14 +176,7 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
         "import",
         "plan",
     ]
-    result = runner.invoke(
-        app,
-        args,
-        env={
-            "EMPLOYEES_SOURCE_PATH": str(csv_path),
-        },
-        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
-    )
+    result = runner.invoke(app, args, input=f"{TEST_UNSEAL_PASSPHRASE}\n")
     plan_path = report_dir / f"plan_import_{run_id}.json"
     return result.exit_code, plan_path
 

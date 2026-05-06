@@ -24,7 +24,13 @@ class IReportRenderer(Protocol):
         Контракт рендеринга финального report envelope.
     """
 
-    def render(self, *, envelope: ReportEnvelope, report_dir: str, file_base_name: str) -> str: ...
+    def render(
+        self,
+        *,
+        envelope: ReportEnvelope,
+        report_dir: str | Path,
+        file_base_name: str,
+    ) -> str: ...
 
 
 class JsonReportRenderer(IReportRenderer):
@@ -33,9 +39,16 @@ class JsonReportRenderer(IReportRenderer):
         JSON-рендерер итогового отчёта.
     """
 
-    def render(self, *, envelope: ReportEnvelope, report_dir: str, file_base_name: str) -> str:
-        Path(report_dir).mkdir(parents=True, exist_ok=True)
-        report_path = str(Path(report_dir) / f"{file_base_name}.json")
+    def render(
+        self,
+        *,
+        envelope: ReportEnvelope,
+        report_dir: str | Path,
+        file_base_name: str,
+    ) -> str:
+        report_dir_path = Path(report_dir)
+        report_dir_path.mkdir(parents=True, exist_ok=True)
+        report_path = str(report_dir_path / f"{file_base_name}.json")
         payload = asdict_envelope(envelope)
         with open(report_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)

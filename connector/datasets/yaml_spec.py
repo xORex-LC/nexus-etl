@@ -62,7 +62,7 @@ class YamlDatasetSpec:
 
         Контракт:
             - не читает source YAML повторно;
-            - path resolution выполняется runtime-safe через `location_ref/location`.
+            - path resolution выполняется runtime-safe через `source.location`.
         """
         source_spec = self._artifacts.source_spec
         if source_spec.source.type != "file" or source_spec.source.format != "csv":

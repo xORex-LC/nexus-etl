@@ -11,6 +11,11 @@ from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 
 from connector.main import app
+from tests.runtime_test_support import (
+    prepare_tracked_employees_source_file,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
@@ -45,19 +50,30 @@ def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) ->
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[str, str] | None = None):
+def run_enrich(
+    tmp_path: Path,
+    csv_path: Path,
+    run_id: str = "run-1",
+    env: dict[str, str] | None = None,
+):
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
     initialize_test_vault(cache_dir)
-    merged_env = {
-        "EMPLOYEES_SOURCE_PATH": str(csv_path),
-    }
-    if env:
-        merged_env.update(env)
+    runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
+    roots = tracked_employees_runtime_roots()
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        source_data_root=runtime_csv_path.parent,
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(config_path),
             "--log-dir",
             str(log_dir),
             "--report-dir",
@@ -68,7 +84,7 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
             run_id,
             "enrich",
         ],
-        env=merged_env,
+        env=env,
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     report_path = report_dir / f"report_enrich_{run_id}.json"

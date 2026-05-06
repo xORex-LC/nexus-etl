@@ -11,8 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from connector.config.models import AppConfig
+from connector.common.runtime_paths import RuntimePathOverrides
 from connector.datasets.registry import get_spec
 from connector.delivery.cli.containers import PipelineContainer
+from connector.domain.dsl.loader import configure_runtime_paths
 from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
@@ -23,6 +25,7 @@ from connector.infra.cache.roles import build_sqlite_cache_role_ports
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.infra.sqlite.config import SqliteDbConfig
 from connector.infra.sqlite.engine import open_sqlite
+from tests.runtime_test_support import prepare_tracked_employees_source_file
 
 
 HEADER = ";".join(
@@ -70,8 +73,9 @@ def _write_csv(path: Path, rows: list[list[str]]) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def _build_container(monkeypatch, csv_path: Path):
-    monkeypatch.setenv("EMPLOYEES_SOURCE_PATH", str(csv_path))
+def _build_container(csv_path: Path):
+    runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
+    configure_runtime_paths(RuntimePathOverrides(source_data_root=runtime_csv_path.parent))
     dataset_spec = get_spec("employees")
     catalog = build_catalog("employees", strict=False)
     cache_roles = _build_cache_roles()
@@ -90,14 +94,14 @@ def _build_container(monkeypatch, csv_path: Path):
 
 class TestPipelineContainerE2E:
 
-    def test_normalize_pipeline_produces_results(self, tmp_path, monkeypatch):
+    def test_normalize_pipeline_produces_results(self, tmp_path):
         """map + normalize → produces transform results from real CSV."""
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
             ["1", "Ivanov Ivan Ivanovich", "", "", "", "", "", "IT Dept", "Engineer", "", "+111", "", "", "", ""],
             ["2", "Petrov Petr Petrovich", "", "", "", "", "", "HR Dept", "Analyst", "", "+222", "", "", "", ""],
         ])
-        container, catalog = _build_container(monkeypatch, csv_path)
+        container, catalog = _build_container(csv_path)
 
         row_source = container.row_source()
         map_stage = container.map_stage()
@@ -111,13 +115,13 @@ class TestPipelineContainerE2E:
         for result in results:
             assert result.row is not None
 
-    def test_enrich_pipeline_with_mock_lookup(self, tmp_path, monkeypatch):
+    def test_enrich_pipeline_with_mock_lookup(self, tmp_path):
         """map + normalize + enrich → produces enriched results."""
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
             ["1", "Ivanov Ivan Ivanovich", "", "", "", "", "", "IT Dept", "Engineer", "", "+111", "", "", "", ""],
         ])
-        container, catalog = _build_container(monkeypatch, csv_path)
+        container, catalog = _build_container(csv_path)
 
         row_source = container.row_source()
         map_stage = container.map_stage()
@@ -130,13 +134,13 @@ class TestPipelineContainerE2E:
 
         assert len(results) == 1
 
-    def test_all_stages_satisfy_stage_contract(self, tmp_path, monkeypatch):
+    def test_all_stages_satisfy_stage_contract(self, tmp_path):
         """All stages produced by PipelineContainer implement StageContract."""
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
             ["1", "Test User Tester", "", "", "", "", "", "IT", "Engineer", "", "+111", "", "", "", ""],
         ])
-        container, catalog = _build_container(monkeypatch, csv_path)
+        container, catalog = _build_container(csv_path)
 
         stages = [
             container.map_stage(),
@@ -151,7 +155,7 @@ class TestPipelineContainerE2E:
                 f"{type(stage).__name__} does not satisfy StageContract"
             )
 
-    def test_error_record_does_not_stop_pipeline(self, tmp_path, monkeypatch):
+    def test_error_record_does_not_stop_pipeline(self, tmp_path):
         """A row with errors (empty fields) doesn't stop the pipeline from processing others."""
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
@@ -160,7 +164,7 @@ class TestPipelineContainerE2E:
             # Second row: valid data
             ["1", "Ivanov Ivan Ivanovich", "", "", "", "", "", "IT Dept", "Engineer", "", "+111", "", "", "", ""],
         ])
-        container, catalog = _build_container(monkeypatch, csv_path)
+        container, catalog = _build_container(csv_path)
 
         row_source = container.row_source()
         stage_pipeline = PipelineOrchestrator([container.map_stage(), container.normalize_stage()])
@@ -170,7 +174,7 @@ class TestPipelineContainerE2E:
         # Both rows produce results (even if one has errors)
         assert len(results) == 2
 
-    def test_partial_consumption_cleanup(self, tmp_path, monkeypatch):
+    def test_partial_consumption_cleanup(self, tmp_path):
         """Partially consuming and closing the pipeline generator doesn't raise."""
         csv_path = tmp_path / "employees.csv"
         _write_csv(csv_path, [
@@ -178,7 +182,7 @@ class TestPipelineContainerE2E:
             ["2", "Petrov Petr Petrovich", "", "", "", "", "", "HR", "Analyst", "", "+222", "", "", "", ""],
             ["3", "Sidorov Sid Sidorovich", "", "", "", "", "", "QA", "QA Lead", "", "+333", "", "", "", ""],
         ])
-        container, catalog = _build_container(monkeypatch, csv_path)
+        container, catalog = _build_container(csv_path)
 
         row_source = container.row_source()
         stage_pipeline = PipelineOrchestrator([container.map_stage(), container.normalize_stage()])

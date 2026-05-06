@@ -28,6 +28,7 @@ class RuntimePathOverrides:
     datasets_root: str | Path | None = None
     dictionary_specs_root: str | Path | None = None
     dictionary_data_root: str | Path | None = None
+    source_data_root: str | Path | None = None
     source_projection_root: str | Path | None = None
     target_projection_root: str | Path | None = None
     cache_root: str | Path | None = None
@@ -42,6 +43,7 @@ class RuntimePaths:
     datasets_root: Path
     dictionary_specs_root: Path
     dictionary_data_root: Path
+    source_data_root: Path
     source_projection_root: Path
     target_projection_root: Path
     cache_root: Path
@@ -66,6 +68,9 @@ class RuntimePaths:
     def resolve_dictionary_data_ref(self, ref: str | Path) -> Path:
         return self._resolve_from_root(self.dictionary_data_root, ref)
 
+    def resolve_source_data_ref(self, ref: str | Path) -> Path:
+        return self._resolve_from_root(self.source_data_root, ref)
+
     def resolve_source_projection_ref(self, ref: str | Path) -> Path:
         return self._resolve_from_root(self.source_projection_root, ref)
 
@@ -80,6 +85,15 @@ class RuntimePaths:
 
     def resolve_report_file(self, name: str | Path) -> Path:
         return self._resolve_from_root(self.reports_root, name)
+
+    def resolve_cache_db_file(self, name: str | Path = "ankey_cache.sqlite3") -> Path:
+        return self._resolve_from_root(self.cache_root, name)
+
+    def resolve_vault_db_file(self, name: str | Path = "ankey_vault.sqlite3") -> Path:
+        return self._resolve_from_root(self.cache_root, name)
+
+    def resolve_identity_db_file(self, name: str | Path = "identity.sqlite3") -> Path:
+        return self._resolve_from_root(self.cache_root, name)
 
     @staticmethod
     def _resolve_from_root(root: Path, ref: str | Path) -> Path:
@@ -130,6 +144,7 @@ def detect_runtime_paths(
     datasets_root = _resolve_path(root, applied_overrides.datasets_root, "datasets")
     dictionary_specs_root = _resolve_path(root, applied_overrides.dictionary_specs_root, "etc/dictionaries")
     dictionary_data_root = _resolve_path(root, applied_overrides.dictionary_data_root, "dictionaries")
+    source_data_root = _resolve_path(root, applied_overrides.source_data_root, "examples/sources")
     source_projection_root = _resolve_path(root, applied_overrides.source_projection_root, "etc/source-projection")
     target_projection_root = _resolve_path(root, applied_overrides.target_projection_root, "etc/target-projection")
     cache_root = _resolve_path(root, applied_overrides.cache_root, "var/cache")
@@ -142,6 +157,7 @@ def detect_runtime_paths(
         datasets_root=datasets_root,
         dictionary_specs_root=dictionary_specs_root,
         dictionary_data_root=dictionary_data_root,
+        source_data_root=source_data_root,
         source_projection_root=source_projection_root,
         target_projection_root=target_projection_root,
         cache_root=cache_root,

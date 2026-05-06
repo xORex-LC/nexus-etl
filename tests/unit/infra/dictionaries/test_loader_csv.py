@@ -28,7 +28,7 @@ def _spec(*, encoding: str = "utf-8") -> DictionarySpec:
             "dictionary": "organizations",
             "source": {
                 "format": "csv",
-                "location": "dictionaries/organizations.csv",
+                "location": "organizations.csv",
                 "csv": {
                     "delimiter": ",",
                     "has_header": True,
@@ -77,14 +77,14 @@ def _backend_for(
 def test_csv_loader_supports_utf8_bom_and_loads_into_backend(tmp_path: Path) -> None:
     spec = _spec(encoding="utf-8")
     raw = ("\ufeffcode,name,ouid\n ORG-1 ,Org One,100\n").encode("utf-8")
-    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+    _write_bytes(tmp_path / "dictionaries" / "organizations.csv", raw)
 
     backend = _backend_for(
         spec=spec,
         content_sha256=build_content_sha256_bytes(raw),
         row_count=1,
     )
-    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+    loader = CsvDictionaryLoader(dictionary_data_root=tmp_path / "dictionaries")
 
     loader.load_into(backend)
 
@@ -94,10 +94,10 @@ def test_csv_loader_supports_utf8_bom_and_loads_into_backend(tmp_path: Path) -> 
 def test_csv_loader_raises_on_content_hash_mismatch(tmp_path: Path) -> None:
     spec = _spec()
     raw = b"code,name,ouid\nORG-1,Org One,100\n"
-    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+    _write_bytes(tmp_path / "dictionaries" / "organizations.csv", raw)
 
     backend = _backend_for(spec=spec, content_sha256="f" * 64, row_count=1)
-    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+    loader = CsvDictionaryLoader(dictionary_data_root=tmp_path / "dictionaries")
 
     with pytest.raises(DslLoadError) as exc_info:
         loader.load_into(backend)
@@ -108,14 +108,14 @@ def test_csv_loader_raises_on_content_hash_mismatch(tmp_path: Path) -> None:
 def test_csv_loader_raises_on_row_count_mismatch(tmp_path: Path) -> None:
     spec = _spec()
     raw = b"code,name,ouid\nORG-1,Org One,100\n"
-    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+    _write_bytes(tmp_path / "dictionaries" / "organizations.csv", raw)
 
     backend = _backend_for(
         spec=spec,
         content_sha256=build_content_sha256_bytes(raw),
         row_count=2,
     )
-    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+    loader = CsvDictionaryLoader(dictionary_data_root=tmp_path / "dictionaries")
 
     with pytest.raises(DslLoadError) as exc_info:
         loader.load_into(backend)
@@ -126,7 +126,7 @@ def test_csv_loader_raises_on_row_count_mismatch(tmp_path: Path) -> None:
 def test_csv_loader_raises_on_missing_file(tmp_path: Path) -> None:
     spec = _spec()
     backend = _backend_for(spec=spec, content_sha256="a" * 64, row_count=1)
-    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+    loader = CsvDictionaryLoader(dictionary_data_root=tmp_path / "dictionaries")
 
     with pytest.raises(DslLoadError) as exc_info:
         loader.load_into(backend)
@@ -137,14 +137,14 @@ def test_csv_loader_raises_on_missing_file(tmp_path: Path) -> None:
 def test_csv_loader_reports_schema_error_from_backend(tmp_path: Path) -> None:
     spec = _spec()
     raw = b"code,name\nORG-1,Org One\n"
-    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+    _write_bytes(tmp_path / "dictionaries" / "organizations.csv", raw)
 
     backend = _backend_for(
         spec=spec,
         content_sha256=build_content_sha256_bytes(raw),
         row_count=1,
     )
-    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+    loader = CsvDictionaryLoader(dictionary_data_root=tmp_path / "dictionaries")
 
     with pytest.raises(DslLoadError) as exc_info:
         loader.load_into(backend)
@@ -155,7 +155,7 @@ def test_csv_loader_reports_schema_error_from_backend(tmp_path: Path) -> None:
 def test_csv_loader_emits_source_empty_load_event_for_empty_csv(tmp_path: Path) -> None:
     spec = _spec()
     raw = b"code,name,ouid\n"
-    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+    _write_bytes(tmp_path / "dictionaries" / "organizations.csv", raw)
 
     backend = _backend_for(
         spec=spec,
@@ -164,7 +164,7 @@ def test_csv_loader_emits_source_empty_load_event_for_empty_csv(tmp_path: Path) 
     )
     events = []
     loader = CsvDictionaryLoader(
-        datasets_root=tmp_path / "datasets",
+        dictionary_data_root=tmp_path / "dictionaries",
         on_dictionary_loaded=events.append,
     )
 
@@ -185,7 +185,7 @@ def test_csv_loader_treats_declared_null_marker_as_none_for_nullable_value_colum
             "dictionary": "organizations",
             "source": {
                 "format": "csv",
-                "location": "dictionaries/organizations.csv",
+                "location": "organizations.csv",
                 "csv": {
                     "delimiter": ",",
                     "has_header": True,
@@ -204,14 +204,14 @@ def test_csv_loader_treats_declared_null_marker_as_none_for_nullable_value_colum
         }
     )
     raw = b"code,name,parent_id\nORG-1,Org One,NULL\n"
-    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+    _write_bytes(tmp_path / "dictionaries" / "organizations.csv", raw)
 
     backend = _backend_for(
         spec=spec,
         content_sha256=build_content_sha256_bytes(raw),
         row_count=1,
     )
-    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+    loader = CsvDictionaryLoader(dictionary_data_root=tmp_path / "dictionaries")
 
     loader.load_into(backend)
 
@@ -223,14 +223,14 @@ def test_csv_loader_treats_declared_null_marker_as_none_for_nullable_value_colum
 def test_csv_loader_raises_on_null_in_non_nullable_value_column(tmp_path: Path) -> None:
     spec = _spec()
     raw = b"code,name,ouid\nORG-1,NULL,100\n"
-    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+    _write_bytes(tmp_path / "dictionaries" / "organizations.csv", raw)
 
     backend = _backend_for(
         spec=spec,
         content_sha256=build_content_sha256_bytes(raw),
         row_count=1,
     )
-    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+    loader = CsvDictionaryLoader(dictionary_data_root=tmp_path / "dictionaries")
 
     with pytest.raises(DslLoadError) as exc_info:
         loader.load_into(backend)
@@ -241,14 +241,14 @@ def test_csv_loader_raises_on_null_in_non_nullable_value_column(tmp_path: Path) 
 def test_csv_loader_raises_on_null_in_key_column(tmp_path: Path) -> None:
     spec = _spec()
     raw = b"code,name,ouid\nNULL,Org One,100\n"
-    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+    _write_bytes(tmp_path / "dictionaries" / "organizations.csv", raw)
 
     backend = _backend_for(
         spec=spec,
         content_sha256=build_content_sha256_bytes(raw),
         row_count=1,
     )
-    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+    loader = CsvDictionaryLoader(dictionary_data_root=tmp_path / "dictionaries")
 
     with pytest.raises(DslLoadError) as exc_info:
         loader.load_into(backend)
@@ -262,7 +262,7 @@ def test_csv_loader_supports_custom_null_marker_list(tmp_path: Path) -> None:
             "dictionary": "organizations",
             "source": {
                 "format": "csv",
-                "location": "dictionaries/organizations.csv",
+                "location": "organizations.csv",
                 "csv": {
                     "delimiter": ",",
                     "has_header": True,
@@ -281,14 +281,14 @@ def test_csv_loader_supports_custom_null_marker_list(tmp_path: Path) -> None:
         }
     )
     raw = b"code,name,parent_id\nORG-1,Org One,N/A\n"
-    _write_bytes(tmp_path / "datasets" / "dictionaries" / "organizations.csv", raw)
+    _write_bytes(tmp_path / "dictionaries" / "organizations.csv", raw)
 
     backend = _backend_for(
         spec=spec,
         content_sha256=build_content_sha256_bytes(raw),
         row_count=1,
     )
-    loader = CsvDictionaryLoader(datasets_root=tmp_path / "datasets")
+    loader = CsvDictionaryLoader(dictionary_data_root=tmp_path / "dictionaries")
 
     loader.load_into(backend)
 

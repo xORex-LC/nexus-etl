@@ -13,6 +13,7 @@ from connector.infra.cache.repository.cache_repository import SqliteCacheReposit
 from connector.domain.ports.cache.models import UpsertResult
 from connector.main import app
 from tests.integration.secrets._temp_registry import build_temp_employees_registry_with_temp_dictionaries
+from tests.runtime_test_support import write_runtime_config
 
 runner = CliRunner()
 
@@ -165,6 +166,10 @@ def run_cache_refresh(
         "cache",
         "refresh",
     ]
+    config_path = None
+    if registry_path is not None:
+        config_path = write_runtime_config(tmp_path, registry_path=registry_path)
+        args = ["--config", str(config_path), *args]
 
     if monkeypatch is not None:
         def responder(request: httpx.Request) -> httpx.Response:
@@ -182,10 +187,7 @@ def run_cache_refresh(
         transport = make_transport(responder)
         patch_client_with_transport(monkeypatch, transport)
 
-    env = {}
-    if registry_path is not None:
-        env["ANKEY_DATASET__REGISTRY_PATH"] = str(registry_path)
-    result = runner.invoke(app, args, env=env or None)
+    result = runner.invoke(app, args)
     report_path = report_dir / f"report_cache-refresh_{run_id}.json"
     return result, cache_dir, report_path, log_dir
 
@@ -236,6 +238,8 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(write_runtime_config(tmp_path, registry_path=registry_path)),
             "--log-dir",
             str(log_dir),
             "--report-dir",
@@ -247,7 +251,6 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
             "cache",
             "status",
         ],
-        env={"ANKEY_DATASET__REGISTRY_PATH": str(registry_path)},
     )
     report_path = report_dir / "report_cache-status_status-1.json"
 
@@ -272,6 +275,8 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(write_runtime_config(tmp_path, registry_path=registry_path)),
             "--log-dir",
             str(log_dir),
             "--report-dir",
@@ -283,7 +288,6 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
             "cache",
             "clear",
         ],
-        env={"ANKEY_DATASET__REGISTRY_PATH": str(registry_path)},
     )
     assert result.exit_code == 0
 

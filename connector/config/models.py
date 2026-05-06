@@ -76,6 +76,7 @@ class RuntimeConfig(BaseModel):
     datasets_root: str = "./datasets"
     dictionary_specs_root: str = "./etc/dictionaries"
     dictionary_data_root: str = "./dictionaries"
+    source_data_root: str = "./examples/sources"
     source_projection_root: str = "./etc/source-projection"
     target_projection_root: str = "./etc/target-projection"
 
@@ -85,6 +86,7 @@ class RuntimeConfig(BaseModel):
         "datasets_root",
         "dictionary_specs_root",
         "dictionary_data_root",
+        "source_data_root",
         "source_projection_root",
         "target_projection_root",
         mode="after",

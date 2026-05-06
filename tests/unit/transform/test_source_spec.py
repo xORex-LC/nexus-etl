@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from connector.common.runtime_paths import RuntimePathOverrides
+from connector.domain.dsl.loader import configure_runtime_paths
 from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve_source_location
 from connector.domain.transform_dsl.specs import SourceSpec
 
@@ -11,7 +15,7 @@ def test_load_source_spec_for_dataset(employees_registry_path) -> None:
     assert spec.dataset == "employees"
     assert spec.source.type == "file"
     assert spec.source.format == "csv"
-    assert spec.source.location_ref == "EMPLOYEES_SOURCE_PATH"
+    assert spec.source.location == "source_employees_example.csv"
     csv_options = spec.source.csv_options()
     assert csv_options.delimiter
     assert csv_options.encoding
@@ -71,18 +75,32 @@ def test_source_spec_rejects_unknown_csv_encoding() -> None:
         )
 
 
-def test_resolve_source_location_from_env(monkeypatch, employees_registry_path) -> None:
-    monkeypatch.setenv("EMPLOYEES_SOURCE_PATH", "/tmp/employees.csv")
-    spec = load_source_spec_for_dataset("employees")
-    assert resolve_source_location(spec) == "/tmp/employees.csv"
-
-
-def test_resolve_source_location_raises_when_missing(monkeypatch, employees_registry_path) -> None:
-    monkeypatch.delenv("EMPLOYEES_SOURCE_PATH", raising=False)
+def test_resolve_source_location_uses_runtime_source_data_root(
+    tmp_path: Path,
+    employees_registry_path,
+) -> None:
+    configure_runtime_paths(
+        RuntimePathOverrides(
+            source_data_root=tmp_path / "custom-sources",
+        )
+    )
     spec = load_source_spec_for_dataset("employees")
     try:
-        resolve_source_location(spec)
-    except ValueError as exc:
-        assert "source location is not configured" in str(exc)
-        return
-    raise AssertionError("ValueError was not raised")
+        assert resolve_source_location(spec) == str(
+            (tmp_path / "custom-sources" / "source_employees_example.csv").resolve()
+        )
+    finally:
+        configure_runtime_paths(None)
+
+
+def test_source_spec_requires_location_for_file_sources() -> None:
+    with pytest.raises(ValueError, match="source.location must be configured"):
+        SourceSpec.model_validate(
+            {
+                "dataset": "employees",
+                "source": {
+                    "type": "file",
+                    "format": "csv",
+                },
+            }
+        )
