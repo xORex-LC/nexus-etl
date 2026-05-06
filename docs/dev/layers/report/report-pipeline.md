@@ -272,6 +272,11 @@ class IStageReportStrategy(Protocol):
 
 Конструктор: `TransformStageReportStrategy(payload_builder: Callable | None = None)`.
 
+**Актуальное enrich-поведение**:
+- для `normalize` и `mapping` payload по-прежнему обычно строится напрямую из `result.row`;
+- для `enrich` use-case теперь передаёт custom `payload_builder`, который использует sink/apply payload projection как **preview boundary**;
+- это нужно, чтобы report item не показывал служебные enrich-поля из runtime `row`, если они не входят в outbound sink payload.
+
 ### PlanningStageReportStrategy
 
 Для planning use-cases: `match`, `resolve`.
@@ -450,7 +455,7 @@ class SomeUseCase:
 |---------|----------|-------------|----------|-------------|-------------|
 | `normalize` | `TransformStageReportStrategy()` | `NORMALIZE` | `normalized_ok` | `normalize_failed` | `NORMALIZE` |
 | `mapping` | `TransformStageReportStrategy()` | `MAPPING` | `mapped_ok` | `map_failed` | `MAP` |
-| `enrich` | `TransformStageReportStrategy()` | `ENRICH` | `enriched_ok` | `enrich_failed` | `ENRICH` |
+| `enrich` | `TransformStageReportStrategy(payload_builder=...)` | `ENRICH` | `enriched_ok` | `enrich_failed` | `ENRICH` |
 | `match` | `PlanningStageReportStrategy(meta_builder=...)` | `MATCH` | `matched_ok` | `match_failed` | `MATCH` |
 | `resolve` | `PlanningStageReportStrategy(meta_builder=..., should_skip=...)` | `RESOLVE` | `resolved_ok` | `resolve_failed` | `RESOLVE` |
 
@@ -654,3 +659,4 @@ for resolved in resolved_stream:
 |------|-----------|-------|
 | 2026-02-27 | Создан документ Report Pipeline | xORex-LC |
 | 2026-03-03 | Документация обновлена после рефакторинга слоя | xORex-LC |
+| 2026-05-06 | Уточнена enrich-specific payload projection: `TransformStageReportStrategy` для enrich теперь обычно получает sink-aware `payload_builder`, чтобы report payload показывал preview outbound payload, а не сырой runtime `row` | xORex-LC |

@@ -272,7 +272,7 @@ class ReportDiagnostic:
     code: str                            # код ошибки из ErrorCatalog
     field: str | None                    # поле, к которому относится
     message: str                         # человекочитаемое описание
-    rule: str | None = None              # правило валидации (опционально)
+    rule: str | None = None              # имя stage-rule; может быть поднято из details["rule"]
     details: dict[str, Any] | None = None  # доп. контекст
 ```
 
@@ -698,6 +698,8 @@ def split_report_diagnostics(errors, warnings) -> tuple[list[ReportDiagnostic], 
 
 - Принимают `Iterable[DiagnosticItem | ReportDiagnostic] | None`.
 - `DiagnosticItem` → `ReportDiagnostic` с `fallback_severity` ("error" или "warning").
+- Если у `DiagnosticItem` нет first-class поля `rule`, но `details["rule"]` задано,
+  report projection поднимает его в `ReportDiagnostic.rule`.
 - `ReportDiagnostic` pass-through.
 - `split_report_diagnostics()` возвращает `(errors_list, warnings_list)` по `severity`.
 
@@ -879,3 +881,4 @@ sink = NullReportSink()
 |------|-----------|-------|
 | 2026-02-27 | Создан документ Report Models | xORex-LC |
 | 2026-03-03 | Документация обновлена после рефакторинга слоя | xORex-LC |
+| 2026-05-06 | Задокументирована новая projection semantics для `ReportDiagnostic.rule`: значение может подниматься из `details["rule"]` при конвертации `DiagnosticItem` | xORex-LC |
