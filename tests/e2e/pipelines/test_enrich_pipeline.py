@@ -190,12 +190,12 @@ def test_enrich_missing_required_returns_0(tmp_path: Path):
         item for item in diagnostics
         if item["code"] == "ENRICH_NO_CANDIDATES"
     ]
-    assert no_candidate_warnings
-    for item in no_candidate_warnings:
-        assert item["field"] is not None
-        assert item["rule"] is not None
-        assert isinstance(item["details"], dict)
-        assert item["details"]["reason"] == "no_candidates"
+    warned_rules = {item["rule"] for item in no_candidate_warnings}
+    assert "email_from_cache" not in warned_rules
+    assert "phone_from_cache" not in warned_rules
+    assert "is_logon_disable_from_cache" not in warned_rules
+    assert "target_id_from_cache" not in warned_rules
+    assert "usr_org_tab_num_from_cache" not in warned_rules
 
 
 def test_enrich_invalid_boolean_returns_0(tmp_path: Path):

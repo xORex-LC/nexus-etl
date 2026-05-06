@@ -601,15 +601,48 @@ def _merge_policy_for(rule: EnrichRule) -> MergePolicy | None:
 
 
 def _strictness_for(rule: EnrichRule) -> StrictnessPolicy | None:
-    if rule.on_error == "warn":
-        return StrictnessPolicy(
+    legacy_policy = (
+        StrictnessPolicy(
             on_no_candidates=EnrichOutcome.WARNED,
             on_provider_error=EnrichOutcome.WARNED,
         )
-    return StrictnessPolicy(
-        on_no_candidates=EnrichOutcome.FAILED,
-        on_provider_error=EnrichOutcome.FAILED,
+        if rule.on_error == "warn"
+        else StrictnessPolicy(
+            on_no_candidates=EnrichOutcome.FAILED,
+            on_provider_error=EnrichOutcome.FAILED,
+        )
     )
+
+    return StrictnessPolicy(
+        on_missing_key=_map_strictness_outcome(
+            rule.on_missing_key,
+            fallback=legacy_policy.on_missing_key,
+        ),
+        on_no_candidates=_map_strictness_outcome(
+            rule.on_no_candidates,
+            fallback=legacy_policy.on_no_candidates,
+        ),
+        on_ambiguous=_map_strictness_outcome(
+            rule.on_ambiguous,
+            fallback=legacy_policy.on_ambiguous,
+        ),
+        on_provider_error=_map_strictness_outcome(
+            rule.on_provider_error,
+            fallback=legacy_policy.on_provider_error,
+        ),
+    )
+
+
+def _map_strictness_outcome(raw: str | None, *, fallback: str) -> str:
+    if raw is None:
+        return fallback
+    mapping = {
+        "skip": EnrichOutcome.SKIPPED,
+        "warn": EnrichOutcome.WARNED,
+        "error": EnrichOutcome.FAILED,
+        "needs_resolve": EnrichOutcome.NEEDS_RESOLVE,
+    }
+    return mapping.get(raw, fallback)
 
 
 def _run_when_errors_for(rule: EnrichRule) -> RunWhenErrors:

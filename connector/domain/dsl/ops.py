@@ -617,6 +617,18 @@ def op_contains_non_ascii(value: Any, **_: Any) -> bool | None:
     return not str(value).isascii()
 
 
+def op_is_blank(value: Any, **_: Any) -> bool:
+    """
+    Назначение:
+        Проверить, считается ли значение пустым в tolerant DSL-контракте.
+
+    Контракт:
+        - `None` и пустые/пробельные строки считаются blank;
+        - bool/числа сами по себе blank не считаются.
+    """
+    return _is_blank_scalar(value)
+
+
 def op_reject_regex(
     value: Any,
     *,

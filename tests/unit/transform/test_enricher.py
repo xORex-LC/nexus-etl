@@ -536,6 +536,29 @@ def test_enricher_no_candidates_warning_includes_field_rule_and_reason():
     }
 
 
+def test_enricher_skips_no_candidates_without_diagnostic_when_policy_is_skipped():
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="email_from_cache",
+                op_type=EnrichOperationType.LOOKUP,
+                targets=("email",),
+                providers=(),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_no_candidates=EnrichOutcome.SKIPPED),
+                error_field="email",
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_MemoryCacheRepo()), None, "employees", catalog=CATALOG)
+
+    enriched = enricher.enrich(_build_result({"email": None}))
+
+    assert enriched.errors == ()
+    assert enriched.warnings == ()
+
+
 def test_enricher_stop_on_failed_prevents_followup_ops():
     @dataclass
     class _Row:
@@ -735,6 +758,86 @@ def test_enricher_retries_suffixes_from_base_value() -> None:
     assert enriched.errors == ()
     assert enriched.row["user_name"] == "Ivan_3"
     assert exists_calls == ["Ivan", "Ivan_2", "Ivan_3"]
+
+
+def test_enricher_retries_compiled_generation_without_conflict_policy() -> None:
+    attempts = iter(["RID-1", "RID-2", "RID-3"])
+    exists_calls: list[str] = []
+
+    def _base(_r, _d):
+        return next(attempts)
+
+    def _exists(_deps, value):
+        exists_calls.append(value)
+        if value in {"RID-1", "RID-2"}:
+            return {"match_key": "OTHER"}
+        return None
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="target_id",
+                op_type=EnrichOperationType.GENERATE,
+                targets=("target_id",),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
+                base_generator=_base,
+                exists=_exists,
+                max_attempts=3,
+                conflict_error_code="TARGET_ID_CONFLICT",
+                error_field="target_id",
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_MemoryCacheRepo()), None, "employees", catalog=CATALOG)
+
+    enriched = enricher.enrich(_build_result({"target_id": None}))
+
+    assert enriched.errors == ()
+    assert enriched.row["target_id"] == "RID-3"
+    assert exists_calls == ["RID-1", "RID-2", "RID-3"]
+
+
+def test_enricher_compiled_then_can_generate_fallback_from_blank_base() -> None:
+    attempts = iter(["10000001", "10000002"])
+    exists_calls: list[str] = []
+
+    def _append(_r, _d):
+        return next(attempts)
+
+    def _exists(_deps, value):
+        exists_calls.append(value)
+        if value == "10000001":
+            return {"match_key": "OTHER"}
+        return None
+
+    spec = EnricherSpec(
+        operations=(
+            EnrichmentOperation(
+                name="usr_org_tab_num",
+                op_type=EnrichOperationType.GENERATE,
+                targets=("usr_org_tab_num",),
+                run_when_errors=RunWhenErrors.ALWAYS,
+                strictness=StrictnessPolicy(on_provider_error=EnrichOutcome.FAILED),
+                base_generator=lambda _r, _d: None,
+                condition=lambda _r, _d: True,
+                append_generator=_append,
+                exists=_exists,
+                max_attempts=2,
+                conflict_error_code="USR_ORG_TAB_CONFLICT",
+                error_field="usr_org_tab_num",
+            ),
+        ),
+        key_registry=KeyRegistry(builders={}),
+    )
+    enricher = EnricherCore(spec, _DummyEnrichDeps(cache_gateway=_MemoryCacheRepo()), None, "employees", catalog=CATALOG)
+
+    enriched = enricher.enrich(_build_result({"usr_org_tab_num": None}))
+
+    assert enriched.errors == ()
+    assert enriched.row["usr_org_tab_num"] == "10000002"
+    assert exists_calls == ["10000001", "10000002"]
 
 
 def test_enricher_returns_conflict_error_when_compiled_policy_is_exhausted():
