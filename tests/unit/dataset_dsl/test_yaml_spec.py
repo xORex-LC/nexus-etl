@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from connector.common.runtime_paths import RuntimePathOverrides
 from connector.datasets import registry as registry_module
 from connector.datasets.registry import get_spec, list_specs, validate_registry
 from connector.datasets.spec import UnsupportedStageError
 from connector.datasets.yaml_spec import YamlDatasetSpec
 from connector.datasets.yaml_spec_loader import load_yaml_dataset_artifacts
+from connector.domain.dsl.loader import configure_runtime_paths
 from connector.domain.transform_dsl.specs import (
     EnrichSpec,
     MappingSpec,
@@ -125,15 +129,23 @@ class TestYamlDatasetSpecAdapters:
         monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_resolve_spec_for_dataset", _unexpected)
         monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_sink_spec_for_dataset", _unexpected)
         monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_source_spec_for_dataset", _unexpected)
-        monkeypatch.setenv("EMPLOYEES_SOURCE_PATH", str(tmp_path / "employees.csv"))
+        configure_runtime_paths(
+            RuntimePathOverrides(
+                source_data_root=tmp_path / "sources",
+            )
+        )
 
-        assert isinstance(spec.build_spec_for("map"), MappingSpec)
-        assert spec.get_apply_adapter().operation_alias == "users.upsert"
-        source = spec.build_record_source()
-        csv_options = artifacts.source_spec.source.csv_options()
-        assert source.has_header is True
-        assert source.delimiter == csv_options.delimiter
-        assert source.encoding == csv_options.encoding
+        try:
+            assert isinstance(spec.build_spec_for("map"), MappingSpec)
+            assert spec.get_apply_adapter().operation_alias == "users.upsert"
+            source = spec.build_record_source()
+            csv_options = artifacts.source_spec.source.csv_options()
+            assert source.has_header is True
+            assert source.delimiter == csv_options.delimiter
+            assert source.encoding == csv_options.encoding
+            assert Path(source.path) == (tmp_path / "sources" / "source_employees_example.csv").resolve()
+        finally:
+            configure_runtime_paths(None)
 
 
 class TestRegistryValidation:

@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from connector.main import app
 from tests.integration.secrets._temp_registry import build_temp_employees_registry_with_temp_dictionaries
+from tests.runtime_test_support import write_runtime_config
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
@@ -66,10 +67,19 @@ def test_import_plan_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: 
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     initialize_test_vault(cache_dir)
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=registry_path,
+        source_data_root=csv_path.parent,
+        dictionary_specs_root=registry_path.parent / "dictionaries",
+        dictionary_data_root=tmp_path / "dictionaries",
+    )
 
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(config_path),
             "--cache-dir",
             str(cache_dir),
             "--log-dir",
@@ -81,10 +91,6 @@ def test_import_plan_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: 
             "import",
             "plan",
         ],
-        env={
-            "EMPLOYEES_SOURCE_PATH": str(csv_path),
-            "ANKEY_DATASET__REGISTRY_PATH": str(registry_path),
-        },
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
 

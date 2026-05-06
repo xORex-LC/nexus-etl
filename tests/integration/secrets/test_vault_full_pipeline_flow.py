@@ -23,6 +23,11 @@ from connector.infra.cache.repository.cache_repository import SqliteCacheReposit
 from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.main import app
+from tests.runtime_test_support import (
+    prepare_tracked_employees_source_file,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 
@@ -86,9 +91,20 @@ def _run_import_plan(
     initialize_test_vault(cache_dir)
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
+    runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
+    roots = tracked_employees_runtime_roots()
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        source_data_root=runtime_csv_path.parent,
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(config_path),
             "--cache-dir",
             str(cache_dir),
             "--log-dir",
@@ -100,9 +116,6 @@ def _run_import_plan(
             "import",
             "plan",
         ],
-        env={
-            "EMPLOYEES_SOURCE_PATH": str(csv_path),
-        },
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     return result, report_dir / f"plan_import_{run_id}.json"
@@ -117,9 +130,19 @@ def _run_import_apply(
     cache_dir = tmp_path / "cache"
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
+    roots = tracked_employees_runtime_roots()
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        source_data_root=tmp_path,
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(config_path),
             "--cache-dir",
             str(cache_dir),
             "--log-dir",

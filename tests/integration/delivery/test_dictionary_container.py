@@ -19,9 +19,10 @@ import yaml
 
 pytest.importorskip("polars")
 
+from connector.common.runtime_paths import RuntimePathOverrides
 from connector.config.models import DictionaryConfig
 from connector.delivery.cli.dictionaries_container import DictionaryContainer
-from connector.domain.dsl.loader import configure_registry_path
+from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
 from connector.domain.dictionary_dsl.specs import DictionarySpec
 from connector.domain.dsl.issues import DslLoadError
 from connector.infra.dictionaries.backends.polars_backend import PolarsDictionaryBackend
@@ -36,7 +37,7 @@ def _dictionary_spec_payload() -> dict[str, Any]:
         "dictionary": "organizations",
         "source": {
             "format": "csv",
-            "location": "dictionaries/organizations.csv",
+            "location": "organizations.csv",
             "csv": {
                 "delimiter": ",",
                 "has_header": True,
@@ -63,10 +64,13 @@ def _write_datasets_fixture(
     empty_dictionary_items: bool = False,
     fingerprint_mismatch: bool = False,
     empty_csv: bool = False,
-) -> Path:
+) -> tuple[Path, Path, Path]:
     datasets_root = tmp_path / "datasets"
-    dictionaries_dir = datasets_root / "dictionaries"
-    dictionaries_dir.mkdir(parents=True, exist_ok=True)
+    dictionary_specs_root = tmp_path / "dictionary-specs"
+    dictionary_data_root = tmp_path / "dictionaries"
+    datasets_root.mkdir(parents=True, exist_ok=True)
+    dictionary_specs_root.mkdir(parents=True, exist_ok=True)
+    dictionary_data_root.mkdir(parents=True, exist_ok=True)
 
     spec_payload = _dictionary_spec_payload()
     spec_model = DictionarySpec.model_validate(spec_payload)
@@ -76,8 +80,8 @@ def _write_datasets_fixture(
         if empty_csv
         else b"code,name,ouid\n ORG-1 ,Org One,100\nORG-2,Org Two,200\n"
     )
-    (dictionaries_dir / "organizations.csv").write_bytes(csv_bytes)
-    (dictionaries_dir / "organizations.dictionary.yaml").write_text(
+    (dictionary_data_root / "organizations.csv").write_bytes(csv_bytes)
+    (dictionary_specs_root / "organizations.dictionary.yaml").write_text(
         yaml.safe_dump(spec_payload, sort_keys=False),
         encoding="utf-8",
     )
@@ -89,13 +93,13 @@ def _write_datasets_fixture(
             "datasets": {},
             "dictionaries": {
                 "version": 1,
-                "manifest": "dictionaries/manifest.custom.yaml",
+                "manifest": "manifest.custom.yaml",
                 "items": (
                     {}
                     if empty_dictionary_items
                     else {
                         "organizations": {
-                            "spec": "dictionaries/organizations.dictionary.yaml",
+                            "spec": "organizations.dictionary.yaml",
                             "enabled": True,
                         }
                     }
@@ -107,7 +111,7 @@ def _write_datasets_fixture(
             "version": 1,
             "datasets": {},
         }
-    (datasets_root / "registry.yml").write_text(
+    (datasets_root / "registry.yaml").write_text(
         yaml.safe_dump(registry_payload, sort_keys=False),
         encoding="utf-8",
     )
@@ -120,7 +124,7 @@ def _write_datasets_fixture(
                 if empty_dictionary_items
                 else {
                     "organizations": {
-                        "csv_path": "dictionaries/organizations.csv",
+                        "csv_path": "organizations.csv",
                         "content_sha256": (
                             "f" * 64
                             if fingerprint_mismatch
@@ -134,12 +138,12 @@ def _write_datasets_fixture(
                 }
             ),
         }
-        (dictionaries_dir / "manifest.custom.yaml").write_text(
+        (dictionary_specs_root / "manifest.custom.yaml").write_text(
             yaml.safe_dump(manifest_payload, sort_keys=False),
             encoding="utf-8",
         )
 
-    return datasets_root
+    return datasets_root, dictionary_specs_root, dictionary_data_root
 
 
 def _make_container(
@@ -151,7 +155,7 @@ def _make_container(
     empty_csv: bool = False,
     load_strategy: str = "eager",
 ) -> DictionaryContainer:
-    datasets_root = _write_datasets_fixture(
+    datasets_root, dictionary_specs_root, dictionary_data_root = _write_datasets_fixture(
         tmp_path,
         include_dictionaries_section=include_dictionaries_section,
         empty_dictionary_items=empty_dictionary_items,
@@ -167,7 +171,9 @@ def _make_container(
             lookup_miss_sample_percent=0,
         )
     )
-    container.datasets_root.override(datasets_root)
+    container.registry_path.override(datasets_root / "registry.yaml")
+    container.dictionary_specs_root.override(dictionary_specs_root)
+    container.dictionary_data_root.override(dictionary_data_root)
     return container
 
 
@@ -229,7 +235,7 @@ def test_dictionary_container_empty_items_registry_is_valid_empty_runtime(tmp_pa
 
 
 def test_dictionary_container_bootstrap_from_active_registry_path_init_success(tmp_path: Path) -> None:
-    datasets_root = _write_datasets_fixture(tmp_path)
+    datasets_root, dictionary_specs_root, dictionary_data_root = _write_datasets_fixture(tmp_path)
     container = DictionaryContainer()
     container.settings.override(
         DictionaryConfig(
@@ -238,9 +244,17 @@ def test_dictionary_container_bootstrap_from_active_registry_path_init_success(t
             lookup_miss_sample_percent=0,
         )
     )
-    container.datasets_root.override(None)
+    container.registry_path.override(None)
+    container.dictionary_specs_root.override(dictionary_specs_root)
+    container.dictionary_data_root.override(dictionary_data_root)
     try:
-        configure_registry_path(datasets_root / "registry.yml")
+        configure_registry_path(datasets_root / "registry.yaml")
+        configure_runtime_paths(
+            RuntimePathOverrides(
+                dictionary_specs_root=dictionary_specs_root,
+                dictionary_data_root=dictionary_data_root,
+            )
+        )
         container.init_resources()
         backend = container.backend()
         provider = container.provider()
@@ -250,6 +264,7 @@ def test_dictionary_container_bootstrap_from_active_registry_path_init_success(t
         assert backend.get_loaded_dict_names()
     finally:
         configure_registry_path(None)
+        configure_runtime_paths(None)
         container.shutdown_resources()
 
 

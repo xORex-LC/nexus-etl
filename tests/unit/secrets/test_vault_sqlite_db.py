@@ -11,17 +11,24 @@ from connector.infra.sqlite.engine import open_sqlite
 
 
 def test_get_vault_db_path_uses_default_location(tmp_path: Path):
-    sqlite = SqliteConfig()
-    path = _vault_db_path(str(tmp_path / "cache"), sqlite)
+    app_config = AppConfig.model_validate(
+        {"paths": {"cache_dir": str(tmp_path / "cache")}}
+    )
+    path = _vault_db_path(app_config)
     assert path.endswith("ankey_vault.sqlite3")
     assert str(tmp_path / "cache") in path
 
 
 def test_get_vault_db_path_uses_config_override(tmp_path: Path):
     custom = str(tmp_path / "custom" / "vault.db")
-    sqlite = SqliteConfig(vault_db_path=custom)
-    path = _vault_db_path(str(tmp_path / "cache"), sqlite)
-    assert path == custom
+    app_config = AppConfig.model_validate(
+        {
+            "paths": {"cache_dir": str(tmp_path / "cache")},
+            "sqlite": {"vault_db_path": custom},
+        }
+    )
+    path = _vault_db_path(app_config)
+    assert path == str(Path(custom).resolve())
 
 
 def test_open_sqlite_applies_vault_pragma_profile(tmp_path: Path):

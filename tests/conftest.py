@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from connector.datasets import registry as dataset_registry_module
-from connector.domain.dsl.loader import configure_registry_path
+from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
 
 
 # NOTE:
@@ -33,7 +33,6 @@ def _activate_employees_test_registry() -> Path:
 
 
 _TEST_REGISTRY_PATH = _activate_employees_test_registry()
-os.environ.setdefault("ANKEY_DATASET__REGISTRY_PATH", str(_TEST_REGISTRY_PATH))
 
 
 @pytest.fixture(autouse=True)
@@ -45,9 +44,11 @@ def _restore_test_registry_default():
         Это делает suite устойчивым к тестам, которые временно переключают registry path
         на custom значение или сбрасывают его в `None`.
     """
+    configure_runtime_paths(None)
     configure_registry_path(_TEST_REGISTRY_PATH)
     dataset_registry_module._registry = None
     yield
+    configure_runtime_paths(None)
     configure_registry_path(_TEST_REGISTRY_PATH)
     dataset_registry_module._registry = None
 

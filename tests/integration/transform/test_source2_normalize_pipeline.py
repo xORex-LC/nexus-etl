@@ -5,11 +5,12 @@ from pathlib import Path
 from connector.datasets import registry as dataset_registry_module
 from connector.datasets.registry import get_spec
 from connector.domain.diagnostics.catalog import build_catalog
-from connector.domain.dsl.loader import configure_registry_path
+from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.mapping import MapperEngine
 from connector.domain.transform.normalize import NormalizerEngine
+from connector.common.runtime_paths import RuntimePathOverrides
 from tests.integration.secrets._temp_registry import build_temp_employees_registry_with_temp_dictionaries
 
 
@@ -75,12 +76,12 @@ def _write_source2_csv(path: Path) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def test_source2_real_csv_map_and_normalize_pipeline(monkeypatch, tmp_path: Path) -> None:
+def test_source2_real_csv_map_and_normalize_pipeline(tmp_path: Path) -> None:
     registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
-    csv_path = tmp_path / "source2.csv"
+    csv_path = tmp_path / "employees.csv"
     _write_source2_csv(csv_path)
 
-    monkeypatch.setenv("EMPLOYEES_SOURCE_PATH", str(csv_path))
+    configure_runtime_paths(RuntimePathOverrides(source_data_root=tmp_path))
     configure_registry_path(registry_path)
     dataset_registry_module._registry = None
     try:
@@ -96,6 +97,7 @@ def test_source2_real_csv_map_and_normalize_pipeline(monkeypatch, tmp_path: Path
 
         rows = [result.row for result in iter_ok(normalized_results)]
     finally:
+        configure_runtime_paths(None)
         configure_registry_path(None)
         dataset_registry_module._registry = None
 

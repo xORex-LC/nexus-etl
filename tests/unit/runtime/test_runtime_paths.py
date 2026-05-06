@@ -33,6 +33,7 @@ def test_detect_runtime_paths_prefers_explicit_runtime_root_override(tmp_path: P
     assert paths.config_root == (runtime_root / "etc").resolve()
     assert paths.dictionary_specs_root == (runtime_root / "etc" / "dictionaries").resolve()
     assert paths.dictionary_data_root == (runtime_root / "dictionaries").resolve()
+    assert paths.source_data_root == (runtime_root / "examples" / "sources").resolve()
 
 
 def test_detect_runtime_paths_uses_standalone_layout_near_argv0(tmp_path: Path) -> None:
@@ -135,4 +136,16 @@ def test_runtime_paths_resolve_resource_families_against_expected_roots(tmp_path
     ).resolve()
     assert paths.resolve_dictionary_data_ref("employees/departments.csv") == (
         runtime_root / "dictionaries" / "employees" / "departments.csv"
+    ).resolve()
+    assert paths.resolve_source_data_ref("employees.csv") == (
+        runtime_root / "examples" / "sources" / "employees.csv"
+    ).resolve()
+    assert paths.resolve_cache_db_file() == (
+        runtime_root / "var" / "cache" / "ankey_cache.sqlite3"
+    ).resolve()
+    assert paths.resolve_vault_db_file() == (
+        runtime_root / "var" / "cache" / "ankey_vault.sqlite3"
+    ).resolve()
+    assert paths.resolve_identity_db_file() == (
+        runtime_root / "var" / "cache" / "identity.sqlite3"
     ).resolve()

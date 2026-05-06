@@ -4,8 +4,8 @@ version: 1
 # One entry per concrete dictionary snapshot used by runtime.
 items:
   dictionary_name:
-    # Path to the concrete CSV snapshot relative to datasets root.
-    csv_path: dictionaries/dictionary_name.csv
+    # Path to the concrete CSV snapshot relative to runtime.dictionary_data_root.
+    csv_path: dictionary_name.csv
     # SHA-256 of the CSV content used for runtime fingerprint validation.
     content_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     # Schema hash produced from the concrete `*.dictionary.yaml` spec.

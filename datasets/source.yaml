@@ -7,10 +7,8 @@ source:
   type: file
   # Source physical format. CSV options are validated only when this value is csv.
   format: csv
-  # Literal source location. Used directly or as fallback when location_ref is empty.
-  location: "/path/to/source.csv"
-  # Environment variable name that contains runtime source location.
-  location_ref: SOURCE_PATH
+  # Relative ref inside runtime.source_data_root or absolute path.
+  location: "source.csv"
   # Whether the source file has a header row.
   has_header: true
   # Format-specific options. For csv: delimiter and encoding are supported.

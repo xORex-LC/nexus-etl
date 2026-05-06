@@ -8,6 +8,7 @@ import typer
 from connector.config.config import SettingsLoadError
 from connector.config.loader import load_app_config
 from connector.config.diagnostics import translate_settings_load_error
+from connector.config.projections import to_runtime_path_overrides
 from connector.common.run_id import generate_run_id
 from connector.delivery.cli.context import CommandPaths, CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
@@ -34,7 +35,6 @@ from connector.delivery.commands import (
     vault_management as vault_management_command,
 )
 from connector.domain.models import DiagnosticStage
-from connector.common.runtime_paths import RuntimePathOverrides
 from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -167,20 +167,7 @@ def main(
             field = f" ({diag.field})" if diag.field else ""
             typer.echo(f"- [{diag.code}]{field} {diag.message}", err=True)
         raise typer.Exit(code=2) from exc
-    configure_runtime_paths(
-        RuntimePathOverrides(
-            runtime_root=loaded_app.app_config.runtime.runtime_root,
-            config_root=loaded_app.app_config.runtime.config_root,
-            datasets_root=loaded_app.app_config.runtime.datasets_root,
-            dictionary_specs_root=loaded_app.app_config.runtime.dictionary_specs_root,
-            dictionary_data_root=loaded_app.app_config.runtime.dictionary_data_root,
-            source_projection_root=loaded_app.app_config.runtime.source_projection_root,
-            target_projection_root=loaded_app.app_config.runtime.target_projection_root,
-            cache_root=loaded_app.app_config.paths.cache_dir,
-            logs_root=loaded_app.app_config.paths.log_dir,
-            reports_root=loaded_app.app_config.paths.report_dir,
-        )
-    )
+    configure_runtime_paths(to_runtime_path_overrides(loaded_app.app_config))
     configure_registry_path(loaded_app.app_config.dataset.registry_path)
     _ensure_dir(loaded_app.app_config.paths.log_dir)
     _ensure_dir(loaded_app.app_config.paths.report_dir)

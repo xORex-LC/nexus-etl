@@ -102,6 +102,7 @@ def test_runtime_config_defaults_follow_standalone_layout() -> None:
     assert cfg.datasets_root == "./datasets"
     assert cfg.dictionary_specs_root == "./etc/dictionaries"
     assert cfg.dictionary_data_root == "./dictionaries"
+    assert cfg.source_data_root == "./examples/sources"
     assert cfg.source_projection_root == "./etc/source-projection"
     assert cfg.target_projection_root == "./etc/target-projection"
 

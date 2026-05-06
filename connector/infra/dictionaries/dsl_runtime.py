@@ -92,6 +92,10 @@ class CompiledDictionarySpec:
         return self.spec.source.location
 
     @property
+    def source_data_ref(self) -> str:
+        return self.spec.source.location
+
+    @property
     def csv_delimiter(self) -> str:
         return self.spec.source.csv.delimiter
 
@@ -151,7 +155,8 @@ def build_dictionary_dsl_runtime(
 
     Contract:
         - Каждый словарь должен иметь entry в manifest.
-        - `manifest.csv_path` должен совпадать с `spec.source.location`.
+        - `manifest.csv_path` и `spec.source.location` должны совпадать как
+          dictionary-data refs внутри `dictionary_data_root`.
         - `manifest.schema_hash` должен совпадать с вычисленным `schema_hash`.
     """
     registry = operation_registry or register_core_ops(OperationRegistry())
@@ -166,7 +171,7 @@ def build_dictionary_dsl_runtime(
                 details={"dict_name": dict_name},
             )
 
-        if _normalize_rel_path(manifest_item.csv_path) != _normalize_rel_path(spec.source.location):
+        if _normalize_data_ref(manifest_item.csv_path) != _normalize_data_ref(spec.source.location):
             raise DslLoadError(
                 code="DICT_SOURCE_MANIFEST_INVALID",
                 message=(
@@ -240,10 +245,10 @@ def _compile_normalized_key_ops(
     return tuple(compiled)
 
 
-def _normalize_rel_path(value: str) -> str:
+def _normalize_data_ref(value: str) -> str:
     """
     Назначение:
-        Нормализовать относительный путь для сравнения manifest/spec.
+        Нормализовать dictionary-data ref для semantic сравнения manifest/spec.
     """
     return Path(value).as_posix().lstrip("./")
 

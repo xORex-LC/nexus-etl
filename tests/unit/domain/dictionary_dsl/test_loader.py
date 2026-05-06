@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from connector.common.runtime_paths import RuntimePathOverrides
 from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
 from connector.domain.dictionary_dsl import loader as dictionary_loader
 from connector.domain.dsl.issues import DslLoadError
@@ -22,6 +23,11 @@ def _reset_runtime_loader_state() -> None:
 
 
 def _activate_registry(root: Path) -> None:
+    configure_runtime_paths(
+        RuntimePathOverrides(
+            dictionary_specs_root=root / "datasets" / "dictionaries",
+        )
+    )
     configure_registry_path(root / "datasets" / "registry.yml")
 
 
@@ -51,7 +57,7 @@ def test_registry_loader_accepts_empty_items_mapping(
         """
 dictionaries:
   version: 1
-  manifest: dictionaries/manifest.custom.yaml
+  manifest: manifest.custom.yaml
   items: {}
 """.strip(),
     )
@@ -60,7 +66,7 @@ dictionaries:
     spec = dictionary_loader.load_dictionary_registry_spec_for_runtime()
 
     assert spec.version == 1
-    assert spec.manifest == "dictionaries/manifest.custom.yaml"
+    assert spec.manifest == "manifest.custom.yaml"
     assert spec.items == {}
 
 
@@ -89,10 +95,10 @@ def test_load_enabled_dictionary_specs_wraps_invalid_spec(
         """
 dictionaries:
   version: 1
-  manifest: dictionaries/manifest.custom.yaml
+  manifest: manifest.custom.yaml
   items:
     organizations:
-      spec: dictionaries/organizations.dictionary.yaml
+      spec: organizations.dictionary.yaml
       enabled: true
 """.strip(),
     )
@@ -102,7 +108,7 @@ dictionaries:
 dictionary: organizations
 source:
   format: csv
-  location: dictionaries/organizations.csv
+  location: organizations.csv
 schema:
   key_column:
     name: code
@@ -125,10 +131,10 @@ def test_load_enabled_dictionary_specs_validates_registry_key_matches_spec(
         """
 dictionaries:
   version: 1
-  manifest: dictionaries/manifest.custom.yaml
+  manifest: manifest.custom.yaml
   items:
     organizations:
-      spec: dictionaries/organizations.dictionary.yaml
+      spec: organizations.dictionary.yaml
       enabled: true
 """.strip(),
     )
@@ -138,7 +144,7 @@ dictionaries:
 dictionary: departments
 source:
   format: csv
-  location: dictionaries/organizations.csv
+  location: organizations.csv
 schema:
   key_column:
     name: code
@@ -164,7 +170,7 @@ def test_manifest_loader_raises_missing_code_when_file_absent(
         """
 dictionaries:
   version: 1
-  manifest: dictionaries/manifest.custom.yaml
+  manifest: manifest.custom.yaml
   items: {}
 """.strip(),
     )
@@ -184,7 +190,7 @@ def test_manifest_loader_wraps_invalid_structure(
         """
 dictionaries:
   version: 1
-  manifest: dictionaries/manifest.custom.yaml
+  manifest: manifest.custom.yaml
   items: {}
 """.strip(),
     )
@@ -210,7 +216,7 @@ def test_manifest_loader_loads_valid_manifest(
         """
 dictionaries:
   version: 1
-  manifest: dictionaries/manifest.custom.yaml
+  manifest: manifest.custom.yaml
   items: {}
 """.strip(),
     )
@@ -220,7 +226,7 @@ dictionaries:
 version: 1
 items:
   organizations:
-    csv_path: dictionaries/organizations.csv
+    csv_path: organizations.csv
     content_sha256: "0d7f"
     schema_hash: "8d2c"
     row_count: 1
