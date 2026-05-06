@@ -16,7 +16,6 @@ from typing import Any
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.loader._common import _datasets_root as _active_datasets_root
 from connector.domain.dsl.loader._common import _read_yaml, _registry_path as _active_registry_path
-from connector.domain.dsl.loader._common import _repo_root as _default_repo_root
 from connector.domain.dictionary_dsl.specs import (
     DictionaryManifestSpec,
     DictionaryRegistrySpec,
@@ -211,23 +210,15 @@ def load_dictionary_manifest_spec_for_runtime() -> DictionaryManifestSpec:
 
 
 def _registry_path() -> Path:
-    active_path = _active_registry_path()
-    default_path = _default_repo_root() / "datasets" / "registry.yml"
-    if active_path == default_path:
-        return _repo_root() / "datasets" / "registry.yml"
-    return active_path
+    return _active_registry_path()
 
 
 def _datasets_root() -> Path:
-    active_root = _active_datasets_root()
-    default_root = _default_repo_root() / "datasets"
-    if active_root == default_root:
-        return _repo_root() / "datasets"
-    return active_root
+    return _active_datasets_root()
 
 
 def _repo_root() -> Path:
-    return _default_repo_root()
+    return _datasets_root().parent
 
 
 def _extract_dictionary_registry_payload(

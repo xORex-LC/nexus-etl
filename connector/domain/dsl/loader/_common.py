@@ -11,6 +11,7 @@ from typing import Any, TypeVar
 
 import yaml
 
+from connector.common.runtime_paths import get_runtime_paths
 from connector.domain.dsl.issues import DslLoadError
 
 TSpec = TypeVar("TSpec")
@@ -34,17 +35,13 @@ def _read_yaml(path: str | Path) -> dict[str, Any]:
 def _repo_root() -> Path:
     """
     Назначение:
-        Разрешить корень репозитория.
+        Разрешить активный runtime root.
 
     Контракт:
-        - Автоматически находит ближайший parent с datasets/registry.yml.
-        - Fallback на исторический parents[4] для совместимости.
+        - В dev-режиме может совпадать с корнем checkout.
+        - В standalone-режиме указывает на runtime root дистрибутива.
     """
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "datasets" / "registry.yml").exists():
-            return parent
-    return current.parents[4]
+    return get_runtime_paths().root
 
 
 def _configure_registry_path(path: str | Path | None) -> None:
@@ -69,7 +66,7 @@ def _registry_path() -> Path:
     """
     if _registry_path_override is not None:
         return _registry_path_override
-    return _repo_root() / "datasets" / "registry.yml"
+    return get_runtime_paths().default_registry_path
 
 
 def _datasets_root() -> Path:
@@ -77,7 +74,9 @@ def _datasets_root() -> Path:
     Назначение:
         Вернуть директорию, относительно которой registry ссылается на YAML-спеки.
     """
-    return _registry_path().parent
+    if _registry_path_override is not None:
+        return _registry_path_override.parent
+    return get_runtime_paths().datasets_root
 
 
 @lru_cache(maxsize=1)
@@ -152,4 +151,3 @@ def _load_spec_from_path(path: str | Path, spec_cls: type[TSpec], *, code: str) 
     path_obj = Path(path)
     raw = _read_yaml_or_raise(path_obj, code=code)
     return _validate_spec_or_raise(raw, spec_cls, code=code, details={"path": str(path_obj)})
-

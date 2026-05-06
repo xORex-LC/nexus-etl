@@ -14,18 +14,8 @@ def _write(path: Path, content: str) -> None:
 
 
 def _patch_repo_root(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
-    monkeypatch.setattr(dictionary_loader, "_repo_root", lambda: root)
-    monkeypatch.setattr(dictionary_loader, "_default_repo_root", lambda: root)
-    monkeypatch.setattr(
-        dictionary_loader,
-        "_active_registry_path",
-        lambda: root / "datasets" / "registry.yml",
-    )
-    monkeypatch.setattr(
-        dictionary_loader,
-        "_active_datasets_root",
-        lambda: root / "datasets",
-    )
+    monkeypatch.setattr(dictionary_loader, "_registry_path", lambda: root / "datasets" / "registry.yml")
+    monkeypatch.setattr(dictionary_loader, "_datasets_root", lambda: root / "datasets")
 
 
 def test_optional_registry_loader_returns_none_when_section_absent(
