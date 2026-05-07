@@ -19,7 +19,7 @@ examples/configs/*.yml
 !examples/configs/config_example.yml
 dictionaries/
 environment/
-scripts/
+scripts/utils/
 var/
 docs/*.md
 datasets/
