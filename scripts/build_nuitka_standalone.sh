@@ -7,7 +7,7 @@ NUITKA_ARGS=(
   --mode=standalone
   --assume-yes-for-downloads
   --follow-imports
-  --include-package-data=anyascii
+  --include-package=unidecode
   --output-dir="$ROOT_DIR/build/nuitka/standalone"
   --output-filename=nexus
   --remove-output
@@ -97,6 +97,28 @@ output_path.write_text(
 PY
 }
 
+organize_bin_lib_layout() {
+  local dist_dir="$1"
+  mkdir -p "$dist_dir/bin" "$dist_dir/lib"
+
+  if [[ -f "$dist_dir/nexus" ]]; then
+    mv "$dist_dir/nexus" "$dist_dir/bin/nexus"
+    ln -sfn "bin/nexus" "$dist_dir/nexus"
+  fi
+
+  local lib_file
+  while IFS= read -r -d '' lib_file; do
+    local basename
+    basename="$(basename "$lib_file")"
+    mv "$lib_file" "$dist_dir/lib/$basename"
+    ln -sfn "lib/$basename" "$dist_dir/$basename"
+  done < <(
+    find "$dist_dir" -maxdepth 1 -type f \
+      \( -name '*.so' -o -name '*.so.*' \) \
+      -print0
+  )
+}
+
 resolve_nuitka_dist_dir() {
   local candidate
   candidate="$(find "$BUILD_ROOT" -maxdepth 1 -mindepth 1 -type d -name '*.dist' | sort | head -n 1)"
@@ -132,6 +154,8 @@ main() {
   fi
 
   require_path "$DIST_DIR/nexus"
+  organize_bin_lib_layout "$DIST_DIR"
+  require_path "$DIST_DIR/bin/nexus"
   assemble_runtime_tree "$DIST_DIR"
 
   echo "standalone build assembled at: $DIST_DIR"
