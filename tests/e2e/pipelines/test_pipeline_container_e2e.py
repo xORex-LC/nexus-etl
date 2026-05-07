@@ -25,7 +25,7 @@ from connector.infra.cache.roles import build_sqlite_cache_role_ports
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.infra.sqlite.config import SqliteDbConfig
 from connector.infra.sqlite.engine import open_sqlite
-from tests.runtime_test_support import prepare_tracked_employees_source_file
+from tests.runtime_test_support import prepare_tracked_employees_source_file, tracked_employees_runtime_roots
 
 
 HEADER = ";".join(
@@ -75,7 +75,17 @@ def _write_csv(path: Path, rows: list[list[str]]) -> None:
 
 def _build_container(csv_path: Path):
     runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
-    configure_runtime_paths(RuntimePathOverrides(source_data_root=runtime_csv_path.parent))
+    roots = tracked_employees_runtime_roots()
+    configure_runtime_paths(
+        RuntimePathOverrides(
+            datasets_root=roots["datasets_root"],
+            dictionary_specs_root=roots["dictionary_specs_root"],
+            dictionary_data_root=roots["dictionary_data_root"],
+            source_data_root=runtime_csv_path.parent,
+            source_projection_root=roots["source_projection_root"],
+            target_projection_root=roots["target_projection_root"],
+        )
+    )
     dataset_spec = get_spec("employees")
     catalog = build_catalog("employees", strict=False)
     cache_roles = _build_cache_roles()

@@ -30,10 +30,10 @@ from connector.domain.dictionary_dsl.specs import (
 def load_dictionary_registry_spec(path: str | Path | None = None) -> DictionaryRegistrySpec:
     """
     Назначение:
-        Загрузить dictionary registry из отдельного файла или `datasets/registry.yml`.
+        Загрузить dictionary registry из отдельного файла или runtime registry file.
 
     Контракт:
-        - Если передан общий `datasets/registry.yml`, извлекается секция `dictionaries`.
+        - Если передан общий runtime registry file, извлекается секция `dictionaries`.
         - Если передан standalone файл, допускается payload без верхнего ключа `dictionaries`.
     """
     registry_path = Path(path) if path is not None else _registry_path()
@@ -56,7 +56,7 @@ def load_optional_dictionary_registry_spec_for_runtime() -> DictionaryRegistrySp
         Runtime helper для optional dictionary runtime.
 
     Контракт:
-        - Если секция `dictionaries` отсутствует в `datasets/registry.yml`, возвращает `None`.
+        - Если секция `dictionaries` отсутствует в runtime registry file, возвращает `None`.
         - Ошибки чтения файла registry и невалидная секция `dictionaries` остаются fatal.
     """
     registry_path = _registry_path()
@@ -78,7 +78,7 @@ def load_optional_dictionary_registry_spec_for_runtime() -> DictionaryRegistrySp
 def load_dictionary_registry_spec_for_runtime() -> DictionaryRegistrySpec:
     """
     Назначение:
-        Strict runtime helper для загрузки dictionary registry из `datasets/registry.yml`.
+        Strict runtime helper для загрузки dictionary registry из active registry file.
     """
     return load_dictionary_registry_spec(None)
 
@@ -225,7 +225,7 @@ def _extract_dictionary_registry_payload(
 ) -> dict[str, Any] | None:
     """
     Назначение:
-        Выделить payload dictionary registry из общего `datasets/registry.yml`.
+        Выделить payload dictionary registry из общего runtime registry file.
     """
     if "dictionaries" in raw:
         payload = raw.get("dictionaries")

@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from connector.common.runtime_paths import RuntimePathOverrides
 from connector.datasets import registry as dataset_registry_module
 from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
+from tests.runtime_test_support import tracked_employees_runtime_roots
 
 
 # NOTE:
@@ -22,11 +24,22 @@ def _activate_employees_test_registry() -> Path:
         Включить `datasets/employees.registry.yaml` как дефолтный registry для тестового рантайма.
 
     Почему это здесь:
-        Часть legacy-тестов строит `build_catalog()/get_spec()/load_*_for_dataset()`
+        Часть тестов строит `build_catalog()/get_spec()/load_*_for_dataset()`
         на уровне импорта модуля, то есть раньше обычных function-fixtures.
         Поэтому тестовый registry нужно активировать уже при загрузке `conftest.py`.
     """
-    registry_path = Path(__file__).resolve().parents[1] / "datasets" / "employees.registry.yaml"
+    roots = tracked_employees_runtime_roots()
+    registry_path = roots["registry_path"]
+    configure_runtime_paths(
+        RuntimePathOverrides(
+            datasets_root=roots["datasets_root"],
+            dictionary_specs_root=roots["dictionary_specs_root"],
+            dictionary_data_root=roots["dictionary_data_root"],
+            source_projection_root=roots["source_projection_root"],
+            target_projection_root=roots["target_projection_root"],
+            source_data_root=roots["source_data_root"],
+        )
+    )
     configure_registry_path(registry_path)
     dataset_registry_module._registry = None
     return registry_path
@@ -44,13 +57,9 @@ def _restore_test_registry_default():
         Это делает suite устойчивым к тестам, которые временно переключают registry path
         на custom значение или сбрасывают его в `None`.
     """
-    configure_runtime_paths(None)
-    configure_registry_path(_TEST_REGISTRY_PATH)
-    dataset_registry_module._registry = None
+    _activate_employees_test_registry()
     yield
-    configure_runtime_paths(None)
-    configure_registry_path(_TEST_REGISTRY_PATH)
-    dataset_registry_module._registry = None
+    _activate_employees_test_registry()
 
 
 @pytest.fixture()
@@ -66,9 +75,7 @@ def employees_registry_path():
         - не влияет на тесты, которые явно настраивают другой registry path.
     """
     try:
-        configure_registry_path(_TEST_REGISTRY_PATH)
-        dataset_registry_module._registry = None
+        _activate_employees_test_registry()
         yield _TEST_REGISTRY_PATH
     finally:
-        configure_registry_path(_TEST_REGISTRY_PATH)
-        dataset_registry_module._registry = None
+        _activate_employees_test_registry()

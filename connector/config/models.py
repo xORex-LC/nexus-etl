@@ -56,9 +56,9 @@ class PathsConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    cache_dir: str = "./var/cache"
-    log_dir: str = "./var/logs"
-    report_dir: str = "./reports"
+    cache_dir: str = "var/cache"
+    log_dir: str = "var/logs"
+    report_dir: str = "reports"
 
     @field_validator("cache_dir", "log_dir", "report_dir", mode="after")
     @classmethod
@@ -76,7 +76,7 @@ class RuntimeConfig(BaseModel):
     datasets_root: str = "./datasets"
     dictionary_specs_root: str = "./etc/dictionaries"
     dictionary_data_root: str = "./dictionaries"
-    source_data_root: str = "./examples/sources"
+    source_data_root: str = "./etc/source-data"
     source_projection_root: str = "./etc/source-projection"
     target_projection_root: str = "./etc/target-projection"
 

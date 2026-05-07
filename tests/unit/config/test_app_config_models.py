@@ -102,7 +102,7 @@ def test_runtime_config_defaults_follow_standalone_layout() -> None:
     assert cfg.datasets_root == "./datasets"
     assert cfg.dictionary_specs_root == "./etc/dictionaries"
     assert cfg.dictionary_data_root == "./dictionaries"
-    assert cfg.source_data_root == "./examples/sources"
+    assert cfg.source_data_root == "./etc/source-data"
     assert cfg.source_projection_root == "./etc/source-projection"
     assert cfg.target_projection_root == "./etc/target-projection"
 
@@ -162,6 +162,6 @@ def test_app_config_defaults_regression() -> None:
 
     # Runtime/paths defaults
     assert cfg.runtime.datasets_root == "./datasets"
-    assert cfg.paths.cache_dir == "./var/cache"
-    assert cfg.paths.log_dir == "./var/logs"
-    assert cfg.paths.report_dir == "./reports"
+    assert cfg.paths.cache_dir == "var/cache"
+    assert cfg.paths.log_dir == "var/logs"
+    assert cfg.paths.report_dir == "reports"

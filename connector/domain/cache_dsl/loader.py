@@ -26,7 +26,7 @@ from connector.domain.cache_dsl.specs import CacheDatasetSpec, CacheRegistrySpec
 def load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpec:
     """
     Назначение:
-        Загрузить cache registry spec (из отдельного файла или datasets/registry.yml).
+        Загрузить cache registry spec (из отдельного файла или runtime registry file).
     """
     try:
         raw = _read_yaml(path) if path is not None else _load_registry_or_raise()
@@ -51,7 +51,7 @@ def load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpe
 def load_cache_registry_spec_for_runtime() -> CacheRegistrySpec:
     """
     Назначение:
-        Runtime helper для загрузки cache registry из datasets/registry.yml.
+        Runtime helper для загрузки cache registry из active registry file.
     """
     return load_cache_registry_spec(None)
 
@@ -172,7 +172,7 @@ def load_cache_build_options_for_runtime(
 def _extract_cache_registry_payload(raw: dict[str, Any]) -> dict[str, Any]:
     """
     Назначение:
-        Выделить payload cache registry из общего registry.yml.
+        Выделить payload cache registry из общего registry file.
     """
     if "cache" in raw and isinstance(raw.get("cache"), dict):
         return raw["cache"]

@@ -70,7 +70,10 @@ def test_import_plan_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: 
     config_path = write_runtime_config(
         tmp_path,
         registry_path=registry_path,
+        datasets_root=registry_path.parent,
         source_data_root=csv_path.parent,
+        source_projection_root=registry_path.parent,
+        target_projection_root=registry_path.parent,
         dictionary_specs_root=registry_path.parent / "dictionaries",
         dictionary_data_root=tmp_path / "dictionaries",
     )

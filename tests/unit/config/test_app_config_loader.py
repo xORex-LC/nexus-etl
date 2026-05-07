@@ -57,7 +57,7 @@ def test_load_runtime_roots_from_yaml(tmp_path: object, monkeypatch: pytest.Monk
 
     assert result.app_config.runtime.runtime_root == "/opt/nexus"
     assert result.app_config.runtime.dictionary_data_root == "./dictionaries"
-    assert result.app_config.runtime.source_data_root == "./examples/sources"
+    assert result.app_config.runtime.source_data_root == "./etc/source-data"
     assert result.source_trace["runtime.runtime_root"] == "config"
 
 
@@ -78,7 +78,7 @@ def test_env_override_for_runtime_paths_is_ignored(tmp_path: object, monkeypatch
         "runtime:\n"
         "  datasets_root: ./datasets\n"
         "paths:\n"
-        "  cache_dir: ./var/cache\n",
+        "  cache_dir: var/cache\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ANKEY_RUNTIME__DATASETS_ROOT", "/from-env/datasets")
@@ -88,7 +88,7 @@ def test_env_override_for_runtime_paths_is_ignored(tmp_path: object, monkeypatch
     result = load_app_config(str(cfg_file))
 
     assert result.app_config.runtime.datasets_root == "./datasets"
-    assert result.app_config.paths.cache_dir == "./var/cache"
+    assert result.app_config.paths.cache_dir == "var/cache"
     assert result.app_config.dataset.registry_path is None
     assert result.source_trace["runtime.datasets_root"] == "config"
     assert result.source_trace["paths.cache_dir"] == "config"

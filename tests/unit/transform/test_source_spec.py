@@ -8,6 +8,7 @@ from connector.common.runtime_paths import RuntimePathOverrides
 from connector.domain.dsl.loader import configure_runtime_paths
 from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve_source_location
 from connector.domain.transform_dsl.specs import SourceSpec
+from tests.runtime_test_support import tracked_employees_runtime_roots
 
 
 def test_load_source_spec_for_dataset(employees_registry_path) -> None:
@@ -15,7 +16,7 @@ def test_load_source_spec_for_dataset(employees_registry_path) -> None:
     assert spec.dataset == "employees"
     assert spec.source.type == "file"
     assert spec.source.format == "csv"
-    assert spec.source.location == "source_employees_example.csv"
+    assert spec.source.location == "source_employees_example_1.csv"
     csv_options = spec.source.csv_options()
     assert csv_options.delimiter
     assert csv_options.encoding
@@ -79,15 +80,21 @@ def test_resolve_source_location_uses_runtime_source_data_root(
     tmp_path: Path,
     employees_registry_path,
 ) -> None:
+    roots = tracked_employees_runtime_roots()
     configure_runtime_paths(
         RuntimePathOverrides(
+            datasets_root=roots["datasets_root"],
+            dictionary_specs_root=roots["dictionary_specs_root"],
+            dictionary_data_root=roots["dictionary_data_root"],
             source_data_root=tmp_path / "custom-sources",
+            source_projection_root=roots["source_projection_root"],
+            target_projection_root=roots["target_projection_root"],
         )
     )
     spec = load_source_spec_for_dataset("employees")
     try:
         assert resolve_source_location(spec) == str(
-            (tmp_path / "custom-sources" / "source_employees_example.csv").resolve()
+            (tmp_path / "custom-sources" / "source_employees_example_1.csv").resolve()
         )
     finally:
         configure_runtime_paths(None)

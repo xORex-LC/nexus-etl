@@ -143,7 +143,7 @@ class TestYamlDatasetSpecAdapters:
             assert source.has_header is True
             assert source.delimiter == csv_options.delimiter
             assert source.encoding == csv_options.encoding
-            assert Path(source.path) == (tmp_path / "sources" / "source_employees_example.csv").resolve()
+            assert Path(source.path) == (tmp_path / "sources" / "source_employees_example_1.csv").resolve()
         finally:
             configure_runtime_paths(None)
 
