@@ -4,6 +4,7 @@ from typer.testing import CliRunner
 from connector.main import app
 import connector.delivery.cli.containers as containers_mod
 from connector.config.loader import load_app_config
+from connector.config.projections import to_dataset_registry_path
 from connector.infra.target.core.factory import (
     build_target_runtime_with_info as _real_build_target_runtime_with_info,
 )
@@ -201,3 +202,25 @@ def test_vault_rollout_settings_loaded_from_env(tmp_path, monkeypatch):
     assert rollout.mode == "canary"
     assert rollout.canary_percent == 15
     assert rollout.row_failure_rate_threshold_pct == 2.5
+
+
+def test_dataset_registry_path_is_runtime_root_relative(tmp_path):
+    cfg = tmp_path / "config.yml"
+    runtime_root = tmp_path / "runtime"
+    cfg.write_text(
+        "\n".join(
+            [
+                "runtime:",
+                f'  runtime_root: "{runtime_root}"',
+                "dataset:",
+                '  registry_path: "./datasets/employees.registry.yaml"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_app_config(config_path=str(cfg), cli_overrides={})
+
+    assert to_dataset_registry_path(loaded.app_config) == str(
+        (runtime_root / "datasets" / "employees.registry.yaml").resolve()
+    )

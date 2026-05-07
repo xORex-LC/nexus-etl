@@ -48,7 +48,10 @@ from connector.infra.dictionaries.telemetry import DictionaryTelemetry
 def _normalize_optional_path(path: str | Path | None) -> Path | None:
     if path is None:
         return None
-    return Path(path).expanduser().resolve()
+    path_obj = Path(path).expanduser()
+    if path_obj.is_absolute():
+        return path_obj.resolve()
+    return (get_runtime_paths().root / path_obj).resolve()
 
 
 def _load_runtime_bundle_optional(
