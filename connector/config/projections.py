@@ -31,9 +31,10 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
-from connector.common.runtime_paths import RuntimePathOverrides
+from connector.common.runtime_paths import RuntimePathOverrides, detect_runtime_paths
 from connector.config.models import AppConfig
 from connector.domain.secrets.policy.rollout_metrics import VaultRolloutThresholds
 from connector.domain.secrets.policy.rollout_policy import VaultRolloutPolicySettings
@@ -41,6 +42,13 @@ from connector.domain.transform.matcher.match_deps import MatchBatchSettings
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.infra.sqlite.config import SqliteDbConfig
 from connector.usecases.operations.vault_management_settings import VaultManagementSettings
+
+
+@dataclass(frozen=True)
+class OperationalPaths:
+    cache_dir: str
+    log_dir: str
+    report_dir: str
 
 
 def to_resolver_settings(config: AppConfig) -> ResolverSettings:
@@ -189,6 +197,37 @@ def to_vault_management_settings(config: AppConfig) -> VaultManagementSettings:
     )
 
 
+def to_dataset_registry_path(config: AppConfig) -> str | None:
+    """Resolve explicit dataset registry override against runtime root.
+
+    The override remains optional. When provided as a relative path in config,
+    it is interpreted relative to `runtime.runtime_root` instead of the process
+    working directory.
+    """
+    registry_path = config.dataset.registry_path
+    if registry_path is None:
+        return None
+
+    runtime_root = Path(config.runtime.runtime_root).expanduser()
+    if not runtime_root.is_absolute():
+        runtime_root = (Path.cwd() / runtime_root).resolve()
+
+    registry_path_obj = Path(registry_path).expanduser()
+    if registry_path_obj.is_absolute():
+        return str(registry_path_obj.resolve())
+    return str((runtime_root / registry_path_obj).resolve())
+
+
+def to_operational_paths(config: AppConfig) -> OperationalPaths:
+    """Resolve cache/log/report directories against runtime root."""
+    runtime_paths = detect_runtime_paths(overrides=to_runtime_path_overrides(config))
+    return OperationalPaths(
+        cache_dir=str(runtime_paths.cache_root),
+        log_dir=str(runtime_paths.logs_root),
+        report_dir=str(runtime_paths.reports_root),
+    )
+
+
 def to_runtime_path_overrides(config: AppConfig) -> RuntimePathOverrides:
     """AppConfig.runtime/paths → runtime resolver overrides."""
     runtime = config.runtime
@@ -217,5 +256,7 @@ __all__ = [
     "to_cache_db_config",
     "to_identity_db_config",
     "to_vault_management_settings",
+    "to_dataset_registry_path",
+    "to_operational_paths",
     "to_runtime_path_overrides",
 ]

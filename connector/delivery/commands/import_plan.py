@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import typer
 
 from connector.common.time import get_now_iso
+from connector.config.projections import to_operational_paths, to_vault_rollout_policy_settings
 from connector.delivery.cli.containers import build_dataset_spec, build_diagnostics_catalog
 from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.common import (
@@ -29,7 +30,6 @@ from connector.domain.secrets.errors import (
     VaultStartupStorageReadonlyError,
     VaultStartupUninitializedReadonlyError,
 )
-from connector.config.projections import to_vault_rollout_policy_settings
 from connector.domain.secrets.policy.rollout_policy import evaluate_vault_rollout
 from connector.domain.secrets.policy.runtime_mode_policy import (
     RUNTIME_REASON_INVALID_MODE,
@@ -176,7 +176,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
                 plan_items=plan_result.items,
                 summary=plan_result.summary_as_dict(),
                 meta=plan_meta,
-                report_dir=app_config.paths.report_dir,
+                report_dir=to_operational_paths(app_config).report_dir,
                 run_id=run_id,
                 generated_at=generated_at,
             )

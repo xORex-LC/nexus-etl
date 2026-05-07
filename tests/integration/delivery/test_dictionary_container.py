@@ -20,7 +20,8 @@ import yaml
 pytest.importorskip("polars")
 
 from connector.common.runtime_paths import RuntimePathOverrides
-from connector.config.models import DictionaryConfig
+from connector.config.models import AppConfig, DictionaryConfig
+from connector.delivery.cli.containers import AppContainer
 from connector.delivery.cli.dictionaries_container import DictionaryContainer
 from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
 from connector.domain.dictionary_dsl.specs import DictionarySpec
@@ -265,6 +266,49 @@ def test_dictionary_container_bootstrap_from_active_registry_path_init_success(t
     finally:
         configure_registry_path(None)
         configure_runtime_paths(None)
+        container.shutdown_resources()
+
+
+def test_app_container_resolves_dictionary_roots_against_runtime_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    datasets_root, dictionary_specs_root, dictionary_data_root = _write_datasets_fixture(tmp_path)
+    outside_cwd = tmp_path / "outside-cwd"
+    outside_cwd.mkdir(parents=True, exist_ok=True)
+
+    app_config = AppConfig.model_validate(
+        {
+            "runtime": {
+                "runtime_root": str(tmp_path),
+                "datasets_root": "./datasets",
+                "dictionary_specs_root": "./dictionary-specs",
+                "dictionary_data_root": "./dictionaries",
+            },
+            "dataset": {
+                "registry_path": "./datasets/registry.yaml",
+            },
+            "dictionary": {
+                "fingerprint_salt": "repo-fixture-test",
+                "lookup_hit_sample_percent": 0,
+                "lookup_miss_sample_percent": 0,
+            },
+        }
+    )
+    container = AppContainer()
+    container.app_config.override(app_config)
+
+    try:
+        monkeypatch.chdir(outside_cwd)
+        assert Path(container._dictionary_specs_root()) == dictionary_specs_root.resolve()
+        assert Path(container._dictionary_data_root()) == dictionary_data_root.resolve()
+
+        dictionary_container = container.dictionary()
+        dictionary_container.init_resources()
+        provider = dictionary_container.provider()
+        assert provider is not None
+        assert provider.contains("organizations", "org-1") is True
+    finally:
         container.shutdown_resources()
 
 
