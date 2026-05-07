@@ -180,7 +180,7 @@ class TestStageWiring:
 
         Примечание:
             Для этого wiring-теста row_source подменяется заглушкой, чтобы
-            не зависеть от source DSL/env (`EMPLOYEES_SOURCE_PATH`).
+            не зависеть от конкретного runtime source-spec и физических source files.
         """
         from connector.delivery.pipelines.planning_pipeline import PlanningPipeline
         container = _make_pipeline_container()

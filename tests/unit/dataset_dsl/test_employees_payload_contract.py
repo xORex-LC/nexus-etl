@@ -30,7 +30,7 @@ def _employees_source(**overrides):
 
 class TestEmployeesPayloadContract:
     @pytest.fixture()
-    def builder(self):
+    def builder(self, employees_registry_path):
         return get_spec("employees").get_apply_adapter().payload_builder
 
     def test_happy_path_payload_matches_expected_contract(self, builder):
@@ -62,6 +62,14 @@ class TestEmployeesPayloadContract:
     def test_avatar_id_default_is_always_present(self, builder):
         payload = builder(_employees_source(password=None))
 
+        assert payload["avatarId"] is None
+
+    def test_nullable_payload_fields_are_present_with_null(self, builder):
+        payload = builder(_employees_source(email=None, phone=None, position=None))
+
+        assert payload["mail"] is None
+        assert payload["phone"] is None
+        assert payload["position"] is None
         assert payload["avatarId"] is None
 
     def test_manager_id_nullable_int_contract(self, builder):
@@ -100,9 +108,9 @@ class TestEmployeesPayloadContract:
 
     def test_missing_required_fields_raise_value_error(self, builder):
         with pytest.raises(ValueError, match="Missing required fields"):
-            builder(_employees_source(email="", user_name=None))
+            builder(_employees_source(email=None, user_name=None))
 
-    def test_apply_adapter_builds_request_with_expected_payload(self):
+    def test_apply_adapter_builds_request_with_expected_payload(self, employees_registry_path):
         adapter = get_spec("employees").get_apply_adapter()
         item = PlanItem(
             row_id="line:1",

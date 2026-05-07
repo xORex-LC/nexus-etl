@@ -1,4 +1,5 @@
 import httpx
+import yaml
 from typer.testing import CliRunner
 from connector.main import app
 import connector.delivery.cli.containers as containers_mod
@@ -6,20 +7,44 @@ from connector.config.loader import load_app_config
 from connector.infra.target.core.factory import (
     build_target_runtime_with_info as _real_build_target_runtime_with_info,
 )
+from tests.runtime_test_support import tracked_employees_runtime_roots
 
 runner = CliRunner()
 
-def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
+
+def _write_cli_runtime_config(tmp_path, *, api: dict[str, object]) -> object:
+    roots = tracked_employees_runtime_roots()
     cfg = tmp_path / "config.yml"
     cfg.write_text(
-        "\n".join([
-            "api:",
-            '  host: "1.1.1.1"',
-            "  port: 1111",
-            '  username: "cfg_user"',
-            '  password: "cfg_pass"',
-        ]),
+        yaml.safe_dump(
+            {
+                "api": api,
+                "dataset": {"registry_path": str(roots["registry_path"])},
+                "runtime": {
+                    "datasets_root": str(roots["datasets_root"]),
+                    "dictionary_specs_root": str(roots["dictionary_specs_root"]),
+                    "dictionary_data_root": str(roots["dictionary_data_root"]),
+                    "source_data_root": str(roots["source_data_root"]),
+                    "source_projection_root": str(roots["source_projection_root"]),
+                    "target_projection_root": str(roots["target_projection_root"]),
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
         encoding="utf-8",
+    )
+    return cfg
+
+def test_priority_cli_over_env_over_config(tmp_path, monkeypatch):
+    cfg = _write_cli_runtime_config(
+        tmp_path,
+        api={
+            "host": "1.1.1.1",
+            "port": 1111,
+            "username": "cfg_user",
+            "password": "cfg_pass",
+        },
     )
 
     # ENV overrides config

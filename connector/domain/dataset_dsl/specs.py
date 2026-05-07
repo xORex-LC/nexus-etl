@@ -3,7 +3,7 @@
     Pydantic-модели для dataset-level DSL конфигурации.
 
 Граница ответственности:
-    - Owns: декларативные модели report/apply/diagnostics секций registry.yml.
+    - Owns: декларативные модели report/apply/diagnostics секций runtime registry file.
     - Does NOT: загрузка YAML, компиляция в runtime-объекты.
 """
 
@@ -82,7 +82,7 @@ class DiagnosticEntrySpec(DslBaseModel):
 class DatasetDslSpec(DslBaseModel):
     """
     Назначение:
-        Полная dataset-level DSL конфигурация из registry.yml.
+        Полная dataset-level DSL конфигурация из runtime registry file.
     """
 
     report: ReportAdapterSpec

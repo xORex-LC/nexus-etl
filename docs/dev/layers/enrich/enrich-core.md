@@ -53,9 +53,14 @@ NormalizeStage → TransformResult[dict]
                                   ├── op: build_match_key (COMPUTE, ALWAYS)
                                   │     → builder.match_key = MatchKey("...")
                                   │
-                                  ├── op: target_id (GENERATE)
-                                  │     → generator() → exists() → allow_if()
-                                  │     → builder.row["target_id"] = "uuid-..."
+                                  ├── op: email_from_cache (LOOKUP)
+                                  │     → provider.fetch() → candidate.value
+                                  │     → builder.row["email"] = "john@example.com"
+                                  │
+                                  ├── op: user_name (GENERATE)
+                                  │     → base_generator() → condition() → append_generator()
+                                  │     → exists() → allow_if() → conflict_policy()
+                                  │     → builder.row["user_name"] = "IvanII"
                                   │
                                   ├── op: password (GENERATE → secret:password)
                                   │     → builder.secret_candidates["password"] = "..."
@@ -99,7 +104,7 @@ connector/domain/transform_dsl/compilers/enrich.py
 | `EnricherEngine` | Компилирует `EnrichSpec → EnricherSpec`; создаёт `EnricherCore`; маршрутизирует `enrich()` |
 | `EnricherCore` | Итерирует операции, вызывает `_execute_operation()`, хранит `ConflictResolver`/`MergeEngine` |
 | `_execute_operation()` | Разрешает ключи, собирает кандидатов, принимает решение через `ConflictResolver` |
-| `_collect_candidates()` | Три ветки: COMPUTE / GENERATE (retry) / LOOKUP (провайдеры) |
+| `_collect_candidates()` | Три ветки: COMPUTE / GENERATE (legacy или compiled generate path) / LOOKUP (провайдеры) |
 | `ConflictResolver` | Сортирует кандидатов по (priority, confidence); выбирает один или объявляет AMBIGUOUS |
 | `MergeEngine` | Решает `should_apply()` по `MergePolicy` и `authoritative_sources` |
 | `_FieldMutationTracker` | Запоминает последнего writer для каждого поля (для `never_override` / conflict detection) |
@@ -144,9 +149,13 @@ class EnrichmentOperation(Generic[T, D]):
     strictness: StrictnessPolicy | None
     run_when_errors: RunWhenErrors       # NEVER | ALWAYS | ONLY_NON_FATAL
     compute: Callable | None             # для COMPUTE (match_key)
-    generator: Callable | None           # для GENERATE (ops chain)
+    generator: Callable | None           # legacy GENERATE (ops chain)
+    base_generator: Callable | None      # compiled build-block
+    condition: Callable | None           # compiled when-block
+    append_generator: Callable | None    # compiled then-block (append-stage)
     exists: Callable | None              # проверка уникальности (cache lookup)
     allow_if: Callable | None            # условие принятия при конфликте
+    conflict_policy: CompiledConflictPolicy | None  # exists-conflict policy
     max_attempts: int                    # попыток generate (default 3)
     missing_error_code: str | None
     conflict_error_code: str | None
@@ -317,6 +326,11 @@ class _FieldMutationTracker:
 def enrich(self, result: TransformResult[T]) -> TransformResult[T]:
 ```
 
+**Актуальные generate semantics**:
+- legacy generate path: `generator → exists → allow_if → max_attempts`
+- compiled generate path: `base_generator → condition → append_generator → exists → allow_if → conflict_policy`
+- для `retry_with_suffixes` suffix всегда добавляется к **base value**, а не к предыдущей попытке
+
 ```
 1. if result.row is None:
        return result   # pass-through: строка уже отфильтрована
@@ -414,6 +428,11 @@ def _should_run_operation(op, errors) -> bool:
 | `WARNED` / `NEEDS_RESOLVE` | `builder.add_warning_item(...)` — строка продолжает путь |
 | `SKIPPED` | Без action |
 
+`_report_by_policy()` также атрибутирует enrich-диагностику:
+- `field` по умолчанию берётся из `op.error_field` или `op.targets[0]`;
+- в `details` кладутся как минимум `rule`, `target`, `reason`;
+- report-layer может поднять `details["rule"]` в `ReportDiagnostic.rule`.
+
 ### `_collect_candidates()` — три ветки по op_type
 
 **Файл:** `connector/domain/transform/enrich/enricher_core.py`
@@ -473,6 +492,21 @@ candidate = "existing-uuid"
 exists(deps, "existing-uuid")    → {"_id": "...", "match_key": "Doe|John|..."}
 allow_if(result, existing)       → equals_path(match_key == existing.match_key) → True
 → вернуть CandidateValue("existing-uuid") несмотря на «конфликт»
+```
+
+**Compiled generate path для `user_name`-подобных правил:**
+
+```python
+base = base_generator(result, deps)
+if condition(result, deps):
+    append = append_generator(result, deps)
+    candidate = f"{base}{append}"
+else:
+    candidate = base
+
+existing = exists(deps, candidate)
+if existing is not None and not allow_if(result, existing):
+    # retry_with_suffixes: base, base+"_2", base+"_3"
 ```
 
 **LOOKUP** — поиск через провайдеров:
@@ -1044,3 +1078,4 @@ builder.errors = [DiagnosticItem(code="MATCH_KEY_MISSING", stage=ENRICH)]
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-03-01 | Создан документ — core-алгоритм enrich-слоя | xORex-LC |
+| 2026-05-06 | Документ синхронизирован с compiled generate path (`base_generator/condition/append_generator/conflict_policy`), новым порядком `exists → allow_if → on_conflict` и атрибутированными enrich diagnostics | xORex-LC |

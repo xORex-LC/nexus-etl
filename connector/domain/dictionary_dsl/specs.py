@@ -40,7 +40,7 @@ def _require_non_blank(value: str, *, field_name: str) -> str:
 class DictionaryRegistryItemSpec(DslBaseModel):
     """
     Назначение:
-        Один элемент секции `dictionaries.items` в `datasets/registry.yml`.
+        Один элемент секции `dictionaries.items` в runtime registry file.
     """
 
     spec: str
@@ -63,7 +63,13 @@ class DictionaryRegistrySpec(DslBaseModel):
     """
 
     version: Literal[1]
+    manifest: str
     items: dict[str, DictionaryRegistryItemSpec] = Field(default_factory=dict)
+
+    @field_validator("manifest", mode="after")
+    @classmethod
+    def _validate_manifest_path(cls, value: str) -> str:
+        return _require_non_blank(value, field_name="manifest")
 
     @model_validator(mode="after")
     def _validate_items_keys(self) -> "DictionaryRegistrySpec":
@@ -82,11 +88,27 @@ class DictionarySourceCsvSpec(DslBaseModel):
     delimiter: str = ","
     has_header: bool = True
     encoding: str = "utf-8"
+    null_values: list[str] = Field(default_factory=lambda: ["NULL"])
 
     @field_validator("delimiter", "encoding", mode="after")
     @classmethod
     def _validate_non_blank(cls, value: str, info) -> str:
         return _require_non_blank(value, field_name=str(info.field_name))
+
+    @field_validator("null_values", mode="after")
+    @classmethod
+    def _validate_null_values(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for idx, value in enumerate(values):
+            if not isinstance(value, str):
+                raise ValueError(f"source.csv.null_values[{idx}] must be a string")
+            normalized_value = value.strip()
+            if normalized_value in seen:
+                continue
+            seen.add(normalized_value)
+            normalized.append(normalized_value)
+        return normalized
 
 
 class DictionarySourceSpec(DslBaseModel):
@@ -125,28 +147,63 @@ class DictionaryNormalizedKeySpec(DslBaseModel):
         return ops
 
 
+class DictionaryKeyColumnSpec(DslBaseModel):
+    """
+    Назначение:
+        Контракт lookup-ключа словаря.
+
+    Граница:
+        - `name` указывает фактическую колонку CSV, по которой строится lookup/index.
+        - Nullable semantics для key-column не поддерживаются.
+    """
+
+    name: str
+
+    @field_validator("name", mode="after")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _require_non_blank(value, field_name="schema.key_column.name")
+
+
+class DictionaryValueColumnSpec(DslBaseModel):
+    """
+    Назначение:
+        Контракт одной value-колонки словаря.
+    """
+
+    name: str
+    nullable: bool = False
+
+    @field_validator("name", mode="after")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _require_non_blank(value, field_name="schema.value_columns[].name")
+
+
 class DictionarySchemaSpec(DslBaseModel):
     """
     Назначение:
         Lookup-схема словаря: key/value колонки и опциональная нормализация ключа.
     """
 
-    key_column: str
-    value_columns: list[str]
+    key_column: DictionaryKeyColumnSpec
+    value_columns: list[DictionaryValueColumnSpec]
     normalized_key: DictionaryNormalizedKeySpec | None = None
 
     @model_validator(mode="after")
     def _validate_schema(self) -> "DictionarySchemaSpec":
-        _require_non_blank(self.key_column, field_name="schema.key_column")
         if not self.value_columns:
             raise ValueError("schema.value_columns must not be empty")
 
         normalized_values: list[str] = []
         for idx, column in enumerate(self.value_columns):
-            _require_non_blank(column, field_name=f"schema.value_columns[{idx}]")
-            normalized_values.append(column)
+            if column.name in normalized_values:
+                raise ValueError(
+                    f"schema.value_columns contains duplicate column '{column.name}' at index {idx}"
+                )
+            normalized_values.append(column.name)
 
-        if self.key_column in normalized_values:
+        if self.key_column.name in normalized_values:
             raise ValueError("schema.key_column must not be present in schema.value_columns")
         return self
 
@@ -182,7 +239,8 @@ class DictionarySpec(DslBaseModel):
 class DictionaryManifestItemSpec(DslBaseModel):
     """
     Назначение:
-        Метаданные snapshot-файла словаря из `datasets/dictionaries/manifest.yml`.
+        Метаданные snapshot-файла словаря из manifest-файла, путь к которому
+        объявлен в dictionary registry.
     """
 
     csv_path: str
@@ -224,6 +282,7 @@ class DictionaryManifestSpec(DslBaseModel):
 
 __all__ = [
     "DICTIONARY_NORMALIZED_KEY_OPS_WHITELIST",
+    "DictionaryKeyColumnSpec",
     "DictionaryLookupSpec",
     "DictionaryManifestItemSpec",
     "DictionaryManifestSpec",
@@ -234,5 +293,5 @@ __all__ = [
     "DictionarySourceCsvSpec",
     "DictionarySourceSpec",
     "DictionarySpec",
+    "DictionaryValueColumnSpec",
 ]
-

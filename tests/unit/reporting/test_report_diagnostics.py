@@ -59,3 +59,20 @@ def test_split_report_diagnostics_uses_fallback_severity():
     assert warnings[0].severity == "warning"
     assert warnings[0].stage == DiagnosticStage.VALIDATE
     assert warnings[0].code == "W2"
+
+
+def test_to_report_diagnostics_extracts_rule_from_details():
+    warning_item = DiagnosticItem(
+        stage=DiagnosticStage.ENRICH,
+        code="ENRICH_NO_CANDIDATES",
+        field="email",
+        message="no candidates available",
+        details={"rule": "email_from_cache", "reason": "no_candidates"},
+        severity=DiagnosticSeverity.WARNING,
+    )
+
+    diagnostics = to_report_diagnostics([], [warning_item])
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].rule == "email_from_cache"
+    assert diagnostics[0].details == {"rule": "email_from_cache", "reason": "no_candidates"}

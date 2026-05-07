@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +17,9 @@ from connector.domain.dsl.loader._common import (
     _load_registry_or_raise,
     _load_spec_from_path,
     _read_yaml_or_raise,
-    _repo_root,
+    _resolve_dataset_stage_path,
+    _resolve_source_data_path,
+    _resolve_source_projection_path,
     _validate_spec_or_raise,
 )
 from connector.domain.transform_dsl.build_options import (
@@ -54,7 +55,7 @@ def load_mapping_spec(path: str | Path) -> MappingSpec:
 def load_mapping_spec_for_dataset(dataset: str) -> MappingSpec:
     """
     Назначение:
-        Загрузить mapping DSL по имени датасета из datasets/registry.yml.
+        Загрузить mapping DSL по имени датасета из runtime registry file.
     """
     return _load_dataset_stage_spec(
         dataset=dataset,
@@ -67,7 +68,7 @@ def load_mapping_spec_for_dataset(dataset: str) -> MappingSpec:
 def load_source_spec_for_dataset(dataset: str) -> SourceSpec:
     """
     Назначение:
-        Загрузить source DSL по имени датасета из datasets/registry.yml.
+        Загрузить source DSL по имени датасета из runtime registry file.
     """
     return _load_dataset_stage_spec(
         dataset=dataset,
@@ -82,22 +83,20 @@ def resolve_source_location(spec: SourceSpec) -> str:
     Назначение:
         Разрешить путь/локацию источника из source-spec.
 
-    Алгоритм:
-        - Если задан `location_ref`, берём значение из env.
-        - Если env-переменная пуста, fallback на `location`.
-        - Если итоговое значение пустое, бросаем DslLoadError.
+    Контракт:
+        - file-source использует logical/relative ref из `source.location`;
+        - relative ref резолвится через runtime `source_data_root`;
+        - absolute path допускается как explicit escape hatch;
+        - process ENV больше не участвует в runtime path resolution.
     """
-    ref = spec.source.location_ref
-    if ref:
-        ref_value = os.getenv(ref)
-        if ref_value and ref_value.strip():
-            return ref_value.strip()
     location = spec.source.location
     if location and location.strip():
+        if spec.source.type == "file":
+            return str(_resolve_source_data_path(location))
         return location.strip()
     raise DslLoadError(
         code="SOURCE_DSL_LOCATION_INVALID",
-        message="source location is not configured (location_ref/location)",
+        message="source location is not configured",
         details={"dataset": spec.dataset},
     )
 
@@ -105,7 +104,7 @@ def resolve_source_location(spec: SourceSpec) -> str:
 def load_normalize_spec_for_dataset(dataset: str) -> NormalizeSpec:
     """
     Назначение:
-        Загрузить normalize DSL по имени датасета из datasets/registry.yml.
+        Загрузить normalize DSL по имени датасета из runtime registry file.
     """
     return _load_dataset_stage_spec(
         dataset=dataset,
@@ -118,7 +117,7 @@ def load_normalize_spec_for_dataset(dataset: str) -> NormalizeSpec:
 def load_enrich_spec_for_dataset(dataset: str) -> EnrichSpec:
     """
     Назначение:
-        Загрузить enrich DSL по имени датасета из datasets/registry.yml.
+        Загрузить enrich DSL по имени датасета из runtime registry file.
     """
     return _load_dataset_stage_spec(
         dataset=dataset,
@@ -132,7 +131,7 @@ def load_enrich_spec_for_dataset(dataset: str) -> EnrichSpec:
 def load_validate_spec_for_dataset(dataset: str) -> ValidationSpec:
     """
     Назначение:
-        Загрузить validate DSL по имени датасета из datasets/registry.yml.
+        Загрузить validate DSL по имени датасета из runtime registry file.
     """
     return _load_dataset_stage_spec(
         dataset=dataset,
@@ -145,7 +144,7 @@ def load_validate_spec_for_dataset(dataset: str) -> ValidationSpec:
 def load_match_spec_for_dataset(dataset: str) -> MatchSpec:
     """
     Назначение:
-        Загрузить match DSL по имени датасета из datasets/registry.yml.
+        Загрузить match DSL по имени датасета из runtime registry file.
     """
     return _load_dataset_stage_spec(
         dataset=dataset,
@@ -158,7 +157,7 @@ def load_match_spec_for_dataset(dataset: str) -> MatchSpec:
 def load_resolve_spec_for_dataset(dataset: str) -> ResolveSpec:
     """
     Назначение:
-        Загрузить resolve DSL по имени датасета из datasets/registry.yml.
+        Загрузить resolve DSL по имени датасета из runtime registry file.
     """
     return _load_dataset_stage_spec(
         dataset=dataset,
@@ -171,7 +170,7 @@ def load_resolve_spec_for_dataset(dataset: str) -> ResolveSpec:
 def load_sink_spec_for_dataset(dataset: str) -> SinkSpec:
     """
     Назначение:
-        Загрузить sink-модель по имени датасета из datasets/registry.yml.
+        Загрузить sink-модель по имени датасета из runtime registry file.
     """
     return _load_dataset_stage_spec(
         dataset=dataset,
@@ -212,7 +211,7 @@ def _resolve_dataset_path(registry: dict[str, Any], dataset: str, stage: str) ->
     if dataset not in datasets:
         raise DslLoadError(
             code="DSL_REGISTRY_INVALID",
-            message=f"Dataset '{dataset}' not found in registry.yml",
+            message=f"Dataset '{dataset}' not found in registry file",
             details={"dataset": dataset, "stage": stage},
         )
     entry = datasets[dataset] or {}
@@ -220,10 +219,12 @@ def _resolve_dataset_path(registry: dict[str, Any], dataset: str, stage: str) ->
     if not filename:
         raise DslLoadError(
             code="DSL_REGISTRY_INVALID",
-            message=f"Dataset '{dataset}' does not define '{stage}' in registry.yml",
+            message=f"Dataset '{dataset}' does not define '{stage}' in registry file",
             details={"dataset": dataset, "stage": stage},
         )
-    return _repo_root() / "datasets" / filename
+    if stage == "source":
+        return _resolve_source_projection_path(filename)
+    return _resolve_dataset_stage_path(filename)
 
 
 def _load_dataset_stage_spec(
@@ -316,7 +317,7 @@ def _load_stage_build_options(
     if dataset not in datasets:
         raise DslLoadError(
             code="DSL_REGISTRY_INVALID",
-            message=f"Dataset '{dataset}' not found in registry.yml (loading build_options for '{stage}')",
+            message=f"Dataset '{dataset}' not found in registry file (loading build_options for '{stage}')",
             details={"dataset": dataset, "stage": stage},
         )
     dataset_entry = datasets.get(dataset) or {}

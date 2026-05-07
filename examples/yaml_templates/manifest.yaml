@@ -1,0 +1,18 @@
+# Dictionary manifest template parsed by DictionaryManifestSpec.
+version: 1
+
+# One entry per concrete dictionary snapshot used by runtime.
+items:
+  dictionary_name:
+    # Path to the concrete CSV snapshot relative to runtime.dictionary_data_root.
+    csv_path: dataset_name/dictionary_name.csv
+    # SHA-256 of the CSV content used for runtime fingerprint validation.
+    content_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    # Schema hash produced from the concrete `*.dictionary.yaml` spec.
+    schema_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    # Number of data rows in the CSV snapshot.
+    row_count: 0
+    # UTC timestamp of the snapshot build/update.
+    updated_at_utc: "2026-01-01T00:00:00Z"
+    # Free-form owner label for operational provenance.
+    owner: dataset-name

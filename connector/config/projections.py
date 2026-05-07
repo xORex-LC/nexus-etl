@@ -31,6 +31,7 @@
 """
 from __future__ import annotations
 
+from connector.common.runtime_paths import RuntimePathOverrides
 from connector.config.models import AppConfig
 from connector.domain.secrets.policy.rollout_metrics import VaultRolloutThresholds
 from connector.domain.secrets.policy.rollout_policy import VaultRolloutPolicySettings
@@ -172,6 +173,25 @@ def to_vault_management_settings(config: AppConfig) -> VaultManagementSettings:
     )
 
 
+def to_runtime_path_overrides(config: AppConfig) -> RuntimePathOverrides:
+    """AppConfig.runtime/paths → runtime resolver overrides."""
+    runtime = config.runtime
+    paths = config.paths
+    return RuntimePathOverrides(
+        runtime_root=runtime.runtime_root,
+        config_root=runtime.config_root,
+        datasets_root=runtime.datasets_root,
+        dictionary_specs_root=runtime.dictionary_specs_root,
+        dictionary_data_root=runtime.dictionary_data_root,
+        source_data_root=runtime.source_data_root,
+        source_projection_root=runtime.source_projection_root,
+        target_projection_root=runtime.target_projection_root,
+        cache_root=paths.cache_dir,
+        logs_root=paths.log_dir,
+        reports_root=paths.report_dir,
+    )
+
+
 __all__ = [
     "to_resolver_settings",
     "to_vault_rollout_policy_settings",
@@ -181,4 +201,5 @@ __all__ = [
     "to_cache_db_config",
     "to_identity_db_config",
     "to_vault_management_settings",
+    "to_runtime_path_overrides",
 ]

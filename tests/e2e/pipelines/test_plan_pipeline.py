@@ -13,28 +13,38 @@ from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRe
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.main import app
+from tests.runtime_test_support import (
+    prepare_tracked_employees_source_file,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
 
 CSV_HEADER = (
-    "raw_id",
-    "full_name",
-    "login",
-    "email_or_phone",
-    "contacts",
-    "org",
-    "manager",
-    "flags",
-    "employment",
-    "extra",
+    "Таб.№",
+    "Пользователи",
+    "Орг. единица уровня 1",
+    "Орг. единица уровня 2",
+    "Орг. единица уровня 3",
+    "Орг. единица уровня 4",
+    "Орг. единица уровня 5",
+    "Организационная единица",
+    "Штатная должность",
+    "Поступл.",
+    "Contract Number",
+    "Догвр:нач.",
+    "Название руководящей должности",
+    "ДатаРожд",
+    "Пол",
 )
 
 def _write_csv(path: Path, rows: list[list[str | None]]) -> None:
     with path.open("w", encoding="utf-8") as f:
-        f.write(",".join(CSV_HEADER) + "\n")
+        f.write(";".join(CSV_HEADER) + "\n")
         for row in rows:
-            f.write(",".join("" if v is None else str(v) for v in row) + "\n")
+            f.write(";".join("" if v is None else str(v) for v in row) + "\n")
 
 
 def make_row(
@@ -52,19 +62,24 @@ def make_row(
     org: str = "Org=Engineering",
     manager: str = "",
 ) -> list[str | None]:
-    extra = f"password={password};org_id={org_id};tab={tab}"
-    employment = f"role={role}"
+    _ = (login, email_or_phone, flags, password, org, manager, tab)
+    organization_name = f"Org {org_id}"
     return [
         raw_id,
         full_name,
-        login,
-        email_or_phone,
+        "",
+        "",
+        "",
+        "",
+        "",
+        organization_name,
+        role,
+        "",
         contacts,
-        org,
-        manager,
-        flags,
-        employment,
-        extra,
+        "",
+        "",
+        "",
+        "",
     ]
 
 def _build_repo(db_path: str) -> SqliteCacheRepository:
@@ -114,9 +129,9 @@ def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: 
                     "middle_name": "M",
                     "match_key": match_key,
                     "mail": "john@example.com",
-                    "user_name": "jdoe",
+                    "user_name": "JOHN",
                     "phone": phone,
-                    "usr_org_tab_num": "TAB-100",
+                    "usr_org_tab_num": "461462",
                     "organization_id": organization_id,
                     "account_status": "active",
                     "deletion_date": None,
@@ -138,7 +153,21 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
     initialize_test_vault(cache_dir)
+    runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
+    roots = tracked_employees_runtime_roots()
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        datasets_root=roots["datasets_root"],
+        source_data_root=runtime_csv_path.parent,
+        source_projection_root=roots["source_projection_root"],
+        target_projection_root=roots["target_projection_root"],
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
     args = [
+        "--config",
+        str(config_path),
         "--log-dir",
         str(log_dir),
         "--report-dir",
@@ -150,14 +179,7 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
         "import",
         "plan",
     ]
-    result = runner.invoke(
-        app,
-        args,
-        env={
-            "EMPLOYEES_SOURCE_PATH": str(csv_path),
-        },
-        input=f"{TEST_UNSEAL_PASSPHRASE}\n",
-    )
+    result = runner.invoke(app, args, input=f"{TEST_UNSEAL_PASSPHRASE}\n")
     plan_path = report_dir / f"plan_import_{run_id}.json"
     return result.exit_code, plan_path
 
@@ -262,7 +284,7 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
     assert plan["items"][0]["op"] == "update"
     assert "phone" in plan["items"][0]["changes"]
 
-def test_plan_skip_when_no_diff(tmp_path: Path):
+def test_plan_update_when_existing_mail_conflicts_with_source2_null_email(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
     repo = _build_repo(db_path)

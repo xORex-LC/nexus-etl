@@ -50,7 +50,12 @@ class _EnrichOpError:
 class EnricherCore(Generic[T, D]):
     """
     Назначение:
-        Ядро обогащения: применяет операции и сохраняет секреты.
+        Ядро обогащения: исполняет compiled enrich-контракт и сохраняет секреты.
+
+    Границы ответственности:
+        - исполняет уже скомпилированные generate/lookup/compute policies;
+        - не разбирает raw YAML DSL shape;
+        - не содержит dataset-specific special cases.
     """
 
     def __init__(
@@ -165,6 +170,7 @@ class EnricherCore(Generic[T, D]):
                 outcome=EnrichOutcome.FAILED,
                 code="ENRICH_MULTI_TARGET_UNSUPPORTED",
                 message="operation targets must contain exactly one field",
+                reason="invalid_operation",
             )
 
         key_values = {}
@@ -177,6 +183,7 @@ class EnricherCore(Generic[T, D]):
                 outcome=strictness.on_missing_key,
                 code="ENRICH_MISSING_KEY",
                 message="required key is missing",
+                reason="missing_key",
             )
 
         candidates, op_error = self._collect_candidates(ctx, current, op, key_values)
@@ -188,6 +195,7 @@ class EnricherCore(Generic[T, D]):
                 code=op_error.code,
                 message=op_error.message,
                 field=op_error.field,
+                reason="provider_error",
             )
         if not candidates:
             if op.op_type == EnrichOperationType.COMPUTE and op.missing_error_code:
@@ -198,6 +206,7 @@ class EnricherCore(Generic[T, D]):
                     code=op.missing_error_code,
                     message="computed value is missing",
                     field=op.error_field,
+                    reason="missing_value",
                 )
             return self._report_by_policy(
                 builder=builder,
@@ -205,6 +214,7 @@ class EnricherCore(Generic[T, D]):
                 outcome=strictness.on_no_candidates,
                 code="ENRICH_NO_CANDIDATES",
                 message="no candidates available",
+                reason="no_candidates",
             )
 
         decision = self.conflict_resolver.decide(candidates)
@@ -222,6 +232,8 @@ class EnricherCore(Generic[T, D]):
                 outcome=strictness.on_ambiguous,
                 code="ENRICH_AMBIGUOUS",
                 message="ambiguous candidates",
+                reason="ambiguous",
+                details={"candidates_count": len(decision.candidates)},
             )
             report.resolve_hints.append(hint)
             return report
@@ -233,6 +245,7 @@ class EnricherCore(Generic[T, D]):
                 outcome=strictness.on_no_candidates,
                 code="ENRICH_NO_CANDIDATES",
                 message="no candidates available",
+                reason="no_candidates",
             )
 
         return self._apply_candidates(builder, op, decision.selected, merge_policy, tracker)
@@ -307,6 +320,17 @@ class EnricherCore(Generic[T, D]):
         result: TransformResult[T],
         op: EnrichmentOperation[T, D],
     ) -> tuple[list[CandidateValue], _EnrichOpError | None]:
+        if any(
+            value is not None
+            for value in (
+                op.base_generator,
+                op.condition,
+                op.append_generator,
+                op.conflict_policy,
+            )
+        ):
+            return self._generate_compiled_candidates(result, op)
+
         if op.generator is None:
             return [], None
         attempts = 0
@@ -353,6 +377,109 @@ class EnricherCore(Generic[T, D]):
                 field=op.error_field,
             )
         return [], None
+
+    def _generate_compiled_candidates(
+        self,
+        result: TransformResult[T],
+        op: EnrichmentOperation[T, D],
+    ) -> tuple[list[CandidateValue], _EnrichOpError | None]:
+        """
+        Назначение:
+            Исполнить compiled generate-контракт с build/when/then/on_conflict semantics.
+
+        Инварианты:
+            - allow_if всегда проверяется раньше on_conflict;
+            - retry_with_suffixes строится от base value, а не от предыдущей попытки;
+            - then трактуется как append-stage.
+        """
+        policy = op.conflict_policy
+        attempts = policy.attempts if policy is not None else max(1, op.max_attempts)
+
+        for _ in range(attempts):
+            base_candidate = self._build_compiled_base_candidate(result, op)
+            if self._is_missing_candidate(base_candidate):
+                if op.missing_error_code:
+                    return [], _EnrichOpError(
+                        code=op.missing_error_code,
+                        message="required value is missing",
+                        field=op.error_field,
+                    )
+                return [], None
+
+            for candidate in self._iter_compiled_candidates(base_candidate, op):
+                current = self._apply_postprocess(candidate, op)
+                if self._is_missing_candidate(current):
+                    continue
+                if op.exists is None:
+                    return [self._generated_candidate(op, current)], None
+
+                existing = op.exists(self.deps, current)
+                if existing is None:
+                    return [self._generated_candidate(op, current)], None
+
+                if op.allow_if and op.allow_if(result, existing):
+                    return [self._generated_candidate(op, current)], None
+
+            if policy is not None:
+                break
+
+        if op.conflict_error_code:
+            return [], _EnrichOpError(
+                code=op.conflict_error_code,
+                message="unable to generate unique value",
+                field=op.error_field,
+            )
+        return [], None
+
+    def _build_compiled_base_candidate(
+        self,
+        result: TransformResult[T],
+        op: EnrichmentOperation[T, D],
+    ) -> Any:
+        if op.base_generator is not None:
+            base_value = op.base_generator(result, self.deps)
+        elif op.generator is not None:
+            base_value = op.generator(result, self.deps)
+        else:
+            return None
+
+        if op.condition is None or not op.condition(result, self.deps):
+            return base_value
+
+        append_value = op.append_generator(result, self.deps) if op.append_generator else None
+        if self._is_missing_candidate(append_value):
+            return base_value
+        if self._is_missing_candidate(base_value):
+            return append_value
+        return f"{base_value}{append_value}"
+
+    def _iter_compiled_candidates(
+        self,
+        base_candidate: Any,
+        op: EnrichmentOperation[T, D],
+    ) -> list[Any]:
+        policy = op.conflict_policy
+        if policy is None or policy.strategy == "error":
+            return [base_candidate]
+        if policy.strategy == "retry_with_suffixes":
+            return [base_candidate, *[f"{base_candidate}{suffix}" for suffix in policy.suffixes]]
+        return [base_candidate]
+
+    def _generated_candidate(self, op: EnrichmentOperation[T, D], value: Any) -> CandidateValue:
+        return CandidateValue(
+            field=op.targets[0],
+            value=value,
+            source="generated",
+            priority=self._priority_for("generated"),
+        )
+
+    def _apply_postprocess(self, candidate: Any, op: EnrichmentOperation[T, D]) -> Any:
+        if op.postprocess is None:
+            return candidate
+        return op.postprocess(candidate)
+
+    def _is_missing_candidate(self, value: Any) -> bool:
+        return value is None or value == ""
 
     def _apply_candidates(
         self,
@@ -408,6 +535,7 @@ class EnricherCore(Generic[T, D]):
                     code=issue.code,
                     message=issue.message,
                     field=issue.field or sink_field,
+                    reason="sink_validation",
                 )
             self._set_field_value(builder, target_field, candidate.value)
             tracker.register(target_field, op.name)
@@ -486,14 +614,42 @@ class EnricherCore(Generic[T, D]):
         code: str,
         message: str,
         field: str | None = None,
+        *,
+        reason: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> OperationReport:
         resolved = outcome if isinstance(outcome, EnrichOutcome) else EnrichOutcome(outcome)
         errors: list[DiagnosticItem] = []
         warnings: list[DiagnosticItem] = []
+        resolved_field = field or op.error_field or (op.targets[0] if op.targets else None)
+        resolved_details = {
+            "rule": op.name,
+            "target": op.targets[0] if op.targets else None,
+        }
+        if reason is not None:
+            resolved_details["reason"] = reason
+        if details:
+            resolved_details.update(details)
         if resolved == EnrichOutcome.FAILED:
-            errors.append(self._make_error(builder, code=code, message=message, field=field))
+            errors.append(
+                self._make_error(
+                    builder,
+                    code=code,
+                    message=message,
+                    field=resolved_field,
+                    details=resolved_details,
+                )
+            )
         elif resolved in (EnrichOutcome.WARNED, EnrichOutcome.NEEDS_RESOLVE):
-            warnings.append(self._make_warning(builder, code=code, message=message, field=field))
+            warnings.append(
+                self._make_warning(
+                    builder,
+                    code=code,
+                    message=message,
+                    field=resolved_field,
+                    details=resolved_details,
+                )
+            )
         return OperationReport(op=op.name, outcome=resolved, warnings=warnings, errors=errors)
 
     def _make_error(
@@ -502,6 +658,7 @@ class EnricherCore(Generic[T, D]):
         code: str,
         message: str,
         field: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> DiagnosticItem:
         return diag_error(
             stage=DiagnosticStage.ENRICH,
@@ -509,6 +666,7 @@ class EnricherCore(Generic[T, D]):
             field=field,
             message=message,
             record_ref=builder.row_ref,
+            details=details,
             catalog=self.catalog,
         )
 
@@ -518,6 +676,7 @@ class EnricherCore(Generic[T, D]):
         code: str,
         message: str,
         field: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> DiagnosticItem:
         return diag_warning(
             stage=DiagnosticStage.ENRICH,
@@ -525,6 +684,7 @@ class EnricherCore(Generic[T, D]):
             field=field,
             message=message,
             record_ref=builder.row_ref,
+            details=details,
             catalog=self.catalog,
         )
 

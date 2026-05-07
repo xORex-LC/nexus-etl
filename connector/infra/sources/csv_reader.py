@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from pathlib import Path
 from typing import Iterable
 
 from connector.domain.transform.core.source_record import SourceRecord
@@ -15,13 +16,13 @@ class CsvRecordSource:
 
     def __init__(
         self,
-        path: str,
+        path: str | Path,
         has_header: bool,
         *,
         delimiter: str = ",",
         encoding: str = "utf-8-sig",
     ) -> None:
-        self.path = path
+        self.path = str(Path(path))
         self.has_header = has_header
         self.delimiter = delimiter
         self.encoding = encoding

@@ -111,7 +111,12 @@ def map_log_level(level_name: str) -> int:
         return logging.DEBUG
     raise ValueError(f"Unsupported log level: {level_name}")
 
-def create_command_logger(command_name: str, log_dir: str, run_id: str, log_level: str) -> tuple[logging.Logger, str]:
+def create_command_logger(
+    command_name: str,
+    log_dir: str | Path,
+    run_id: str,
+    log_level: str,
+) -> tuple[logging.Logger, str]:
     """
     Назначение:
         Создаёт логгер для конкретной команды и возвращает путь к log-файлу.
@@ -125,11 +130,12 @@ def create_command_logger(command_name: str, log_dir: str, run_id: str, log_leve
     Выходные данные:
         (logger, log_file_path)
     """
-    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    log_dir_path = Path(log_dir)
+    log_dir_path.mkdir(parents=True, exist_ok=True)
 
-    log_file_path = str(Path(log_dir) / f"{command_name}_{run_id}.log")
+    log_file_path = str(log_dir_path / f"{command_name}_{run_id}.log")
 
-    logger_name = f"syncEmployees.{command_name}.{run_id}"
+    logger_name = f"nexus.{command_name}.{run_id}"
     logger = logging.getLogger(logger_name)
     logger.handlers.clear()
     logger.propagate = False

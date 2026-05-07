@@ -27,6 +27,13 @@ from typing import ClassVar, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+def _require_non_blank_path(value: str, *, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{field_name} must not be empty")
+    return normalized
+
+
 class ApiConfig(BaseModel):
     """Параметры подключения к целевому API."""
 
@@ -49,9 +56,44 @@ class PathsConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    cache_dir: str = "./cache"
-    log_dir: str = "./logs"
-    report_dir: str = "./reports"
+    cache_dir: str = "var/cache"
+    log_dir: str = "var/logs"
+    report_dir: str = "reports"
+
+    @field_validator("cache_dir", "log_dir", "report_dir", mode="after")
+    @classmethod
+    def _validate_non_blank(cls, value: str, info) -> str:
+        return _require_non_blank_path(value, field_name=str(info.field_name))
+
+
+class RuntimeConfig(BaseModel):
+    """Корневые runtime-директории для внешних ресурсов приложения."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    runtime_root: str = "."
+    config_root: str = "./etc"
+    datasets_root: str = "./datasets"
+    dictionary_specs_root: str = "./etc/dictionaries"
+    dictionary_data_root: str = "./dictionaries"
+    source_data_root: str = "./etc/source-data"
+    source_projection_root: str = "./etc/source-projection"
+    target_projection_root: str = "./etc/target-projection"
+
+    @field_validator(
+        "runtime_root",
+        "config_root",
+        "datasets_root",
+        "dictionary_specs_root",
+        "dictionary_data_root",
+        "source_data_root",
+        "source_projection_root",
+        "target_projection_root",
+        mode="after",
+    )
+    @classmethod
+    def _validate_non_blank(cls, value: str, info) -> str:
+        return _require_non_blank_path(value, field_name=str(info.field_name))
 
 
 class ObservabilityConfig(BaseModel):
@@ -74,7 +116,15 @@ class DatasetConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     dataset_name: str = "employees"
+    registry_path: str | None = None
     include_deleted: bool = False
+
+    @field_validator("registry_path", mode="after")
+    @classmethod
+    def _validate_registry_path(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _require_non_blank_path(value, field_name="registry_path")
 
 
 class ExecutionConfig(BaseModel):
@@ -237,6 +287,7 @@ class AppConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     api: ApiConfig = ApiConfig()
+    runtime: RuntimeConfig = RuntimeConfig()
     paths: PathsConfig = PathsConfig()
     observability: ObservabilityConfig = ObservabilityConfig()
     dataset: DatasetConfig = DatasetConfig()
@@ -253,6 +304,7 @@ class AppConfig(BaseModel):
 __all__ = [
     "ApiConfig",
     "PathsConfig",
+    "RuntimeConfig",
     "ObservabilityConfig",
     "DatasetConfig",
     "ExecutionConfig",

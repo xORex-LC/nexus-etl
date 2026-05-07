@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from connector.common.runtime_paths import RuntimePathOverrides
+from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
 from connector.domain.dictionary_dsl import loader as dictionary_loader
 from connector.domain.dsl.issues import DslLoadError
 
@@ -13,23 +15,35 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _patch_repo_root(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
-    monkeypatch.setattr(dictionary_loader, "_repo_root", lambda: root)
+@pytest.fixture(autouse=True)
+def _reset_runtime_loader_state() -> None:
+    configure_runtime_paths(None)
+    yield
+    configure_runtime_paths(None)
+
+
+def _activate_registry(root: Path) -> None:
+    configure_runtime_paths(
+        RuntimePathOverrides(
+            datasets_root=root / "datasets",
+            dictionary_specs_root=root / "datasets" / "dictionaries",
+        )
+    )
+    configure_registry_path(root / "datasets" / "registry.yaml")
 
 
 def test_optional_registry_loader_returns_none_when_section_absent(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 datasets:
   employees:
     source: employees.source.yaml
 """.strip(),
     )
-    _patch_repo_root(monkeypatch, tmp_path)
+    _activate_registry(tmp_path)
 
     result = dictionary_loader.load_optional_dictionary_registry_spec_for_runtime()
 
@@ -38,35 +52,35 @@ datasets:
 
 def test_registry_loader_accepts_empty_items_mapping(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1
+  manifest: manifest.custom.yaml
   items: {}
 """.strip(),
     )
-    _patch_repo_root(monkeypatch, tmp_path)
+    _activate_registry(tmp_path)
 
     spec = dictionary_loader.load_dictionary_registry_spec_for_runtime()
 
     assert spec.version == 1
+    assert spec.manifest == "manifest.custom.yaml"
     assert spec.items == {}
 
 
 def test_registry_loader_wraps_invalid_registry_as_dict_dsl_error(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries: []
 """.strip(),
     )
-    _patch_repo_root(monkeypatch, tmp_path)
+    _activate_registry(tmp_path)
 
     with pytest.raises(DslLoadError) as exc_info:
         dictionary_loader.load_dictionary_registry_spec_for_runtime()
@@ -76,16 +90,16 @@ dictionaries: []
 
 def test_load_enabled_dictionary_specs_wraps_invalid_spec(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1
+  manifest: manifest.custom.yaml
   items:
     organizations:
-      spec: dictionaries/organizations.dictionary.yaml
+      spec: organizations.dictionary.yaml
       enabled: true
 """.strip(),
     )
@@ -95,13 +109,14 @@ dictionaries:
 dictionary: organizations
 source:
   format: csv
-  location: dictionaries/organizations.csv
+  location: organizations.csv
 schema:
-  key_column: code
+  key_column:
+    name: code
   value_columns: []
 """.strip(),
     )
-    _patch_repo_root(monkeypatch, tmp_path)
+    _activate_registry(tmp_path)
 
     with pytest.raises(DslLoadError) as exc_info:
         dictionary_loader.load_enabled_dictionary_specs_for_runtime()
@@ -111,16 +126,16 @@ schema:
 
 def test_load_enabled_dictionary_specs_validates_registry_key_matches_spec(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1
+  manifest: manifest.custom.yaml
   items:
     organizations:
-      spec: dictionaries/organizations.dictionary.yaml
+      spec: organizations.dictionary.yaml
       enabled: true
 """.strip(),
     )
@@ -130,13 +145,16 @@ dictionaries:
 dictionary: departments
 source:
   format: csv
-  location: dictionaries/organizations.csv
+  location: organizations.csv
 schema:
-  key_column: code
-  value_columns: [name]
+  key_column:
+    name: code
+  value_columns:
+    - name: name
+      nullable: false
 """.strip(),
     )
-    _patch_repo_root(monkeypatch, tmp_path)
+    _activate_registry(tmp_path)
 
     with pytest.raises(DslLoadError) as exc_info:
         dictionary_loader.load_enabled_dictionary_specs_for_runtime()
@@ -147,17 +165,17 @@ schema:
 
 def test_manifest_loader_raises_missing_code_when_file_absent(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1
+  manifest: manifest.custom.yaml
   items: {}
 """.strip(),
     )
-    _patch_repo_root(monkeypatch, tmp_path)
+    _activate_registry(tmp_path)
 
     with pytest.raises(DslLoadError) as exc_info:
         dictionary_loader.load_dictionary_manifest_spec_for_runtime()
@@ -167,15 +185,23 @@ dictionaries:
 
 def test_manifest_loader_wraps_invalid_structure(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "dictionaries" / "manifest.yml",
+        tmp_path / "datasets" / "registry.yaml",
+        """
+dictionaries:
+  version: 1
+  manifest: manifest.custom.yaml
+  items: {}
+""".strip(),
+    )
+    _write(
+        tmp_path / "datasets" / "dictionaries" / "manifest.custom.yaml",
         """
 - bad
 """.strip(),
     )
-    _patch_repo_root(monkeypatch, tmp_path)
+    _activate_registry(tmp_path)
 
     with pytest.raises(DslLoadError) as exc_info:
         dictionary_loader.load_dictionary_manifest_spec_for_runtime()
@@ -185,15 +211,23 @@ def test_manifest_loader_wraps_invalid_structure(
 
 def test_manifest_loader_loads_valid_manifest(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "dictionaries" / "manifest.yml",
+        tmp_path / "datasets" / "registry.yaml",
+        """
+dictionaries:
+  version: 1
+  manifest: manifest.custom.yaml
+  items: {}
+""".strip(),
+    )
+    _write(
+        tmp_path / "datasets" / "dictionaries" / "manifest.custom.yaml",
         """
 version: 1
 items:
   organizations:
-    csv_path: dictionaries/organizations.csv
+    csv_path: organizations.csv
     content_sha256: "0d7f"
     schema_hash: "8d2c"
     row_count: 1
@@ -201,10 +235,9 @@ items:
     owner: "dataset-employees"
 """.strip(),
     )
-    _patch_repo_root(monkeypatch, tmp_path)
+    _activate_registry(tmp_path)
 
     manifest = dictionary_loader.load_dictionary_manifest_spec_for_runtime()
 
     assert manifest.version == 1
     assert manifest.items["organizations"].row_count == 1
-

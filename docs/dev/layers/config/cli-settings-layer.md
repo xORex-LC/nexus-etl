@@ -309,6 +309,11 @@ timeout = app_settings.api.timeout_seconds
 - slice содержит только профильные поля;
 - покрытие полей закреплено тестом полноты (`test_settings_slice_completeness.py`).
 
+**Практически важное поле dataset-slice**:
+- `dataset.registry_path` — опциональный путь к активному registry-файлу DSL.
+  Если задан, CLI callback настраивает все DSL loaders на этот path; если не задан —
+  используется исторический default `datasets/registry.yml`.
+
 ### Dataclass: `CommandContext`
 
 **Назначение**: Единый runtime-контейнер выполнения команды.
@@ -799,3 +804,4 @@ if requirements.requires_source:
 | 2026-02-12 | Добавлены typed settings errors и diagnostics adapter | xORex-LC |
 | 2026-02-12 | Границы закреплены архитектурными тестами | xORex-LC |
 | 2026-02-12 | Документация слоя синхронизирована с текущим кодом | xORex-LC |
+| 2026-05-05 | Добавлено описание `dataset.registry_path` как runtime-переключателя активного DSL registry path | xORex-LC |

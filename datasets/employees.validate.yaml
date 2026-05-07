@@ -1,4 +1,0 @@
-dataset: employees
-validate:
-  field_checks: []
-  conditional_checks: []

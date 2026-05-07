@@ -25,6 +25,42 @@ def test_load_from_nested_yaml(tmp_path: object) -> None:
     assert result.app_config.api.port == 8443
 
 
+def test_load_dataset_registry_path_from_yaml(
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
+    cfg_file.write_text(
+        "dataset:\n"
+        "  registry_path: ./datasets/registry.yaml\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ANKEY_DATASET__REGISTRY_PATH", raising=False)
+
+    result = load_app_config(str(cfg_file))
+
+    assert result.app_config.dataset.registry_path == "./datasets/registry.yaml"
+    assert result.source_trace["dataset.registry_path"] == "config"
+
+
+def test_load_runtime_roots_from_yaml(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
+    cfg_file.write_text(
+        "runtime:\n"
+        "  runtime_root: /opt/nexus\n"
+        "  dictionary_data_root: ./dictionaries\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ANKEY_RUNTIME__RUNTIME_ROOT", raising=False)
+
+    result = load_app_config(str(cfg_file))
+
+    assert result.app_config.runtime.runtime_root == "/opt/nexus"
+    assert result.app_config.runtime.dictionary_data_root == "./dictionaries"
+    assert result.app_config.runtime.source_data_root == "./etc/source-data"
+    assert result.source_trace["runtime.runtime_root"] == "config"
+
+
 def test_env_override_nested_naming(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
     """ANKEY_API__HOST=x переопределяет значение из YAML."""
     cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
@@ -34,6 +70,29 @@ def test_env_override_nested_naming(tmp_path: object, monkeypatch: pytest.Monkey
     result = load_app_config(str(cfg_file))
 
     assert result.app_config.api.host == "fromenv"
+
+
+def test_env_override_for_runtime_paths_is_ignored(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
+    cfg_file.write_text(
+        "runtime:\n"
+        "  datasets_root: ./datasets\n"
+        "paths:\n"
+        "  cache_dir: var/cache\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANKEY_RUNTIME__DATASETS_ROOT", "/from-env/datasets")
+    monkeypatch.setenv("ANKEY_PATHS__CACHE_DIR", "/from-env/cache")
+    monkeypatch.setenv("ANKEY_DATASET__REGISTRY_PATH", "/from-env/registry.yaml")
+
+    result = load_app_config(str(cfg_file))
+
+    assert result.app_config.runtime.datasets_root == "./datasets"
+    assert result.app_config.paths.cache_dir == "var/cache"
+    assert result.app_config.dataset.registry_path is None
+    assert result.source_trace["runtime.datasets_root"] == "config"
+    assert result.source_trace["paths.cache_dir"] == "config"
+    assert result.source_trace["dataset.registry_path"] == "default"
 
 
 def test_cli_override_dotted_path_beats_env(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -152,6 +211,7 @@ def test_load_without_config_path_uses_defaults() -> None:
 
     cfg = result.app_config
     assert cfg.api.host is None
+    assert cfg.runtime.runtime_root == "."
     assert cfg.resolver.pending_max_attempts == 5
     assert cfg.vault_rollout.mode == "full"
 
@@ -166,6 +226,7 @@ def test_source_trace_contains_all_sections(tmp_path: object) -> None:
 
     # Все leaf-поля должны быть в trace (с "default" если не задан источник)
     assert "api.host" in trace
+    assert "runtime.datasets_root" in trace
     assert "resolver.pending_max_attempts" in trace
     assert "vault_rollout.mode" in trace
     assert "vault_management.admin_password_hash_file" in trace

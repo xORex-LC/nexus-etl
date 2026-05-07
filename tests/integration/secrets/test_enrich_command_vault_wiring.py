@@ -7,31 +7,59 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from connector.main import app
+from tests.integration.secrets._temp_registry import build_temp_employees_registry_with_temp_dictionaries
+from tests.runtime_test_support import write_runtime_config
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
 
-HEADER = "raw_id,full_name,login,email_or_phone,contacts,org,manager,flags,employment,extra"
+HEADER = ";".join(
+    [
+        "Таб.№",
+        "Пользователи",
+        "Орг. единица уровня 1",
+        "Орг. единица уровня 2",
+        "Орг. единица уровня 3",
+        "Орг. единица уровня 4",
+        "Орг. единица уровня 5",
+        "Организационная единица",
+        "Штатная должность",
+        "Поступл.",
+        "Contract Number",
+        "Догвр:нач.",
+        "Название руководящей должности",
+        "ДатаРожд",
+        "Пол",
+    ]
+)
 
 
 def _write_minimal_employees_csv(path: Path) -> None:
     row = [
         "1001",
         "Doe John M",
-        "jdoe",
-        "john.doe@example.com",
-        "+123456",
-        "Org=Engineering",
         "",
-        "disabled=false",
-        "role=Engineer",
-        "password=SECRET1;org_id=10;tab=5001",
+        "",
+        "",
+        "",
+        "",
+        "Org 10",
+        "Engineer",
+        "",
+        "+123456",
+        "",
+        "",
+        "",
+        "",
     ]
-    content = "\n".join([HEADER, ",".join(row)])
+    content = "\n".join([HEADER, ";".join(row)])
     path.write_text(content, encoding="utf-8")
 
 
 def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path):
+    registry_path, (units_dictionary_name, titles_dictionary_name) = (
+        build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    )
     csv_path = tmp_path / "employees.csv"
     _write_minimal_employees_csv(csv_path)
 
@@ -39,10 +67,22 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     initialize_test_vault(cache_dir)
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=registry_path,
+        datasets_root=registry_path.parent,
+        source_data_root=csv_path.parent,
+        source_projection_root=registry_path.parent,
+        target_projection_root=registry_path.parent,
+        dictionary_specs_root=registry_path.parent / "dictionaries",
+        dictionary_data_root=tmp_path / "dictionaries",
+    )
 
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(config_path),
             "--cache-dir",
             str(cache_dir),
             "--log-dir",
@@ -53,9 +93,6 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
             "vault-write",
             "enrich",
         ],
-        env={
-            "EMPLOYEES_SOURCE_PATH": str(csv_path),
-        },
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
 
@@ -70,11 +107,16 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
     assert dictionary_ctx.get("backend") == "polars"
     assert "aggregate" in dictionary_ctx
     assert "dictionaries_detail" in dictionary_ctx
-    org_detail = dictionary_ctx["dictionaries_detail"].get("organizations")
-    assert isinstance(org_detail, dict)
-    assert org_detail.get("row_count") is not None
-    assert org_detail.get("fingerprint_kind") == "content_sha256"
-    assert isinstance(org_detail.get("version_info"), dict)
+    units_detail = dictionary_ctx["dictionaries_detail"].get(units_dictionary_name)
+    titles_detail = dictionary_ctx["dictionaries_detail"].get(titles_dictionary_name)
+    assert isinstance(units_detail, dict)
+    assert isinstance(titles_detail, dict)
+    assert units_detail.get("row_count") is not None
+    assert units_detail.get("fingerprint_kind") == "content_sha256"
+    assert isinstance(units_detail.get("version_info"), dict)
+    assert titles_detail.get("row_count") is not None
+    assert titles_detail.get("fingerprint_kind") == "content_sha256"
+    assert isinstance(titles_detail.get("version_info"), dict)
 
     vault_db_path = cache_dir / "ankey_vault.sqlite3"
     assert vault_db_path.exists()
@@ -100,12 +142,25 @@ def test_enrich_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: Path)
 
 
 def test_enrich_command_fails_when_vault_mode_off_and_dataset_has_secret_fields(tmp_path: Path):
+    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
     csv_path = tmp_path / "employees.csv"
     _write_minimal_employees_csv(csv_path)
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=registry_path,
+        datasets_root=registry_path.parent,
+        source_data_root=csv_path.parent,
+        source_projection_root=registry_path.parent,
+        target_projection_root=registry_path.parent,
+        dictionary_specs_root=registry_path.parent / "dictionaries",
+        dictionary_data_root=tmp_path / "dictionaries",
+    )
 
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(config_path),
             "--cache-dir",
             str(tmp_path / "cache"),
             "--log-dir",
@@ -118,9 +173,6 @@ def test_enrich_command_fails_when_vault_mode_off_and_dataset_has_secret_fields(
             "--vault-mode",
             "off",
         ],
-        env={
-            "EMPLOYEES_SOURCE_PATH": str(csv_path),
-        },
     )
 
     assert result.exit_code == 2
