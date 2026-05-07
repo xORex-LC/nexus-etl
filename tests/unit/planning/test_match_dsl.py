@@ -50,19 +50,13 @@ def test_match_dsl_compile_matches_employees_dsl_contract():
     assert compiled.source_dedup.on_conflict == "error"
     assert compiled.fuzzy.enabled is False
     assert compiled.fuzzy.top_k == 3
-    assert tuple(rule.name for rule in compiled.identity_rules) == ("match_key", "usr_org_tab_num")
+    assert tuple(rule.name for rule in compiled.identity_rules) == ("match_key",)
 
     row = _sample_row()
     context = _sample_context()
     identity0 = compiled.identity_rules[0].build_identity(row, context)
     assert identity0.primary == "match_key"
     assert identity0.values.get("match_key") == "Doe|John|M|100"
-    assert identity0.values.get("usr_org_tab_num") == "TAB-100"
-
-    identity1 = compiled.identity_rules[1].build_identity(row, context)
-    assert identity1.primary == "usr_org_tab_num"
-    assert identity1.values.get("match_key") == "Doe|John|M|100"
-    assert identity1.values.get("usr_org_tab_num") == "TAB-100"
 
 
 def test_match_spec_rejects_invalid_thresholds():

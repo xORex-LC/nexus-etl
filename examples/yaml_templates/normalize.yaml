@@ -1,0 +1,19 @@
+# Dataset identifier used by registry entries that point to this normalize spec.
+dataset: dataset_name
+
+# Normalization rules applied after mapping.
+normalize:
+  # Default diagnostic behavior for stage-level validation. Supported: error, warn.
+  on_error: error
+  # Ordered per-field normalization rules.
+  rules:
+    # Field in the mapped row to normalize.
+    - field: sink_field
+      # Short operation form. If ops is empty, op+args are converted to one operation call.
+      op: trim
+      # Arguments for op short form.
+      args: {}
+      # Full operation pipeline form.
+      ops: []
+      # Diagnostic behavior for this rule. Supported: error, warn.
+      on_error: error

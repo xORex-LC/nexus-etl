@@ -14,7 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader._common import _read_yaml, _repo_root
+from connector.domain.dsl.loader._common import (
+    _read_yaml,
+    _registry_path as _active_registry_path,
+    _resolve_dictionary_manifest_path,
+    _resolve_dictionary_spec_path,
+)
 from connector.domain.dictionary_dsl.specs import (
     DictionaryManifestSpec,
     DictionaryRegistrySpec,
@@ -25,10 +30,10 @@ from connector.domain.dictionary_dsl.specs import (
 def load_dictionary_registry_spec(path: str | Path | None = None) -> DictionaryRegistrySpec:
     """
     Назначение:
-        Загрузить dictionary registry из отдельного файла или `datasets/registry.yml`.
+        Загрузить dictionary registry из отдельного файла или runtime registry file.
 
     Контракт:
-        - Если передан общий `datasets/registry.yml`, извлекается секция `dictionaries`.
+        - Если передан общий runtime registry file, извлекается секция `dictionaries`.
         - Если передан standalone файл, допускается payload без верхнего ключа `dictionaries`.
     """
     registry_path = Path(path) if path is not None else _registry_path()
@@ -51,7 +56,7 @@ def load_optional_dictionary_registry_spec_for_runtime() -> DictionaryRegistrySp
         Runtime helper для optional dictionary runtime.
 
     Контракт:
-        - Если секция `dictionaries` отсутствует в `datasets/registry.yml`, возвращает `None`.
+        - Если секция `dictionaries` отсутствует в runtime registry file, возвращает `None`.
         - Ошибки чтения файла registry и невалидная секция `dictionaries` остаются fatal.
     """
     registry_path = _registry_path()
@@ -73,7 +78,7 @@ def load_optional_dictionary_registry_spec_for_runtime() -> DictionaryRegistrySp
 def load_dictionary_registry_spec_for_runtime() -> DictionaryRegistrySpec:
     """
     Назначение:
-        Strict runtime helper для загрузки dictionary registry из `datasets/registry.yml`.
+        Strict runtime helper для загрузки dictionary registry из active registry file.
     """
     return load_dictionary_registry_spec(None)
 
@@ -115,7 +120,7 @@ def load_dictionary_spec_for_runtime(dict_name: str) -> DictionarySpec:
             message=f"Dictionary '{dict_name}' is not present in dictionary registry",
             details={"dict_name": dict_name, "path": str(_registry_path())},
         )
-    spec_path = _datasets_root() / entry.spec
+    spec_path = _resolve_dictionary_spec_path(entry.spec)
     spec = load_dictionary_spec(spec_path)
     _validate_registry_key_matches_spec(dict_name=dict_name, spec=spec, path=spec_path)
     return spec
@@ -137,7 +142,7 @@ def load_enabled_dictionary_specs_for_runtime() -> dict[str, DictionarySpec]:
     for dict_name, entry in registry.items.items():
         if not entry.enabled:
             continue
-        spec_path = _datasets_root() / entry.spec
+        spec_path = _resolve_dictionary_spec_path(entry.spec)
         spec = load_dictionary_spec(spec_path)
         _validate_registry_key_matches_spec(dict_name=dict_name, spec=spec, path=spec_path)
         if spec.dictionary in seen_declared_names:
@@ -151,16 +156,31 @@ def load_enabled_dictionary_specs_for_runtime() -> dict[str, DictionarySpec]:
     return specs
 
 
-def load_dictionary_manifest_spec(path: str | Path | None = None) -> DictionaryManifestSpec:
+def load_dictionary_manifest_spec_for_registry(
+    registry: DictionaryRegistrySpec,
+    *,
+    dictionary_specs_root: str | Path | None = None,
+) -> DictionaryManifestSpec:
     """
     Назначение:
-        Загрузить `datasets/dictionaries/manifest.yml` (или альтернативный путь).
+        Загрузить manifest по пути, объявленному в dictionary registry.
+    """
+    if dictionary_specs_root is not None:
+        root = Path(dictionary_specs_root)
+        return load_dictionary_manifest_spec(root / registry.manifest)
+    return load_dictionary_manifest_spec(_resolve_dictionary_manifest_path(registry.manifest))
+
+
+def load_dictionary_manifest_spec(path: str | Path) -> DictionaryManifestSpec:
+    """
+    Назначение:
+        Загрузить manifest по явному пути.
 
     Контракт:
         - Отсутствующий файл -> `DICT_SOURCE_MANIFEST_MISSING`.
         - Ошибка чтения/структуры/валидации -> `DICT_SOURCE_MANIFEST_INVALID`.
     """
-    manifest_path = Path(path) if path is not None else _manifest_path()
+    manifest_path = Path(path)
     try:
         raw = _read_yaml(manifest_path)
     except FileNotFoundError as exc:
@@ -189,22 +209,14 @@ def load_dictionary_manifest_spec(path: str | Path | None = None) -> DictionaryM
 def load_dictionary_manifest_spec_for_runtime() -> DictionaryManifestSpec:
     """
     Назначение:
-        Runtime helper для канонического пути `datasets/dictionaries/manifest.yml`.
+        Runtime helper для manifest path, объявленного в active dictionary registry.
     """
-    return load_dictionary_manifest_spec(None)
+    registry = load_dictionary_registry_spec_for_runtime()
+    return load_dictionary_manifest_spec_for_registry(registry)
 
 
 def _registry_path() -> Path:
-    return _repo_root() / "datasets" / "registry.yml"
-
-
-def _datasets_root() -> Path:
-    return _repo_root() / "datasets"
-
-
-def _manifest_path() -> Path:
-    return _datasets_root() / "dictionaries" / "manifest.yml"
-
+    return _active_registry_path()
 
 def _extract_dictionary_registry_payload(
     raw: dict[str, Any],
@@ -213,7 +225,7 @@ def _extract_dictionary_registry_payload(
 ) -> dict[str, Any] | None:
     """
     Назначение:
-        Выделить payload dictionary registry из общего `datasets/registry.yml`.
+        Выделить payload dictionary registry из общего runtime registry file.
     """
     if "dictionaries" in raw:
         payload = raw.get("dictionaries")
@@ -269,6 +281,7 @@ def _validate_registry_key_matches_spec(
 
 __all__ = [
     "load_dictionary_manifest_spec",
+    "load_dictionary_manifest_spec_for_registry",
     "load_dictionary_manifest_spec_for_runtime",
     "load_dictionary_registry_spec",
     "load_dictionary_registry_spec_for_runtime",

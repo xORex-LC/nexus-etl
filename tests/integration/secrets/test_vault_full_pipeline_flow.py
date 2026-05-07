@@ -23,12 +23,35 @@ from connector.infra.cache.repository.cache_repository import SqliteCacheReposit
 from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRepository
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.main import app
+from tests.runtime_test_support import (
+    prepare_tracked_employees_source_file,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 
 runner = CliRunner()
 
-HEADER = "raw_id,full_name,login,email_or_phone,contacts,org,manager,flags,employment,extra"
+HEADER = ";".join(
+    [
+        "Таб.№",
+        "Пользователи",
+        "Орг. единица уровня 1",
+        "Орг. единица уровня 2",
+        "Орг. единица уровня 3",
+        "Орг. единица уровня 4",
+        "Орг. единица уровня 5",
+        "Организационная единица",
+        "Штатная должность",
+        "Поступл.",
+        "Contract Number",
+        "Догвр:нач.",
+        "Название руководящей должности",
+        "ДатаРожд",
+        "Пол",
+    ]
+)
 
 
 def _write_minimal_employees_csv(
@@ -37,19 +60,25 @@ def _write_minimal_employees_csv(
     phone: str,
     password: str,
 ) -> None:
+    _ = password
     row = [
         "1001",
         "Doe John M",
-        "jdoe",
-        "john.doe@example.com",
-        phone,
-        "Org=Engineering",
         "",
-        "disabled=false",
-        "role=Engineer",
-        f"password={password};org_id=10;tab=5001",
+        "",
+        "",
+        "",
+        "",
+        "Org 10",
+        "Engineer",
+        "",
+        phone,
+        "",
+        "",
+        "",
+        "",
     ]
-    path.write_text("\n".join([HEADER, ",".join(row)]), encoding="utf-8")
+    path.write_text("\n".join([HEADER, ";".join(row)]), encoding="utf-8")
 
 
 def _run_import_plan(
@@ -62,9 +91,23 @@ def _run_import_plan(
     initialize_test_vault(cache_dir)
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
+    runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
+    roots = tracked_employees_runtime_roots()
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        datasets_root=roots["datasets_root"],
+        source_data_root=runtime_csv_path.parent,
+        source_projection_root=roots["source_projection_root"],
+        target_projection_root=roots["target_projection_root"],
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(config_path),
             "--cache-dir",
             str(cache_dir),
             "--log-dir",
@@ -76,9 +119,6 @@ def _run_import_plan(
             "import",
             "plan",
         ],
-        env={
-            "EMPLOYEES_SOURCE_PATH": str(csv_path),
-        },
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     return result, report_dir / f"plan_import_{run_id}.json"
@@ -93,9 +133,22 @@ def _run_import_apply(
     cache_dir = tmp_path / "cache"
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
+    roots = tracked_employees_runtime_roots()
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        datasets_root=roots["datasets_root"],
+        source_data_root=tmp_path,
+        source_projection_root=roots["source_projection_root"],
+        target_projection_root=roots["target_projection_root"],
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(config_path),
             "--cache-dir",
             str(cache_dir),
             "--log-dir",
@@ -196,6 +249,7 @@ def _seed_organization_identities(
     Добавить identity-index записи для organization link-resolve в employees resolve flow.
     """
     value = str(resolved_org_id)
+    organization_name = f"Org {resolved_org_id}"
     identity_db_path = str(Path(cache_dir) / "identity.sqlite3")
     engine = open_sqlite(to_identity_db_config(AppConfig()), identity_db_path)
     try:
@@ -203,7 +257,7 @@ def _seed_organization_identities(
         identity_repo = SqliteIdentityRepository(engine)
         with engine.transaction():
             identity_repo.upsert_identity("organizations", format_identity_key("_ouid", value), value)
-            identity_repo.upsert_identity("organizations", format_identity_key("name", value), value)
+            identity_repo.upsert_identity("organizations", format_identity_key("name", organization_name), value)
     finally:
         engine.close()
 

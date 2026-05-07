@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from connector.domain.dataset_dsl.payload_compiler import SinkDrivenPayloadBuilder
 from connector.domain.transform_dsl.specs import SinkSpec
@@ -16,6 +17,104 @@ def _make_sink_spec(fields: list[dict], system_fields: list[dict] | None = None)
             "system_fields": system_fields or [],
         },
     })
+
+
+class TestSinkSerializeSpecValidation:
+    def test_bool_field_accepts_native_serialize(self):
+        spec = _make_sink_spec([
+            {
+                "name": "active",
+                "type": "bool",
+                "required": True,
+                "serialize": {"as": "native"},
+            },
+        ])
+
+        field = spec.sink.fields[0]
+        assert field.serialize is not None
+        assert field.serialize.as_mode == "native"
+        assert field.serialize.map is None
+
+    def test_bool_field_accepts_literal_map(self):
+        spec = _make_sink_spec([
+            {
+                "name": "active",
+                "type": "bool",
+                "required": True,
+                "serialize": {
+                    "as": "literal_map",
+                    "map": {"true": 1, "false": 0},
+                },
+            },
+        ])
+
+        field = spec.sink.fields[0]
+        assert field.serialize is not None
+        assert field.serialize.map is not None
+        assert field.serialize.map.true == 1
+        assert field.serialize.map.false == 0
+
+    def test_bool_field_literal_map_normalizes_yaml_bool_keys(self):
+        spec = _make_sink_spec([
+            {
+                "name": "active",
+                "type": "bool",
+                "required": True,
+                "serialize": {
+                    "as": "literal_map",
+                    "map": {True: "yes", False: "no"},
+                },
+            },
+        ])
+
+        field = spec.sink.fields[0]
+        assert field.serialize is not None
+        assert field.serialize.map is not None
+        assert field.serialize.map.true == "yes"
+        assert field.serialize.map.false == "no"
+
+    def test_literal_map_requires_true_and_false(self):
+        with pytest.raises(ValidationError, match="Field required"):
+            _make_sink_spec([
+                {
+                    "name": "active",
+                    "type": "bool",
+                    "required": True,
+                    "serialize": {
+                        "as": "literal_map",
+                        "map": {"true": 1},
+                    },
+                },
+            ])
+
+    def test_literal_map_is_invalid_for_non_bool_field(self):
+        with pytest.raises(ValidationError, match="currently supported only for bool fields"):
+            _make_sink_spec([
+                {
+                    "name": "status_code",
+                    "type": "int",
+                    "required": True,
+                    "serialize": {
+                        "as": "literal_map",
+                        "map": {"true": 1, "false": 0},
+                    },
+                },
+            ])
+
+    def test_system_field_must_not_declare_serialize(self):
+        with pytest.raises(ValidationError, match="must not declare serialize metadata"):
+            _make_sink_spec(
+                fields=[{"name": "email", "type": "string", "required": True}],
+                system_fields=[
+                    {
+                        "name": "target_id",
+                        "type": "string",
+                        "required": True,
+                        "generated": True,
+                        "serialize": {"as": "native"},
+                    },
+                ],
+            )
 
 
 class TestSinkDrivenPayloadBuilder:
@@ -44,6 +143,64 @@ class TestSinkDrivenPayloadBuilder:
         assert builder({"active": "false"}) == {"isActive": False}
         assert builder({"active": 1}) == {"isActive": True}
         assert builder({"active": 0}) == {"isActive": False}
+
+    def test_bool_serialize_native_keeps_canonical_bool(self):
+        spec = _make_sink_spec([
+            {
+                "name": "active",
+                "type": "bool",
+                "required": True,
+                "target": "isActive",
+                "serialize": {"as": "native"},
+            },
+        ])
+        builder = SinkDrivenPayloadBuilder(spec)
+        source = {"active": True}
+
+        result = builder(source)
+
+        assert result == {"isActive": True}
+        assert source["active"] is True
+
+    def test_bool_serialize_literal_map_applies_only_at_payload_boundary(self):
+        spec = _make_sink_spec([
+            {
+                "name": "active",
+                "type": "bool",
+                "required": True,
+                "target": "isActive",
+                "serialize": {
+                    "as": "literal_map",
+                    "map": {"true": 1, "false": 0},
+                },
+            },
+        ])
+        builder = SinkDrivenPayloadBuilder(spec)
+        source = {"active": True}
+
+        result = builder(source)
+
+        assert result == {"isActive": 1}
+        assert source["active"] is True
+
+    def test_bool_serialize_literal_map_uses_false_branch(self):
+        spec = _make_sink_spec([
+            {
+                "name": "active",
+                "type": "bool",
+                "required": True,
+                "target": "isActive",
+                "serialize": {
+                    "as": "literal_map",
+                    "map": {"true": "yes", "false": "no"},
+                },
+            },
+        ])
+        builder = SinkDrivenPayloadBuilder(spec)
+
+        result = builder({"active": False})
+
+        assert result == {"isActive": "no"}
 
     def test_int_coercion(self):
         spec = _make_sink_spec([
@@ -107,4 +264,37 @@ class TestSinkDrivenPayloadBuilder:
         result = builder({"email": "a@b.com"})
         assert "target_id" not in result
 
+    def test_build_preview_skips_required_validation_and_ignores_helper_fields(self):
+        spec = _make_sink_spec([
+            {"name": "email", "type": "string", "required": True, "target": "mail"},
+            {"name": "user_name", "type": "string", "required": True, "target": "userName"},
+        ])
+        builder = SinkDrivenPayloadBuilder(spec)
 
+        result = builder.build_preview(
+            {
+                "email": None,
+                "user_name": "jdoe",
+                "password_stem": "John",
+                "generated_password": "John!23*(3671^84",
+            }
+        )
+
+        assert result == {"mail": None, "userName": "jdoe"}
+
+    def test_build_preview_keeps_projection_on_field_serialization_error(self):
+        spec = _make_sink_spec([
+            {"name": "organization_id", "type": "int", "required": True, "target": "organizationId"},
+            {"name": "user_name", "type": "string", "required": True, "target": "userName"},
+        ])
+        builder = SinkDrivenPayloadBuilder(spec)
+
+        result = builder.build_preview(
+            {
+                "organization_id": "Org 10",
+                "user_name": "jdoe",
+                "random_usr_org_tab_num": "12345678",
+            }
+        )
+
+        assert result == {"organizationId": "Org 10", "userName": "jdoe"}

@@ -6,8 +6,6 @@ from connector.domain.diagnostics.catalog import build_catalog
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.datasets.registry import get_spec
 
-CATALOG = build_catalog("employees", strict=True)
-
 
 class DummyExecutor(RequestExecutorProtocol):
     def __init__(self):
@@ -54,7 +52,8 @@ def base_desired_state(with_password: bool = False) -> dict:
     return state
 
 
-def test_apply_create_uses_secret_provider_when_missing_password():
+def test_apply_create_uses_secret_provider_when_missing_password(employees_registry_path):
+    catalog = build_catalog("employees", strict=True)
     provider = DictSecretProvider({("employees", "password", "row1", 1): "secret123"})
     adapter = get_spec("employees", secrets=provider).get_apply_adapter()
     executor = DummyExecutor()
@@ -63,7 +62,7 @@ def test_apply_create_uses_secret_provider_when_missing_password():
 
     result = service.apply_plan(
         plan=plan,
-        catalog=CATALOG,
+        catalog=catalog,
         apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=None,
@@ -77,7 +76,8 @@ def test_apply_create_uses_secret_provider_when_missing_password():
     assert plan.items[0].desired_state.get("password") == ""
 
 
-def test_apply_create_fails_when_secret_missing():
+def test_apply_create_fails_when_secret_missing(employees_registry_path):
+    catalog = build_catalog("employees", strict=True)
     adapter = get_spec("employees").get_apply_adapter()
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor)
@@ -85,7 +85,7 @@ def test_apply_create_fails_when_secret_missing():
 
     result = service.apply_plan(
         plan=plan,
-        catalog=CATALOG,
+        catalog=catalog,
         apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=None,
@@ -108,7 +108,8 @@ class CountingProvider:
         return None
 
 
-def test_apply_update_does_not_request_secret():
+def test_apply_update_does_not_request_secret(employees_registry_path):
+    catalog = build_catalog("employees", strict=True)
     provider = CountingProvider()
     adapter = get_spec("employees", secrets=provider).get_apply_adapter()
     executor = DummyExecutor()
@@ -117,7 +118,7 @@ def test_apply_update_does_not_request_secret():
 
     result = service.apply_plan(
         plan=plan,
-        catalog=CATALOG,
+        catalog=catalog,
         apply_adapter=adapter,
         stop_on_first_error=False,
         max_actions=None,

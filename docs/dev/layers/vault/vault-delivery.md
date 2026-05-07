@@ -438,25 +438,25 @@ passphrase, rewrap-ить все DEK новым master wrapping key и выпо�
 
 1. **Init**
    ```bash
-   syncEmployees --config ./config.yml vault-management init --force
+   nexus --config ./config.yml vault-management init --force
    ```
    CLI запрашивает admin password и новую unseal passphrase дважды.
 
 2. **Status без unseal**
    ```bash
-   syncEmployees --config ./config.yml vault-management status
+   nexus --config ./config.yml vault-management status
    ```
    Показывает metadata/DEK состояние без проверки passphrase.
 
 3. **Status с проверкой**
    ```bash
-   syncEmployees --config ./config.yml vault-management status --verify
+   nexus --config ./config.yml vault-management status --verify
    ```
    Дополнительно запрашивает unseal passphrase и проверяет startup probe.
 
 4. **Runtime запуск**
    ```bash
-   syncEmployees --config ./config.yml enrich
+   nexus --config ./config.yml enrich
    ```
    Если dataset требует vault, команда запросит unseal passphrase перед startup guard.
 

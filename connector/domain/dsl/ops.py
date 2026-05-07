@@ -11,6 +11,8 @@ import uuid
 from functools import lru_cache
 from typing import Any, Iterable
 
+from anyascii import anyascii
+
 
 def _normalize_whitespace(value: object | None, *, empty_to_none: bool = False) -> str | None:
     if value is None:
@@ -50,6 +52,96 @@ def _normalize_mapping_safe(mapping: dict[str, Any]) -> dict[str, Any]:
         return {str(key).casefold(): value for key, value in mapping.items()}
 
 
+def _as_sequence(value: Any) -> list[Any]:
+    """
+    Назначение:
+        Нормализовать scalar/list/tuple вход в список для list-oriented операций.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
+def _is_blank_scalar(value: Any) -> bool:
+    """
+    Назначение:
+        Проверить, считается ли scalar пустым для tolerant list-операций.
+    """
+    if value is None:
+        return True
+    return isinstance(value, str) and value.strip() == ""
+
+
+def _compile_regex(pattern: str, *, flags: int = 0) -> re.Pattern[str]:
+    """
+    Назначение:
+        Скомпилировать regex с единым helper-контрактом для DSL-операций.
+    """
+    return re.compile(pattern, flags)
+
+
+def _resolve_regex_flags(flags: list[str] | tuple[str, ...] | str | None) -> int:
+    """
+    Назначение:
+        Преобразовать декларативные имена regex-флагов в значение для `re`.
+    """
+    if flags is None:
+        return 0
+    if isinstance(flags, str):
+        names = [flags]
+    else:
+        names = list(flags)
+
+    resolved = 0
+    supported = {
+        "ignorecase": re.IGNORECASE,
+        "multiline": re.MULTILINE,
+        "dotall": re.DOTALL,
+        "ascii": re.ASCII,
+    }
+    for name in names:
+        normalized = str(name).strip().lower()
+        if normalized not in supported:
+            raise ValueError(f"Unsupported regex flag: {name}")
+        resolved |= supported[normalized]
+    return resolved
+
+
+def _normalize_bool_literals(values: Iterable[Any], *, casefold: bool, trim: bool) -> set[Any]:
+    """
+    Назначение:
+        Нормализовать набор bool-литералов для декларативного parse_bool.
+    """
+    normalized: set[Any] = set()
+    for value in values:
+        current = value
+        if isinstance(current, str):
+            if trim:
+                current = current.strip()
+            if casefold:
+                current = current.casefold()
+        normalized.add(current)
+    return normalized
+
+
+def _coerce_nested_ops(raw_ops: Any) -> list[Any]:
+    """
+    Назначение:
+        Преобразовать args.ops в список OperationCall для nested list-операций.
+
+    Примечание:
+        OperationCall валидируется здесь локально, потому что args хранится как dict[str, Any]
+        и вложенные operation payload не проходят Pydantic-валидацию на границе spec-модели.
+    """
+    from connector.domain.dsl.specs import OperationCall
+
+    if not isinstance(raw_ops, list):
+        raise ValueError("ops must be a list")
+    return [OperationCall.model_validate(item) for item in raw_ops]
+
+
 def op_trim(value: Any, **_: Any) -> str | None:
     """
     Назначение:
@@ -69,6 +161,47 @@ def op_lower(value: Any, **_: Any) -> str | None:
         return None
     text = str(value)
     return text.lower()
+
+
+def op_title(value: Any, **_: Any) -> str | None:
+    """
+    Назначение:
+        Привести каждое слово строки к title case.
+    """
+    if value is None:
+        return None
+    return str(value).title()
+
+
+def op_capitalize(value: Any, **_: Any) -> str | None:
+    """
+    Назначение:
+        Привести строку к capitalize-форме.
+    """
+    if value is None:
+        return None
+    return str(value).capitalize()
+
+
+def op_transliterate(value: Any, **_: Any) -> str | None:
+    """
+    Назначение:
+        Детерминированно преобразовать строку в ASCII-представление.
+
+    Контракт:
+        - `None -> None`
+        - пустая строка сохраняется пустой строкой
+        - ASCII-строка возвращается без изменений
+        - non-ASCII строка преобразуется через `anyascii`
+    """
+    if value is None:
+        return None
+    text = str(value)
+    if text == "":
+        return ""
+    if text.isascii():
+        return text
+    return anyascii(text)
 
 
 def op_upper(value: Any, **_: Any) -> str | None:
@@ -133,6 +266,43 @@ def op_to_bool(value: Any, **_: Any) -> bool | None:
     if normalized == "true":
         return True
     if normalized == "false":
+        return False
+    raise ValueError("Invalid boolean value")
+
+
+def op_parse_bool(
+    value: Any,
+    *,
+    true_values: list[Any],
+    false_values: list[Any],
+    casefold: bool = True,
+    trim: bool = True,
+) -> bool | None:
+    """
+    Назначение:
+        Преобразовать декларативно заданные source-литералы в canonical bool.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+
+    current = value
+    if isinstance(current, str):
+        if trim:
+            current = current.strip()
+        if current == "":
+            return None
+        if casefold:
+            current = current.casefold()
+
+    true_set = _normalize_bool_literals(true_values, casefold=casefold, trim=trim)
+    false_set = _normalize_bool_literals(false_values, casefold=casefold, trim=trim)
+    if true_set & false_set:
+        raise ValueError("parse_bool true_values and false_values must not overlap")
+    if current in true_set:
+        return True
+    if current in false_set:
         return False
     raise ValueError("Invalid boolean value")
 
@@ -254,6 +424,31 @@ def op_coalesce(values: Any, *, default: Any | None = None) -> Any:
     return default
 
 
+def op_pick_when_blank(
+    values: Any,
+    *,
+    guard_index: int,
+    value_index: int,
+    else_value: Any | None = None,
+) -> Any:
+    """
+    Назначение:
+        Вернуть элемент `value_index`, только если guard-элемент пустой.
+
+    Контракт:
+        - вход трактуется как tolerant sequence;
+        - blank guard (`None` или пустая строка) разрешает возврат целевого значения;
+        - непустой guard возвращает `else_value` без ошибок.
+    """
+    sequence = _as_sequence(values)
+    guard = sequence[guard_index] if 0 <= guard_index < len(sequence) else None
+    if not _is_blank_scalar(guard):
+        return else_value
+    if 0 <= value_index < len(sequence):
+        return sequence[value_index]
+    return None
+
+
 def op_concat(values: Any, *, sep: str = "") -> str | None:
     """
     Назначение:
@@ -272,6 +467,184 @@ def op_concat(values: Any, *, sep: str = "") -> str | None:
     if not parts:
         return None
     return sep.join(parts)
+
+
+def op_first(value: Any, **_: Any) -> Any:
+    """
+    Назначение:
+        Вернуть первый элемент последовательности или scalar как есть.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        return value[0] if value else None
+    return value
+
+
+def op_last(value: Any, **_: Any) -> Any:
+    """
+    Назначение:
+        Вернуть последний элемент последовательности или scalar как есть.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        return value[-1] if value else None
+    return value
+
+
+def op_at(value: Any, *, index: int) -> Any:
+    """
+    Назначение:
+        Вернуть элемент последовательности по индексу.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        try:
+            return value[index]
+        except IndexError:
+            return None
+    return value if index == 0 else None
+
+
+def op_substring(value: Any, *, start: int, length: int | None = None) -> str | None:
+    """
+    Назначение:
+        Универсально извлечь подстроку из строкового значения.
+
+    Контракт:
+        - `None -> None`
+        - если `length` не задан, возвращается остаток строки от `start`
+        - выход за диапазон не считается ошибкой
+    """
+    if value is None:
+        return None
+    text = str(value)
+    if length is None:
+        return text[start:]
+    if length < 0:
+        raise ValueError("length must be >= 0")
+    return text[start : start + length]
+
+
+def op_compact(value: Any, **_: Any) -> list[Any]:
+    """
+    Назначение:
+        Удалить из последовательности пустые/None значения.
+    """
+    return [item for item in _as_sequence(value) if not _is_blank_scalar(item)]
+
+
+def op_unique(value: Any, **_: Any) -> list[Any]:
+    """
+    Назначение:
+        Вернуть значения без дублей с сохранением исходного порядка.
+    """
+    result: list[Any] = []
+    seen: list[Any] = []
+    for item in _as_sequence(value):
+        if item in seen:
+            continue
+        seen.append(item)
+        result.append(item)
+    return result
+
+
+def op_count(value: Any, **_: Any) -> int:
+    """
+    Назначение:
+        Вернуть количество элементов в tolerant list-контракте.
+    """
+    if value is None:
+        return 0
+    if isinstance(value, (list, tuple)):
+        return len(value)
+    return 1
+
+
+def op_map_each(value: Any, *, ops: list[Any]) -> list[Any] | None:
+    """
+    Назначение:
+        Применить вложенную цепочку DSL-операций к каждому элементу последовательности.
+    """
+    if value is None:
+        return None
+
+    from connector.domain.dsl.engine import TransformationEngine
+
+    nested_ops = _coerce_nested_ops(ops)
+    engine = TransformationEngine.with_core_ops()
+    result: list[Any] = []
+    for item in _as_sequence(value):
+        nested = engine.apply(item, nested_ops)
+        if nested.issues:
+            first_issue = nested.issues[0]
+            raise ValueError(first_issue.message)
+        result.append(nested.value)
+    return result
+
+
+def op_filter_regex(
+    value: Any,
+    *,
+    pattern: str,
+    flags: list[str] | tuple[str, ...] | str | None = None,
+    match_mode: str = "search",
+) -> list[Any]:
+    """
+    Назначение:
+        Оставить только элементы, совпавшие с заданным regex.
+    """
+    compiled = _compile_regex(pattern, flags=_resolve_regex_flags(flags))
+    if match_mode not in {"search", "fullmatch"}:
+        raise ValueError("match_mode must be 'search' or 'fullmatch'")
+    matcher = compiled.search if match_mode == "search" else compiled.fullmatch
+    return [item for item in _as_sequence(value) if matcher(str(item))]
+
+
+def op_contains_non_ascii(value: Any, **_: Any) -> bool | None:
+    """
+    Назначение:
+        Проверить, содержит ли строковое значение хотя бы один non-ASCII символ.
+
+    Контракт:
+        - `None -> None`
+        - результат используется как predicate и не меняет само значение
+    """
+    if value is None:
+        return None
+    return not str(value).isascii()
+
+
+def op_is_blank(value: Any, **_: Any) -> bool:
+    """
+    Назначение:
+        Проверить, считается ли значение пустым в tolerant DSL-контракте.
+
+    Контракт:
+        - `None` и пустые/пробельные строки считаются blank;
+        - bool/числа сами по себе blank не считаются.
+    """
+    return _is_blank_scalar(value)
+
+
+def op_reject_regex(
+    value: Any,
+    *,
+    pattern: str,
+    flags: list[str] | tuple[str, ...] | str | None = None,
+    match_mode: str = "search",
+) -> list[Any]:
+    """
+    Назначение:
+        Исключить элементы, совпавшие с заданным regex.
+    """
+    compiled = _compile_regex(pattern, flags=_resolve_regex_flags(flags))
+    if match_mode not in {"search", "fullmatch"}:
+        raise ValueError("match_mode must be 'search' or 'fullmatch'")
+    matcher = compiled.search if match_mode == "search" else compiled.fullmatch
+    return [item for item in _as_sequence(value) if not matcher(str(item))]
 
 
 def op_build_delimited_key(
@@ -325,6 +698,32 @@ def op_split(value: Any, *, sep: str = ",") -> list[str] | None:
     if value is None:
         return None
     return [part for part in str(value).split(sep)]
+
+
+def op_digits_only(value: Any, **_: Any) -> str | None:
+    """
+    Назначение:
+        Оставить в строковом значении только цифры.
+    """
+    if value is None:
+        return None
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    return digits or None
+
+
+def op_random_digits(_: Any, *, length: int) -> str:
+    """
+    Назначение:
+        Сгенерировать случайную строку из цифр заданной длины.
+
+    Контракт:
+        - входное значение не участвует в генерации
+        - результат состоит только из цифр
+        - длина результата строго совпадает с `length`
+    """
+    if length <= 0:
+        raise ValueError("length must be > 0")
+    return "".join(secrets.choice("0123456789") for _ in range(length))
 
 
 def op_split_name(
@@ -433,6 +832,38 @@ def op_regex_replace(value: Any, *, pattern: str, repl: str) -> str | None:
     if value is None:
         return None
     return re.sub(pattern, repl, str(value))
+
+
+def op_format_mask(value: Any, *, mask: str, placeholder: str = "#") -> str | None:
+    """
+    Назначение:
+        Отформатировать последовательность символов по declarative mask.
+
+    Контракт:
+        - количество входных символов должно совпадать с количеством placeholder в mask;
+        - операция ожидает уже канонизированное значение и не извлекает доменные символы сама.
+    """
+    if value is None:
+        return None
+    raw = str(value)
+    if raw == "":
+        return None
+    placeholder_count = mask.count(placeholder)
+    if placeholder_count == 0:
+        raise ValueError("mask must contain at least one placeholder")
+    if len(raw) != placeholder_count:
+        raise ValueError(
+            f"mask expects {placeholder_count} characters, got {len(raw)}"
+        )
+
+    chars = iter(raw)
+    result: list[str] = []
+    for char in mask:
+        if char == placeholder:
+            result.append(next(chars))
+        else:
+            result.append(char)
+    return "".join(result)
 
 
 def op_parse_kv_pairs(

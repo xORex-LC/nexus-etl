@@ -10,7 +10,12 @@ from typing import Any
 
 from connector.domain.dsl.build_options import build_options_from_mapping
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader._common import _load_registry_or_raise, _read_yaml, _repo_root
+from connector.domain.dsl.loader._common import (
+    _load_registry_or_raise,
+    _read_yaml,
+    _registry_path,
+    _resolve_dataset_stage_path,
+)
 from connector.domain.cache_dsl.build_options import CacheDslBuildOptions
 from connector.domain.cache_dsl.specs import CacheDatasetSpec, CacheRegistrySpec
 
@@ -21,7 +26,7 @@ from connector.domain.cache_dsl.specs import CacheDatasetSpec, CacheRegistrySpec
 def load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpec:
     """
     Назначение:
-        Загрузить cache registry spec (из отдельного файла или datasets/registry.yml).
+        Загрузить cache registry spec (из отдельного файла или runtime registry file).
     """
     try:
         raw = _read_yaml(path) if path is not None else _load_registry_or_raise()
@@ -29,7 +34,7 @@ def load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpe
         raise DslLoadError(
             code="CACHE_DSL_REGISTRY_INVALID",
             message=f"Failed to read cache registry: {exc}",
-            details={"path": str(path) if path is not None else "datasets/registry.yml"},
+            details={"path": str(path) if path is not None else str(_registry_path())},
         ) from exc
 
     cache_payload = _extract_cache_registry_payload(raw)
@@ -39,14 +44,14 @@ def load_cache_registry_spec(path: str | Path | None = None) -> CacheRegistrySpe
         raise DslLoadError(
             code="CACHE_DSL_REGISTRY_INVALID",
             message=f"Invalid cache registry DSL: {exc}",
-            details={"path": str(path) if path is not None else "datasets/registry.yml"},
+            details={"path": str(path) if path is not None else str(_registry_path())},
         ) from exc
 
 
 def load_cache_registry_spec_for_runtime() -> CacheRegistrySpec:
     """
     Назначение:
-        Runtime helper для загрузки cache registry из datasets/registry.yml.
+        Runtime helper для загрузки cache registry из active registry file.
     """
     return load_cache_registry_spec(None)
 
@@ -87,7 +92,7 @@ def load_cache_dataset_spec_for_dataset(dataset: str) -> CacheDatasetSpec:
             message=f"Dataset '{dataset}' is not present in cache registry",
             details={"dataset": dataset},
         )
-    spec_path = _repo_root() / "datasets" / dataset_entry.cache_spec
+    spec_path = _resolve_dataset_stage_path(dataset_entry.cache_spec)
     spec = load_cache_dataset_spec(spec_path)
     if spec.dataset != dataset:
         raise DslLoadError(
@@ -167,7 +172,7 @@ def load_cache_build_options_for_runtime(
 def _extract_cache_registry_payload(raw: dict[str, Any]) -> dict[str, Any]:
     """
     Назначение:
-        Выделить payload cache registry из общего registry.yml.
+        Выделить payload cache registry из общего registry file.
     """
     if "cache" in raw and isinstance(raw.get("cache"), dict):
         return raw["cache"]

@@ -3,7 +3,7 @@
     target-dsl — декларативное описание поведенческой спецификации target-провайдера.
 
     Позволяет задавать TargetSpec (capabilities, fault_rules, retry_rules, redaction,
-    operations) в YAML-файле вместо Python-кода. YAML загружается через datasets/registry.yml,
+    operations) в YAML-файле вместо Python-кода. YAML загружается через runtime registry file,
     валидируется Pydantic и возвращается как неизменяемый TargetSpec.
 
 Использование:

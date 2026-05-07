@@ -73,7 +73,6 @@ class SourceConfig(DslBaseModel):
     type: Literal["file", "db", "api"]
     format: str | None = None
     location: str | None = None
-    location_ref: str | None = None
     has_header: bool = False
     options: dict[str, Any] = Field(default_factory=dict)
     fields: list[SourceFieldSpec] = Field(default_factory=list)
@@ -82,6 +81,10 @@ class SourceConfig(DslBaseModel):
     def _validate_format_options(self) -> "SourceConfig":
         if self.format == "csv":
             self.csv_options()
+        if self.type == "file":
+            location = (self.location or "").strip()
+            if not location:
+                raise ValueError("source.location must be configured for file sources")
         return self
 
     def csv_options(self) -> CsvSourceOptions:

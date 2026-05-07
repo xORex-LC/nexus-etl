@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from connector.common.runtime_paths import RuntimePathOverrides
 from connector.datasets import registry as registry_module
 from connector.datasets.registry import get_spec, list_specs, validate_registry
 from connector.datasets.spec import UnsupportedStageError
 from connector.datasets.yaml_spec import YamlDatasetSpec
 from connector.datasets.yaml_spec_loader import load_yaml_dataset_artifacts
+from connector.domain.dsl.loader import configure_runtime_paths
 from connector.domain.transform_dsl.specs import (
     EnrichSpec,
     MappingSpec,
@@ -20,22 +24,22 @@ from connector.domain.transform_dsl.specs import (
 
 
 class TestAutoDiscovery:
-    def test_get_spec_returns_yaml_spec(self):
+    def test_get_spec_returns_yaml_spec(self, employees_registry_path):
         spec = get_spec("employees")
         assert isinstance(spec, YamlDatasetSpec)
 
-    def test_get_spec_unknown_dataset(self):
+    def test_get_spec_unknown_dataset(self, employees_registry_path):
         with pytest.raises(ValueError, match="Unsupported dataset"):
             get_spec("nonexistent")
 
-    def test_list_specs_contains_employees(self):
+    def test_list_specs_contains_employees(self, employees_registry_path):
         specs = list_specs()
         assert any(s.dataset_name == "employees" for s in specs)
 
 
 class TestYamlDatasetSpecBuildSpecFor:
     @pytest.fixture()
-    def spec(self):
+    def spec(self, employees_registry_path):
         return get_spec("employees")
 
     def test_map(self, spec):
@@ -82,7 +86,7 @@ class TestYamlDatasetSpecBuildSpecFor:
 
 class TestYamlDatasetSpecAdapters:
     @pytest.fixture()
-    def spec(self):
+    def spec(self, employees_registry_path):
         return get_spec("employees")
 
     def test_report_adapter(self, spec):
@@ -99,13 +103,19 @@ class TestYamlDatasetSpecAdapters:
         catalog = spec.get_diagnostic_catalog(strict=False)
         assert catalog.contains("INVALID_AVATAR_ID")
         assert catalog.contains("USR_ORG_TAB_CONFLICT")
+        assert catalog.contains("USER_NAME_CONFLICT")
         assert catalog.contains("TARGET_ID_MISSING")
         assert catalog.contains("MATCH_KEY_MISSING")
         assert catalog.contains("INVALID_INT")
         assert catalog.contains("INVALID_EMAIL")
         assert catalog.contains("INVALID_BOOLEAN")
 
-    def test_accessors_do_not_reload_yaml_after_construction(self, monkeypatch, tmp_path):
+    def test_accessors_do_not_reload_yaml_after_construction(
+        self,
+        monkeypatch,
+        tmp_path,
+        employees_registry_path,
+    ):
         artifacts = load_yaml_dataset_artifacts("employees")
         spec = YamlDatasetSpec(artifacts)
 
@@ -119,14 +129,23 @@ class TestYamlDatasetSpecAdapters:
         monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_resolve_spec_for_dataset", _unexpected)
         monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_sink_spec_for_dataset", _unexpected)
         monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_source_spec_for_dataset", _unexpected)
-        monkeypatch.setenv("EMPLOYEES_SOURCE_PATH", str(tmp_path / "employees.csv"))
+        configure_runtime_paths(
+            RuntimePathOverrides(
+                source_data_root=tmp_path / "sources",
+            )
+        )
 
-        assert isinstance(spec.build_spec_for("map"), MappingSpec)
-        assert spec.get_apply_adapter().operation_alias == "users.upsert"
-        source = spec.build_record_source()
-        assert source.has_header is True
-        assert source.delimiter == ","
-        assert source.encoding == "utf-8-sig"
+        try:
+            assert isinstance(spec.build_spec_for("map"), MappingSpec)
+            assert spec.get_apply_adapter().operation_alias == "users.upsert"
+            source = spec.build_record_source()
+            csv_options = artifacts.source_spec.source.csv_options()
+            assert source.has_header is True
+            assert source.delimiter == csv_options.delimiter
+            assert source.encoding == csv_options.encoding
+            assert Path(source.path) == (tmp_path / "sources" / "source_employees_example_1.csv").resolve()
+        finally:
+            configure_runtime_paths(None)
 
 
 class TestRegistryValidation:

@@ -1,0 +1,44 @@
+# Dictionary identifier. Must match the key used in `dictionaries.items` in registry.
+dictionary: dictionary_name
+
+# Dictionary source configuration parsed by DictionarySourceSpec.
+source:
+  # Source format. Current runtime supports only `csv`.
+  format: csv
+  # Relative ref inside runtime.dictionary_data_root or absolute path.
+  location: dataset_name/dictionary_name.csv
+  # CSV reader options parsed by DictionarySourceCsvSpec.
+  csv:
+    # CSV delimiter used by the loader.
+    delimiter: ","
+    # Whether the first row contains column names.
+    has_header: true
+    # Python codec name used to read the CSV.
+    encoding: "utf-8"
+    # Optional file-level null markers. Default runtime marker is `NULL`.
+    # Example:
+    # null_values: ["NULL", "", "N/A"]
+    null_values: ["NULL"]
+
+# Dictionary lookup schema parsed by DictionarySchemaSpec.
+schema:
+  # Source column used as the lookup key.
+  key_column:
+    name: key
+  # Source columns returned by lookup/canonicalize as row payload.
+  value_columns:
+    - name: value
+      nullable: false
+  # Optional key normalization pipeline applied both on load and on lookup.
+  normalized_key:
+    # Allowed ops: trim, lower, upper, to_string, regex_replace.
+    # Example:
+    # ops:
+    #   - op: trim
+    #   - op: lower
+    ops: []
+
+# Runtime lookup behavior parsed by DictionaryLookupSpec.
+lookup:
+  # Whether duplicate normalized keys are allowed in the loaded snapshot.
+  allow_duplicates: false

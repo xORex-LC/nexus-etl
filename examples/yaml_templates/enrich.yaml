@@ -1,0 +1,101 @@
+# Dataset identifier used by registry entries that point to this enrich spec.
+dataset: dataset_name
+
+# Enrichment rules applied after normalization.
+enrich:
+  # Optional match key builder.
+  match_key:
+    # Fields joined to produce match_key.
+    fields: [identity_field]
+    # Whether every field must be non-empty.
+    strict: true
+  # Optional secret extraction policy.
+  secrets:
+    # Fields treated as secret candidates.
+    fields: []
+  # Generated/enriched fields.
+  generate:
+    # Rule name used in diagnostics and trace metadata.
+    - name: generated_field
+      # Row field to write.
+      target: generated_field
+      # Optional base-value builder for complex generate rules.
+      # Must declare exactly one of source/sources.
+      build:
+        # Optional single source field/path used to construct the base value.
+        source: source_field
+        # Optional multiple source fields/paths used to construct the base value.
+        sources: null
+        # Operation pipeline applied to the base input.
+        ops: []
+      # Optional condition for append-style branching. Must declare exactly one of source/sources.
+      when:
+        # Field/path checked by the condition.
+        source: source_field
+        # Predicate pipeline. Expected to resolve to boolean-like value.
+        ops:
+          - op: contains_non_ascii
+            args: {}
+      # Optional branch body executed when `when` condition is truthy.
+      # In the current contract this block forms append value for the base result.
+      then:
+        # Optional multiple source fields/paths used by branch body.
+        sources: null
+        # Optional single source field/path used by branch body.
+        source: source_field
+        # Operation pipeline applied by branch body.
+        ops: []
+      # Optional provider reference for runtime data lookup/generation.
+      provider:
+        # Provider registry name.
+        name: provider.name
+        # Provider-specific arguments.
+        args: {}
+      # Optional path in provider result to read.
+      value_path: value
+      # Optional single source field/path.
+      source: source_field
+      # Optional multiple source fields/paths.
+      sources: null
+      # Operation pipeline applied to source/provider value.
+      ops: []
+      # Diagnostic behavior for this rule. Supported: error, warn.
+      on_error: error
+      # Merge behavior. Supported: recompute_always, fill_only_if_empty, never_override,
+      # override_if_empty, override_if_authoritative.
+      merge: fill_only_if_empty
+      # Optional uniqueness/existence check.
+      exists:
+        # Provider used for exists check.
+        provider:
+          # Provider registry name.
+          name: provider.exists
+          # Provider-specific arguments.
+          args: {}
+      # Optional allow condition as operation call or operation name string.
+      allow_if:
+        # Operation name for condition.
+        op: equals_path
+        # Operation arguments for condition.
+        args: {}
+      # Optional conflict policy for exists collisions. Generate-only contract.
+      on_conflict:
+        # Supported strategies:
+        #   - error
+        #   - retry_with_suffixes
+        strategy: error
+        # Optional suffixes appended to the base generated value on retry.
+        suffixes: ["_2"]
+      # Optional retry attempts for generated value conflicts.
+      max_attempts: 1
+      # Whether rule runs when previous errors exist. Supported: never, if_any, always.
+      run_when_errors: never
+      # Diagnostic code emitted when required generated value is missing.
+      missing_error_code: GENERATED_VALUE_MISSING
+      # Diagnostic code emitted on exists/conflict failure.
+      conflict_error_code: GENERATED_VALUE_CONFLICT
+      # Target field name used in diagnostics.
+      error_field: generated_field
+  # Lookup/enrichment rules keep the current source/sources + ops contract.
+  # Generate-only extensions above (`build`, `when`, `then`, `on_conflict`) do not apply to lookup.
+  lookup: []

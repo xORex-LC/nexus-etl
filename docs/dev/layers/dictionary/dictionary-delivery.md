@@ -513,7 +513,7 @@ def _load_runtime_bundle_optional(
 
 **Алгоритм**:
 ```
-1. Canonical path (datasets_root is None) (lines 65-70)
+1. Active registry path (datasets_root is None) (lines 65-70)
    registry = load_optional_dictionary_registry_spec_for_runtime()
    IF registry IS None:
      RETURN None  ← disabled mode
@@ -522,7 +522,7 @@ def _load_runtime_bundle_optional(
    manifest = load_dictionary_manifest_spec_for_runtime()
    RETURN build_dictionary_dsl_runtime(specs, manifest)
 
-2. Custom path (datasets_root is not None) — для тестов / fixtures (lines 72-79)
+2. Custom datasets root (datasets_root is not None) — для тестов / fixtures (lines 72-79)
    registry_path = root / "registry.yml"
    IF NOT _has_dictionaries_section_or_raise(registry_path):
      RETURN None  ← disabled mode
@@ -533,7 +533,7 @@ def _load_runtime_bundle_optional(
    RETURN build_dictionary_dsl_runtime(specs, manifest)
 ```
 
-**Ветка 1 (production)**: Использует canonical paths через `_repo_root()` — стандартный startup.
+**Ветка 1 (production/runtime)**: Использует активный registry path, уже настроенный DSL-loader'ом (`dataset.registry_path` или default `datasets/registry.yml`).
 
 **Ветка 2 (tests)**: Использует кастомный `datasets_root` — позволяет изолировать тесты от production данных.
 
@@ -878,7 +878,7 @@ rows = provider.canonicalize("organizations", "ORG-1")
 
 **Задача**: Запустить приложение с eager-загрузкой всех словарей.
 
-**Конфигурация** (`datasets/registry.yml`):
+**Конфигурация** (активный registry file):
 ```yaml
 dictionaries:
   version: 1
@@ -915,7 +915,7 @@ rows = provider.lookup("organizations", "ORG-1")
 
 **Задача**: Задеплоить приложение на среду без словарных данных.
 
-**Конфигурация**: Убрать секцию `dictionaries` из `registry.yml`.
+**Конфигурация**: Убрать секцию `dictionaries` из активного registry-файла.
 
 **Поведение**:
 ```python
@@ -1115,3 +1115,4 @@ report.context["dictionary"] = telemetry.snapshot()
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-02-27 | Первоначальное создание документа | xORex-LC |
+| 2026-05-05 | Уточнён runtime flow словарей для active registry path и custom datasets root | xORex-LC |

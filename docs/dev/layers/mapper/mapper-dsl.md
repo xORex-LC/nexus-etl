@@ -29,14 +29,14 @@ Mapper DSL строится на трёх взаимосвязанных YAML-с
 
 | Спецификация | Файл (пример) | Вопрос |
 |---|---|---|
-| `SourceSpec` | `employees.source.yaml` | Откуда читать данные? |
-| `MappingSpec` | `employees.mapping.yaml` | Как трансформировать поля? |
+| `SourceSpec` | `employees/source_2/source.yaml` | Откуда читать данные? |
+| `MappingSpec` | `employees/source_2/mapping.yaml` | Как трансформировать поля? |
 | `SinkSpec` | `employees.sink.yaml` | Какая схема на выходе? |
 
 Рабочий цикл DSL-слоя:
 
 ```
-registry.yml  →  load_*_spec_for_dataset()  →  SourceSpec / MappingSpec / SinkSpec
+active registry  →  load_*_spec_for_dataset()  →  SourceSpec / MappingSpec / SinkSpec
                                                          ↓
                                              MapperDsl.compile(spec, sink_spec)
                                                          ↓
@@ -62,9 +62,9 @@ connector/domain/transform_dsl/
 └── loader.py              # load_mapping_spec_for_dataset, load_source_spec_for_dataset, ...
 
 datasets/
-├── employees.source.yaml  # Конфигурация CSV-источника
-├── employees.mapping.yaml # Правила маппинга полей
-└── employees.sink.yaml    # Выходная схема (ожидаемые поля)
+├── employees/source_2/source.yaml  # Конфигурация CSV-источника
+├── employees/source_2/mapping.yaml # Правила маппинга полей
+└── employees.sink.yaml             # Выходная схема (ожидаемые поля)
 ```
 
 ---
@@ -74,11 +74,11 @@ datasets/
 ### Поток загрузки спецификаций
 
 ```
-datasets/registry.yml
+active registry file
   └── datasets:
         employees:
-          source:  employees.source.yaml   ←─ load_source_spec_for_dataset("employees")
-          mapping: employees.mapping.yaml  ←─ load_mapping_spec_for_dataset("employees")
+          source:  employees/source_2/source.yaml   ←─ load_source_spec_for_dataset("employees")
+          mapping: employees/source_2/mapping.yaml  ←─ load_mapping_spec_for_dataset("employees")
           sink:    employees.sink.yaml     ←─ load_sink_spec_for_dataset("employees")
           build_options:
             mapping:
@@ -231,11 +231,17 @@ class SinkFieldSpec(DslBaseModel):
     nullable: bool = True
     target: str | None = None     # Имя поля во внешней системе (напр., "lastName")
     generated: bool = False       # True → поле генерируется, не из mapper (напр., target_id)
+    serialize: SinkFieldSerializeSpec | None = None
 ```
 
-`SinkSpec` используется в двух местах:
+`SinkSpec` используется в трёх местах:
 1. **`MapperDsl.compile()`** — проверяет, что все `targets` из `MappingRule` существуют в `sink.fields`
 2. **`MapperCore._validate_sink()`** — после маппинга проверяет типы полей (только warnings)
+3. **payload boundary (`SinkDrivenPayloadBuilder`)** — использует `serialize` как metadata для target-side представления значения
+
+`serialize` сейчас поддерживается только для `bool`-полей:
+- `as: native` — canonical bool уходит в payload как есть
+- `as: literal_map` — canonical `True/False` конвертируется в target literal на границе payload assembly
 
 `system_fields` (например, `target_id` с `generated: true`) не маппируются — они
 добавляются позже в resolve-стадии. `MapperDsl` включает их в множество допустимых target-имён.
@@ -340,7 +346,7 @@ class MapDslBuildOptions(BaseDslBuildOptions):
 
 ```
 1. _load_registry_or_raise()
-   → читает datasets/registry.yml
+   → читает активный registry file (`dataset.registry_path` или default `datasets/registry.yml`)
 2. _resolve_dataset_path(registry, dataset, stage="mapping")
    → registry["datasets"][dataset]["mapping"] → путь к файлу
    → DslLoadError если dataset или stage не найдены
@@ -375,9 +381,9 @@ build_options:
       fail_on_unknown_ops: true      # для всех датасетов
 datasets:
   employees:
-    mapping: employees.mapping.yaml
+    mapping: employees/source_2/mapping.yaml
     sink: employees.sink.yaml
-    source: employees.source.yaml
+    source: employees/source_2/source.yaml
     build_options:
       mapping:
         require_targets_exist_in_sink_spec: true  # только для employees
@@ -423,8 +429,8 @@ source_spec = load_source_spec_for_dataset(dataset)  # SourceSpec
 ```yaml
 datasets:
   employees:
-    source:  employees.source.yaml
-    mapping: employees.mapping.yaml
+    source:  employees/source_2/source.yaml
+    mapping: employees/source_2/mapping.yaml
     sink:    employees.sink.yaml
     # Опционально:
     normalize: employees.normalize.yaml
@@ -474,15 +480,15 @@ from connector.domain.transform_dsl.compilers.mapping import MapperDsl
 
 ### Добавить новое поле маппинга
 
-1. **SourceSpec:** если поле новое в источнике — добавить в `employees.source.yaml`:
+1. **SourceSpec:** если поле новое в источнике — добавить в `employees/source_2/source.yaml`:
    ```yaml
    fields:
      - name: department_code
        type: string
    ```
-   Если нет заголовка CSV — добавить в `source_columns` в `employees.mapping.yaml`.
+   Если нет заголовка CSV — добавить в `source_columns` в `employees/source_2/mapping.yaml`.
 
-2. **MappingRule:** добавить правило в `employees.mapping.yaml`:
+2. **MappingRule:** добавить правило в `employees/source_2/mapping.yaml`:
    ```yaml
    mapping:
      rules:
@@ -552,7 +558,7 @@ datasets:
 
 ## 💡 Типичные сценарии
 
-### Полный пример: employees.mapping.yaml
+### Полный пример: employees/source_2/mapping.yaml
 
 ```yaml
 dataset: employees
@@ -664,7 +670,7 @@ mapping:
       args: { value: "csv" }
 ```
 
-### Пример: employees.source.yaml
+### Пример: employees/source_2/source.yaml
 
 ```yaml
 dataset: employees
@@ -728,6 +734,11 @@ sink:
       type: bool
       required: true
       target: isLogonDisabled
+      serialize:
+        as: literal_map
+        map:
+          true: 1
+          false: 0
     - name: manager_id
       type: int
       required: true
@@ -880,10 +891,10 @@ Pydantic model_validator проверяет: если `source` и `sources` от
 | [mapper-core.md](mapper-core.md) | Core-логика: RowSource, CsvRecordSource, MapperCore, TransformResult, pipeline |
 | [docs/dev/layers/dsl/dsl-engine.md](../dsl/dsl-engine.md) | TransformationEngine, операции, OperationRegistry |
 | [docs/dev/layers/dsl/dsl-specs.md](../dsl/dsl-specs.md) | Базовые DSL-абстракции (DslBaseModel, OperationCall) |
-| `datasets/employees.mapping.yaml` | Эталонный пример mapping-спецификации |
-| `datasets/employees.source.yaml` | Эталонный пример source-спецификации |
+| `datasets/employees/source_2/mapping.yaml` | Эталонный пример mapping-спецификации |
+| `datasets/employees/source_2/source.yaml` | Эталонный пример source-спецификации |
 | `datasets/employees.sink.yaml` | Эталонный пример sink-спецификации |
-| `datasets/registry.yml` | Центральный реестр датасетов |
+| Активный registry file | Центральный реестр датасетов (`dataset.registry_path` или default `datasets/registry.yml`) |
 
 ---
 
@@ -892,3 +903,4 @@ Pydantic model_validator проверяет: если `source` и `sources` от
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-03-01 | Создан документ — DSL-спецификации mapper-слоя | xORex-LC |
+| 2026-05-05 | Синхронизированы active registry path, `source_2` layout и sink `serialize` metadata для payload boundary | xORex-LC |

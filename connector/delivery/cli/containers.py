@@ -28,19 +28,20 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
 from dependency_injector import containers, providers
 
-from connector.config.models import ApiConfig, AppConfig, DatasetConfig, SqliteConfig
+from connector.config.models import ApiConfig, AppConfig, DatasetConfig
 from connector.config.projections import (
     to_cache_db_config,
     to_identity_db_config,
     to_resolver_settings,
+    to_runtime_path_overrides,
     to_vault_management_settings,
     to_vault_db_config,
 )
+from connector.common.runtime_paths import detect_runtime_paths
 from connector.domain.transform.matcher.match_deps import MatchBatchSettings, MatchScopeService
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.diagnostics import build_catalog
@@ -109,24 +110,48 @@ if TYPE_CHECKING:
     from connector.delivery.cli.requirements import Requirements
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Path helpers (inline — no legacy db.py dependency)
+# Path helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _cache_db_path(cache_dir: str) -> str:
-    return str(Path(cache_dir) / "ankey_cache.sqlite3")
+def _runtime_paths_for(app_config: AppConfig):
+    return detect_runtime_paths(overrides=to_runtime_path_overrides(app_config))
 
 
-def _vault_db_path(cache_dir: str, sqlite: SqliteConfig) -> str:
-    if sqlite.vault_db_path:
-        return sqlite.vault_db_path
-    return str(Path(cache_dir) / "ankey_vault.sqlite3")
+def _resolve_sqlite_file_path(
+    *,
+    app_config: AppConfig,
+    override: str | None,
+    default_name: str,
+) -> str:
+    runtime_paths = _runtime_paths_for(app_config)
+    if override:
+        return str((runtime_paths.root / override).resolve())
+    return str(runtime_paths.resolve_cache_db_file(default_name))
 
 
-def _identity_db_path(cache_dir: str, sqlite: SqliteConfig) -> str:
-    if sqlite.identity_db_path:
-        return sqlite.identity_db_path
-    return str(Path(cache_dir) / "identity.sqlite3")
+def _cache_db_path(app_config: AppConfig) -> str:
+    return _resolve_sqlite_file_path(
+        app_config=app_config,
+        override=app_config.sqlite.cache_db_path,
+        default_name="ankey_cache.sqlite3",
+    )
+
+
+def _vault_db_path(app_config: AppConfig) -> str:
+    return _resolve_sqlite_file_path(
+        app_config=app_config,
+        override=app_config.sqlite.vault_db_path,
+        default_name="ankey_vault.sqlite3",
+    )
+
+
+def _identity_db_path(app_config: AppConfig) -> str:
+    return _resolve_sqlite_file_path(
+        app_config=app_config,
+        override=app_config.sqlite.identity_db_path,
+        default_name="identity.sqlite3",
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -135,15 +160,18 @@ def _identity_db_path(cache_dir: str, sqlite: SqliteConfig) -> str:
 
 
 def _make_cache_engine(app_config: AppConfig, cache_dir: str) -> SqliteEngine:
-    return open_sqlite(to_cache_db_config(app_config), _cache_db_path(cache_dir))
+    _ = cache_dir
+    return open_sqlite(to_cache_db_config(app_config), _cache_db_path(app_config))
 
 
 def _make_vault_engine(app_config: AppConfig, cache_dir: str) -> SqliteEngine:
-    return open_sqlite(to_vault_db_config(app_config), _vault_db_path(cache_dir, app_config.sqlite))
+    _ = cache_dir
+    return open_sqlite(to_vault_db_config(app_config), _vault_db_path(app_config))
 
 
 def _make_identity_engine(app_config: AppConfig, cache_dir: str) -> SqliteEngine:
-    return open_sqlite(to_identity_db_config(app_config), _identity_db_path(cache_dir, app_config.sqlite))
+    _ = cache_dir
+    return open_sqlite(to_identity_db_config(app_config), _identity_db_path(app_config))
 
 
 def vault_startup_resource(
@@ -819,6 +847,15 @@ class AppContainer(containers.DeclarativeContainer):
     _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_config)
     _api_settings = providers.Callable(lambda s: s.api, s=app_config)
     _dictionary_cfg = providers.Callable(lambda s: s.dictionary, s=app_config)
+    _dataset_registry_path = providers.Callable(lambda s: s.dataset.registry_path, s=app_config)
+    _dictionary_specs_root = providers.Callable(
+        lambda s: s.runtime.dictionary_specs_root,
+        s=app_config,
+    )
+    _dictionary_data_root = providers.Callable(
+        lambda s: s.runtime.dictionary_data_root,
+        s=app_config,
+    )
     _vault_management_settings = providers.Callable(to_vault_management_settings, config=app_config)
 
     cache_dsl = providers.Singleton(load_cache_dsl_runtime)
@@ -889,7 +926,9 @@ class AppContainer(containers.DeclarativeContainer):
     dictionary = providers.Container(
         DictionaryContainer,
         settings=_dictionary_cfg,
-        datasets_root=providers.Object(None),
+        registry_path=_dataset_registry_path,
+        dictionary_specs_root=_dictionary_specs_root,
+        dictionary_data_root=_dictionary_data_root,
     )
 
     pipeline = providers.Container(

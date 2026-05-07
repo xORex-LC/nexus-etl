@@ -31,7 +31,7 @@
 
 **Ключевая ответственность**:
 - Определение структуры всех DSL-конфигураций как типизированных Pydantic-моделей
-- Загрузка YAML через `datasets/registry.yml` с валидацией и шаблонизацией
+- Загрузка YAML через активный registry-файл (`dataset.registry_path` или default `datasets/registry.yml`) с валидацией и шаблонизацией
 - Merge-priority слияние build options: `defaults → global.base → global.stages[stage] → dataset-specific`
 - Раннее выявление ошибок конфигурации (parse-time через `@model_validator`)
 
@@ -320,13 +320,16 @@ class MappingRule(BaseModel):
 
 ### Dataclass: `EnrichRule`
 
-**Назначение**: Самая сложная rule-модель (16 полей). Описывает generate/lookup правило обогащения.
+**Назначение**: Самая сложная rule-модель. Описывает `generate`/`lookup` правило enrich, включая условную генерацию и stage-specific conflict policy.
 
 **Структура**:
 ```python
 class EnrichRule(BaseModel):
     name: str                                              # Уникальное имя правила
     target: str                                            # Целевое поле
+    build: SourceOpsBlock | None = None                    # Базовый source/sources + ops pipeline
+    when: EnrichConditionalBlock | None = None             # Условный predicate block
+    then: EnrichConditionalBlock | None = None             # Append block для when=true
     provider: ProviderRef | None = None                    # Ссылка на runtime provider
     value_path: str | None = None                          # JSON path в ответе provider
     source: str | None = None                              # Одно входное поле
@@ -336,6 +339,7 @@ class EnrichRule(BaseModel):
     merge: "recompute_always" | "fill_only_if_empty" | ... | None  # Политика merge
     exists: ExistsRef | None = None                        # Exists-проверка через provider
     allow_if: OperationCall | str | None = None            # Guard-условие (str → OperationCall)
+    on_conflict: EnrichConflictPolicy | None = None        # enrich-specific conflict policy
     max_attempts: int | None = None                        # Макс. попыток provider call
     run_when_errors: "never" | "if_any" | "always" | None  # Запуск при ошибках
     missing_error_code: str | None = None                  # Код ошибки при missing
@@ -343,8 +347,27 @@ class EnrichRule(BaseModel):
     error_field: str | None = None                         # Поле для привязки ошибки
 ```
 
-**Валидация** (`@model_validator` line 271):
+**Валидация** (`@model_validator` и block validators):
 - `allow_if` строка → авто-раскрытие в `OperationCall(op=allow_if, args={})`
+- `then` нельзя задавать без `when`
+- `lookup`-правила не могут объявлять `build/when/then/on_conflict`
+- `retry_with_suffixes` требует непустой `suffixes`
+
+### Dataclass: `SourceOpsBlock`
+
+**Назначение**: Переиспользуемый shared DSL block для правил, которым нужен `source/sources + ops` контракт.
+
+**Структура**:
+```python
+class SourceOpsBlock(BaseModel):
+    source: str | None = None
+    sources: list[str] | None = None
+    ops: list[OperationCall] = []
+```
+
+**Инварианты**:
+- должен быть задан ровно один из `source` или `sources`
+- block сам по себе не содержит stage-runtime semantics; её задаёт layer compiler
 
 ---
 
@@ -392,22 +415,24 @@ CachePolicySpec                         # Контейнер всех полит
 
 ### Структура registry.yml
 
-**Назначение**: Центральный файл, связывающий датасеты с YAML-файлами стадий
+**Назначение**: Активный registry-файл связывает датасеты с YAML-файлами стадий.
+По умолчанию loader использует `datasets/registry.yml`, но runtime может переключить
+путь через `dataset.registry_path` / `ANKEY_DATASET__REGISTRY_PATH`.
 
 ```yaml
-# datasets/registry.yml
+# active registry file
 
 datasets:
   employees:
     dataset: employees
-    source: employees/employees.source.yaml       # → SourceSpec
-    mapping: employees/employees.mapping.yaml      # → MappingSpec
-    normalize: employees/employees.normalize.yaml  # → NormalizeSpec
-    enrich: employees/employees.enrich.yaml        # → EnrichSpec
-    validate: employees/employees.validate.yaml    # → ValidationSpec
-    match: employees/employees.match.yaml          # → MatchSpec
-    resolve: employees/employees.resolve.yaml      # → ResolveSpec
-    sink: employees/employees.sink.yaml            # → SinkSpec
+    source: employees/source_2/source.yaml         # → SourceSpec
+    mapping: employees/source_2/mapping.yaml       # → MappingSpec
+    normalize: employees.normalize.yaml            # → NormalizeSpec
+    enrich: employees.enrich.yaml                  # → EnrichSpec
+    validate: employees.validate.yaml              # → ValidationSpec
+    match: employees.match.yaml                    # → MatchSpec
+    resolve: employees.resolve.yaml                # → ResolveSpec
+    sink: employees.sink.yaml                      # → SinkSpec
     build_options:                                 # Per-dataset overrides
       mapping:
         strict: true
@@ -440,9 +465,9 @@ load_mapping_spec_for_dataset("employees")
     ↓
 _load_dataset_stage_spec(dataset="employees", stage="mapping")
     ↓
-_load_registry_or_raise()  →  registry.yml
+_load_registry_or_raise()  →  active registry file
     ↓
-_resolve_dataset_path()  →  "datasets/employees/employees.mapping.yaml"
+_resolve_dataset_path()  →  "datasets/employees/source_2/mapping.yaml"
     ↓
 _read_yaml()  →  raw dict
     ↓
@@ -490,12 +515,12 @@ def _load_dataset_stage_spec(
 ```
 1. Load registry (line 463)
    registry = _load_registry_or_raise()
-   → Читает datasets/registry.yml
+   → Читает активный registry file (`dataset.registry_path` или default `datasets/registry.yml`)
    → Если файл не найден или невалиден → DslLoadError("DSL_REGISTRY_INVALID")
 
 2. Resolve path (line 464)
    stage_path = _resolve_dataset_path(registry, dataset, stage)
-   → datasets[dataset][stage] → "employees/employees.mapping.yaml"
+   → datasets[dataset][stage] → "employees/source_2/mapping.yaml"
    → Если dataset не найден → DslLoadError("DSL_REGISTRY_INVALID")
    → Если stage не найден → DslLoadError("DSL_REGISTRY_INVALID")
 
@@ -830,8 +855,8 @@ spec = load_mapping_spec_for_dataset("employees")
 ```
 
 **Что происходит под капотом**:
-1. Читает `datasets/registry.yml`
-2. Находит `datasets.employees.mapping` → `"employees/employees.mapping.yaml"`
+1. Читает active registry file (`dataset.registry_path` или default `datasets/registry.yml`)
+2. Находит `datasets.employees.mapping` → `"employees/source_2/mapping.yaml"`
 3. Читает YAML файл
 4. Валидирует через `MappingSpec.model_validate(raw)`
 
@@ -951,7 +976,7 @@ EnrichRule(
 
 ## 🔗 Связанные документы
 
-- [DSL Engine](./dsl-engine.md) — Движок операций, реестр, 25 core operations
+- [DSL Engine](./dsl-engine.md) — Движок операций, реестр, 45 core operations
 - [DSL Diagnostics](./dsl-diagnostics.md) — Модель ошибок, диагностика, карта интеграции
 - [Cache DSL](../cache/cache-dsl.md) — Как cache слой использует specs и loader
 - [Resolve DSL](../resolver/resolve-dsl.md) — Как resolve слой использует specs и loader
@@ -963,3 +988,5 @@ EnrichRule(
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-02-12 | Создан документ | xORex-LC |
+| 2026-05-05 | Уточнена загрузка через active registry path и обновлены примеры stage-path под `employees/source_2` | xORex-LC |
+| 2026-05-06 | Обновлён enrich rule contract: добавлены `build/when/then/on_conflict` и задокументирован shared `SourceOpsBlock` | xORex-LC |

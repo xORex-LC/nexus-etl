@@ -1,0 +1,31 @@
+# Dataset identifier used by registry entries that point to this source spec.
+dataset: dataset_name
+
+# Source boundary configuration.
+source:
+  # Source backend type. Supported values: file, db, api.
+  type: file
+  # Source physical format. CSV options are validated only when this value is csv.
+  format: csv
+  # Relative ref inside runtime.source_data_root or absolute path.
+  location: "source.csv"
+  # Whether the source file has a header row.
+  has_header: true
+  # Format-specific options. For csv: delimiter and encoding are supported.
+  options:
+    # CSV delimiter. Must be exactly one character.
+    delimiter: ","
+    # Python codec name used to read the source file.
+    encoding: "utf-8-sig"
+  # Declarative description of available source fields.
+  fields:
+    # Physical or canonical source field name.
+    - name: source_field
+      # Optional declared field type. Supported: string, int, float, bool, object, list.
+      type: string
+      # Whether this field is required at source contract level.
+      required: false
+      # Whether null/empty values are allowed at source contract level.
+      nullable: true
+      # Future extension point for alternate physical names; not used by runtime yet.
+      aliases: []

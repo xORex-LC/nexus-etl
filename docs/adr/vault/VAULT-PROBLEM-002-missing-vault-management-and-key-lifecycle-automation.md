@@ -60,7 +60,7 @@ Vault-подсистема уже использует envelope encryption и fa
 ## 🧪 Как воспроизвести
 
 1. Подготовить чистое окружение без `ANKEY_VAULT_MASTER_KEYS`.
-2. Запустить vault-path, например: `syncEmployees import plan --vault-mode on`.
+2. Запустить vault-path, например: `nexus import plan --vault-mode on`.
 3. Наблюдать fail-fast на startup guard.
 4. Далее вручную выставить один новый ключ, удалив старый fallback в существующей инсталляции.
 5. **Ожидаемый результат**: контролируемая процедура `rotate + rewrap + verify`, совместимая с текущими данными.

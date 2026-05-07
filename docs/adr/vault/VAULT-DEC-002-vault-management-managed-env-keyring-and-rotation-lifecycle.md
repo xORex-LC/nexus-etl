@@ -26,7 +26,7 @@
 
 Принято реализовать отдельную подсистему **Vault Management** с командным namespace:
 
-`syncEmployees vault-management <subcommand>`
+`nexus vault-management <subcommand>`
 
 Ключевые решения:
 1. Приоритет источников keyring: `ANKEY_VAULT_MASTER_KEYS` (явно заданный runtime env) является главным; managed env-файл используется как persisted fallback/import source.
@@ -448,8 +448,8 @@ ENV override-паттерн:
 
 **Проверка в production**:
 1. Настроить `vault_management.managed_env_file` и `vault_management.auto_rotate_*` политику.
-2. Выполнить `syncEmployees vault-management init --verify`.
-3. Выполнить `syncEmployees vault-management rotate --verify` на staging.
+2. Выполнить `nexus vault-management init --verify`.
+3. Выполнить `nexus vault-management rotate --verify` на staging.
 4. Проверить, что `import plan/apply/enrich` проходят startup guard после ротации.
 
 **Метрики успеха**:
@@ -468,13 +468,13 @@ ENV override-паттерн:
 
 ```bash
 # Инициализация keyring
-syncEmployees vault-management init --verify
+nexus vault-management init --verify
 
 # Ручная ротация (с confirm)
-syncEmployees vault-management rotate --verify
+nexus vault-management rotate --verify
 
 # Non-interactive maintenance по policy
-syncEmployees vault-management run-maintenance --non-interactive --force
+nexus vault-management run-maintenance --non-interactive --force
 ```
 
 ---

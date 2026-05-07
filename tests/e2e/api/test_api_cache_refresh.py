@@ -11,8 +11,23 @@ from connector.infra.sqlite.engine import open_sqlite
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.main import app
+from tests.runtime_test_support import tracked_employees_runtime_roots, write_runtime_config
 
 runner = CliRunner()
+
+
+def _tracked_runtime_config(tmp_path: Path) -> Path:
+    roots = tracked_employees_runtime_roots()
+    return write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        datasets_root=roots["datasets_root"],
+        source_data_root=roots["source_data_root"],
+        source_projection_root=roots["source_projection_root"],
+        target_projection_root=roots["target_projection_root"],
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
 
 
 def make_transport(responder: Callable[[httpx.Request], httpx.Response]) -> httpx.MockTransport:
@@ -52,6 +67,8 @@ def test_check_api_ok(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--log-dir",
             str(log_dir),
             "--report-dir",
@@ -86,6 +103,8 @@ def test_check_api_401(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--log-dir",
             str(tmp_path / "logs"),
             "--report-dir",
@@ -172,6 +191,8 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--log-dir",
             str(log_dir),
             "--report-dir",
@@ -274,6 +295,8 @@ def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--log-dir",
             str(tmp_path / "logs"),
             "--report-dir",
@@ -338,6 +361,8 @@ def test_retry_on_500_then_ok(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--log-dir",
             str(tmp_path / "logs"),
             "--report-dir",
@@ -400,6 +425,8 @@ def test_password_not_in_logs_or_report(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--log-dir",
             str(log_dir),
             "--report-dir",

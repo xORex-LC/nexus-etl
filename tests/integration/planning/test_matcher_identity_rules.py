@@ -95,45 +95,10 @@ def _make_resolve_rules() -> ResolveRules:
     return ResolveRules(build_desired_state=lambda *_: {"payload": "ok"})
 
 
-def test_matcher_uses_next_identity_rule_when_primary_missing():
+def test_matcher_returns_identity_missing_when_match_key_is_empty():
     matching_rules = _employees_matching_rules()
     resolve_rules = _make_resolve_rules()
-    cache_repo = FakeCacheRepo(
-        responses={
-            ("usr_org_tab_num", "TAB-1"): [{"_id": "u-1", "usr_org_tab_num": "TAB-1"}],
-        },
-    )
-    matcher = MatchCore(
-        dataset="employees",
-        cache_gateway=cache_repo,
-        matching_rules=matching_rules,
-        resolve_rules=resolve_rules,
-        include_deleted=False,
-        catalog=CATALOG,
-        dedup_store=LocalSourceDedupStore(),
-    )
-
-    match_context = _make_context(match_key="")
-    result = matcher.match(_make_transform_result(match_context, usr_org_tab_num="TAB-1"))
-
-    assert result.row is not None
-    assert result.row.match_decision.status == MatchDecisionStatus.MATCHED
-    assert result.row.identity.primary == "usr_org_tab_num"
-    assert result.row.identity.primary_value == "TAB-1"
-    assert result.row.existing == {"_id": "u-1", "usr_org_tab_num": "TAB-1"}
-
-
-def test_matcher_returns_conflict_when_secondary_rule_has_multiple_candidates():
-    matching_rules = _employees_matching_rules()
-    resolve_rules = _make_resolve_rules()
-    cache_repo = FakeCacheRepo(
-        responses={
-            ("usr_org_tab_num", "TAB-1"): [
-                {"_id": "u-1", "usr_org_tab_num": "TAB-1"},
-                {"_id": "u-2", "usr_org_tab_num": "TAB-1"},
-            ],
-        },
-    )
+    cache_repo = FakeCacheRepo(responses={})
     matcher = MatchCore(
         dataset="employees",
         cache_gateway=cache_repo,
@@ -149,5 +114,32 @@ def test_matcher_returns_conflict_when_secondary_rule_has_multiple_candidates():
 
     assert result.row is None
     assert result.errors
+    assert result.errors[0].code == "MATCH_IDENTITY_MISSING"
+
+def test_matcher_returns_conflict_when_match_key_has_multiple_candidates():
+    matching_rules = _employees_matching_rules()
+    resolve_rules = _make_resolve_rules()
+    cache_repo = FakeCacheRepo(
+        responses={
+            ("match_key", "Doe|John|M|100"): [
+                {"_id": "u-1", "match_key": "Doe|John|M|100"},
+                {"_id": "u-2", "match_key": "Doe|John|M|100"},
+            ],
+        },
+    )
+    matcher = MatchCore(
+        dataset="employees",
+        cache_gateway=cache_repo,
+        matching_rules=matching_rules,
+        resolve_rules=resolve_rules,
+        include_deleted=False,
+        catalog=CATALOG,
+        dedup_store=LocalSourceDedupStore(),
+    )
+    match_context = _make_context(match_key="Doe|John|M|100")
+    result = matcher.match(_make_transform_result(match_context, usr_org_tab_num="TAB-1"))
+
+    assert result.row is None
+    assert result.errors
     assert result.errors[0].code == "MATCH_CONFLICT_TARGET"
-    assert result.errors[0].field == "usr_org_tab_num"
+    assert result.errors[0].field == "match_key"

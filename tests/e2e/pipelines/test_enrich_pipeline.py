@@ -11,11 +11,34 @@ from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 
 from connector.main import app
+from tests.runtime_test_support import (
+    prepare_tracked_employees_source_file,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
 
-HEADER = "raw_id,full_name,login,email_or_phone,contacts,org,manager,flags,employment,extra"
+HEADER = ";".join(
+    [
+        "Таб.№",
+        "Пользователи",
+        "Орг. единица уровня 1",
+        "Орг. единица уровня 2",
+        "Орг. единица уровня 3",
+        "Орг. единица уровня 4",
+        "Орг. единица уровня 5",
+        "Организационная единица",
+        "Штатная должность",
+        "Поступл.",
+        "Contract Number",
+        "Догвр:нач.",
+        "Название руководящей должности",
+        "ДатаРожд",
+        "Пол",
+    ]
+)
 
 
 def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) -> None:
@@ -23,23 +46,37 @@ def write_csv(path: Path, rows: list[list[str]], include_header: bool = True) ->
     if include_header:
         lines.append(HEADER)
     for row in rows:
-        lines.append(",".join(row))
+        lines.append(";".join(row))
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[str, str] | None = None):
+def run_enrich(
+    tmp_path: Path,
+    csv_path: Path,
+    run_id: str = "run-1",
+    env: dict[str, str] | None = None,
+):
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
     initialize_test_vault(cache_dir)
-    merged_env = {
-        "EMPLOYEES_SOURCE_PATH": str(csv_path),
-    }
-    if env:
-        merged_env.update(env)
+    runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
+    roots = tracked_employees_runtime_roots()
+    config_path = write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        datasets_root=roots["datasets_root"],
+        source_data_root=runtime_csv_path.parent,
+        source_projection_root=roots["source_projection_root"],
+        target_projection_root=roots["target_projection_root"],
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(config_path),
             "--log-dir",
             str(log_dir),
             "--report-dir",
@@ -50,7 +87,7 @@ def run_enrich(tmp_path: Path, csv_path: Path, run_id: str = "run-1", env: dict[
             run_id,
             "enrich",
         ],
-        env=merged_env,
+        env=env,
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
     report_path = report_dir / f"report_enrich_{run_id}.json"
@@ -90,19 +127,24 @@ def make_row(
     org: str = "Org=Engineering",
     manager: str = "",
 ) -> list[str]:
-    extra = f"password={password};org_id={org_id};tab={tab}"
-    employment = f"role={role}"
+    _ = (login, email_or_phone, flags, password, tab)
+    organization_name = f"Org {org_id}"
     return [
         raw_id,
         full_name,
-        login,
-        email_or_phone,
+        "",
+        "",
+        "",
+        "",
+        "",
+        organization_name,
+        role,
+        "",
         contacts,
-        org,
-        manager,
-        flags,
-        employment,
-        extra,
+        "",
+        "",
+        "",
+        "",
     ]
 
 
@@ -131,6 +173,12 @@ def test_enrich_ok_returns_0(tmp_path: Path):
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["rows_blocked"] == 0
     assert report["summary"]["rows_total"] == 1
+    payload = report["items"][0]["payload"]
+    assert "password_stem" not in payload
+    assert "generated_password" not in payload
+    assert "password_candidate" not in payload
+    assert "random_usr_org_tab_num" not in payload
+    assert "target_id" not in payload
 
 
 def test_enrich_missing_required_returns_0(tmp_path: Path):
@@ -156,6 +204,17 @@ def test_enrich_missing_required_returns_0(tmp_path: Path):
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["rows_blocked"] == 0
+    diagnostics = report["items"][0]["diagnostics"]
+    no_candidate_warnings = [
+        item for item in diagnostics
+        if item["code"] == "ENRICH_NO_CANDIDATES"
+    ]
+    warned_rules = {item["rule"] for item in no_candidate_warnings}
+    assert "email_from_cache" not in warned_rules
+    assert "phone_from_cache" not in warned_rules
+    assert "is_logon_disable_from_cache" not in warned_rules
+    assert "target_id_from_cache" not in warned_rules
+    assert "usr_org_tab_num_from_cache" not in warned_rules
 
 
 def test_enrich_invalid_boolean_returns_0(tmp_path: Path):

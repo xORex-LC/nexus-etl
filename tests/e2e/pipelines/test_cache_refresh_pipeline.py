@@ -12,30 +12,46 @@ from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.domain.ports.cache.models import UpsertResult
 from connector.main import app
+from tests.integration.secrets._temp_registry import build_temp_employees_registry_with_temp_dictionaries
+from tests.runtime_test_support import write_runtime_config
 
 runner = CliRunner()
+
+def _temp_runtime_config(tmp_path: Path, *, registry_path: Path) -> Path:
+    datasets_root = registry_path.parent
+    return write_runtime_config(
+        tmp_path,
+        registry_path=registry_path,
+        datasets_root=datasets_root,
+        source_data_root=tmp_path,
+        source_projection_root=datasets_root,
+        target_projection_root=datasets_root,
+        dictionary_specs_root=datasets_root / "dictionaries",
+        dictionary_data_root=tmp_path / "dictionaries",
+    )
+
 
 # Минимальные наборы данных, имитирующие ответы API
 USERS_PAYLOAD = [
     {
         "_id": "user-123",
         "_ouid": 999,
-        "personnel_number": "7777",
-        "last_name": "Doe",
-        "first_name": "John",
-        "middle_name": "M",
+        "personnelNumber": "7777",
+        "lastName": "Doe",
+        "firstName": "John",
+        "middleName": "M",
         "mail": "john.doe@example.com",
-        "user_name": "jdoe",
+        "userName": "jdoe",
         "phone": "+111",
-        "usr_org_tab_num": "TAB-7777",
+        "usrOrgTabNum": "TAB-7777",
         "organization_id": 201,
-        "account_status": "active",
-        "deletion_date": None,
+        "accountStatus": "active",
+        "deletionDate": None,
         "_rev": None,
-        "manager_ouid": None,
-        "is_logon_disabled": False,
+        "managerId": None,
+        "isLogonDisabled": False,
         "position": "Engineer",
-        "updated_at": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z",
     }
 ]
 
@@ -44,8 +60,8 @@ ORG_PAYLOAD = [
         "_ouid": 201,
         "code": "ORG-201",
         "name": "Engineering",
-        "parent_id": None,
-        "updated_at": "2024-01-01T00:00:00Z",
+        "parentId": None,
+        "updatedAt": "2024-01-01T00:00:00Z",
     }
 ]
 
@@ -134,7 +150,13 @@ def test_cache_upsert_user(tmp_path: Path):
     assert fetched_row is not None
     assert fetched_row["phone"] == "+222"
 
-def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", monkeypatch=None):
+def run_cache_refresh(
+    tmp_path: Path,
+    run_id: str = "refresh-1",
+    monkeypatch=None,
+    *,
+    registry_path: Path | None = None,
+):
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
@@ -158,6 +180,10 @@ def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", monkeypatch=Non
         "cache",
         "refresh",
     ]
+    config_path = None
+    if registry_path is not None:
+        config_path = _temp_runtime_config(tmp_path, registry_path=registry_path)
+        args = ["--config", str(config_path), *args]
 
     if monkeypatch is not None:
         def responder(request: httpx.Request) -> httpx.Response:
@@ -180,7 +206,13 @@ def run_cache_refresh(tmp_path: Path, run_id: str = "refresh-1", monkeypatch=Non
     return result, cache_dir, report_path, log_dir
 
 def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Path):
-    result, cache_dir, report_path, _ = run_cache_refresh(tmp_path, run_id="refresh-ok", monkeypatch=monkeypatch)
+    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    result, cache_dir, report_path, _ = run_cache_refresh(
+        tmp_path,
+        run_id="refresh-ok",
+        monkeypatch=monkeypatch,
+        registry_path=registry_path,
+    )
 
     assert result.exit_code == 0
     assert report_path.exists()
@@ -206,7 +238,13 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
     assert report["summary"]["rows_blocked"] == 0
 
 def test_cache_status_ok(monkeypatch, tmp_path: Path):
-    refresh_result, cache_dir, _, _ = run_cache_refresh(tmp_path, run_id="refresh-for-status", monkeypatch=monkeypatch)
+    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    refresh_result, cache_dir, _, _ = run_cache_refresh(
+        tmp_path,
+        run_id="refresh-for-status",
+        monkeypatch=monkeypatch,
+        registry_path=registry_path,
+    )
     assert refresh_result.exit_code == 0
 
     log_dir = tmp_path / "logs"
@@ -214,6 +252,8 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_temp_runtime_config(tmp_path, registry_path=registry_path)),
             "--log-dir",
             str(log_dir),
             "--report-dir",
@@ -235,7 +275,13 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
     assert report_path.exists()
 
 def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
-    refresh_result, cache_dir, _, _ = run_cache_refresh(tmp_path, run_id="refresh-before-clear", monkeypatch=monkeypatch)
+    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    refresh_result, cache_dir, _, _ = run_cache_refresh(
+        tmp_path,
+        run_id="refresh-before-clear",
+        monkeypatch=monkeypatch,
+        registry_path=registry_path,
+    )
     assert refresh_result.exit_code == 0
 
     log_dir = tmp_path / "logs"
@@ -243,6 +289,8 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_temp_runtime_config(tmp_path, registry_path=registry_path)),
             "--log-dir",
             str(log_dir),
             "--report-dir",
@@ -273,7 +321,13 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
 def test_cache_does_not_store_passwords(monkeypatch, tmp_path: Path):
     secret = "TOP_SECRET"
     run_id = "no-secret"
-    result, cache_dir, report_path, log_dir = run_cache_refresh(tmp_path, run_id=run_id, monkeypatch=monkeypatch)
+    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    result, cache_dir, report_path, log_dir = run_cache_refresh(
+        tmp_path,
+        run_id=run_id,
+        monkeypatch=monkeypatch,
+        registry_path=registry_path,
+    )
     assert result.exit_code == 0
 
     db_path = Path(cache_dir) / "ankey_cache.sqlite3"

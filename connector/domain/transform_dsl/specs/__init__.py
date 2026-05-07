@@ -4,6 +4,8 @@
 """
 
 from connector.domain.transform_dsl.specs.enrich import (
+    EnrichConditionalBlock,
+    EnrichConflictPolicy,
     EnrichBlock,
     EnrichRule,
     EnrichSpec,
@@ -47,7 +49,9 @@ from connector.domain.transform_dsl.specs.resolve import (
 )
 from connector.domain.transform_dsl.specs.sink import (
     SinkBlock,
+    SinkBoolLiteralMapSpec,
     SinkFieldSpec,
+    SinkFieldSerializeSpec,
     SinkSpec,
 )
 from connector.domain.transform_dsl.specs.source import (
@@ -76,6 +80,8 @@ __all__ = [
     "SourceConfig",
     "SourceSpec",
     # Sink
+    "SinkBoolLiteralMapSpec",
+    "SinkFieldSerializeSpec",
     "SinkFieldSpec",
     "SinkBlock",
     "SinkSpec",
@@ -88,6 +94,8 @@ __all__ = [
     "SecretsSpec",
     "ProviderRef",
     "ExistsRef",
+    "EnrichConditionalBlock",
+    "EnrichConflictPolicy",
     "EnrichRule",
     "EnrichBlock",
     "EnrichSpec",

@@ -719,7 +719,7 @@ def _build_source(source_spec: SourceSpec, catalog: ErrorCatalog) -> RowSource:
 ### Шаг 4: Обновить YAML
 
 ```yaml
-# datasets/employees.source.yaml
+# datasets/employees/source_2/source.yaml
 dataset: employees
 source:
   type: db
@@ -838,11 +838,11 @@ NormalizeStage: collected.errors → yield без обработки
 ### Сценарий 3: Позиционный CSV без заголовка
 
 ```
-employees.source.yaml:
+employees/source_2/source.yaml:
   options:
     has_header_default: false
 
-employees.mapping.yaml:
+employees/source_2/mapping.yaml:
   source_columns: [raw_id, full_name, login, email_or_phone, contacts, ...]
 
 CSV-файл:
@@ -1093,3 +1093,4 @@ def test_employees_dsl_mapper_maps_record() -> None:
 | Дата | Изменение | Автор |
 |------|-----------|-------|
 | 2026-03-01 | Создан документ — core и инфра mapper-слоя | xORex-LC |
+| 2026-05-05 | Обновлены примеры source/mapping файлов под текущий `employees/source_2` contract | xORex-LC |

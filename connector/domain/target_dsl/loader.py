@@ -1,9 +1,9 @@
 """
 Назначение:
-    Загрузка TargetSpec из YAML-файла через datasets/registry.yml.
+    Загрузка TargetSpec из YAML-файла через runtime registry file.
 
 Алгоритм:
-    1. Читает registry.yml, находит путь к YAML по targets.{target_type}.
+    1. Читает registry file, находит path ref по targets.{target_type}.
     2. Читает YAML-файл.
     3. Инжектирует alias в каждую операцию из ключа словаря (чтобы не дублировать в YAML).
     4. Валидирует через TargetSpec.model_validate() — Pydantic коэрцирует list→tuple/frozenset.
@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from connector.domain.dsl.issues import DslLoadError
-from connector.domain.dsl.loader import find_repo_root, load_registry, read_yaml
+from connector.domain.dsl.loader import load_registry, read_yaml
+from connector.domain.dsl.loader._common import _resolve_target_projection_path
 from connector.domain.target_dsl.spec_models import TargetSpec
 
 
@@ -26,7 +27,7 @@ def load_target_spec(target_type: str) -> TargetSpec:
         Загрузить TargetSpec для указанного провайдера из YAML через registry.
 
     Аргументы:
-        target_type: идентификатор провайдера (ключ в ``registry.yml → targets``).
+        target_type: идентификатор провайдера (ключ в ``registry -> targets``).
 
     Возвращает:
         Валидированный и неизменяемый TargetSpec.
@@ -48,22 +49,22 @@ def load_target_spec(target_type: str) -> TargetSpec:
 
 
 def _resolve_target_path(registry: dict[str, Any], target_type: str) -> Path:
-    """Разрешить путь к YAML-файлу провайдера из registry.yml."""
+    """Разрешить путь к YAML-файлу провайдера из registry file."""
     targets = registry.get("targets") or {}
     if target_type not in targets:
         raise DslLoadError(
             code="TARGET_DSL_REGISTRY_MISSING",
-            message=f"Target provider '{target_type}' not found in registry.yml under 'targets:'",
+            message=f"Target provider '{target_type}' not found in registry file under 'targets:'",
             details={"target_type": target_type, "available": sorted(targets.keys())},
         )
     relative = targets[target_type]
     if not relative:
         raise DslLoadError(
             code="TARGET_DSL_REGISTRY_INVALID",
-            message=f"Target provider '{target_type}' has empty path in registry.yml",
+            message=f"Target provider '{target_type}' has empty path in registry file",
             details={"target_type": target_type},
         )
-    return find_repo_root() / "datasets" / relative
+    return _resolve_target_projection_path(relative)
 
 
 def _read_target_yaml(path: Path, target_type: str) -> dict[str, Any]:

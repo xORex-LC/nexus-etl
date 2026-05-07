@@ -27,7 +27,7 @@ from connector.domain.dsl.engine import TransformationEngine
 from connector.domain.dsl.helpers import apply_ops
 from connector.domain.dsl.issues import DslLoadError, DslSeverity
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
-from connector.domain.dsl.specs import OperationCall
+from connector.domain.dsl.specs import OperationCall, SourceOpsBlock
 from connector.domain.transform_dsl.build_options import EnrichDslBuildOptions
 from connector.domain.transform_dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
 from connector.domain.transform.common.values import read_value_path
@@ -37,6 +37,8 @@ T = TypeVar("T")
 D = TypeVar("D")
 
 KeyBuilder = Callable[[TransformResult[T]], Any]
+ValueBuilder = Callable[[TransformResult[T], D], Any]
+PredicateBuilder = Callable[[TransformResult[T], D], bool]
 
 
 # ========== COMPILED MODELS ==========
@@ -77,13 +79,33 @@ class EnrichmentOperation(Generic[T, D]):
     run_when_errors: RunWhenErrors = RunWhenErrors.NEVER
     compute: Callable[[TransformResult[T], D], dict[str, Any] | None] | None = None
     generator: Callable[[TransformResult[T], D], Any] | None = None
+    base_generator: ValueBuilder[T, D] | None = None
+    condition: PredicateBuilder[T, D] | None = None
+    append_generator: ValueBuilder[T, D] | None = None
     exists: Callable[[D, Any], Any] | None = None
     allow_if: Callable[[TransformResult[T], Any], bool] | None = None
+    conflict_policy: "CompiledConflictPolicy | None" = None
     max_attempts: int = 3
     postprocess: Callable[[Any], Any] | None = None
     missing_error_code: str | None = None
     conflict_error_code: str | None = None
     error_field: str | None = None
+
+
+@dataclass(frozen=True)
+class CompiledConflictPolicy:
+    """
+    Назначение:
+        Нормализованная runtime-политика exists-конфликта для enrich generate.
+
+    Инварианты:
+        - suffixes применяются к base value, а не к предыдущей попытке;
+        - attempts соответствует числу допустимых кандидатов для стратегии.
+    """
+
+    strategy: str
+    suffixes: tuple[str, ...] = ()
+    attempts: int = 1
 
 
 @dataclass(frozen=True)
@@ -153,7 +175,7 @@ class EnricherDsl:
 
     def _validate_ops_known(self, spec: EnrichSpec) -> None:
         for rule in (*spec.enrich.generate, *spec.enrich.lookup):
-            for op_call in rule.ops:
+            for op_call in _iter_rule_op_calls(rule):
                 if self.registry.get(op_call.op) is None:
                     raise DslLoadError(
                         code="DSL_OP_UNKNOWN",
@@ -182,6 +204,11 @@ def build_enricher_spec_from_dsl(
     """
     Назначение:
         Построить EnricherSpec из EnrichSpec (DSL).
+
+    Порядок операций:
+        - сначала match_key;
+        - затем lookup-операции, чтобы cache-backed значения могли стать входом для generate;
+        - затем generate-операции в декларативном порядке.
     """
 
     try:
@@ -202,6 +229,9 @@ def build_enricher_spec_from_dsl(
             )
 
         secrets_spec = enrich_spec.enrich.secrets or SecretsSpec()
+        for rule in enrich_spec.enrich.lookup:
+            operations.append(_build_lookup_operation(rule, engine, providers))
+
         for rule in enrich_spec.enrich.generate:
             operations.append(
                 _build_generate_operation(
@@ -211,9 +241,6 @@ def build_enricher_spec_from_dsl(
                     providers,
                 )
             )
-
-        for rule in enrich_spec.enrich.lookup:
-            operations.append(_build_lookup_operation(rule, engine, providers))
 
         return EnricherSpec(
             operations=tuple(operations),
@@ -277,9 +304,13 @@ def _build_generate_operation(
         strictness=strictness,
         run_when_errors=run_when_errors,
         generator=_build_rule_generator(rule, engine),
+        base_generator=_build_base_generator(rule, engine),
+        condition=_build_condition(rule, engine),
+        append_generator=_build_append_generator(rule, engine),
         exists=_build_exists(rule, providers),
         allow_if=_build_allow_if(rule, engine),
-        max_attempts=rule.max_attempts or 3,
+        conflict_policy=_build_conflict_policy(rule),
+        max_attempts=_resolve_max_attempts(rule),
         missing_error_code=rule.missing_error_code,
         conflict_error_code=rule.conflict_error_code,
         error_field=rule.error_field or rule.target,
@@ -287,20 +318,68 @@ def _build_generate_operation(
 
 
 def _build_rule_generator(rule: EnrichRule, engine: TransformationEngine):
+    base_generator = _build_base_generator(rule, engine)
+
     def _generator(result, deps):
-        _ = deps
-        row = result.row
-        if row is None:
-            return None
-        value = _read_rule_value(row, rule)
-        if rule.ops:
-            resolved, op_issues = apply_ops(engine, value, rule.ops)
-            if any(issue.severity == DslSeverity.ERROR for issue in op_issues):
-                return None
-            return resolved
-        return value
+        return base_generator(result, deps)
 
     return _generator
+
+
+def _build_base_generator(rule: EnrichRule, engine: TransformationEngine) -> ValueBuilder:
+    block = rule.build
+
+    def _generator(result, deps):
+        _ = deps
+        if result.row is None:
+            return None
+        if block is not None:
+            return _resolve_block_value(result, block, engine)
+        return _resolve_rule_value(result, rule.source, rule.sources, rule.ops, engine)
+
+    return _generator
+
+
+def _build_condition(rule: EnrichRule, engine: TransformationEngine) -> PredicateBuilder | None:
+    block = rule.when
+    if block is None:
+        return None
+
+    def _condition(result, deps):
+        _ = deps
+        if result.row is None:
+            return False
+        value = _resolve_block_value(result, block, engine)
+        return bool(value)
+
+    return _condition
+
+
+def _build_append_generator(rule: EnrichRule, engine: TransformationEngine) -> ValueBuilder | None:
+    block = rule.then
+    if block is None:
+        return None
+
+    def _append(result, deps):
+        _ = deps
+        if result.row is None:
+            return None
+        return _resolve_block_value(result, block, engine)
+
+    return _append
+
+
+def _build_conflict_policy(rule: EnrichRule) -> CompiledConflictPolicy | None:
+    policy = rule.on_conflict
+    if policy is None:
+        return None
+    suffixes = tuple(policy.suffixes)
+    attempts = 1 if policy.strategy == "error" else 1 + len(suffixes)
+    return CompiledConflictPolicy(
+        strategy=policy.strategy,
+        suffixes=suffixes,
+        attempts=attempts,
+    )
 
 
 class _DslLookupProvider:
@@ -317,8 +396,7 @@ class _DslLookupProvider:
 
     def fetch(self, ctx, result, deps, key_values):  # noqa: ANN001
         _ = (ctx, key_values)
-        row = result.row
-        if row is None:
+        if result.row is None:
             return []
         if not self.rule.provider:
             raise DslLoadError(
@@ -327,7 +405,13 @@ class _DslLookupProvider:
                 details={"rule": self.rule.name, "target": self.rule.target},
             )
 
-        value = _read_rule_value(row, self.rule)
+        value = _resolve_rule_value(
+            result,
+            self.rule.source,
+            self.rule.sources,
+            [],
+            None,
+        )
         if self.rule.ops:
             resolved, op_issues = apply_ops(self.engine, value, self.rule.ops)
             if any(issue.severity == DslSeverity.ERROR for issue in op_issues):
@@ -369,11 +453,60 @@ class _DslLookupProvider:
         ]
 
 
-def _read_rule_value(row: Any, rule: EnrichRule) -> Any:
-    if rule.sources:
-        return [read_value_path(row, name) for name in rule.sources]
-    if rule.source:
-        return read_value_path(row, rule.source)
+def _resolve_rule_value(
+    result: TransformResult[Any],
+    source: str | None,
+    sources: list[str] | None,
+    ops: list[OperationCall],
+    engine: TransformationEngine | None,
+) -> Any:
+    row = result.row
+    if row is None:
+        return None
+    if sources:
+        value = [_read_result_path(result, name) for name in sources]
+    elif source:
+        value = _read_result_path(result, source)
+    else:
+        value = None
+    if not ops or engine is None:
+        return value
+    resolved, op_issues = apply_ops(engine, value, ops)
+    if any(issue.severity == DslSeverity.ERROR for issue in op_issues):
+        return None
+    return resolved
+
+
+def _resolve_block_value(result: TransformResult[Any], block: SourceOpsBlock, engine: TransformationEngine) -> Any:
+    return _resolve_rule_value(result, block.source, block.sources, block.ops, engine)
+
+
+def _read_result_path(result: TransformResult[Any], path: str) -> Any:
+    """
+    Назначение:
+        Прочитать enrich source-path из compiled runtime context.
+
+    Поддерживает:
+        - `match_key` как значение из TransformResult;
+        - `meta.<path>` как доступ к enrich meta;
+        - обычные row-path через `read_value_path`.
+    """
+    if path == "match_key":
+        return result.match_key.value if result.match_key is not None else None
+    if path.startswith("meta."):
+        return read_value_path(result.meta, path.split("meta.", 1)[1])
+    row = result.row
+    if row is None:
+        return None
+    return read_value_path(row, path)
+
+
+def _iter_rule_op_calls(rule: EnrichRule) -> list[OperationCall]:
+    ops = list(rule.ops)
+    for block in (rule.build, rule.when, rule.then):
+        if block is not None:
+            ops.extend(block.ops)
+    return ops
     return None
 
 
@@ -410,6 +543,12 @@ def _build_allow_if(rule: EnrichRule, engine: TransformationEngine):
         return bool(outcome.value)
 
     return _allow_if
+
+
+def _resolve_max_attempts(rule: EnrichRule) -> int:
+    if rule.on_conflict and rule.on_conflict.strategy == "retry_with_suffixes":
+        return 1 + len(rule.on_conflict.suffixes)
+    return rule.max_attempts or 3
 
 
 def _build_lookup_operation(
@@ -462,15 +601,48 @@ def _merge_policy_for(rule: EnrichRule) -> MergePolicy | None:
 
 
 def _strictness_for(rule: EnrichRule) -> StrictnessPolicy | None:
-    if rule.on_error == "warn":
-        return StrictnessPolicy(
+    legacy_policy = (
+        StrictnessPolicy(
             on_no_candidates=EnrichOutcome.WARNED,
             on_provider_error=EnrichOutcome.WARNED,
         )
-    return StrictnessPolicy(
-        on_no_candidates=EnrichOutcome.FAILED,
-        on_provider_error=EnrichOutcome.FAILED,
+        if rule.on_error == "warn"
+        else StrictnessPolicy(
+            on_no_candidates=EnrichOutcome.FAILED,
+            on_provider_error=EnrichOutcome.FAILED,
+        )
     )
+
+    return StrictnessPolicy(
+        on_missing_key=_map_strictness_outcome(
+            rule.on_missing_key,
+            fallback=legacy_policy.on_missing_key,
+        ),
+        on_no_candidates=_map_strictness_outcome(
+            rule.on_no_candidates,
+            fallback=legacy_policy.on_no_candidates,
+        ),
+        on_ambiguous=_map_strictness_outcome(
+            rule.on_ambiguous,
+            fallback=legacy_policy.on_ambiguous,
+        ),
+        on_provider_error=_map_strictness_outcome(
+            rule.on_provider_error,
+            fallback=legacy_policy.on_provider_error,
+        ),
+    )
+
+
+def _map_strictness_outcome(raw: str | None, *, fallback: str) -> str:
+    if raw is None:
+        return fallback
+    mapping = {
+        "skip": EnrichOutcome.SKIPPED,
+        "warn": EnrichOutcome.WARNED,
+        "error": EnrichOutcome.FAILED,
+        "needs_resolve": EnrichOutcome.NEEDS_RESOLVE,
+    }
+    return mapping.get(raw, fallback)
 
 
 def _run_when_errors_for(rule: EnrichRule) -> RunWhenErrors:
