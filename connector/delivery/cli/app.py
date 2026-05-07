@@ -8,7 +8,7 @@ import typer
 from connector.config.config import SettingsLoadError
 from connector.config.loader import load_app_config
 from connector.config.diagnostics import translate_settings_load_error
-from connector.config.projections import to_runtime_path_overrides
+from connector.config.projections import to_dataset_registry_path, to_operational_paths, to_runtime_path_overrides
 from connector.common.run_id import generate_run_id
 from connector.delivery.cli.context import CommandPaths, CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
@@ -57,6 +57,7 @@ def _build_ctx(
     app_config = ctx.obj.get("app_config")
     if app_config is None:
         raise RuntimeError("App config is not initialized")
+    operational_paths = to_operational_paths(app_config)
     catalog = build_diagnostics_catalog(dataset, strict=app_config.observability.diagnostics_strict)
     extra: dict[str, Any] = {"sources": ctx.obj.get("sources")}
     if command_key:
@@ -74,7 +75,7 @@ def _build_ctx(
         strict=app_config.observability.diagnostics_strict,
         app_config=app_config,
         container=None,
-        paths=CommandPaths(report_dir=app_config.paths.report_dir, work_dir=None),
+        paths=CommandPaths(report_dir=operational_paths.report_dir, work_dir=None),
         extra=extra,
     )
 
@@ -168,14 +169,16 @@ def main(
             typer.echo(f"- [{diag.code}]{field} {diag.message}", err=True)
         raise typer.Exit(code=2) from exc
     configure_runtime_paths(to_runtime_path_overrides(loaded_app.app_config))
-    configure_registry_path(loaded_app.app_config.dataset.registry_path)
-    _ensure_dir(loaded_app.app_config.paths.log_dir)
-    _ensure_dir(loaded_app.app_config.paths.report_dir)
-    _ensure_dir(loaded_app.app_config.paths.cache_dir)
+    configure_registry_path(to_dataset_registry_path(loaded_app.app_config))
+    operational_paths = to_operational_paths(loaded_app.app_config)
+    _ensure_dir(operational_paths.log_dir)
+    _ensure_dir(operational_paths.report_dir)
+    _ensure_dir(operational_paths.cache_dir)
 
     ctx.obj = {
         "run_id": run_id,
         "app_config": loaded_app.app_config,
+        "operational_paths": operational_paths,
         "sources": sorted({v for v in loaded_app.source_trace.values() if v != "default"}),
         "settings_source_trace": loaded_app.source_trace,
         "configPath": config,
