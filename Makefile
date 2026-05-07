@@ -1,6 +1,6 @@
 PYTHON ?= ./.venv/bin/python
 
-.PHONY: clean test check-standalone-prereqs build-standalone smoke-standalone package-artifacts
+.PHONY: clean test check-standalone-prereqs build-standalone smoke-standalone package-artifacts release-standalone
 
 clean:
 	rm -rf build/nuitka/standalone build/artifacts
@@ -22,3 +22,6 @@ smoke-standalone:
 package-artifacts:
 	mkdir -p build/artifacts
 	tar -C build/nuitka/standalone -czf build/artifacts/nexus-linux-x86_64.tar.gz nexus.dist
+
+release-standalone: package-artifacts
+	sha256sum build/artifacts/nexus-linux-x86_64.tar.gz > build/artifacts/nexus-linux-x86_64.tar.gz.sha256

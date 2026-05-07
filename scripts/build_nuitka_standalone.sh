@@ -97,26 +97,20 @@ output_path.write_text(
 PY
 }
 
-organize_bin_lib_layout() {
+setup_bin_launcher_layout() {
   local dist_dir="$1"
-  mkdir -p "$dist_dir/bin" "$dist_dir/lib"
+  mkdir -p "$dist_dir/bin"
 
-  if [[ -f "$dist_dir/nexus" ]]; then
-    mv "$dist_dir/nexus" "$dist_dir/bin/nexus"
-    ln -sfn "bin/nexus" "$dist_dir/nexus"
-  fi
+  cat >"$dist_dir/bin/nexus" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
 
-  local lib_file
-  while IFS= read -r -d '' lib_file; do
-    local basename
-    basename="$(basename "$lib_file")"
-    mv "$lib_file" "$dist_dir/lib/$basename"
-    ln -sfn "lib/$basename" "$dist_dir/$basename"
-  done < <(
-    find "$dist_dir" -maxdepth 1 -type f \
-      \( -name '*.so' -o -name '*.so.*' \) \
-      -print0
-  )
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIST_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+exec "$DIST_DIR/nexus" "$@"
+SH
+  chmod +x "$dist_dir/bin/nexus"
 }
 
 resolve_nuitka_dist_dir() {
@@ -154,7 +148,7 @@ main() {
   fi
 
   require_path "$DIST_DIR/nexus"
-  organize_bin_lib_layout "$DIST_DIR"
+  setup_bin_launcher_layout "$DIST_DIR"
   require_path "$DIST_DIR/bin/nexus"
   assemble_runtime_tree "$DIST_DIR"
 
