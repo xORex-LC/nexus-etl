@@ -14,7 +14,10 @@ from connector.domain.dsl.loader import (
 )
 from connector.domain.dsl.loader import _common as common_loader
 from connector.domain.target_dsl.loader import _resolve_target_path
-from connector.domain.transform_dsl import load_source_spec_for_dataset
+from connector.domain.transform_dsl import (
+    load_mapping_spec_for_dataset,
+    load_source_spec_for_dataset,
+)
 
 
 def _write(path: Path, content: str) -> None:
@@ -78,6 +81,54 @@ source:
         spec = load_source_spec_for_dataset("employees")
 
         assert spec.source.location == "./sources/employees.csv"
+    finally:
+        configure_registry_path(None)
+
+
+def test_mapping_loader_prefers_source_projection_root(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "runtime"
+    _write(
+        runtime_root / "datasets" / "registry.yaml",
+        """
+datasets:
+  employees:
+    mapping: employees/mapping.yaml
+""".strip(),
+    )
+    _write(
+        runtime_root / "etc" / "source-projection" / "employees" / "mapping.yaml",
+        """
+dataset: employees
+source_columns: ["name"]
+mapping:
+  rules:
+    - target: full_name
+      source: name
+      op: copy
+""".strip(),
+    )
+    _write(
+        runtime_root / "datasets" / "employees" / "mapping.yaml",
+        """
+dataset: ignored
+source_columns: ["source_field"]
+mapping:
+  rules:
+    - target: sink_field
+      source: source_field
+      op: copy
+""".strip(),
+    )
+
+    try:
+        configure_registry_path(None)
+        configure_runtime_paths(RuntimePathOverrides(runtime_root=runtime_root))
+
+        spec = load_mapping_spec_for_dataset("employees")
+
+        assert spec.dataset == "employees"
+        assert spec.source_columns == ["name"]
+        assert spec.mapping.rules[0].source == "name"
     finally:
         configure_registry_path(None)
 

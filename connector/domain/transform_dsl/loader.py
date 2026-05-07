@@ -222,7 +222,7 @@ def _resolve_dataset_path(registry: dict[str, Any], dataset: str, stage: str) ->
             message=f"Dataset '{dataset}' does not define '{stage}' in registry file",
             details={"dataset": dataset, "stage": stage},
         )
-    if stage == "source":
+    if stage in {"source", "mapping"}:
         return _resolve_source_projection_path(filename)
     return _resolve_dataset_stage_path(filename)
 
