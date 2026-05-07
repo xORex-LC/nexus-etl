@@ -17,9 +17,9 @@ docs/uml/pipeline/diagnostic_layer/diagnostic_layer_requirements.md
 examples/sources
 examples/configs/*.yml
 !examples/configs/config_example.yml
-dictionaries/
+/dictionaries/
 environment/
 scripts/utils/
 var/
 docs/*.md
-datasets/
+/datasets/
