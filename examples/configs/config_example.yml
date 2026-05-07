@@ -12,18 +12,18 @@ api:
 
 runtime:
   runtime_root: "."
-  config_root: "./etc"
+  config_root: "./examples/configs"
   datasets_root: "./datasets"
-  dictionary_specs_root: "./etc/dictionaries"
+  dictionary_specs_root: "./datasets/dictionaries"
   dictionary_data_root: "./dictionaries"
   source_data_root: "./examples/sources"
-  source_projection_root: "./etc/source-projection"
-  target_projection_root: "./etc/target-projection"
+  source_projection_root: "./datasets/employees/source_2"
+  target_projection_root: "./datasets/targets"
 
 paths:
-  cache_dir: "./var/cache"
-  log_dir: "./var/logs"
-  report_dir: "./reports"
+  cache_dir: "var/cache"
+  log_dir: "var/logs"
+  report_dir: "reports"
 
 observability:
   log_level: "DEBUG"
@@ -35,8 +35,8 @@ observability:
 
 dataset:
   dataset_name: employees
-  # Optional explicit dataset registry YAML. If omitted, runtime resolves
-  # runtime.datasets_root/registry.yaml (with temporary registry.yml fallback).
+  # Optional explicit dataset registry YAML override. If omitted, runtime resolves
+  # runtime.datasets_root/registry.yaml.
   registry_path: "./datasets/employees.registry.yaml"
   include_deleted: false
 

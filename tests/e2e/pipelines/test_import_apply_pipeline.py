@@ -19,10 +19,25 @@ from connector.delivery.presenters.apply_report_presenter import ApplyReportPres
 from connector.datasets.registry import get_spec
 from connector.main import app
 from connector.domain.diagnostics.catalog import build_catalog
+from tests.runtime_test_support import tracked_employees_runtime_roots, write_runtime_config
 
 CATALOG = build_catalog("employees", strict=True)
 
 runner = CliRunner()
+
+
+def _tracked_runtime_config(tmp_path: Path) -> Path:
+    roots = tracked_employees_runtime_roots()
+    return write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        datasets_root=roots["datasets_root"],
+        source_data_root=roots["source_data_root"],
+        source_projection_root=roots["source_projection_root"],
+        target_projection_root=roots["target_projection_root"],
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
 
 class DummyExecutor:
     def __init__(self, responses):
@@ -357,6 +372,8 @@ def test_import_apply_requires_plan(tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--log-dir",
             str(tmp_path / "logs"),
             "--report-dir",
@@ -451,6 +468,8 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--log-dir",
             str(tmp_path / "logs"),
             "--report-dir",

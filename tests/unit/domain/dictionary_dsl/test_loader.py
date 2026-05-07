@@ -25,17 +25,18 @@ def _reset_runtime_loader_state() -> None:
 def _activate_registry(root: Path) -> None:
     configure_runtime_paths(
         RuntimePathOverrides(
+            datasets_root=root / "datasets",
             dictionary_specs_root=root / "datasets" / "dictionaries",
         )
     )
-    configure_registry_path(root / "datasets" / "registry.yml")
+    configure_registry_path(root / "datasets" / "registry.yaml")
 
 
 def test_optional_registry_loader_returns_none_when_section_absent(
     tmp_path: Path,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 datasets:
   employees:
@@ -53,7 +54,7 @@ def test_registry_loader_accepts_empty_items_mapping(
     tmp_path: Path,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1
@@ -74,7 +75,7 @@ def test_registry_loader_wraps_invalid_registry_as_dict_dsl_error(
     tmp_path: Path,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries: []
 """.strip(),
@@ -91,7 +92,7 @@ def test_load_enabled_dictionary_specs_wraps_invalid_spec(
     tmp_path: Path,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1
@@ -127,7 +128,7 @@ def test_load_enabled_dictionary_specs_validates_registry_key_matches_spec(
     tmp_path: Path,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1
@@ -166,7 +167,7 @@ def test_manifest_loader_raises_missing_code_when_file_absent(
     tmp_path: Path,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1
@@ -186,7 +187,7 @@ def test_manifest_loader_wraps_invalid_structure(
     tmp_path: Path,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1
@@ -212,7 +213,7 @@ def test_manifest_loader_loads_valid_manifest(
     tmp_path: Path,
 ) -> None:
     _write(
-        tmp_path / "datasets" / "registry.yml",
+        tmp_path / "datasets" / "registry.yaml",
         """
 dictionaries:
   version: 1

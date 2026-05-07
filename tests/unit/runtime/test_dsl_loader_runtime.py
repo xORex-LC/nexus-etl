@@ -68,13 +68,7 @@ source:
     )
     _write(
         runtime_root / "datasets" / "employees" / "source.yaml",
-        """
-dataset: employees
-source:
-  type: file
-  format: csv
-  location: ./legacy/employees.csv
-""".strip(),
+        "dataset: ignored\n",
     )
 
     try:
@@ -88,91 +82,55 @@ source:
         configure_registry_path(None)
 
 
-def test_source_loader_falls_back_to_legacy_datasets_root_when_projection_file_is_missing(
-    tmp_path: Path,
-) -> None:
+def test_registry_override_changes_active_registry_without_changing_runtime_roots(tmp_path: Path) -> None:
     runtime_root = tmp_path / "runtime"
-    _write(
-        runtime_root / "datasets" / "registry.yaml",
-        """
-datasets:
-  employees:
-    source: employees/source.yaml
-""".strip(),
-    )
-    _write(
-        runtime_root / "datasets" / "employees" / "source.yaml",
-        """
-dataset: employees
-source:
-  type: file
-  format: csv
-  location: ./legacy/employees.csv
-""".strip(),
-    )
-
-    try:
-        configure_registry_path(None)
-        configure_runtime_paths(RuntimePathOverrides(runtime_root=runtime_root))
-
-        spec = load_source_spec_for_dataset("employees")
-
-        assert spec.source.location == "./legacy/employees.csv"
-    finally:
-        configure_registry_path(None)
-
-
-def test_registry_override_resolves_stage_specs_relative_to_override_root(tmp_path: Path) -> None:
-    registry = tmp_path / "custom-registry.yaml"
+    registry = tmp_path / "config" / "custom-registry.yaml"
     _write(
         registry,
         """
 datasets:
   custom:
-    source: source.yaml
+    source: custom/source.yaml
 """.strip(),
     )
     _write(
-        tmp_path / "source.yaml",
+        runtime_root / "datasets" / "registry.yaml",
+        "datasets: {}\n",
+    )
+    _write(
+        runtime_root / "etc" / "source-projection" / "custom" / "source.yaml",
         """
 dataset: custom
 source:
   type: file
   format: csv
-  location: /tmp/custom.csv
+  location: ./custom.csv
 """.strip(),
     )
 
     try:
-        configure_runtime_paths(None)
+        configure_runtime_paths(RuntimePathOverrides(runtime_root=runtime_root))
         configure_registry_path(registry)
 
         spec = load_source_spec_for_dataset("custom")
 
         assert registry_path() == registry.resolve()
-        assert datasets_root() == tmp_path.resolve()
-        assert spec.source.location == "/tmp/custom.csv"
+        assert datasets_root() == (runtime_root / "datasets").resolve()
+        assert spec.source.location == "./custom.csv"
     finally:
         configure_registry_path(None)
+        configure_runtime_paths(None)
 
 
-def test_target_path_resolution_prefers_target_projection_root_and_falls_back_to_legacy_dataset_root(
-    tmp_path: Path,
-) -> None:
+def test_target_path_resolution_uses_target_projection_root(tmp_path: Path) -> None:
     runtime_root = tmp_path / "runtime"
     _write(runtime_root / "datasets" / "registry.yaml", "datasets: {}\n")
     new_target = runtime_root / "etc" / "target-projection" / "targets" / "ankey.yaml"
-    legacy_target = runtime_root / "datasets" / "targets" / "ankey.yaml"
     _write(new_target, "provider: ankey\n")
-    _write(legacy_target, "provider: legacy\n")
 
     configure_runtime_paths(RuntimePathOverrides(runtime_root=runtime_root))
     preferred = _resolve_target_path({"targets": {"ankey": "targets/ankey.yaml"}}, "ankey")
     assert preferred == new_target.resolve()
-
-    new_target.unlink()
-    fallback = _resolve_target_path({"targets": {"ankey": "targets/ankey.yaml"}}, "ankey")
-    assert fallback == legacy_target.resolve()
 
 
 def test_dictionary_manifest_loader_prefers_dictionary_specs_root(tmp_path: Path) -> None:
@@ -195,17 +153,7 @@ items: {}
     )
     _write(
         runtime_root / "datasets" / "employees" / "manifest.yaml",
-        """
-version: 1
-items:
-  legacy:
-    csv_path: legacy.csv
-    content_sha256: "deadbeef"
-    schema_hash: "schema"
-    row_count: 1
-    updated_at_utc: "2026-01-01T00:00:00Z"
-    owner: "legacy"
-""".strip(),
+        "version: 999\nitems: {}\n",
     )
 
     try:
@@ -220,12 +168,12 @@ items:
         configure_registry_path(None)
 
 
-def test_dictionary_runtime_helpers_fall_back_to_legacy_dataset_root(tmp_path: Path) -> None:
+def test_dictionary_runtime_helpers_use_dictionary_specs_root(tmp_path: Path) -> None:
     runtime_root = tmp_path / "runtime"
     _write(runtime_root / "datasets" / "registry.yaml", "datasets: {}\n")
-    legacy_spec = runtime_root / "datasets" / "dictionaries" / "departments.dictionary.yaml"
+    spec_path = runtime_root / "etc" / "dictionaries" / "employees" / "departments.dictionary.yaml"
     _write(
-        legacy_spec,
+        spec_path,
         """
 dictionary: departments
 source:
@@ -242,6 +190,6 @@ schema:
 
     configure_runtime_paths(RuntimePathOverrides(runtime_root=runtime_root))
 
-    resolved = common_loader._resolve_dictionary_spec_path("dictionaries/departments.dictionary.yaml")
+    resolved = common_loader._resolve_dictionary_spec_path("employees/departments.dictionary.yaml")
 
-    assert resolved == legacy_spec.resolve()
+    assert resolved == spec_path.resolve()

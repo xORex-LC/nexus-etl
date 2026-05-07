@@ -13,10 +13,25 @@ from connector.infra.secrets import FernetEnvelopeCipher, UnsealedVaultKeyProvid
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite
 from connector.main import app
+from tests.runtime_test_support import tracked_employees_runtime_roots, write_runtime_config
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
 _MATCH_KEY = "Doe|John|M|100"
+
+
+def _tracked_runtime_config(tmp_path: Path) -> Path:
+    roots = tracked_employees_runtime_roots()
+    return write_runtime_config(
+        tmp_path,
+        registry_path=roots["registry_path"],
+        datasets_root=roots["datasets_root"],
+        source_data_root=roots["source_data_root"],
+        source_projection_root=roots["source_projection_root"],
+        target_projection_root=roots["target_projection_root"],
+        dictionary_specs_root=roots["dictionary_specs_root"],
+        dictionary_data_root=roots["dictionary_data_root"],
+    )
 
 
 def _base_desired_state() -> dict[str, object]:
@@ -161,6 +176,8 @@ def test_import_apply_staging_rollout_forces_dry_run(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--cache-dir",
             str(tmp_path / "cache"),
             "--log-dir",
@@ -210,6 +227,8 @@ def test_import_apply_explicit_dry_run_keeps_ephemeral_secret(tmp_path: Path, mo
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--cache-dir",
             str(tmp_path / "cache"),
             "--log-dir",
@@ -256,6 +275,8 @@ def test_import_apply_staging_dry_run_keeps_ephemeral_secret(tmp_path: Path, mon
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--cache-dir",
             str(tmp_path / "cache"),
             "--log-dir",
@@ -305,6 +326,8 @@ def test_import_apply_canary_percent_zero_blocks_requested_vault(tmp_path: Path)
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(_tracked_runtime_config(tmp_path)),
             "--cache-dir",
             str(tmp_path / "cache"),
             "--log-dir",

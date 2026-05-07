@@ -6,7 +6,7 @@ source:
   # Source format. Current runtime supports only `csv`.
   format: csv
   # Relative ref inside runtime.dictionary_data_root or absolute path.
-  location: dictionary_name.csv
+  location: dataset_name/dictionary_name.csv
   # CSV reader options parsed by DictionarySourceCsvSpec.
   csv:
     # CSV delimiter used by the loader.

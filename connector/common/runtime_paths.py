@@ -14,7 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 import sys
 
-_REGISTRY_CANDIDATE_FILENAMES = ("registry.yaml", "registry.yml")
+_CANONICAL_REGISTRY_FILENAME = "registry.yaml"
 
 
 class RuntimeLayoutError(RuntimeError):
@@ -109,16 +109,11 @@ def resolve_registry_path_for_datasets_root(datasets_root: str | Path) -> Path:
         Разрешить канонический registry-файл внутри datasets root.
 
     Контракт:
-        - Предпочитает `registry.yaml`.
-        - Поддерживает `registry.yml` как migration fallback.
-        - Если ни одного файла нет, возвращает канонический путь `registry.yaml`.
+        - Единственное каноническое имя runtime registry — `registry.yaml`.
+        - Функция не читает YAML и не поддерживает альтернативные имена registry-файла.
     """
     root = Path(datasets_root).expanduser().resolve()
-    for filename in _REGISTRY_CANDIDATE_FILENAMES:
-        candidate = root / filename
-        if candidate.exists():
-            return candidate
-    return root / _REGISTRY_CANDIDATE_FILENAMES[0]
+    return root / _CANONICAL_REGISTRY_FILENAME
 
 
 def detect_runtime_paths(
@@ -144,7 +139,7 @@ def detect_runtime_paths(
     datasets_root = _resolve_path(root, applied_overrides.datasets_root, "datasets")
     dictionary_specs_root = _resolve_path(root, applied_overrides.dictionary_specs_root, "etc/dictionaries")
     dictionary_data_root = _resolve_path(root, applied_overrides.dictionary_data_root, "dictionaries")
-    source_data_root = _resolve_path(root, applied_overrides.source_data_root, "examples/sources")
+    source_data_root = _resolve_path(root, applied_overrides.source_data_root, "etc/source-data")
     source_projection_root = _resolve_path(root, applied_overrides.source_projection_root, "etc/source-projection")
     target_projection_root = _resolve_path(root, applied_overrides.target_projection_root, "etc/target-projection")
     cache_root = _resolve_path(root, applied_overrides.cache_root, "var/cache")

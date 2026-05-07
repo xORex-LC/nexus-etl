@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 
 
-TRACKED_EMPLOYEES_SOURCE_FILENAME = "source_employees_example.csv"
+TRACKED_EMPLOYEES_SOURCE_FILENAME = "source_employees_example_1.csv"
 
 
 def repo_root() -> Path:
@@ -20,8 +20,11 @@ def tracked_employees_runtime_roots() -> dict[str, Path]:
     root = repo_root()
     return {
         "registry_path": root / "datasets" / "employees.registry.yaml",
+        "datasets_root": root / "datasets",
         "dictionary_specs_root": root / "datasets",
         "dictionary_data_root": root / "dictionaries",
+        "source_projection_root": root / "datasets",
+        "target_projection_root": root / "datasets",
         "source_data_root": root / "examples" / "sources",
     }
 
@@ -38,7 +41,10 @@ def write_runtime_config(
     tmp_path: Path,
     *,
     registry_path: Path | None = None,
+    datasets_root: Path | None = None,
     source_data_root: Path | None = None,
+    source_projection_root: Path | None = None,
+    target_projection_root: Path | None = None,
     dictionary_specs_root: Path | None = None,
     dictionary_data_root: Path | None = None,
     cache_dir: Path | None = None,
@@ -52,8 +58,14 @@ def write_runtime_config(
         payload.setdefault("dataset", {})["registry_path"] = str(registry_path)
 
     runtime_payload: dict[str, str] = {}
+    if datasets_root is not None:
+        runtime_payload["datasets_root"] = str(datasets_root)
     if source_data_root is not None:
         runtime_payload["source_data_root"] = str(source_data_root)
+    if source_projection_root is not None:
+        runtime_payload["source_projection_root"] = str(source_projection_root)
+    if target_projection_root is not None:
+        runtime_payload["target_projection_root"] = str(target_projection_root)
     if dictionary_specs_root is not None:
         runtime_payload["dictionary_specs_root"] = str(dictionary_specs_root)
     if dictionary_data_root is not None:

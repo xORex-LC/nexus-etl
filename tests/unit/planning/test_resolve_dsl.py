@@ -127,7 +127,7 @@ def test_resolve_dsl_compiled_rules_behavior():
         sink_spec=load_sink_spec_for_dataset("employees"),
     )
 
-    # DSL rules behavior assertions (no legacy fallback source).
+    # DSL rules behavior assertions for the final source/runtime contract.
     desired_from_builder = compiled.resolve_rules.build_desired_state(sample_row, None)
     assert desired_from_builder["email"] == "user@example.com"
     assert desired_from_builder["usr_org_tab_num"] == "TAB-100"

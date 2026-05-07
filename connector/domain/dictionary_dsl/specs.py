@@ -40,7 +40,7 @@ def _require_non_blank(value: str, *, field_name: str) -> str:
 class DictionaryRegistryItemSpec(DslBaseModel):
     """
     Назначение:
-        Один элемент секции `dictionaries.items` в `datasets/registry.yml`.
+        Один элемент секции `dictionaries.items` в runtime registry file.
     """
 
     spec: str

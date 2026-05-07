@@ -65,7 +65,10 @@ def run_enrich(
     config_path = write_runtime_config(
         tmp_path,
         registry_path=roots["registry_path"],
+        datasets_root=roots["datasets_root"],
         source_data_root=runtime_csv_path.parent,
+        source_projection_root=roots["source_projection_root"],
+        target_projection_root=roots["target_projection_root"],
         dictionary_specs_root=roots["dictionary_specs_root"],
         dictionary_data_root=roots["dictionary_data_root"],
     )

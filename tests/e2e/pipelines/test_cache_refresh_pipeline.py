@@ -17,6 +17,20 @@ from tests.runtime_test_support import write_runtime_config
 
 runner = CliRunner()
 
+def _temp_runtime_config(tmp_path: Path, *, registry_path: Path) -> Path:
+    datasets_root = registry_path.parent
+    return write_runtime_config(
+        tmp_path,
+        registry_path=registry_path,
+        datasets_root=datasets_root,
+        source_data_root=tmp_path,
+        source_projection_root=datasets_root,
+        target_projection_root=datasets_root,
+        dictionary_specs_root=datasets_root / "dictionaries",
+        dictionary_data_root=tmp_path / "dictionaries",
+    )
+
+
 # Минимальные наборы данных, имитирующие ответы API
 USERS_PAYLOAD = [
     {
@@ -168,7 +182,7 @@ def run_cache_refresh(
     ]
     config_path = None
     if registry_path is not None:
-        config_path = write_runtime_config(tmp_path, registry_path=registry_path)
+        config_path = _temp_runtime_config(tmp_path, registry_path=registry_path)
         args = ["--config", str(config_path), *args]
 
     if monkeypatch is not None:
@@ -239,7 +253,7 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
         app,
         [
             "--config",
-            str(write_runtime_config(tmp_path, registry_path=registry_path)),
+            str(_temp_runtime_config(tmp_path, registry_path=registry_path)),
             "--log-dir",
             str(log_dir),
             "--report-dir",
@@ -276,7 +290,7 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
         app,
         [
             "--config",
-            str(write_runtime_config(tmp_path, registry_path=registry_path)),
+            str(_temp_runtime_config(tmp_path, registry_path=registry_path)),
             "--log-dir",
             str(log_dir),
             "--report-dir",

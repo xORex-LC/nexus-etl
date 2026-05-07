@@ -33,7 +33,7 @@ def test_detect_runtime_paths_prefers_explicit_runtime_root_override(tmp_path: P
     assert paths.config_root == (runtime_root / "etc").resolve()
     assert paths.dictionary_specs_root == (runtime_root / "etc" / "dictionaries").resolve()
     assert paths.dictionary_data_root == (runtime_root / "dictionaries").resolve()
-    assert paths.source_data_root == (runtime_root / "examples" / "sources").resolve()
+    assert paths.source_data_root == (runtime_root / "etc" / "source-data").resolve()
 
 
 def test_detect_runtime_paths_uses_standalone_layout_near_argv0(tmp_path: Path) -> None:
@@ -66,20 +66,6 @@ def test_detect_runtime_paths_uses_module_parent_search_for_dev_checkout(tmp_pat
     assert paths.default_registry_path == (repo_root / "datasets" / "registry.yaml").resolve()
 
 
-def test_detect_runtime_paths_accepts_legacy_registry_yml_fallback(tmp_path: Path) -> None:
-    repo_root = tmp_path / "repo"
-    module_file = repo_root / "connector" / "common" / "runtime_paths.py"
-    _write(repo_root / "datasets" / "registry.yml")
-
-    paths = detect_runtime_paths(
-        overrides=RuntimePathOverrides(),
-        argv0="/outside/bin/nexus",
-        module_file=module_file,
-    )
-
-    assert paths.default_registry_path == (repo_root / "datasets" / "registry.yml").resolve()
-
-
 def test_detect_runtime_paths_raises_when_layout_is_missing(tmp_path: Path) -> None:
     with pytest.raises(RuntimeLayoutError):
         detect_runtime_paths(
@@ -89,10 +75,8 @@ def test_detect_runtime_paths_raises_when_layout_is_missing(tmp_path: Path) -> N
         )
 
 
-def test_resolve_registry_path_for_datasets_root_prefers_yaml(tmp_path: Path) -> None:
+def test_resolve_registry_path_for_datasets_root_returns_canonical_yaml_path(tmp_path: Path) -> None:
     datasets_root = tmp_path / "datasets"
-    _write(datasets_root / "registry.yml")
-    _write(datasets_root / "registry.yaml")
 
     assert resolve_registry_path_for_datasets_root(datasets_root) == (
         datasets_root / "registry.yaml"
@@ -138,7 +122,7 @@ def test_runtime_paths_resolve_resource_families_against_expected_roots(tmp_path
         runtime_root / "dictionaries" / "employees" / "departments.csv"
     ).resolve()
     assert paths.resolve_source_data_ref("employees.csv") == (
-        runtime_root / "examples" / "sources" / "employees.csv"
+        runtime_root / "etc" / "source-data" / "employees.csv"
     ).resolve()
     assert paths.resolve_cache_db_file() == (
         runtime_root / "var" / "cache" / "ankey_cache.sqlite3"

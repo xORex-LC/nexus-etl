@@ -81,7 +81,16 @@ def test_source2_real_csv_map_and_normalize_pipeline(tmp_path: Path) -> None:
     csv_path = tmp_path / "employees.csv"
     _write_source2_csv(csv_path)
 
-    configure_runtime_paths(RuntimePathOverrides(source_data_root=tmp_path))
+    configure_runtime_paths(
+        RuntimePathOverrides(
+            datasets_root=registry_path.parent,
+            dictionary_specs_root=registry_path.parent / "dictionaries",
+            dictionary_data_root=tmp_path / "dictionaries",
+            source_data_root=tmp_path,
+            source_projection_root=registry_path.parent,
+            target_projection_root=registry_path.parent,
+        )
+    )
     configure_registry_path(registry_path)
     dataset_registry_module._registry = None
     try:

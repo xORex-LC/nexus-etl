@@ -98,26 +98,17 @@ def _registry_path() -> Path:
 def _datasets_root() -> Path:
     """
     Назначение:
-        Вернуть активный root для registry-relative compatibility mode.
+        Вернуть активный datasets root из runtime contract.
     """
-    if _registry_path_override is not None:
-        return _registry_path_override.parent
     return _runtime_paths().datasets_root
 
 
 def _resolve_dataset_stage_path(ref: str | Path) -> Path:
-    if _registry_path_override is not None:
-        return _resolve_ref_against_active_registry(ref)
     return _runtime_paths().resolve_dataset_stage_ref(ref)
 
 
 def _resolve_source_projection_path(ref: str | Path) -> Path:
-    if _registry_path_override is not None:
-        return _resolve_ref_against_active_registry(ref)
-    return _resolve_with_legacy_datasets_fallback(
-        primary=_runtime_paths().resolve_source_projection_ref(ref),
-        legacy_ref=ref,
-    )
+    return _runtime_paths().resolve_source_projection_ref(ref)
 
 
 def _resolve_source_data_path(ref: str | Path) -> Path:
@@ -125,40 +116,15 @@ def _resolve_source_data_path(ref: str | Path) -> Path:
 
 
 def _resolve_target_projection_path(ref: str | Path) -> Path:
-    if _registry_path_override is not None:
-        return _resolve_ref_against_active_registry(ref)
-    return _resolve_with_legacy_datasets_fallback(
-        primary=_runtime_paths().resolve_target_projection_ref(ref),
-        legacy_ref=ref,
-    )
+    return _runtime_paths().resolve_target_projection_ref(ref)
 
 
 def _resolve_dictionary_spec_path(ref: str | Path) -> Path:
-    return _resolve_with_legacy_datasets_fallback(
-        primary=_runtime_paths().resolve_dictionary_spec_ref(ref),
-        legacy_ref=ref,
-    )
+    return _runtime_paths().resolve_dictionary_spec_ref(ref)
 
 
 def _resolve_dictionary_manifest_path(ref: str | Path) -> Path:
-    return _resolve_with_legacy_datasets_fallback(
-        primary=_runtime_paths().resolve_dictionary_manifest_ref(ref),
-        legacy_ref=ref,
-    )
-
-
-def _resolve_ref_against_active_registry(ref: str | Path) -> Path:
-    path = Path(ref).expanduser()
-    if path.is_absolute():
-        return path.resolve()
-    return (_datasets_root() / path).resolve()
-
-
-def _resolve_with_legacy_datasets_fallback(*, primary: Path, legacy_ref: str | Path) -> Path:
-    legacy_path = _runtime_paths().resolve_dataset_stage_ref(legacy_ref)
-    if primary.exists() or not legacy_path.exists():
-        return primary
-    return legacy_path
+    return _runtime_paths().resolve_dictionary_manifest_ref(ref)
 
 
 @lru_cache(maxsize=1)
