@@ -113,3 +113,45 @@ def test_vault_management_rotate_changes_unseal_passphrase(tmp_path: Path) -> No
 
     good_status = _invoke(cfg, ["status", "--non-interactive", "--verify"], input_text="new-passphrase\n")
     assert good_status.exit_code == 0, good_status.stdout
+
+
+def test_vault_management_resolves_relative_hash_file_against_runtime_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "runtime"
+    environment_dir = runtime_root / "environment"
+    datasets_dir = runtime_root / "datasets"
+    environment_dir.mkdir(parents=True, exist_ok=True)
+    datasets_dir.mkdir(parents=True, exist_ok=True)
+    (datasets_dir / "registry.yaml").write_text("targets: {}\ndatasets: {}\n", encoding="utf-8")
+    _write_admin_hash(environment_dir, password="Vault-Admin-Password-2026")
+
+    cfg = runtime_root / "config.yml"
+    cfg.write_text(
+        "\n".join(
+            [
+                "runtime:",
+                f'  runtime_root: "{runtime_root}"',
+                "paths:",
+                f'  cache_dir: "{runtime_root / "cache"}"',
+                f'  log_dir: "{runtime_root / "logs"}"',
+                f'  report_dir: "{runtime_root / "reports"}"',
+                "vault_management:",
+                '  admin_password_hash_file: "./environment/vault-admin.env"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    outside_cwd = tmp_path / "outside"
+    outside_cwd.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(outside_cwd)
+
+    result = _invoke(
+        cfg,
+        ["init", "--non-interactive", "--force"],
+        input_text="unseal-passphrase\nunseal-passphrase\n",
+    )
+
+    assert result.exit_code == 0, result.stdout

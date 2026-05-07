@@ -257,6 +257,9 @@ def test_to_identity_db_config_uses_global_defaults_only() -> None:
 
 def test_to_vault_management_settings_maps_fields() -> None:
     cfg = AppConfig.model_validate({
+        "runtime": {
+            "runtime_root": "/opt/nexus",
+        },
         "vault_management": {
             "require_admin_password_for_manual_ops": True,
             "admin_password_hash_file": "./environment/vault-admin.env",
@@ -268,8 +271,20 @@ def test_to_vault_management_settings_maps_fields() -> None:
 
     assert isinstance(result, VaultManagementSettings)
     assert result.require_admin_password_for_manual_ops is True
-    assert result.admin_password_hash_file == "./environment/vault-admin.env"
+    assert result.admin_password_hash_file == "/opt/nexus/environment/vault-admin.env"
     assert result.admin_password_env_var == "ANKEY_VAULT_ADMIN_PASSWORD"
+
+
+def test_to_vault_management_settings_keeps_absolute_hash_file_path() -> None:
+    cfg = AppConfig.model_validate({
+        "vault_management": {
+            "admin_password_hash_file": "/srv/nexus/environment/vault-admin.env",
+        }
+    })
+
+    result = to_vault_management_settings(cfg)
+
+    assert result.admin_password_hash_file == "/srv/nexus/environment/vault-admin.env"
 
 
 def test_to_vault_management_settings_defaults_follow_config_defaults() -> None:
