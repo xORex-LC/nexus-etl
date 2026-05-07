@@ -12,8 +12,10 @@ from __future__ import annotations
 from connector.config.models import AppConfig, SqliteConfig
 from connector.config.projections import (
     to_cache_db_config,
+    to_dataset_registry_path,
     to_identity_db_config,
     to_match_batch_settings,
+    to_operational_paths,
     to_resolver_settings,
     to_vault_management_settings,
     to_vault_db_config,
@@ -257,6 +259,9 @@ def test_to_identity_db_config_uses_global_defaults_only() -> None:
 
 def test_to_vault_management_settings_maps_fields() -> None:
     cfg = AppConfig.model_validate({
+        "runtime": {
+            "runtime_root": "/opt/nexus",
+        },
         "vault_management": {
             "require_admin_password_for_manual_ops": True,
             "admin_password_hash_file": "./environment/vault-admin.env",
@@ -268,8 +273,20 @@ def test_to_vault_management_settings_maps_fields() -> None:
 
     assert isinstance(result, VaultManagementSettings)
     assert result.require_admin_password_for_manual_ops is True
-    assert result.admin_password_hash_file == "./environment/vault-admin.env"
+    assert result.admin_password_hash_file == "/opt/nexus/environment/vault-admin.env"
     assert result.admin_password_env_var == "ANKEY_VAULT_ADMIN_PASSWORD"
+
+
+def test_to_vault_management_settings_keeps_absolute_hash_file_path() -> None:
+    cfg = AppConfig.model_validate({
+        "vault_management": {
+            "admin_password_hash_file": "/srv/nexus/environment/vault-admin.env",
+        }
+    })
+
+    result = to_vault_management_settings(cfg)
+
+    assert result.admin_password_hash_file == "/srv/nexus/environment/vault-admin.env"
 
 
 def test_to_vault_management_settings_defaults_follow_config_defaults() -> None:
@@ -280,3 +297,53 @@ def test_to_vault_management_settings_defaults_follow_config_defaults() -> None:
     assert result.require_admin_password_for_manual_ops is True
     assert result.admin_password_hash_file is None
     assert result.admin_password_env_var == "ANKEY_VAULT_ADMIN_PASSWORD"
+
+
+def test_to_dataset_registry_path_resolves_relative_path_against_runtime_root() -> None:
+    cfg = AppConfig.model_validate({
+        "runtime": {
+            "runtime_root": "/opt/nexus",
+        },
+        "dataset": {
+            "registry_path": "./datasets/employees.registry.yaml",
+        },
+    })
+
+    result = to_dataset_registry_path(cfg)
+
+    assert result == "/opt/nexus/datasets/employees.registry.yaml"
+
+
+def test_to_dataset_registry_path_keeps_absolute_path() -> None:
+    cfg = AppConfig.model_validate({
+        "dataset": {
+            "registry_path": "/srv/nexus/datasets/employees.registry.yaml",
+        },
+    })
+
+    result = to_dataset_registry_path(cfg)
+
+    assert result == "/srv/nexus/datasets/employees.registry.yaml"
+
+
+def test_to_operational_paths_resolves_relative_dirs_against_runtime_root(tmp_path) -> None:
+    runtime_root = tmp_path / "runtime"
+    (runtime_root / "datasets").mkdir(parents=True, exist_ok=True)
+    (runtime_root / "datasets" / "registry.yaml").write_text("targets: {}\ndatasets: {}\n", encoding="utf-8")
+
+    cfg = AppConfig.model_validate({
+        "runtime": {
+            "runtime_root": str(runtime_root),
+        },
+        "paths": {
+            "cache_dir": "var/cache",
+            "log_dir": "var/logs",
+            "report_dir": "reports",
+        },
+    })
+
+    result = to_operational_paths(cfg)
+
+    assert result.cache_dir == str((runtime_root / "var/cache").resolve())
+    assert result.log_dir == str((runtime_root / "var/logs").resolve())
+    assert result.report_dir == str((runtime_root / "reports").resolve())

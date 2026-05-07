@@ -35,6 +35,7 @@ from dependency_injector import containers, providers
 from connector.config.models import ApiConfig, AppConfig, DatasetConfig
 from connector.config.projections import (
     to_cache_db_config,
+    to_dataset_registry_path,
     to_identity_db_config,
     to_resolver_settings,
     to_runtime_path_overrides,
@@ -847,13 +848,13 @@ class AppContainer(containers.DeclarativeContainer):
     _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_config)
     _api_settings = providers.Callable(lambda s: s.api, s=app_config)
     _dictionary_cfg = providers.Callable(lambda s: s.dictionary, s=app_config)
-    _dataset_registry_path = providers.Callable(lambda s: s.dataset.registry_path, s=app_config)
+    _dataset_registry_path = providers.Callable(to_dataset_registry_path, config=app_config)
     _dictionary_specs_root = providers.Callable(
-        lambda s: s.runtime.dictionary_specs_root,
+        lambda s: str(_runtime_paths_for(s).dictionary_specs_root),
         s=app_config,
     )
     _dictionary_data_root = providers.Callable(
-        lambda s: s.runtime.dictionary_data_root,
+        lambda s: str(_runtime_paths_for(s).dictionary_data_root),
         s=app_config,
     )
     _vault_management_settings = providers.Callable(to_vault_management_settings, config=app_config)

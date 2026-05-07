@@ -11,7 +11,7 @@ import uuid
 from functools import lru_cache
 from typing import Any, Iterable
 
-from anyascii import anyascii
+from unidecode import unidecode
 
 
 def _normalize_whitespace(value: object | None, *, empty_to_none: bool = False) -> str | None:
@@ -192,7 +192,7 @@ def op_transliterate(value: Any, **_: Any) -> str | None:
         - `None -> None`
         - пустая строка сохраняется пустой строкой
         - ASCII-строка возвращается без изменений
-        - non-ASCII строка преобразуется через `anyascii`
+        - non-ASCII строка преобразуется через `unidecode`
     """
     if value is None:
         return None
@@ -201,7 +201,7 @@ def op_transliterate(value: Any, **_: Any) -> str | None:
         return ""
     if text.isascii():
         return text
-    return anyascii(text)
+    return unidecode(text)
 
 
 def op_upper(value: Any, **_: Any) -> str | None:

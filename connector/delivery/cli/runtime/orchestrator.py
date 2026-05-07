@@ -24,6 +24,7 @@ from connector.common.time import get_duration_ms
 from connector.config.config import SettingsLoadError
 from connector.config.models import AppConfig
 from connector.config.diagnostics import translate_settings_load_error
+from connector.config.projections import to_operational_paths
 from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
 from connector.domain.dsl.diagnostics import translate_dsl_load_error
 from connector.domain.dsl.issues import DslLoadError
@@ -78,7 +79,7 @@ def run_with_report(
         - Result-to-report mapping выполняется через injected mapper.
     """
     app_config = require_app_settings(ctx)
-    paths = app_config.paths
+    paths = to_operational_paths(app_config)
     observability = app_config.observability
     run_id = ctx.run_id
 
@@ -618,7 +619,7 @@ def require_api(app_config: AppConfig) -> None:
 
 
 def require_cache(app_config: AppConfig) -> None:
-    cache_dir = Path(app_config.paths.cache_dir)
+    cache_dir = Path(to_operational_paths(app_config).cache_dir)
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
