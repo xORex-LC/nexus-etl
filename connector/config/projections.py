@@ -31,6 +31,8 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from connector.common.runtime_paths import RuntimePathOverrides
 from connector.config.models import AppConfig
 from connector.domain.secrets.policy.rollout_metrics import VaultRolloutThresholds
@@ -163,11 +165,25 @@ def to_identity_db_config(config: AppConfig) -> SqliteDbConfig:
 
 
 def to_vault_management_settings(config: AppConfig) -> VaultManagementSettings:
-    """AppConfig.vault_management → typed settings для operational vault usecases."""
+    """AppConfig.vault_management → typed settings для operational vault usecases.
+
+    Relative `admin_password_hash_file` is resolved against the active runtime root
+    so manual vault-management commands do not depend on the current working directory.
+    """
     vm = config.vault_management
+    admin_password_hash_file = vm.admin_password_hash_file
+    if admin_password_hash_file is not None:
+        runtime_root = Path(config.runtime.runtime_root).expanduser()
+        if not runtime_root.is_absolute():
+            runtime_root = (Path.cwd() / runtime_root).resolve()
+        hash_file_path = Path(admin_password_hash_file).expanduser()
+        if hash_file_path.is_absolute():
+            admin_password_hash_file = str(hash_file_path.resolve())
+        else:
+            admin_password_hash_file = str((runtime_root / hash_file_path).resolve())
     return VaultManagementSettings(
         require_admin_password_for_manual_ops=vm.require_admin_password_for_manual_ops,
-        admin_password_hash_file=vm.admin_password_hash_file,
+        admin_password_hash_file=admin_password_hash_file,
         admin_password_hash_name=vm.admin_password_hash_name,
         admin_password_env_var=vm.admin_password_env_var,
     )
