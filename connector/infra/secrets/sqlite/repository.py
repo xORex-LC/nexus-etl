@@ -36,7 +36,7 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
 
     Инварианты:
         - write transaction использует `BEGIN IMMEDIATE`;
-        - read-path соблюдает run_id precedence: `exact -> global (NULL)`;
+        - read-path может выполнять cross-run lookup по `match_key`;
         - lifecycle metadata хранится в `vault_management_meta` (key-value);
         - lock/schema ошибки маппятся в доменную таксономию без утечки секретов.
     """
@@ -75,6 +75,7 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
             INSERT INTO vault_secrets(
                 dataset,
                 field,
+                match_key,
                 locator_hash,
                 locator_version,
                 run_id,
@@ -85,7 +86,7 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT DO UPDATE SET
                 ciphertext = excluded.ciphertext,
                 cipher_algo = excluded.cipher_algo,
@@ -96,6 +97,7 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
             (
                 record.dataset,
                 record.field,
+                record.match_key,
                 record.locator_hash,
                 record.locator_version,
                 record.run_id,
@@ -121,10 +123,82 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
         *,
         dataset: str,
         field: str,
+        match_key: str | None,
         locator_hash: str,
         locator_version: str,
         run_id: str | None,
     ) -> VaultSecretRecord | None:
+        if match_key:
+            row = self._fetchone_read(
+                """
+                SELECT
+                    secret_id,
+                    dataset,
+                    field,
+                    match_key,
+                    locator_hash,
+                    locator_version,
+                    run_id,
+                    ciphertext,
+                    cipher_algo,
+                    key_version,
+                    dek_version,
+                    created_at,
+                    updated_at
+                FROM vault_secrets
+                WHERE dataset = ?
+                  AND field = ?
+                  AND match_key = ?
+                ORDER BY updated_at DESC, secret_id DESC
+                LIMIT 1
+                """,
+                (dataset, field, match_key),
+                op="get_secret",
+                details={
+                    "dataset": dataset,
+                    "field": field,
+                    "match_key": match_key,
+                    "lookup_mode": "match_key",
+                },
+            )
+            if row is not None:
+                return _row_to_secret_record(row)
+
+            row = self._fetchone_read(
+                """
+                SELECT
+                    secret_id,
+                    dataset,
+                    field,
+                    match_key,
+                    locator_hash,
+                    locator_version,
+                    run_id,
+                    ciphertext,
+                    cipher_algo,
+                    key_version,
+                    dek_version,
+                    created_at,
+                    updated_at
+                FROM vault_secrets
+                WHERE dataset = ?
+                  AND field = ?
+                  AND locator_hash = ?
+                  AND locator_version = ?
+                ORDER BY updated_at DESC, secret_id DESC
+                LIMIT 1
+                """,
+                (dataset, field, locator_hash, locator_version),
+                op="get_secret",
+                details={
+                    "dataset": dataset,
+                    "field": field,
+                    "match_key": match_key,
+                    "lookup_mode": "locator_hash_fallback",
+                },
+            )
+            return _row_to_secret_record(row)
+
         if run_id is not None:
             row = self._fetchone_read(
                 """
@@ -132,6 +206,7 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
                     secret_id,
                     dataset,
                     field,
+                    match_key,
                     locator_hash,
                     locator_version,
                     run_id,
@@ -168,6 +243,7 @@ class SqliteVaultRepository(SecretVaultRepositoryPort):
                     secret_id,
                     dataset,
                     field,
+                    match_key,
                     locator_hash,
                     locator_version,
                     run_id,
@@ -691,6 +767,7 @@ def _row_to_secret_record(row: sqlite3.Row | None) -> VaultSecretRecord | None:
     return VaultSecretRecord(
         dataset=str(row["dataset"]),
         field=str(row["field"]),
+        match_key=str(row["match_key"]) if row["match_key"] is not None else None,
         locator_hash=str(row["locator_hash"]),
         locator_version=str(row["locator_version"]),
         ciphertext=row["ciphertext"],

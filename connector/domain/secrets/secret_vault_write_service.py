@@ -100,6 +100,7 @@ class SecretVaultWriteService(SecretStoreProtocol):
                         VaultSecretRecord(
                             dataset=dataset,
                             field=field,
+                            match_key=normalized_match_key,
                             locator_hash=locator_hash,
                             locator_version=self._locator_version,
                             ciphertext=ciphertext,

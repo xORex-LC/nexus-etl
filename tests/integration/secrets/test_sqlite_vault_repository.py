@@ -65,6 +65,7 @@ def test_secret_upsert_last_write_wins_and_run_id_precedence(tmp_path: Path):
             VaultSecretRecord(
                 dataset="employees",
                 field="password",
+                match_key="Doe|John|M|100",
                 locator_hash="loc-v1",
                 locator_version="v1",
                 ciphertext=b"global-secret",
@@ -80,6 +81,7 @@ def test_secret_upsert_last_write_wins_and_run_id_precedence(tmp_path: Path):
             VaultSecretRecord(
                 dataset="employees",
                 field="password",
+                match_key="Doe|John|M|100",
                 locator_hash="loc-v1",
                 locator_version="v1",
                 ciphertext=b"run-secret",
@@ -95,6 +97,7 @@ def test_secret_upsert_last_write_wins_and_run_id_precedence(tmp_path: Path):
         for_run = repo.get_secret(
             dataset="employees",
             field="password",
+            match_key="Doe|John|M|100",
             locator_hash="loc-v1",
             locator_version="v1",
             run_id="run-1",
@@ -106,18 +109,20 @@ def test_secret_upsert_last_write_wins_and_run_id_precedence(tmp_path: Path):
         fallback = repo.get_secret(
             dataset="employees",
             field="password",
+            match_key="Doe|John|M|100",
             locator_hash="loc-v1",
             locator_version="v1",
             run_id="run-2",
         )
         assert fallback is not None
-        assert fallback.ciphertext == b"global-secret"
-        assert fallback.run_id is None
+        assert fallback.ciphertext == b"run-secret"
+        assert fallback.run_id == "run-1"
 
         repo.upsert_secret(
             VaultSecretRecord(
                 dataset="employees",
                 field="password",
+                match_key="Doe|John|M|100",
                 locator_hash="loc-v1",
                 locator_version="v1",
                 ciphertext=b"run-secret-updated",
@@ -132,6 +137,7 @@ def test_secret_upsert_last_write_wins_and_run_id_precedence(tmp_path: Path):
         updated = repo.get_secret(
             dataset="employees",
             field="password",
+            match_key="Doe|John|M|100",
             locator_hash="loc-v1",
             locator_version="v1",
             run_id="run-1",
@@ -150,6 +156,7 @@ def test_secret_upsert_last_write_wins_and_run_id_precedence(tmp_path: Path):
         after_delete = repo.get_secret(
             dataset="employees",
             field="password",
+            match_key="Doe|John|M|100",
             locator_hash="loc-v1",
             locator_version="v1",
             run_id="run-1",
@@ -170,6 +177,7 @@ def test_secret_upsert_last_write_wins_and_run_id_precedence(tmp_path: Path):
             repo.get_secret(
                 dataset="employees",
                 field="password",
+                match_key="Doe|John|M|100",
                 locator_hash="loc-v1",
                 locator_version="v1",
                 run_id="run-9",

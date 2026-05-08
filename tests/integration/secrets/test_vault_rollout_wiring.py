@@ -158,6 +158,7 @@ def _vault_secret_exists(*, tmp_path: Path, run_id: str) -> bool:
         record = repo.get_secret(
             dataset="employees",
             field="password",
+            match_key=_MATCH_KEY,
             locator_hash=locator_hash,
             locator_version="v1",
             run_id=run_id,

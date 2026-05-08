@@ -174,6 +174,26 @@ def test_apply_vault_hydrates_secret_and_executes_target(tmp_path: Path, monkeyp
     assert executor.calls[0].payload.get("password") == "VaultPassword"
 
 
+def test_apply_vault_reads_persistent_secret_across_run_boundaries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _write_vault_secret(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        run_id="older-run",
+        secret_value="VaultPassword",
+    )
+    plan = _make_plan(op=Operation.UPDATE, secret_fields=["password"], run_id="newer-run")
+
+    result, executor = _run_apply(tmp_path=tmp_path, plan=plan)
+
+    assert result.primary_code == SystemErrorCode.OK
+    assert len(executor.calls) == 1
+    assert isinstance(executor.calls[0].payload, dict)
+    assert executor.calls[0].payload.get("password") == "VaultPassword"
+
+
 @pytest.mark.parametrize("op", [Operation.CREATE, Operation.UPDATE])
 def test_apply_vault_missing_required_secret_blocks_target(
     tmp_path: Path,

@@ -21,6 +21,7 @@ class VaultSecretRecord:
 
     dataset: str
     field: str
+    match_key: str | None
     locator_hash: str
     locator_version: str
     ciphertext: bytes | str

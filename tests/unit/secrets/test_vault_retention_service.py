@@ -61,6 +61,7 @@ def test_retention_persistent_keeps_secret(tmp_path: Path):
         assert repo.get_secret(
             dataset="employees",
             field="password",
+            match_key="Doe|John|M|100",
             locator_hash=locator_hash,
             locator_version="v1",
             run_id="run-1",
@@ -95,6 +96,7 @@ def test_retention_ephemeral_deletes_secret_on_success(tmp_path: Path):
         assert repo.get_secret(
             dataset="employees",
             field="password",
+            match_key="Doe|John|M|100",
             locator_hash=locator_hash,
             locator_version="v1",
             run_id="run-1",
