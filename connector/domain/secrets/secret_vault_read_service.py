@@ -91,6 +91,7 @@ class SecretVaultReadService(SecretProviderProtocol):
             return None
 
         effective_run_id = run_id if run_id is not None else self._default_run_id
+        match_key = normalized_source_ref["match_key"]
 
         try:
             locator_hash = self._locator.build_locator_hash(
@@ -102,6 +103,7 @@ class SecretVaultReadService(SecretProviderProtocol):
             record = self._repository.get_secret(
                 dataset=dataset,
                 field=field,
+                match_key=match_key,
                 locator_hash=locator_hash,
                 locator_version=self._locator_version,
                 run_id=effective_run_id,

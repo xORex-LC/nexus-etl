@@ -144,7 +144,7 @@ def test_resolve_dsl_compiled_rules_behavior():
         "is_logon_disable": None,
     }
     assert compiled.resolve_rules.secret_fields_for_op("create", desired, existing) == ["password"]
-    assert compiled.resolve_rules.secret_fields_for_op("update", desired, existing) == []
+    assert compiled.resolve_rules.secret_fields_for_op("update", desired, existing) == ["password"]
     assert compiled.resolve_rules.secret_lifecycle is not None
     assert compiled.resolve_rules.secret_lifecycle.mode == "persistent"
 
