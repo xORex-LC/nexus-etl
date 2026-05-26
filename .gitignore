@@ -22,4 +22,7 @@ environment/
 scripts/utils/
 var/
 docs/*.md
+!docs/ARCHITECTURE_INVARIANTS.md
+.claude
+CLAUDE.md
 /datasets/
