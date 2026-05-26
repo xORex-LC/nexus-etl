@@ -51,9 +51,14 @@ assemble_runtime_tree() {
   cp -a "$ROOT_DIR/datasets/." "$dist_dir/datasets/"
   cp -a "$ROOT_DIR/dictionaries/." "$dist_dir/dictionaries/"
 
-  if [[ -f "$ROOT_DIR/examples/sources/source_employees_example_1.csv" ]]; then
-    cp "$ROOT_DIR/examples/sources/source_employees_example_1.csv" \
-      "$dist_dir/etc/source-data/source_employees_example_1.csv"
+  if [[ -f "$ROOT_DIR/examples/sources/source_employees.csv" ]]; then
+    cp "$ROOT_DIR/examples/sources/source_employees.csv" \
+      "$dist_dir/etc/source-data/source_employees.csv"
+  fi
+
+  if [[ -f "$ROOT_DIR/examples/sources/source_departments.csv" ]]; then
+    cp "$ROOT_DIR/examples/sources/source_departments.csv" \
+      "$dist_dir/etc/source-data/source_departments.csv"
   fi
 
   "$PYTHON_BIN" - <<'PY' "$CONFIG_TEMPLATE" "$CONFIG_OUTPUT" "$DIST_DIR"
@@ -72,11 +77,11 @@ payload.setdefault("runtime", {})
 payload["runtime"]["runtime_root"] = str(dist_dir)
 payload["runtime"]["config_root"] = "./etc"
 payload["runtime"]["datasets_root"] = "./datasets"
-payload["runtime"]["dictionary_specs_root"] = "./datasets"
+payload["runtime"]["dictionary_specs_root"] = "./datasets/dictionaries"
 payload["runtime"]["dictionary_data_root"] = "./dictionaries"
 payload["runtime"]["source_data_root"] = "./etc/source-data"
 payload["runtime"]["source_projection_root"] = "./datasets"
-payload["runtime"]["target_projection_root"] = "./datasets"
+payload["runtime"]["target_projection_root"] = "./datasets/targets"
 
 payload.setdefault("paths", {})
 payload["paths"]["cache_dir"] = "var/cache"
@@ -84,7 +89,7 @@ payload["paths"]["log_dir"] = "var/logs"
 payload["paths"]["report_dir"] = "reports"
 
 payload.setdefault("dataset", {})
-payload["dataset"]["registry_path"] = "./datasets/employees.registry.yaml"
+payload["dataset"]["registry_path"] = "./datasets/registry.yaml"
 
 payload.setdefault("vault_management", {})
 payload["vault_management"]["admin_password_hash_file"] = "./environment/vault-admin.env"
@@ -128,8 +133,6 @@ main() {
   require_path "$PYTHON_BIN"
   require_path "$CONFIG_TEMPLATE"
   require_path "$ROOT_DIR/datasets/registry.yaml"
-  require_path "$ROOT_DIR/datasets/employees.registry.yaml"
-  require_path "$ROOT_DIR/datasets/employees"
   require_path "$ROOT_DIR/datasets/targets"
   require_path "$ROOT_DIR/dictionaries"
 
