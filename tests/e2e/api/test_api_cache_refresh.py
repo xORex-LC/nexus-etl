@@ -16,6 +16,15 @@ from tests.runtime_test_support import tracked_employees_runtime_roots, write_ru
 runner = CliRunner()
 
 
+def _org_item(ouid: int, name: str) -> dict[str, object]:
+    return {
+        "_id": str(ouid),
+        "_ouid": ouid,
+        "code": str(ouid),
+        "name": name,
+    }
+
+
 def _tracked_runtime_config(tmp_path: Path) -> Path:
     roots = tracked_employees_runtime_roots()
     return write_runtime_config(
@@ -135,7 +144,7 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
             if page == 1:
                 return httpx.Response(
                     200,
-                    json={"items": [{"_ouid": 1, "name": "Org1"}, {"_ouid": 2, "name": "Org2"}]},
+                    json={"items": [_org_item(1, "Org1"), _org_item(2, "Org2")]},
                 )
             return httpx.Response(200, json={"items": []})
         if path.endswith("/user"):

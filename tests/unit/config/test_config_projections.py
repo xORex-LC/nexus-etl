@@ -305,25 +305,25 @@ def test_to_dataset_registry_path_resolves_relative_path_against_runtime_root() 
             "runtime_root": "/opt/nexus",
         },
         "dataset": {
-            "registry_path": "./datasets/employees.registry.yaml",
+            "registry_path": "./datasets/registry.yaml",
         },
     })
 
     result = to_dataset_registry_path(cfg)
 
-    assert result == "/opt/nexus/datasets/employees.registry.yaml"
+    assert result == "/opt/nexus/datasets/registry.yaml"
 
 
 def test_to_dataset_registry_path_keeps_absolute_path() -> None:
     cfg = AppConfig.model_validate({
         "dataset": {
-            "registry_path": "/srv/nexus/datasets/employees.registry.yaml",
+            "registry_path": "/srv/nexus/datasets/registry.yaml",
         },
     })
 
     result = to_dataset_registry_path(cfg)
 
-    assert result == "/srv/nexus/datasets/employees.registry.yaml"
+    assert result == "/srv/nexus/datasets/registry.yaml"
 
 
 def test_to_operational_paths_resolves_relative_dirs_against_runtime_root(tmp_path) -> None:

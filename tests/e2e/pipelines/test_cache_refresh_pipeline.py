@@ -4,6 +4,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import httpx
+import yaml
 from connector.config.loader import load_app_config
 from connector.config.projections import to_cache_db_config, to_identity_db_config
 from connector.infra.sqlite.engine import open_sqlite
@@ -64,6 +65,58 @@ ORG_PAYLOAD = [
         "updatedAt": "2024-01-01T00:00:00Z",
     }
 ]
+
+
+def _write_test_organizations_cache_spec(registry_path: Path) -> None:
+    spec_path = registry_path.parent / "organizations" / "organizations.cache.yaml"
+    payload = {
+        "dataset": "organizations",
+        "table": "organizations",
+        "schema": {
+            "primary_key": "_ouid",
+            "columns": [
+                {"name": "_ouid", "type": "int", "required": True},
+                {"name": "code", "type": "string", "required": True},
+                {"name": "name", "type": "string", "required": True},
+                {"name": "parent_id", "type": "int", "required": False},
+                {"name": "updated_at", "type": "datetime", "required": False},
+            ],
+            "indexes": [
+                {"name": "uidx_organizations_code", "fields": ["code"], "unique": True},
+                {"name": "idx_organizations_name", "fields": ["name"], "unique": False},
+            ],
+        },
+        "sync": {
+            "dataset": "organizations",
+            "list_operation_alias": "organizations.list",
+            "report_entity": "org",
+            "include_deleted_default": False,
+            "item_key": {
+                "source": "_ouid",
+                "ops": [{"op": "to_string"}],
+                "required": True,
+                "on_error": "error",
+            },
+            "projection": [
+                {"target": "_ouid", "source": "_ouid", "ops": [{"op": "to_int"}], "required": True, "on_error": "error"},
+                {"target": "code", "source": "code", "required": True, "on_error": "error"},
+                {"target": "name", "source": "name", "required": True, "on_error": "error"},
+                {"target": "parent_id", "sources": ["parent_id", "parentId"], "ops": [{"op": "coalesce"}, {"op": "to_int"}], "on_error": "set_null"},
+                {"target": "updated_at", "sources": ["updated_at", "updatedAt"], "ops": [{"op": "coalesce"}, {"op": "trim"}], "on_error": "set_null"},
+            ],
+        },
+        "flags": {"include_deleted": False},
+    }
+    spec_path.write_text(
+        yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+
+def _build_cache_refresh_runtime_registry(tmp_path: Path) -> Path:
+    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    _write_test_organizations_cache_spec(registry_path)
+    return registry_path
 
 
 def make_transport(responder):
@@ -206,7 +259,7 @@ def run_cache_refresh(
     return result, cache_dir, report_path, log_dir
 
 def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Path):
-    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    registry_path = _build_cache_refresh_runtime_registry(tmp_path)
     result, cache_dir, report_path, _ = run_cache_refresh(
         tmp_path,
         run_id="refresh-ok",
@@ -238,7 +291,7 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
     assert report["summary"]["rows_blocked"] == 0
 
 def test_cache_status_ok(monkeypatch, tmp_path: Path):
-    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    registry_path = _build_cache_refresh_runtime_registry(tmp_path)
     refresh_result, cache_dir, _, _ = run_cache_refresh(
         tmp_path,
         run_id="refresh-for-status",
@@ -275,7 +328,7 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
     assert report_path.exists()
 
 def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
-    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    registry_path = _build_cache_refresh_runtime_registry(tmp_path)
     refresh_result, cache_dir, _, _ = run_cache_refresh(
         tmp_path,
         run_id="refresh-before-clear",
@@ -321,7 +374,7 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
 def test_cache_does_not_store_passwords(monkeypatch, tmp_path: Path):
     secret = "TOP_SECRET"
     run_id = "no-secret"
-    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    registry_path = _build_cache_refresh_runtime_registry(tmp_path)
     result, cache_dir, report_path, log_dir = run_cache_refresh(
         tmp_path,
         run_id=run_id,
