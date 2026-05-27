@@ -108,7 +108,15 @@ def _seed_org(tmp_path: Path, org_ouid: int) -> None:
     with repo.engine.transaction():
         repo.upsert(
             "organizations",
-            {"_ouid": org_ouid, "code": f"ORG-{org_ouid}", "name": f"Org {org_ouid}", "parent_id": None, "updated_at": None},
+            {
+                "_id": str(org_ouid),
+                "_ouid": org_ouid,
+                "code": str(org_ouid),
+                "name": f"Org {org_ouid}",
+                "match_key": str(org_ouid),
+                "parent_id": None,
+                "updated_at": None,
+            },
         )
 
 

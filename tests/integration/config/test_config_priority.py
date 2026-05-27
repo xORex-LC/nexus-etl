@@ -213,7 +213,7 @@ def test_dataset_registry_path_is_runtime_root_relative(tmp_path):
                 "runtime:",
                 f'  runtime_root: "{runtime_root}"',
                 "dataset:",
-                '  registry_path: "./datasets/employees.registry.yaml"',
+                '  registry_path: "./datasets/registry.yaml"',
             ]
         ),
         encoding="utf-8",
@@ -222,5 +222,5 @@ def test_dataset_registry_path_is_runtime_root_relative(tmp_path):
     loaded = load_app_config(config_path=str(cfg), cli_overrides={})
 
     assert to_dataset_registry_path(loaded.app_config) == str(
-        (runtime_root / "datasets" / "employees.registry.yaml").resolve()
+        (runtime_root / "datasets" / "registry.yaml").resolve()
     )

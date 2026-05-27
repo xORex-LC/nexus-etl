@@ -103,12 +103,20 @@ def _seed_org(repo: SqliteCacheRepository, ouid: int) -> None:
         with repo.engine.transaction():
             repo.upsert(
                 "organizations",
-                {"_ouid": ouid, "code": f"ORG-{ouid}", "name": f"Org {ouid}", "parent_id": None, "updated_at": None},
+                {
+                    "_id": str(ouid),
+                    "_ouid": ouid,
+                    "code": str(ouid),
+                    "name": f"Org {ouid}",
+                    "match_key": str(ouid),
+                    "parent_id": None,
+                    "updated_at": None,
+                },
             )
         with identity_engine.transaction():
             identity_repo.upsert_identity("organizations", format_identity_key("_ouid", str(ouid)), str(ouid))
             identity_repo.upsert_identity("organizations", format_identity_key("name", f"Org {ouid}"), str(ouid))
-            identity_repo.upsert_identity("organizations", format_identity_key("code", f"ORG-{ouid}"), str(ouid))
+            identity_repo.upsert_identity("organizations", format_identity_key("code", str(ouid)), str(ouid))
     finally:
         identity_engine.close()
 
