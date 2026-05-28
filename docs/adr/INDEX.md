@@ -114,6 +114,8 @@ docs/adr/
 | [TRANSFORM-PROBLEM-009](./transform/TRANSFORM-PROBLEM-009-sink-validation-cross-cutting-in-stage-cores.md) | Problem | Sink schema validation — cross-cutting concern внутри всех 4 stage cores | ❌ Открыто (наблюдение, accepted pattern) | 2026-02-24 |
 | [TRANSFORM-PROBLEM-010](./transform/TRANSFORM-PROBLEM-010-hardcoded-dataset-spec-blocks-extensibility.md) | Problem | Хардкодированный DatasetSpec блокирует расширяемость датасетов | ✅ Закрыто | 2026-03-09 |
 | [TRANSFORM-DEC-009](./transform/TRANSFORM-DEC-009-declarative-dataset-spec-yaml-driven-plugins.md) | Decision | Декларативный DatasetSpec — YAML-driven dataset plugins | ✅ Закрыто | 2026-03-09 |
+| [TRANSFORM-PROBLEM-011](./transform/TRANSFORM-PROBLEM-011-dependency-tree-topology-runtime-integration.md) | Problem | Runtime integration dependency tree и момент построения topology snapshot | ✅ Закрыто | 2026-05-28 |
+| [TRANSFORM-DEC-010](./transform/TRANSFORM-DEC-010-topology-bootstrap-before-main-pipeline.md) | Decision | Topology bootstrap до основного planning pipeline | ✅ Принято | 2026-05-28 |
 
 ### Delivery
 
