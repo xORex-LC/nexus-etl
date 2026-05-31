@@ -54,26 +54,11 @@ class CompiledTopologyCanonicalizer:
     _registry: OperationRegistry
 
     def canonicalize_segments(self, segments: tuple[str, ...]) -> tuple[str, ...]:
-        current: tuple[str, ...] = tuple(str(segment) for segment in segments)
-        for step in self.ops:
-            operation = self._registry.get(step.op)
-            if operation is None:
-                raise DslLoadError(
-                    code="TOPOLOGY_DSL_COMPILE_INVALID",
-                    message=f"Unknown topology canonicalizer operation: {step.op}",
-                )
-            if step.scope == "segment":
-                current = tuple(
-                    "" if value is None else str(value)
-                    for value in (
-                        operation.func(segment, **step.args_dict())
-                        for segment in current
-                    )
-                )
-                continue
-            compacted = operation.func(list(current), **step.args_dict())
-            current = tuple("" if value is None else str(value) for value in compacted)
-        return current
+        return _apply_compiled_canonicalizer_ops(
+            ops=self.ops,
+            registry=self._registry,
+            segments=segments,
+        )
 
 
 @dataclass(frozen=True)
@@ -83,40 +68,21 @@ class CompiledTopologyPolarsExpressionPlan:
         Декларативная Polars-friendly форма topology canonicalizer-а.
 
     Примечание:
-        На Stage B это ещё не реальный `pl.Expr` adapter. План хранит
-        детерминированную последовательность шагов, которую later infra-adapter
-        сможет превратить в vectorized expression pipeline без повторного парсинга YAML.
+        На Stage B это ещё не реальный `pl.Expr` adapter. До появления
+        vectorized-адаптера placeholder исполняет тот же shared op-path,
+        что и python-форма, чтобы dual-form identity держалась по построению,
+        а не на совпадении двух независимых реализаций.
     """
 
     ops: tuple[CompiledTopologyCanonicalizeOp, ...]
+    _registry: OperationRegistry
 
     def apply_to_segments(self, segments: tuple[str, ...]) -> tuple[str, ...]:
-        current: tuple[str, ...] = tuple(str(segment) for segment in segments)
-        for step in self.ops:
-            if step.op == "trim":
-                current = tuple(_segment_trim(segment) for segment in current)
-            elif step.op == "lower":
-                current = tuple(segment.lower() for segment in current)
-            elif step.op == "regex_replace":
-                args = step.args_dict()
-                current = tuple(
-                    _segment_regex_replace(
-                        segment,
-                        pattern=args["pattern"],
-                        repl=args["repl"],
-                    )
-                    for segment in current
-                )
-            elif step.op == "compact":
-                current = tuple(
-                    segment for segment in current if str(segment).strip() != ""
-                )
-            else:
-                raise DslLoadError(
-                    code="TOPOLOGY_DSL_COMPILE_INVALID",
-                    message=f"Unsupported topology polars-expression op: {step.op}",
-                )
-        return current
+        return _apply_compiled_canonicalizer_ops(
+            ops=self.ops,
+            registry=self._registry,
+            segments=segments,
+        )
 
 
 @dataclass(frozen=True)
@@ -154,7 +120,10 @@ class TopologyDsl:
                     ops=ops,
                     _registry=self._registry,
                 ),
-                polars_expression_plan=CompiledTopologyPolarsExpressionPlan(ops=ops),
+                polars_expression_plan=CompiledTopologyPolarsExpressionPlan(
+                    ops=ops,
+                    _registry=self._registry,
+                ),
                 normalization_version=normalization_version,
             )
         except DslLoadError:
@@ -208,11 +177,37 @@ def _build_normalization_version(
     return f"sha256:{digest}"
 
 
-def _segment_trim(value: str) -> str:
-    return " ".join(str(value).split())
+def _apply_compiled_canonicalizer_ops(
+    *,
+    ops: tuple[CompiledTopologyCanonicalizeOp, ...],
+    registry: OperationRegistry,
+    segments: tuple[str, ...],
+) -> tuple[str, ...]:
+    """
+    Назначение:
+        Исполнить topology canonicalizer через единый shared op-path.
 
+    Границы:
+        - Использует только зарегистрированные core DSL operations.
+        - Не строит `pl.Expr` и не знает ничего о vectorized runtime.
+    """
 
-def _segment_regex_replace(value: str, *, pattern: str, repl: str) -> str:
-    import re
-
-    return re.sub(pattern, repl, value)
+    current: tuple[str, ...] = tuple(str(segment) for segment in segments)
+    for step in ops:
+        operation = registry.get(step.op)
+        if operation is None:
+            raise DslLoadError(
+                code="TOPOLOGY_DSL_COMPILE_INVALID",
+                message=f"Unknown topology canonicalizer operation: {step.op}",
+            )
+        if step.scope == "segment":
+            current = tuple(
+                "" if value is None else str(value)
+                for value in (
+                    operation.func(segment, **step.args_dict()) for segment in current
+                )
+            )
+            continue
+        compacted = operation.func(list(current), **step.args_dict())
+        current = tuple("" if value is None else str(value) for value in compacted)
+    return current
