@@ -60,6 +60,21 @@ from connector.domain.transform_dsl.specs.source import (
     SourceFieldSpec,
     SourceSpec,
 )
+from connector.domain.transform_dsl.specs.topology import (
+    MatchTopologyPolicySpec,
+    ResolveTopologyLinkSpec,
+    TopologyCanonicalizeOpSpec,
+    TopologyBlock,
+    TopologyCanonicalizationSpec,
+    TopologyCompactOpSpec,
+    TopologyLowerOpSpec,
+    TopologyPathColumnSpec,
+    TopologyRegexReplaceOpSpec,
+    TopologySourcePathColumnsSpec,
+    TopologySpec,
+    TopologyTargetAdjacencySpec,
+    TopologyTrimOpSpec,
+)
 from connector.domain.transform_dsl.specs.validate import (
     ConditionalCheck,
     FieldCheck,
@@ -79,6 +94,20 @@ __all__ = [
     "SourceFieldSpec",
     "SourceConfig",
     "SourceSpec",
+    # Topology
+    "TopologyPathColumnSpec",
+    "TopologyTrimOpSpec",
+    "TopologyLowerOpSpec",
+    "TopologyCompactOpSpec",
+    "TopologyRegexReplaceOpSpec",
+    "TopologyCanonicalizeOpSpec",
+    "TopologyCanonicalizationSpec",
+    "TopologySourcePathColumnsSpec",
+    "TopologyTargetAdjacencySpec",
+    "MatchTopologyPolicySpec",
+    "ResolveTopologyLinkSpec",
+    "TopologyBlock",
+    "TopologySpec",
     # Sink
     "SinkBoolLiteralMapSpec",
     "SinkFieldSerializeSpec",

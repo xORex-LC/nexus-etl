@@ -11,7 +11,11 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from connector.domain.dataset_dsl.coercions import to_bool, to_float_or_none, to_int_or_none
+from connector.domain.dataset_dsl.coercions import (
+    to_bool,
+    to_float_or_none,
+    to_int_or_none,
+)
 from connector.domain.transform_dsl.specs import SinkFieldSpec
 
 _COERCIONS: dict[str, Callable[[Any], Any]] = {
@@ -56,4 +60,3 @@ def _apply_output_serialization(field: SinkFieldSpec, canonical: Any) -> Any:
     if mapping is None:
         raise ValueError("serialize.map is required for as=literal_map")
     return mapping.true if canonical else mapping.false
-

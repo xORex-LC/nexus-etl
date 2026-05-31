@@ -108,6 +108,20 @@ class LinkRules:
 
 
 @dataclass(frozen=True)
+class ResolveTopologyLinkPolicy:
+    """
+    Назначение:
+        Скомпилированная topology-backed policy для resolve link flow.
+    """
+
+    enabled: bool = False
+    field: str = ""
+    on_missing_topology: str = "pending"
+    on_ambiguous_topology: str = "pending"
+    comparison_ladder: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class CompiledResolveRules:
     """
     Назначение:
@@ -116,6 +130,7 @@ class CompiledResolveRules:
 
     resolve_rules: ResolveRules
     link_rules: LinkRules
+    topology_link: ResolveTopologyLinkPolicy | None = None
 
 
 # ========== COMPILER ==========
@@ -142,7 +157,11 @@ class ResolveDsl:
         """
         try:
             if not self.options.allow_pending_links:
-                pending_links = [item.field for item in spec.resolve.links if item.on_unresolved == "pending"]
+                pending_links = [
+                    item.field
+                    for item in spec.resolve.links
+                    if item.on_unresolved == "pending"
+                ]
                 if pending_links:
                     raise DslLoadError(
                         code="RESOLVE_DSL_COMPILE_INVALID",
@@ -152,10 +171,29 @@ class ResolveDsl:
                         ),
                     )
             link_rules = LinkRules(
-                fields=tuple(self._compile_link_rule(item) for item in spec.resolve.links),
+                fields=tuple(
+                    self._compile_link_rule(item) for item in spec.resolve.links
+                ),
             )
             resolve_rules = self._compile_v2(spec, sink_spec=sink_spec)
-            return CompiledResolveRules(resolve_rules=resolve_rules, link_rules=link_rules)
+            topology_link = None
+            if spec.resolve.topology_link is not None:
+                topology_link = ResolveTopologyLinkPolicy(
+                    enabled=spec.resolve.topology_link.enabled,
+                    field=spec.resolve.topology_link.field,
+                    on_missing_topology=spec.resolve.topology_link.on_missing_topology,
+                    on_ambiguous_topology=(
+                        spec.resolve.topology_link.on_ambiguous_topology
+                    ),
+                    comparison_ladder=tuple(
+                        spec.resolve.topology_link.comparison_ladder
+                    ),
+                )
+            return CompiledResolveRules(
+                resolve_rules=resolve_rules,
+                link_rules=link_rules,
+                topology_link=topology_link,
+            )
         except DslLoadError:
             raise
         except Exception as exc:
@@ -180,7 +218,9 @@ class ResolveDsl:
             )
 
         return ResolveRules(
-            build_desired_state=self._compile_desired_state(desired_spec.fields, desired_spec.drop_fields),
+            build_desired_state=self._compile_desired_state(
+                desired_spec.fields, desired_spec.drop_fields
+            ),
             build_source_ref=self._compile_source_ref(block.source_ref),
             diff_policy=self._compile_diff(diff_spec, sink_spec=sink_spec),
             merge_policy=self._compile_merge(block.merge),
@@ -228,7 +268,11 @@ class ResolveDsl:
                     continue
                 source_ref[name] = value
 
-            if include_primary and identity.primary not in source_ref and identity.primary_value is not None:
+            if (
+                include_primary
+                and identity.primary not in source_ref
+                and identity.primary_value is not None
+            ):
                 source_ref[identity.primary] = identity.primary_value
             return source_ref
 
@@ -243,7 +287,9 @@ class ResolveDsl:
         rules = tuple(_build_diff_rules(spec, sink_spec=sink_spec))
         ignored = set(spec.ignore_fields)
 
-        def _diff(existing: dict[str, Any] | None, desired_state: dict[str, Any]) -> dict[str, Any]:
+        def _diff(
+            existing: dict[str, Any] | None, desired_state: dict[str, Any]
+        ) -> dict[str, Any]:
             if not existing:
                 return {}
             changes: dict[str, Any] = {}
@@ -252,8 +298,12 @@ class ResolveDsl:
                     continue
                 existing_key = rule.existing or rule.field
                 output_key = rule.output or rule.field
-                desired_value = _normalize_for_mode(desired_state.get(rule.field), rule.normalize)
-                existing_value = _normalize_for_mode(existing.get(existing_key), rule.normalize)
+                desired_value = _normalize_for_mode(
+                    desired_state.get(rule.field), rule.normalize
+                )
+                existing_value = _normalize_for_mode(
+                    existing.get(existing_key), rule.normalize
+                )
                 if existing_value != desired_value:
                     changes[output_key] = desired_value
             return changes
@@ -266,7 +316,9 @@ class ResolveDsl:
             return None
         rules = tuple(spec.fields)
 
-        def _merge(existing: dict[str, Any] | None, desired_state: dict[str, Any]) -> dict[str, Any]:
+        def _merge(
+            existing: dict[str, Any] | None, desired_state: dict[str, Any]
+        ) -> dict[str, Any]:
             if not existing:
                 return dict(desired_state)
             merged = dict(desired_state)
@@ -275,7 +327,9 @@ class ResolveDsl:
                 if current not in (None, ""):
                     continue
                 existing_key = rule.existing or rule.field
-                fallback = _normalize_for_mode(existing.get(existing_key), rule.normalize)
+                fallback = _normalize_for_mode(
+                    existing.get(existing_key), rule.normalize
+                )
                 if fallback in (None, ""):
                     continue
                 merged[rule.field] = fallback
@@ -284,13 +338,17 @@ class ResolveDsl:
         return _merge
 
     @staticmethod
-    def _compile_secret_fields(spec: ResolveSecretsSpec | None) -> SecretFieldsPolicy | None:
+    def _compile_secret_fields(
+        spec: ResolveSecretsSpec | None,
+    ) -> SecretFieldsPolicy | None:
         if spec is None or spec.mode == "none":
             return None
         create_fields = tuple(spec.create)
         update_fields = tuple(spec.update)
 
-        def _policy(op: str, desired_state: dict[str, Any], existing: dict[str, Any] | None) -> list[str]:
+        def _policy(
+            op: str, desired_state: dict[str, Any], existing: dict[str, Any] | None
+        ) -> list[str]:
             _ = (desired_state, existing)
             if op == "create":
                 return list(create_fields)
@@ -301,7 +359,9 @@ class ResolveDsl:
         return _policy
 
     @staticmethod
-    def _compile_secret_lifecycle(spec: ResolveSecretsSpec | None) -> SecretLifecyclePolicy:
+    def _compile_secret_lifecycle(
+        spec: ResolveSecretsSpec | None,
+    ) -> SecretLifecyclePolicy:
         """
         Назначение:
             Скомпилировать lifecycle policy для retention в apply-runtime.
@@ -311,7 +371,9 @@ class ResolveDsl:
             - `ephemeral` по умолчанию включает delete-on-success.
         """
         if spec is None or spec.lifecycle is None:
-            return SecretLifecyclePolicy(mode="persistent", delete_on_success=False, ttl_seconds=None)
+            return SecretLifecyclePolicy(
+                mode="persistent", delete_on_success=False, ttl_seconds=None
+            )
 
         lifecycle = spec.lifecycle
         mode = lifecycle.mode
@@ -331,7 +393,10 @@ class ResolveDsl:
         return LinkFieldRule(
             field=spec.field,
             target_dataset=spec.target_dataset,
-            resolve_keys=tuple(LinkKeyRule(name=item.name, field=item.field) for item in spec.resolve_keys),
+            resolve_keys=tuple(
+                LinkKeyRule(name=item.name, field=item.field)
+                for item in spec.resolve_keys
+            ),
             dedup_rules=tuple(tuple(rule) for rule in spec.dedup_rules),
             target_id_field=spec.target_id_field,
             coerce=spec.coerce,

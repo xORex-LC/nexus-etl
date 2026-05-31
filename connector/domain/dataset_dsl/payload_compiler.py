@@ -44,7 +44,8 @@ class SinkDrivenPayloadBuilder:
         # Fields whose target key is overridden by defaults — skip entirely
         self._default_targets = set(self._defaults)
         self._fields = [
-            f for f in sink_spec.sink.fields
+            f
+            for f in sink_spec.sink.fields
             if (f.target or f.name) not in self._default_targets
         ]
 
@@ -86,7 +87,9 @@ class SinkDrivenPayloadBuilder:
                 f"Missing required fields for payload: {', '.join(missing)}"
             )
 
-    def _build_payload(self, source: dict[str, Any], *, preview: bool = False) -> dict[str, Any]:
+    def _build_payload(
+        self, source: dict[str, Any], *, preview: bool = False
+    ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         for field in self._fields:
             value = source.get(field.name)

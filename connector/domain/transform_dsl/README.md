@@ -8,8 +8,8 @@
 
 | Подпапка | Назначение |
 |---|---|
-| `specs/` | Pydantic-модели: `MappingSpec`, `NormalizeSpec`, `EnrichSpec`, `MatchSpec`, `ResolveSpec`, `SinkSpec`, `SourceSpec`, `ValidateSpec` |
-| `compilers/` | Компиляторы: `MappingCompiler`, `NormalizeCompiler`, `EnrichCompiler`, `MatchCompiler`, `ResolveCompiler` — переводят spec → runtime объекты стадии |
+| `specs/` | Pydantic-модели: `MappingSpec`, `NormalizeSpec`, `EnrichSpec`, `MatchSpec`, `ResolveSpec`, `SinkSpec`, `SourceSpec`, `ValidateSpec`, `TopologySpec` |
+| `compilers/` | Компиляторы: `MappingCompiler`, `NormalizeCompiler`, `EnrichCompiler`, `MatchCompiler`, `ResolveCompiler`, `TopologyDsl` — переводят spec → runtime объекты стадии/подсистемы |
 
 ## Поток данных
 

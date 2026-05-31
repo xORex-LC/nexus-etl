@@ -170,6 +170,16 @@ def build_core_catalog(*, strict: bool) -> ErrorCatalog:
             severity=DiagnosticSeverity.ERROR,
         ),
         CatalogEntry(
+            "TOPOLOGY_DSL_SPEC_INVALID",
+            SystemErrorCode.DATA_INVALID,
+            severity=DiagnosticSeverity.ERROR,
+        ),
+        CatalogEntry(
+            "TOPOLOGY_DSL_COMPILE_INVALID",
+            SystemErrorCode.INTERNAL_ERROR,
+            severity=DiagnosticSeverity.ERROR,
+        ),
+        CatalogEntry(
             "SINK_DSL_SPEC_INVALID",
             SystemErrorCode.DATA_INVALID,
             severity=DiagnosticSeverity.ERROR,

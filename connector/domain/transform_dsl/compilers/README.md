@@ -13,6 +13,7 @@
 | `enrich.py` | `EnrichSpec` → `EnricherCore` (с `ProviderGateway`, `SecretProvider`) |
 | `match.py` | `MatchSpec` → `MatchEngine` |
 | `resolve.py` | `ResolveSpec` → `ResolveEngine` |
+| `topology.py` | `TopologySpec` → `CompiledTopologyCanonicalizerPlan` (python + polars-expression plan) |
 
 ## Зависимости
 

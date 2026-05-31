@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, TypeVar
 
-from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.models import DiagnosticItem
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.enrich.models import (
@@ -29,9 +28,17 @@ from connector.domain.dsl.issues import DslLoadError, DslSeverity
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.dsl.specs import OperationCall, SourceOpsBlock
 from connector.domain.transform_dsl.build_options import EnrichDslBuildOptions
-from connector.domain.transform_dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
+from connector.domain.transform_dsl.specs import (
+    EnrichRule,
+    EnrichSpec,
+    MatchKeySpec,
+    SecretsSpec,
+)
 from connector.domain.transform.common.values import read_value_path
-from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
+from connector.domain.transform.ids.match_key import (
+    MatchKeyError,
+    build_delimited_match_key,
+)
 
 T = TypeVar("T")
 D = TypeVar("D")
@@ -326,7 +333,9 @@ def _build_rule_generator(rule: EnrichRule, engine: TransformationEngine):
     return _generator
 
 
-def _build_base_generator(rule: EnrichRule, engine: TransformationEngine) -> ValueBuilder:
+def _build_base_generator(
+    rule: EnrichRule, engine: TransformationEngine
+) -> ValueBuilder:
     block = rule.build
 
     def _generator(result, deps):
@@ -340,7 +349,9 @@ def _build_base_generator(rule: EnrichRule, engine: TransformationEngine) -> Val
     return _generator
 
 
-def _build_condition(rule: EnrichRule, engine: TransformationEngine) -> PredicateBuilder | None:
+def _build_condition(
+    rule: EnrichRule, engine: TransformationEngine
+) -> PredicateBuilder | None:
     block = rule.when
     if block is None:
         return None
@@ -355,7 +366,9 @@ def _build_condition(rule: EnrichRule, engine: TransformationEngine) -> Predicat
     return _condition
 
 
-def _build_append_generator(rule: EnrichRule, engine: TransformationEngine) -> ValueBuilder | None:
+def _build_append_generator(
+    rule: EnrichRule, engine: TransformationEngine
+) -> ValueBuilder | None:
     block = rule.then
     if block is None:
         return None
@@ -388,7 +401,9 @@ class _DslLookupProvider:
         Провайдер lookup-кандидатов, построенный из DSL-правила.
     """
 
-    def __init__(self, rule: EnrichRule, engine: TransformationEngine, providers: ProviderGateway) -> None:
+    def __init__(
+        self, rule: EnrichRule, engine: TransformationEngine, providers: ProviderGateway
+    ) -> None:
         self.rule = rule
         self.engine = engine
         self.providers = providers
@@ -434,7 +449,9 @@ class _DslLookupProvider:
 
         result_values = []
         for candidate in candidates:
-            resolved = read_value_path(candidate, self.rule.value_path or self.rule.target)
+            resolved = read_value_path(
+                candidate, self.rule.value_path or self.rule.target
+            )
             result_values.append(
                 {
                     "field": self.rule.target,
@@ -477,7 +494,9 @@ def _resolve_rule_value(
     return resolved
 
 
-def _resolve_block_value(result: TransformResult[Any], block: SourceOpsBlock, engine: TransformationEngine) -> Any:
+def _resolve_block_value(
+    result: TransformResult[Any], block: SourceOpsBlock, engine: TransformationEngine
+) -> Any:
     return _resolve_rule_value(result, block.source, block.sources, block.ops, engine)
 
 

@@ -44,7 +44,12 @@ def _sample_context() -> MatchContext:
 def test_match_dsl_compile_matches_employees_dsl_contract():
     compiled = MatchDsl().compile(load_match_spec_for_dataset("employees"))
 
-    assert compiled.ignored_fields == {"updated_at", "_rev", "deletion_date", "account_status"}
+    assert compiled.ignored_fields == {
+        "updated_at",
+        "_rev",
+        "deletion_date",
+        "account_status",
+    }
     assert compiled.source_dedup.enabled is True
     assert compiled.source_dedup.on_duplicate == "warn"
     assert compiled.source_dedup.on_conflict == "error"
@@ -57,6 +62,21 @@ def test_match_dsl_compile_matches_employees_dsl_contract():
     identity0 = compiled.identity_rules[0].build_identity(row, context)
     assert identity0.primary == "match_key"
     assert identity0.values.get("match_key") == "Doe|John|M|100"
+    assert compiled.topology is None
+
+
+def test_match_dsl_compile_matches_organizations_topology_policy() -> None:
+    compiled = MatchDsl().compile(load_match_spec_for_dataset("organizations"))
+
+    assert compiled.topology is not None
+    assert compiled.topology.enabled is True
+    assert compiled.topology.apply_on == "ambiguous_only"
+    assert compiled.topology.on_missing_topology == "hard_error"
+    assert compiled.topology.comparison_ladder == (
+        "exact_canonical_path",
+        "exact_leaf_parent_chain",
+        "exact_leaf_root_depth",
+    )
 
 
 def test_match_spec_rejects_invalid_thresholds():
@@ -106,6 +126,26 @@ def test_match_spec_rejects_mismatched_comparators_and_weights():
                         "enabled": True,
                         "comparators": {"email": "casefold"},
                         "weights": {"first_name": 1.0},
+                    },
+                },
+            }
+        )
+
+
+def test_match_spec_rejects_enabled_topology_without_ladder() -> None:
+    with pytest.raises(Exception):
+        MatchSpec.model_validate(
+            {
+                "dataset": "organizations",
+                "match": {
+                    "identity_rules": [
+                        {"name": "match_key", "fields": ["match_key"]},
+                    ],
+                    "topology": {
+                        "enabled": True,
+                        "apply_on": "ambiguous_only",
+                        "on_missing_topology": "skip",
+                        "comparison_ladder": [],
                     },
                 },
             }

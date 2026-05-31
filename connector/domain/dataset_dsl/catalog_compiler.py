@@ -15,7 +15,9 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.models import DiagnosticSeverity
 
 
-_SYSTEM_CODE_MAP: dict[str, SystemErrorCode] = {e.value.upper(): e for e in SystemErrorCode}
+_SYSTEM_CODE_MAP: dict[str, SystemErrorCode] = {
+    e.value.upper(): e for e in SystemErrorCode
+}
 _SEVERITY_MAP: dict[str, DiagnosticSeverity] = {e.value: e for e in DiagnosticSeverity}
 
 
