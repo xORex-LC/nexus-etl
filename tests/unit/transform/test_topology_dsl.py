@@ -81,6 +81,20 @@ def test_topology_canonicalizer_is_symmetric_for_source_and_target_labels() -> N
     ) == compiled.python.canonicalize_segments(target_labels)
 
 
+def test_topology_canonicalizer_is_cross_form_symmetric_for_source_and_target() -> None:
+    """Проверяет реальную Stage C/Stage G+ границу: source placeholder против target python."""
+
+    build_isolated_test_runtime_root(tracked_employees_runtime_roots()["runtime_root"])
+    compiled = TopologyDsl().compile(load_topology_spec_for_dataset("organizations"))
+
+    source_segments = ("  Head Office ", " Finance   Dept ")
+    target_labels = ("Head   Office", "  FINANCE DEPT  ")
+
+    assert compiled.polars_expression_plan.apply_to_segments(
+        source_segments
+    ) == compiled.python.canonicalize_segments(target_labels)
+
+
 def test_topology_canonicalizer_dual_form_matches_python_output() -> None:
     build_isolated_test_runtime_root(tracked_employees_runtime_roots()["runtime_root"])
     compiled = TopologyDsl().compile(load_topology_spec_for_dataset("organizations"))
@@ -89,6 +103,48 @@ def test_topology_canonicalizer_dual_form_matches_python_output() -> None:
         (" Root ", " Team A "),
         ("Root", "  TEAM   A", ""),
         ("North  Region", "  Finance\tDept  "),
+    )
+
+    for segments in samples:
+        assert compiled.python.canonicalize_segments(
+            segments
+        ) == compiled.polars_expression_plan.apply_to_segments(segments)
+
+
+def test_topology_canonicalizer_dual_form_matches_python_output_for_order_sensitive_ops() -> None:
+    """Проверяет dual-form contract на порядке ops, не завязанном на organizations-topology."""
+
+    spec = TopologySpec.model_validate(
+        {
+            "dataset": "organizations",
+            "topology": {
+                "canonicalization": {
+                    "ops": [
+                        {"op": "compact"},
+                        {"op": "trim"},
+                        {"op": "lower"},
+                        {"op": "regex_replace", "pattern": " +", "repl": "_"},
+                    ]
+                },
+                "source": {
+                    "mode": "path_columns",
+                    "path_columns": [{"field": "l1"}, {"field": "l2"}],
+                },
+                "target": {
+                    "mode": "adjacency_list",
+                    "node_id_field": "_ouid",
+                    "parent_id_field": "parent_id",
+                    "target_label_field": "name",
+                },
+            },
+        }
+    )
+    compiled = TopologyDsl().compile(spec)
+
+    samples = (
+        (" Root ", "  ", "\tTeam A\t"),
+        ("", " Finance   Dept ", "  "),
+        (" North  Region ", " \t ", "Ops"),
     )
 
     for segments in samples:
