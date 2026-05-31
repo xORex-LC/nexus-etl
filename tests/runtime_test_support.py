@@ -168,6 +168,14 @@ def _normalized_registry_payload(repo_datasets_root: Path) -> dict[str, Any]:
                 normalized = _maybe_normalize_dataset_ref(repo_datasets_root, ref)
                 if normalized is not None:
                     entry[key] = normalized
+            elif key == "topology" and isinstance(ref, dict):
+                spec_ref = ref.get("spec")
+                if isinstance(spec_ref, str):
+                    normalized = _maybe_normalize_dataset_ref(
+                        repo_datasets_root, spec_ref
+                    )
+                    if normalized is not None:
+                        ref["spec"] = normalized
 
     cache = payload.get("cache") or {}
     for entry in (cache.get("datasets") or {}).values():
@@ -211,6 +219,11 @@ def _copy_registry_artifacts(
         if not isinstance(entry, dict):
             continue
         dataset_refs.update(ref for ref in entry.values() if isinstance(ref, str))
+        topology_entry = entry.get("topology")
+        if isinstance(topology_entry, dict):
+            spec_ref = topology_entry.get("spec")
+            if isinstance(spec_ref, str):
+                dataset_refs.add(spec_ref)
 
     cache = registry_payload.get("cache") or {}
     for entry in (cache.get("datasets") or {}).values():

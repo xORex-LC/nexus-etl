@@ -2,17 +2,19 @@
 
 ## Назначение
 
-DSL описания схемы датасета: структура catalog (поля, типы), правила построения payload для целевой системы, компиляция sink-схемы.
+DSL описания dataset-level registry metadata: report/apply настройки, diagnostics и topology capability binding.
 
 ## Файлы
 
 | Файл | Назначение |
 |---|---|
-| `specs.py` | Pydantic-модели: `DatasetCatalogSpec`, `DatasetFieldSpec`, `PayloadSpec`, `FieldSerializationSpec` |
-| `compiler.py` | `CatalogCompiler` — compiles catalog spec → runtime field index; `PayloadCompiler` — builds payload dict from resolved state per sink rules |
-| `loader.py` | Загрузка YAML dataset-спек |
+| `specs.py` | Pydantic-модели: `DatasetDslSpec`, `ReportAdapterSpec`, `ApplyAdapterSpec`, `TopologyCapabilitySpec` |
+| `payload_compiler.py` | `SinkDrivenPayloadBuilder` — builds payload dict from resolved state per sink rules |
+| `params_compiler.py` | Компиляция params-builder policy для apply adapter |
+| `catalog_compiler.py` | Компиляция dataset diagnostic entries в `ErrorCatalog` |
+| `loader.py` | Загрузка и валидация dataset-level секций runtime registry |
 
 ## Зависимости
 
 **Зависит от:** `pydantic`, `domain/transform_dsl/specs/sink.py`.  
-**Используется:** `datasets/yaml_spec.py`.
+**Используется:** `datasets/yaml_spec.py`, `datasets/yaml_spec_loader.py`.

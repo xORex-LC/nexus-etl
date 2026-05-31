@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from connector.domain.dsl.specs._base import DslBaseModel
+from connector.domain.transform_dsl.specs.topology import ResolveTopologyLinkSpec
 
 
 class ResolveDesiredStateSpec(DslBaseModel):
@@ -105,7 +106,9 @@ class ResolveMergeSpec(DslBaseModel):
     @model_validator(mode="after")
     def _validate_fields(self) -> "ResolveMergeSpec":
         if self.mode == "fill_empty_from_existing" and not self.fields:
-            raise ValueError("resolve.merge.fields must not be empty for fill_empty_from_existing")
+            raise ValueError(
+                "resolve.merge.fields must not be empty for fill_empty_from_existing"
+            )
         return self
 
 
@@ -162,7 +165,9 @@ class ResolveLinkSpec(DslBaseModel):
             raise ValueError("resolve.links[].resolve_keys must not be empty")
         for idx, rule in enumerate(self.dedup_rules):
             if not rule:
-                raise ValueError(f"resolve.links[].dedup_rules[{idx}] must not be empty")
+                raise ValueError(
+                    f"resolve.links[].dedup_rules[{idx}] must not be empty"
+                )
             for key_name in rule:
                 if not str(key_name).strip():
                     raise ValueError(
@@ -178,6 +183,7 @@ class ResolveBlock(DslBaseModel):
     merge: ResolveMergeSpec | None = None
     secrets: ResolveSecretsSpec | None = None
     links: list[ResolveLinkSpec] = Field(default_factory=list)
+    topology_link: ResolveTopologyLinkSpec | None = None
 
     @model_validator(mode="after")
     def _validate_block(self) -> "ResolveBlock":

@@ -9,10 +9,11 @@
 
 from connector.domain.dataset_dsl.loader import load_dataset_dsl_spec
 from connector.domain.dataset_dsl.payload_compiler import SinkDrivenPayloadBuilder
-from connector.domain.dataset_dsl.specs import DatasetDslSpec
+from connector.domain.dataset_dsl.specs import DatasetDslSpec, TopologyCapabilitySpec
 
 __all__ = [
     "load_dataset_dsl_spec",
     "DatasetDslSpec",
+    "TopologyCapabilitySpec",
     "SinkDrivenPayloadBuilder",
 ]
