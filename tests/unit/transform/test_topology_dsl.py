@@ -7,7 +7,10 @@ from pydantic import ValidationError
 
 from connector.domain.transform_dsl import load_topology_spec_for_dataset
 from connector.domain.transform_dsl.compilers.topology import TopologyDsl
-from connector.domain.transform_dsl.specs import TopologySpec
+from connector.domain.transform_dsl.specs import (
+    TopologyFreshnessPolicySpec,
+    TopologySpec,
+)
 from tests.runtime_test_support import (
     build_isolated_test_runtime_root,
     tracked_employees_runtime_roots,
@@ -178,3 +181,8 @@ def test_topology_spec_rejects_non_whitelist_ops_on_pydantic_boundary() -> None:
                 },
             }
         )
+
+
+def test_topology_freshness_policy_spec_requires_max_age_seconds() -> None:
+    with pytest.raises(ValidationError):
+        TopologyFreshnessPolicySpec.model_validate({"mode": "max_age"})

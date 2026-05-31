@@ -13,6 +13,7 @@ query API, source/target builders и deterministic hash helpers.
 | `snapshot.py` | `TopologyQueryPort`, `TopologySnapshot` — read-only graph/query-слой |
 | `source_builder.py` | `SourcePathTopologyBuilder` — source-side сборка из canonical path-ов |
 | `target_builder.py` | `TargetHierarchyTopologyBuilder` — target-side валидация adjacency и сборка |
+| `readiness.py` | `TopologyTargetReadinessEvaluator` — readiness/freshness оценка target snapshot-а |
 | `fingerprints.py` | Детерминированные SHA-256-хелперы для synthetic id и structural signature |
 | `ports.py` | `TopologyTracePort`, `NullTopologyTrace` — domain-local trace seam для DEBUG |
 
@@ -20,4 +21,4 @@ query API, source/target builders и deterministic hash helpers.
 
 - Не зависит от `infra`, `delivery`, `usecases`, `polars`, `structlog`
 - Не читает YAML/spec и не знает о cache/SQLite
-- Не решает readiness/bootstrap orchestration и не содержит stage logic
+- Не читает target hierarchy сам и не содержит bootstrap/stage orchestration

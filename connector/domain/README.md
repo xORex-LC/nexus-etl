@@ -20,8 +20,8 @@
 | `diagnostics/` | `ErrorCatalog`, `DiagnosticItem`, `SystemErrorCode`, `StopPolicy` |
 | `reporting/` | Event-driven система отчётности: `InMemoryReportContext`, events, adapters |
 | `secrets/` | Vault-сервисы, политики жизненного цикла секретов |
-| `dependency_tree/` | Topology snapshot/query subsystem: builders, validators, deterministic ids |
-| `ports/` | Все интерфейсы (Protocols) для `cache`, `target`, `secrets`, `transform` |
+| `dependency_tree/` | Topology snapshot/query subsystem: builders, readiness evaluator, deterministic ids |
+| `ports/` | Все интерфейсы (Protocols) для `cache`, `target`, `secrets`, `transform`, `topology` |
 | `models.py` | Общие доменные модели: `DiagnosticItem`, `DiagnosticStage`, `RowRef`, `Identity` |
 
 ## Правила слоя

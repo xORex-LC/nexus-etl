@@ -1,4 +1,4 @@
-"""Dependency tree public exports."""
+"""Публичные экспорты dependency_tree подсистемы."""
 
 from connector.domain.dependency_tree.fingerprints import (
     build_source_synthetic_id,
@@ -6,6 +6,9 @@ from connector.domain.dependency_tree.fingerprints import (
 )
 from connector.domain.dependency_tree.models import TopologyNode
 from connector.domain.dependency_tree.ports import NullTopologyTrace, TopologyTracePort
+from connector.domain.dependency_tree.readiness import (
+    TopologyTargetReadinessEvaluator,
+)
 from connector.domain.dependency_tree.snapshot import (
     TopologyQueryPort,
     TopologySnapshot,
@@ -19,6 +22,7 @@ __all__ = [
     "NullTopologyTrace",
     "SourcePathTopologyBuilder",
     "TargetHierarchyTopologyBuilder",
+    "TopologyTargetReadinessEvaluator",
     "TopologyNode",
     "TopologyQueryPort",
     "TopologySnapshot",

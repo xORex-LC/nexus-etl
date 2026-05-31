@@ -102,6 +102,27 @@ class TopologyCanonicalizationSpec(DslBaseModel):
     ops: list[TopologyCanonicalizeOpSpec] = Field(default_factory=list)
 
 
+class TopologyFreshnessPolicySpec(DslBaseModel):
+    """
+    Назначение:
+        Декларативный shape freshness-policy для target topology readiness.
+    """
+
+    mode: Literal["none", "max_age", "revision_required"] = "none"
+    max_age_seconds: int | None = None
+    require_revision: bool = False
+
+    @model_validator(mode="after")
+    def _validate_policy(self) -> "TopologyFreshnessPolicySpec":
+        if self.max_age_seconds is not None and self.max_age_seconds <= 0:
+            raise ValueError("topology.freshness.max_age_seconds must be > 0")
+        if self.mode == "max_age" and self.max_age_seconds is None:
+            raise ValueError(
+                "topology.freshness.max_age_seconds is required when mode='max_age'"
+            )
+        return self
+
+
 class TopologySourcePathColumnsSpec(DslBaseModel):
     """
     Назначение:

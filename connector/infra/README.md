@@ -17,6 +17,7 @@
 | `target/` | `TargetGateway`, `TargetKernel`, HTTP-транспорт, Ankey-провайдер |
 | `dictionaries/` | `PolarsDictionaryProvider`, `CsvDictionaryLoader` |
 | `sources/` | `CsvSourceReader` (polars-бэкенд) |
+| `topology/` | `SqliteTopologyTargetReader` — cache-backed adapter для target topology read seam |
 | `logging/` | `create_command_logger()`, `EnsureFieldsFilter` |
 | `artifacts/` | `PlanReader`, `PlanWriter`, `ReportRenderer` |
 

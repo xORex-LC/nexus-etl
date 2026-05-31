@@ -9,9 +9,10 @@ Runtime-facing topology порты и DTO. Это boundary между topology d
 
 | Файл | Назначение |
 |---|---|
-| `models.py` | `SourceTopologyCanonicalPath`, `TargetHierarchyRow` |
+| `models.py` | `SourceTopologyCanonicalPath`, `TargetHierarchyRow`, readiness/freshness DTO |
 | `provider.py` | `TopologyProviderPort`, `TopologyNotAvailableError` |
 | `builders.py` | `SourcePathTopologyBuilderPort`, `TargetHierarchyTopologyBuilderPort` |
+| `readers.py` | `TopologyTargetReadPort` — cache-backed read seam для target hierarchy |
 
 ## Правило
 
