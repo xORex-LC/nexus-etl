@@ -12,7 +12,10 @@ from pydantic import BaseModel
 from connector.domain.dependency_tree import TopologyNode, TopologySnapshot
 from connector.domain.ports.topology import (
     SourceTopologyCanonicalPath,
+    TargetHierarchyReadMeta,
     TargetHierarchyRow,
+    TopologyFreshnessPolicy,
+    TopologyTargetReadinessResult,
 )
 from connector.domain.transform_dsl.specs import TopologySpec
 
@@ -56,7 +59,10 @@ def test_topology_runtime_contracts_are_dataclasses_not_basemodels() -> None:
     assert dataclasses.is_dataclass(TopologyNode)
     assert dataclasses.is_dataclass(TopologySnapshot)
     assert dataclasses.is_dataclass(SourceTopologyCanonicalPath)
+    assert dataclasses.is_dataclass(TargetHierarchyReadMeta)
     assert dataclasses.is_dataclass(TargetHierarchyRow)
+    assert dataclasses.is_dataclass(TopologyFreshnessPolicy)
+    assert dataclasses.is_dataclass(TopologyTargetReadinessResult)
     assert not issubclass(TopologyNode, BaseModel)
     assert not issubclass(TopologySnapshot, BaseModel)
 

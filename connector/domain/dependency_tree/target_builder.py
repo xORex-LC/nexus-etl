@@ -27,7 +27,12 @@ from connector.domain.ports.topology.models import TargetHierarchyRow
 
 
 class TargetHierarchyTopologyBuilder:
-    """Собрать target topology snapshot из explicit adjacency rows"""
+    """Собрать target topology snapshot из explicit adjacency rows
+
+    Граница:
+        Builder доверяет upstream read/normalization seam тому, что `row.label`
+        уже приведён к canonical contract. Сам builder не запускает DSL ops повторно.
+    """
 
     def __init__(
         self,

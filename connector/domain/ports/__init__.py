@@ -23,10 +23,14 @@ from connector.domain.ports.secrets.provider import (
 from connector.domain.ports.topology import (
     SourcePathTopologyBuilderPort,
     SourceTopologyCanonicalPath,
+    TargetHierarchyReadMeta,
     TargetHierarchyRow,
     TargetHierarchyTopologyBuilderPort,
+    TopologyFreshnessPolicy,
     TopologyNotAvailableError,
     TopologyProviderPort,
+    TopologyTargetReadinessResult,
+    TopologyTargetReadPort,
 )
 
 __all__ = [
@@ -44,8 +48,12 @@ __all__ = [
     "SecretStoreProtocol",
     "SourcePathTopologyBuilderPort",
     "SourceTopologyCanonicalPath",
+    "TargetHierarchyReadMeta",
     "TargetHierarchyRow",
     "TargetHierarchyTopologyBuilderPort",
+    "TopologyFreshnessPolicy",
     "TopologyNotAvailableError",
     "TopologyProviderPort",
+    "TopologyTargetReadinessResult",
+    "TopologyTargetReadPort",
 ]
