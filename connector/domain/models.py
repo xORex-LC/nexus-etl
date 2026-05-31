@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
 
+
 class DiagnosticStage(str, Enum):
     """
     Назначение:
@@ -26,6 +27,7 @@ class DiagnosticStage(str, Enum):
     APPLY = "APPLY"
     CACHE = "CACHE"
     SINK = "SINK"
+    TOPOLOGY_BOOTSTRAP = "TOPOLOGY_BOOTSTRAP"
 
 
 class DiagnosticSeverity(str, Enum):
@@ -44,6 +46,7 @@ class DiagnosticItem:
     Назначение:
         Диагностическое сообщение пайплайна (ошибка/предупреждение).
     """
+
     stage: DiagnosticStage
     code: str
     field: str | None
@@ -94,6 +97,7 @@ class Identity:
         primary: имя первичного ключа (например, "match_key" или "ouid").
         values: словарь значений ключей для сопоставления/аудита.
     """
+
     primary: str
     values: Mapping[str, str]
 
@@ -108,6 +112,7 @@ class RowRef:
     Назначение:
         Унифицированная ссылка на строку входного набора для отчётов.
     """
+
     line_no: int | None
     row_id: str
     identity_primary: str | None
