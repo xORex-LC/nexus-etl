@@ -22,6 +22,7 @@ environment/
 scripts/utils/
 var/
 docs/*.md
+docs/notes/*
 !docs/ARCHITECTURE_INVARIANTS.md
 .claude
 .codex

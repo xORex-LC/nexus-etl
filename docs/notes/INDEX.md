@@ -16,3 +16,4 @@
 ## 🗂️ Заметки
 
 - [Dependency Tree Worknote](./dependency-tree/DEPENDENCY_TREE_WORKNOTE.md)
+- [Dependency Tree Implementation Plan](./dependency-tree/DEPENDENCY_TREE_IMPLEMENTATION_PLAN.md)

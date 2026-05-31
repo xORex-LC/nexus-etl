@@ -1987,6 +1987,135 @@ Topology bootstrap не обязан имитировать основной row
 - в raw Python wiring;
 - в `mapping.yaml` как скрытая побочная секция.
 
+### Предпочтительный `topology.yaml` shape
+
+Для Phase 1 topology DSL стоит зафиксировать как отдельный Pydantic-backed artifact
+с двумя независимыми секциями:
+
+- `canonicalization`
+- `source`
+- `target`
+
+`canonicalization` отвечает за shared segment-level normalization contract.
+
+`source` отвечает только за source-side hierarchy projection contract.
+
+Минимальный shape:
+
+```yaml
+dataset: dataset_name
+
+topology:
+  canonicalization:
+    ops:
+      - op: trim
+      - op: lower
+      - op: regex_replace
+        pattern: "\\s+"
+        repl: " "
+      - op: compact
+  source:
+    mode: path_columns
+    path_columns:
+      - field: level_1_name
+      - field: level_2_name
+
+  target:
+    mode: adjacency_list
+    node_id_field: _ouid
+    parent_id_field: parent_id
+    target_label_field: name
+    payload_target_id_field: _id
+```
+
+Что обязательно фиксируется:
+
+- `path_columns` для source; порядок задаётся порядком YAML list;
+- `node_id_field / parent_id_field` для target;
+- `target_label_field` для target-side canonicalizer input;
+- `payload_target_id_field`, если graph node id и payload write-id различаются;
+- shared whitelist canonicalization ops на top-level `topology.canonicalization`.
+
+### Whitelist canonicalization ops
+
+Для Phase 1 рекомендуется зафиксировать только deterministic baseline ops:
+
+- `trim`
+- `lower`
+- `compact`
+- `regex_replace`
+
+Почему именно так:
+
+- они достаточно выразительны для canonical path cleanup;
+- хорошо сочетаются с Polars expression API;
+- не требуют раннего ухода в Python UDF;
+- снижают риск превратить topology bootstrap во второй `NormalizeStage`.
+
+Дополнительное уточнение:
+
+- `coalesce` не входит в segment-level canonicalization whitelist;
+- dual-form contract обязателен: один rule-set должен компилироваться и в Polars-expression plan
+  для bootstrap, и в Python callable plan для row-level lookup / target label normalization.
+
+Сознательно не включаются в Phase 1 baseline:
+
+- произвольные Python UDF
+- сложные cross-column transforms
+- неограниченные user-defined operations
+
+Почему canonicalization должен жить на общем уровне, а не внутри `source`:
+
+- shared canonicalizer уже принят как один contract для source bootstrap, row-level source lookup и target hierarchy ingest;
+- если canonicalization вложен только в `source`, target-side reuse становится неявной конвенцией, а не частью schema;
+- если target-side canonicalization не происходит, `lower/trim` source path labels перестанут сходиться с raw target `name`.
+
+Поэтому `target.target_label_field` должен трактоваться как raw input в тот же compiled canonicalizer,
+который применяется к source path segments.
+
+### Registry binding
+
+Registry должен фиксировать не только stage specs, но и topology capability.
+
+Предпочтительный block:
+
+```yaml
+datasets:
+  dataset_name:
+    topology:
+      enabled: true
+      spec: dataset_name.topology.yaml
+```
+
+Семантика:
+
+- `enabled` = topology capability доступна для dataset;
+- `spec` = где лежит declarative topology contract;
+- реальное включение bootstrap всё равно определяется activation policy/requirement resolver.
+
+Это как раз закрывает activation-условие №1:
+
+- dataset topology capability declared in registry.
+
+### Example for `organizations`
+
+Для `organizations` target section уже можно считать concrete baseline, потому что
+cache schema известна:
+
+- `node_id_field: _ouid`
+- `parent_id_field: parent_id`
+- `target_label_field: name`
+
+Source section для `organizations` в текущем шаблоне следует считать illustrative,
+а не окончательной привязкой к текущему `source/source.yaml`, потому что текущий
+organizations source сейчас не несёт готовый ordered path-columns contract.
+
+Практический вывод:
+
+- template `datasets/organizations/organizations.topology.yaml` можно держать уже сейчас;
+- при реализации source-side topology его `source.path_columns` должны быть привязаны к
+  реальным hierarchy columns конкретного source dataset или topology source.
+
 ### Topology как отдельный DSL sublayer
 
 Утверждённая модель:
@@ -2041,9 +2170,13 @@ projection.
 - `trim`
 - `lower`
 - `compact`
-- `coalesce`
 - `regex_replace`
-- простая сегментная конкатенация / null-handling
+
+Сознательно не включаются в segment-level canonicalizer:
+
+- `coalesce`
+- cross-segment concat
+- произвольный null-fallback вне projection layer
 
 С осторожностью:
 
@@ -2590,6 +2723,41 @@ matching keys.
   - момент применения;
   - policy на missing topology;
   - comparison ladder.
+- `resolve.yaml` должен отвечать за:
+  - включение topology-backed link resolution;
+  - target FK field (`organization_id` и аналоги);
+  - policy на missing/ambiguous topology;
+  - comparison ladder для resolve-side link decision.
+
+Минимальный boundary shape стоит зафиксировать заранее, чтобы не оставить это
+"додумыванием при реализации":
+
+```python
+class ResolveTopologyLinkSpec(DslBaseModel):
+    enabled: bool = False
+    field: str
+    on_missing_topology: Literal["pending", "hard_error", "skip"] = "pending"
+    on_ambiguous_topology: Literal["pending", "hard_error", "skip"] = "pending"
+    comparison_ladder: list[str] = Field(default_factory=list)
+```
+
+И в `ResolveBlock`:
+
+```python
+topology_link: ResolveTopologyLinkSpec | None = None
+```
+
+Практический смысл такого shape:
+
+- `field` жёстко привязывает topology-backed resolve к конкретному FK field;
+- `on_missing_topology` и `on_ambiguous_topology` не смешиваются с legacy `on_unresolved`;
+- `comparison_ladder` для resolve-side решения может эволюционировать независимо от match-side policy;
+- `TopologyRequirementResolver` получает формальный сигнал из DSL, а не из ad-hoc Python wiring.
+
+Это нужно не только для полноты DSL, но и для activation:
+
+- `TopologyRequirementResolver` не должен смотреть только на `match.yaml`;
+- он должен активировать bootstrap и при topology-aware match, и при topology-backed resolve link policy.
 
 Симметрия должна обеспечиваться в трёх точках:
 
@@ -2623,7 +2791,7 @@ class CompiledTopologyCanonicalizer(Protocol):
 данные. Но правильная форма решения не “подключить graph к любой стадии”, а выделить
 первого consumer-а и зафиксировать consumer boundary.
 
-Для Phase 1 таким consumer-ом должен быть только `MatchStage`.
+Для Phase 1a таким consumer-ом должен быть `MatchStage`.
 
 Разделение ответственности:
 
@@ -2656,6 +2824,127 @@ MatchCore
 - graph остаётся изолированным от stage internals;
 - topology можно подключать к другим стадиям позже отдельными решениями;
 - первый topology-aware use case получает чёткий consumer contract вместо “доступа к graph вообще”.
+
+Но этот consumer boundary сам по себе не закрывает write-path для foreign key scenarios.
+
+Если topology нашла соответствующий target org node, этого ещё недостаточно для
+`plan/apply`, потому что downstream pipeline строится не из `MatchDecision`, а из
+`ResolvedRow`, который затем сериализуется в `PlanItem`.
+
+Следствие:
+
+- topology evidence в `MatchDecision.meta` может использоваться для explainability;
+- topology evidence в `MatchDecision.meta` не должно становиться каналом доставки final FK value;
+- final topology-derived FK должен materialize-иться только через `ResolveStage`.
+
+Рабочая модель write-path:
+
+```text
+source hierarchy columns
+  -> source canonical path
+  -> target topology path match
+  -> topology-backed link resolution
+  -> desired_state["organization_id"]
+  -> ResolvedRow
+  -> PlanItem
+  -> plan.json
+  -> apply
+```
+
+Это важно зафиксировать отдельно, чтобы не возникла ложная модель
+"topology-aware match уже закрывает employee/org use case".
+
+### 10a. Employee-like datasets требуют второго consumer-а в ResolveStage
+
+Если primary entity pipeline — `organization`, topology-aware `MatchStage` действительно
+может быть natural first consumer.
+
+Если primary entity — `employee`, а `organization_id` является foreign key, topology нужна
+в первую очередь не для match employee record, а для вычисления link-field value.
+
+Поэтому для employee-like datasets нужно отдельно фиксировать:
+
+- `MatchStage` — Phase 1a, tactical first consumer;
+- `ResolveStage` — обязательный Phase 1b consumer для topology-backed link propagation.
+
+Здесь важно не смешать две разные задачи:
+
+- entity match: "кто эта запись в target?";
+- FK resolution: "какой target organization id нужно записать в payload?".
+
+Обе задачи могут использовать один и тот же topology runtime/provider, но не должны быть
+смешаны в одном stage contract.
+
+### 10b. Query API должен быть формальным contract-ом, а не "словари + prose"
+
+`nodes_by_id / parent_by_id / children_by_id / roots` недостаточно фиксировать как набор
+полей snapshot. Для stage-facing и consumer-level logic нужен отдельный `TopologyQueryPort`.
+
+Минимальный baseline:
+
+```python
+class TopologyQueryPort(Protocol):
+    def get_node(self, node_id: str) -> TopologyNode | None: ...
+    def require_node(self, node_id: str) -> TopologyNode: ...
+    def parent_id(self, node_id: str) -> str | None: ...
+    def children_ids(self, node_id: str) -> tuple[str, ...]: ...
+    def ancestors(self, node_id: str) -> tuple[str, ...]: ...
+    def descendants(self, node_id: str) -> tuple[str, ...]: ...
+    def path_to_root(self, node_id: str) -> tuple[str, ...]: ...
+    def depth(self, node_id: str) -> int: ...
+    def root_id(self, node_id: str) -> str: ...
+    def canonical_path(self, node_id: str) -> tuple[str, ...]: ...
+    def structural_signature(self, node_id: str) -> str: ...
+```
+
+Почему это блокер:
+
+- comparison ladder без `canonical_path(...)` и `structural_signature(...)` остаётся prose-only;
+- `MatchStage`/`ResolveStage` иначе начнут читать raw indices напрямую;
+- builder/query responsibilities снова начнут смешиваться.
+
+### 10c. Target-read seam должен быть отделён от readiness evaluator
+
+`TopologyTargetReadinessEvaluator` оценивает состояние, но не должен подменять собой target
+data access. Нужен отдельный `TopologyTargetReadPort`.
+
+Минимальный baseline:
+
+```python
+class TopologyTargetReadPort(Protocol):
+    def read_hierarchy(self, dataset: str) -> Iterable[TargetHierarchyRow]: ...
+    def read_snapshot_metadata(self, dataset: str) -> TargetHierarchyReadMeta: ...
+```
+
+И `TopologyFreshnessPolicy`:
+
+```python
+class TopologyFreshnessPolicy(DslBaseModel):
+    mode: Literal["none", "max_age", "revision_required"] = "none"
+    max_age_seconds: int | None = None
+    require_revision: bool = False
+```
+
+Это нужно, чтобы:
+
+- topology builder читался через один cache seam;
+- `cache_snapshot_revision` и `refreshed_at` имели определённый источник;
+- freshness не оставалась "ссылкой на будущую policy без shape".
+
+### 10d. Diagnostics topology должны жить в core catalog
+
+`TOPOLOGY_*` не должны оставаться просто строками в документации.
+
+Нужен baseline:
+
+- `DiagnosticStage.TOPOLOGY_BOOTSTRAP`;
+- `CatalogEntry(... -> SystemErrorCode -> severity)` для каждого `TOPOLOGY_*`;
+- bootstrap short-circuit через обычный `CommandResult.primary_code()`, а не через отдельную exit-scale.
+
+Это устраняет два риска:
+
+- topology не обходит общую diagnostics taxonomy;
+- bootstrap exit semantics остаются совместимыми с проектной stop/exit policy.
 
 Минимальный row-level contract:
 
@@ -2959,3 +3248,319 @@ provider её не отдаёт.
 - readiness держать в readiness result;
 - provenance держать в metadata;
 - не смешивать эти слои в одном dataclass.
+
+### 17. Logging model сервиса: полная событийная модель + pluggable seam
+
+Текущее логирование приложения слабое, и опираться на него нельзя. Фактическое состояние:
+
+- `structlog` есть в зависимостях, но **не подключён**;
+- `infra/logging/setup.py` — stdlib `logging`, плоский форматтер `runId=… comp=… msg=…`,
+  единственная точка `log_event(logger, level, run_id, component, message)`;
+- структурных полей всего два (`runId`, `component`) + свободный текст.
+
+Принятое направление: **не мигрировать все слои сейчас**, а спроектировать полную событийную
+модель topology за **одним инжектируемым seam**, который позже подключается к общей точке
+логирования сменой одного адаптера.
+
+Это не отменяет уже принятую observability-политику проекта:
+[OBSERVABILITY-DEC-001](../adr/observability/OBSERVABILITY-DEC-001-structlog-as-standard.md)
+фиксирует `structlog` как целевой стандарт для нового кода. Значит topology logging должен
+сохранить forward-compatible seam: transitional legacy adapter сейчас, structured adapter потом.
+
+#### Архитектура (один backend-seam, domain чист)
+
+```
+domain/dependency_tree/ports.py
+    TopologyTracePort(Protocol)        # DEBUG node/path/cycle trace; default NullTopologyTrace (no-op)
+usecases/topology/observability.py
+    TopologyLogEvent(str, Enum)        # каталог событий (без ad-hoc строк)
+    TopologyEventSink(Protocol)        # ЕДИНСТВЕННЫЙ seam: emit(level, event, **fields) + enabled(level)
+    TraceToSink(TopologyTracePort)     # domain-trace -> sink.emit(DEBUG, ...)
+infra/logging/topology_sink.py
+    LegacyLogEventSink(TopologyEventSink)   # СЕГОДНЯ: transitional adapter, logfmt в message через log_event
+    StructuredEventSink(TopologyEventSink)  # ПОТОМ: preferred adapter против общей structured-точки
+```
+
+Принципы:
+
+- domain зависит только от `TopologyTracePort`-абстракции, не от logging backend (`lint-imports` зелёный);
+- INFO-сводки логирует use-case из возвращённых builder-фактов; DEBUG-трассировка идёт через trace-порт;
+- весь сервис пишет через `TopologyEventSink`; переезд на общую точку = новый адаптер + одна DI-строка.
+- `LegacyLogEventSink` не становится новым стандартом логирования; это только временный мост к текущему runtime.
+
+#### Сегодняшний рендеринг без правки общей модели
+
+`comp` в текущей модели уже есть, поэтому topology получает namespace `comp=topology` сразу:
+
+```
+INFO runId=... comp=topology msg=event=topology.target.build.finish node_count=120 root_count=4 duration_ms=8 normalization_version=v1
+```
+
+#### Полная событийная модель
+
+Важно: `TopologyLogEvent` — это **не второй diagnostics catalog**.
+
+- `event` отвечает за observability category и greppable phase name;
+- `diag_code` остаётся главным error key и должен совпадать с diagnostics/reporting taxonomy;
+- если событие отражает ошибку, оно обязано нести уже существующий `diag_code`, а не придумывать параллельный error namespace.
+
+**Bootstrap (orchestration)**
+
+| event | lvl | поля |
+|---|---|---|
+| bootstrap.start | INFO | dataset, topology_dataset, require_source, require_target, activation_source |
+| bootstrap.finish | INFO | duration_ms, built_sides, status(ok\|warn\|error), errors, warnings |
+| bootstrap.skipped | DEBUG | reason=not_required |
+| bootstrap.short_circuit | ERROR | diag_code, side |
+
+**Spec + canonicalizer**
+
+| event | lvl | поля |
+|---|---|---|
+| spec.loaded | INFO | spec_path, source_mode, target_mode, path_columns |
+| spec.load_failed | ERROR | diag_code, spec_path |
+| canonicalizer.compiled | INFO | ops_count, ops, normalization_version |
+| canonicalize.op_applied | DEBUG | op, sample_in, sample_out (sampled) |
+
+**Target build (cache adjacency)**
+
+| event | lvl | поля |
+|---|---|---|
+| target.build.start | INFO | node_id_field, parent_id_field, target_label_field |
+| target.read | DEBUG | rows_read, cache_table, cache_snapshot_revision |
+| target.node_ingested | DEBUG·trace | node_id, parent_id, canonical_name |
+| target.cycle_check | DEBUG | algo=graphlib, nodes, has_cycle |
+| target.parent_missing | WARN/ERROR | node_id, parent_id, diag_code=TOPOLOGY_PARENT_MISSING |
+| target.cycle_detected | ERROR | cycle_sample, diag_code=TOPOLOGY_CYCLE_DETECTED |
+| target.build.finish | INFO | node_count, root_count, max_depth, duration_ms |
+
+**Source build (polars projection)**
+
+| event | lvl | поля |
+|---|---|---|
+| source.build.start | INFO | adapter=polars, path_columns |
+| source.projection | DEBUG | rows_scanned, columns_selected, lazy=true |
+| source.canonical_paths | INFO | raw_paths, distinct_paths, dropped_blank, collisions |
+| source.path_ingested | DEBUG·trace | canonical_segments, synthetic_node_id, synthetic_parent_id |
+| source.collision | WARN | canonical, display_variants, kept_display |
+| source.build.finish | INFO | node_count, root_count, max_depth, duration_ms |
+
+**Readiness**
+
+| event | lvl | поля |
+|---|---|---|
+| readiness.evaluated | INFO | side=target, is_ready, decision, freshness_present, age |
+| readiness.empty | ERROR | diag_code=TOPOLOGY_TARGET_EMPTY |
+| readiness.stale | ERROR/WARN | diag_code=TOPOLOGY_TARGET_STALE, age, threshold, degraded |
+| readiness.metadata_missing | WARN | degraded_to(warn\|error) |
+| incompatible | ERROR | diag_code=TOPOLOGY_SOURCE_TARGET_INCOMPATIBLE, source_version, target_version |
+
+**Provider wiring + Match consumer**
+
+| event | lvl | поля |
+|---|---|---|
+| provider.wired | INFO | sides_available, stage_targets=[match] |
+| provider.snapshot_not_available | ERROR | side, diag_code=TOPOLOGY_SNAPSHOT_NOT_AVAILABLE |
+| match.enabled | INFO | apply_on, comparison_ladder, on_missing_topology |
+| match.compare | DEBUG | row_ref, source_canonical_segments, target_candidates |
+| match.resolved | DEBUG | row_ref, matched_target_id, mode(ladder rung), is_ambiguous, evidence_keys |
+| match.ambiguous | DEBUG | row_ref, candidate_count |
+| match.summary | INFO | compared, resolved, ambiguous, by_mode{exact_path,…} |
+
+#### Политика уровней
+
+- **INFO** — lifecycle-переходы + агрегаты (counts, duration, version, readiness decision, match summary), без per-row данных;
+- **DEBUG** — per-node/per-path ingest, derivation synthetic id, per-op canonicalize sample, cycle-check, per-row match compare с рунгом ladder + evidence; только через trace-порт;
+- **WARNING** — stale-degraded-to-warn, collision, malformed path, missing freshness metadata, `on_missing_topology=skip`;
+- **ERROR** — фатальные bootstrap-диагностики → short-circuit.
+
+#### Guardrails
+
+- PII/объём: INFO — только агрегаты; DEBUG — нормализованные `canonical_segments`/synthetic id, сырые display-labels сэмплированно; для больших source — сэмплинг `source.path_ingested` + всегда агрегат `source.canonical_paths`;
+- производительность: DEBUG-payload строится только при `enabled(DEBUG)` / no-op trace;
+- diagnostics/reporting: события несут тот же `diag_code`; `match.summary`/`*.build.finish` — feed для reporting (§12), без дублирования источника метрик.
+
+#### Точка стыковки с общей моделью
+
+`TopologyEventSink` — контракт стыковки. Сегодняшняя точка интеграции —
+`LegacyLogEventSink` поверх `log_event`; при доведении общей observability-модели по
+`OBSERVABILITY-DEC-001` preferred adapter-ом должен стать `StructuredEventSink`.
+Подключение к общей structured-точке позже = один адаптер + одна DI-строка, без изменений в
+`domain/dependency_tree`, `usecases/topology` и match-service.
+
+#### Console output / `--quiet` (оператор на экране)
+
+Поправка терминологии: логи идут в `stdout`/`stderr`, не в `stdin`.
+
+Текущее поведение по коду:
+
+- `create_command_logger` вешает только `FileHandler` → логи (`log_event`) идут **только в файл**;
+- оркестратор делает `sys.stdout = TeeStream(original_stdout, StdStreamToLogger(...))` →
+  человекочитаемый вывод presenters **копируется в файл**, но логи на экран не льются.
+
+То есть разделение «экран = presenters, файл = логи + копия экрана» уже есть и является
+правильным default'ом. Вывод логов на терминал — это **opt-in зеркало**, а не поведение по умолчанию.
+
+Две ортогональные оси (не сводить в один флаг):
+
+1. verbosity human-вывода — `--quiet` (тихо = только ошибки на `stderr`);
+2. зеркалирование логов на консоль — отдельный `--log-console` / `-v` со своим уровнем.
+
+Правила:
+
+- файл — всегда канонический полный лог, не зависит от флагов;
+- экран оператора — presenters; зеркало логов по умолчанию выключено;
+- зеркало логов — на `stderr` (чтобы не пачкать `stdout`/пайпы);
+- precedence: CLI-флаг > config (`observability.*`) > default;
+- `--quiet` никогда не глушит фатальные ошибки.
+
+Обязательная защита от петли `TeeStream`:
+
+- console-`StreamHandler` логов пишет в `original_stdout` / `original_stderr`
+  (оркестратор их сохраняет), **в обход** теированного `sys.stdout`;
+- иначе: log-record → `TeeStream` stdout → `StdStreamToLogger` → тот же logger →
+  console-handler → … рекурсия;
+- маршруты после фикса: presenters → теированный stdout → файл; логи → `original stderr` → экран.
+
+Размещение и переиспользование:
+
+- console-handler и ось `--quiet` вводятся сегодня в `create_command_logger` / runtime-слое как
+  **общий механизм** (handler-concern), а не в topology;
+- `TopologyEventSink` и сервис не меняются — они пишут в logger, а разводку по
+  файл/консоль решают handlers;
+- topology — лишь первый потребитель; при доведении общей модели логирования до единой
+  этот же routing policy должен переехать в общую command logging bootstrap point без
+  изменения topology seam.
+
+### 18. Полная тест-матрица
+
+Заземление в §9 проекта и testing-конвенциях: markers обязательны, `tmp_path` для I/O,
+mock только на портах (Protocols), real SQLite/polars в integration, никаких prod-артефактов.
+Domain builder/validator — **без моков** (чистые, кормим synthetic). Мокаем только порты.
+
+#### Unit — domain (`dependency_tree`)
+
+| ID | Target | Сценарий | Assert |
+|---|---|---|---|
+| U-D01 | TargetHierarchyTopologyBuilder | валидный adjacency `_ouid→parent_id` | snapshot nodes/parent/children/roots корректны |
+| U-D02 | TargetHierarchyTopologyBuilder | self-loop `a→a` | diag `TOPOLOGY_CYCLE_DETECTED`, snapshot не собран |
+| U-D03 | TargetHierarchyTopologyBuilder | cycle `a→b→a` | diag `TOPOLOGY_CYCLE_DETECTED` (graphlib) |
+| U-D04 | TargetHierarchyTopologyBuilder | parent_id ∉ node space | diag `TOPOLOGY_PARENT_MISSING` |
+| U-D05 | TargetHierarchyTopologyBuilder | duplicate node_id | diag `TOPOLOGY_DUPLICATE_NODE` |
+| U-D06 | TargetHierarchyTopologyBuilder | forest (несколько roots) | `roots` содержит все корни |
+| U-D07 | SourcePathTopologyBuilder | distinct canonical path batch | synthetic id и parent из prefix |
+| U-D08 | SourcePathTopologyBuilder | acyclic-by-construction | cycle-валидация не требуется/не падает |
+| U-D09 | SourcePathTopologyBuilder | пустой/blank path дошёл до builder | diag `TOPOLOGY_SOURCE_PATH_EMPTY`; тихого drop в builder нет |
+| U-D10 | SourcePathTopologyBuilder | gap в уровнях (`L1,'',L3`) | malformed policy детерминирована |
+| U-D11 | Snapshot | read-only | мутация snapshot/индексов невозможна |
+| U-D12 | Query.path_to_root / ancestors | глубокая ветка | корректная цепочка, O(depth) |
+| U-D13 | Query.depth / root_id | forest | верные depth/корень на каждой ветке |
+| U-D14 | Query.canonical_path(node_id) | target node | canonical-сегменты пути (рунг «exact path») |
+| U-D15 | Query.descendants | поддерево | полный набор потомков |
+| U-D16 | Query.structural_signature | одинаковые/разные ветки | равные/разные сигнатуры |
+
+#### Unit — canonicalizer & ids (критично)
+
+| ID | Target | Сценарий | Assert |
+|---|---|---|---|
+| U-C01 | CompiledTopologyCanonicalizer | whitelist `trim/lower/compact/regex_replace` | посегментный канон корректен |
+| U-C02 | symmetry | один canonicalizer к source-segments и target-labels | `canon(source)==canon(target)` для эквивалентных иерархий |
+| U-C03 | dual-form | Polars-expr форма vs Python форма из одного rule-set | идентичный вывод (property-style) |
+| U-C04 | canonicalizer | не-whitelist op | fail на загрузке (Pydantic), не runtime |
+| U-C05 | synthetic id | один path → один id | детерминизм (golden sha256) |
+| U-C06 | synthetic id | смена `normalization_version` | id меняется (versioned) |
+| U-C07 | id | `hash()` не используется | стабилен между процессами (не PYTHONHASHSEED) |
+| U-C08 | collision | разные display → один canonical | `kept_display` детерминирован + warn `collision` |
+
+#### Unit — usecases (порты замоканы)
+
+| ID | Target | Сценарий | Assert / Mock |
+|---|---|---|---|
+| U-U01 | TargetReadinessEvaluator | пустой target snapshot | `is_ready=False`, `TOPOLOGY_TARGET_EMPTY` |
+| U-U02 | TargetReadinessEvaluator | stale + `require_target_topology=True` | `is_ready=False`, diag `TOPOLOGY_TARGET_STALE` |
+| U-U03 | TargetReadinessEvaluator | freshness-метаданные отсутствуют + optional topology | warning/skip по policy, но не silent success |
+| U-U04 | TopologyRequirementResolver | `mapping/normalize/enrich` | `require_*=False` |
+| U-U05 | TopologyRequirementResolver | `match` + match-policy on | `require_target/source=True` |
+| U-U06 | TopologyRequirementResolver | employees: link-policy on, match off | activation по link-policy (R3) = `True` |
+| U-U07 | TopologyRequirementResolver | capability disabled в registry | `False` |
+| U-U08 | TopologyMatchService.compare | exact canonical path | `mode=EXACT_CANONICAL_PATH`, matched id |
+| U-U09 | compare | leaf+parent chain | `mode=EXACT_LEAF_PARENT_CHAIN` |
+| U-U10 | compare | leaf+root+depth | `mode=EXACT_LEAF_ROOT_DEPTH` |
+| U-U11 | compare | неуверенный рунг | `is_ambiguous=True`, evidence объясним |
+| U-U12 | compare | mode/reason — enum | `TopologyMatchMode` (§10) |
+| U-U13 | TopologyLinkResolutionService.resolve_link | source path → target FK | write-ready `resolved_target_id` |
+| U-U14 | resolve_link | ambiguous / no match | `on_missing/on_ambiguous` policy |
+| U-U15 | shared comparison core | match и link на одном входе | один target/рунг (DRY, нет дрейфа) |
+| U-U16 | BootstrapUseCase | оба сайда ok | `artifacts`, `errors=()` |
+| U-U17 | BootstrapUseCase | фатальная диагностика | `artifacts=None`, `errors≠()` |
+| U-U18 | BootstrapUseCase | `topology_dataset=None` | нормализуется в `pipeline_dataset` (инв. 9) |
+| U-U19 | observability | каждый lifecycle-шаг | recording-sink получил ожидаемые event+поля |
+| U-U20 | observability | DEBUG off | `NullTopologyTrace` no-op, payload не строится |
+
+#### Integration (real polars/SQLite, `tmp_path`)
+
+| ID | Target | Сценарий | Assert |
+|---|---|---|---|
+| I-01 | ProjectionAdapter | real CSV org-уровни | distinct canonical paths, dropped_blank |
+| I-02 | ProjectionAdapter | только path-колонки (lazy scan) | объектов ~ distinct, не rows |
+| I-03 | ProjectionAdapter | 100k строк / N путей | результат = N путей |
+| I-04 | TargetTopologyReader | real SQLite organizations | snapshot из adjacency, `cache_snapshot_revision` получен |
+| I-05 | TargetReader+Readiness | пустая таблица | `TOPOLOGY_TARGET_EMPTY` fail-fast |
+| I-06 | BootstrapUseCase | real source+cache | оба snapshot, provenance заполнена |
+| I-07 | BootstrapUseCase | spec load по dataset name | грузит `topology.yaml` без full pipeline |
+| I-08 | Provider wiring | inject в `StageExecutionContext` | `MatchStage` получает `TopologyProviderPort` |
+| I-09 | Provider snapshot-only | стадия тянет metadata через provider | недоступно (инв. 24) |
+| I-10 | LegacyLogEventSink | emit | `comp=topology`, logfmt; нет петли TeeStream (original stream) |
+| I-11 | diagnostics catalog | все `TOPOLOGY_*` | зарегистрированы, верные SystemErrorCode/severity/stage |
+| I-12 | reporting | bootstrap finish | `ReportContextKey.TOPOLOGY` с provenance один раз |
+| I-13 | reporting | match summary | `by_mode` counts → report |
+
+#### E2E (CliRunner) + write-path
+
+| ID | Сценарий | Assert |
+|---|---|---|
+| E-01 | `import plan --dataset organizations` (1a) | exit 0; topology diag на bootstrap, не в середине pipeline |
+| E-02 | organizations: одинаковые leaf в разных ветках | дизамбигуация по topology |
+| E-03 | bootstrap fail (empty target, require=True) | ненулевой exit, handler не вызван, ошибка в report |
+| E-04 | employees write-path (1b) | `organization_id` в `plan.json` через resolve-path |
+| E-05 | dataset без capability | bootstrap не запускается |
+| E-06 | `--quiet` | логи только в файл; фатал на `stderr` |
+| E-07 | console mirror opt-in | зеркало на `stderr`, файл полный |
+
+#### Architecture (import-linter)
+
+| ID | Контракт |
+|---|---|
+| A-01 | `domain.dependency_tree` ∌ `polars` |
+| A-02 | `domain.dependency_tree` ∌ `structlog`/logging backend (только `TopologyTracePort`) |
+| A-03 | `domain.*` ∌ `infra`/`delivery` (расширить на topology) |
+| A-04 | runtime topology ports в `domain/ports/topology`; domain-local trace seam допускается в `domain/dependency_tree/ports.py`; impl в infra/usecases |
+| A-05 | Pydantic `BaseModel` topology — только DSL/spec, не runtime snapshot/query (инв. 15) |
+
+#### Performance (excluded by default)
+
+| ID | Сценарий | Метрика |
+|---|---|---|
+| P-01 | projection 100k rows / 500 distinct | время + число domain-объектов ≈ distinct (O(distinct)) |
+| P-02 | target build на крупной иерархии | линейность по nodes |
+| P-03 | DEBUG-trace off | накладные ≈ no-op |
+| P-04 | `path_to_root`/`ancestors` глубокое дерево | O(depth), не O(nodes) |
+
+#### Fixtures / helpers (conftest topology)
+
+- `synthetic_hierarchy(...)` — генератор forest (id/parent_id) и path-batch с контролем глубины/ветвления/дублей;
+- `canonical_paths(...)` — пары source-path ↔ target-label для symmetry-тестов;
+- `fake_topology_provider`, `recording_event_sink`, `fake_cache_adjacency` — port-fakes;
+- real CSV/SQLite в `tmp_path`; реальный YAML (organizations) — только в integration/e2e.
+
+#### Критические корректностные тесты
+
+U-C02/U-C03 (symmetry + dual-form), U-D02..D05 (target cycle/orphan/dup),
+U-C05/C06 (id детерминизм/версионирование), U-U01..U03 (readiness fail-fast),
+U-U06 (activation by link-policy), E-04 (write-path FK до `plan.json`).
+
+#### CI-гейты
+
+- merge: `pytest -m unit` + `-m integration` + `-m architecture` + `lint-imports` + `mypy`;
+- PR: `-m e2e`;
+- `-m performance` — отдельный nightly/manual.
