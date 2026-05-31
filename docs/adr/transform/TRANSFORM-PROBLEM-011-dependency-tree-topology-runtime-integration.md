@@ -22,12 +22,12 @@
 
 ## ⚠️ Проблема
 
-В проекте отсутствует зафиксированная runtime-модель для построения и предоставления `dependency_tree` / `topology snapshot`.
+В проекте отсутствует зафиксированная runtime-модель для построения и предоставления `dependency_tree` / topology snapshots.
 
 Нужно определить:
 - в какой момент при запуске приложения строится graph;
 - из каких источников он строится;
-- как он попадает в pipeline stages;
+- где заканчивается build topology artifacts/provider и где начинается их wiring в pipeline stages;
 - как это сделать без нарушения streaming-контракта основного ETL pipeline.
 
 Без этого невозможно корректно внедрить topology-aware matching/disambiguation и другие сценарии, использующие иерархию.
@@ -40,6 +40,8 @@
 - **Симптом 2**: неясно, можно ли безопасно строить topology внутри текущего streaming pipeline без hidden buffering
 - **Симптом 3**: source и target представляют hierarchy в разных формах, поэтому одной target-side topology недостаточно
 - **Симптом 4**: pre-run проверки и bootstrap work уже существуют, но распределены между `app.py`, `runtime/orchestrator.py`, container init и handler-level code
+- **Симптом 5**: нет явной именованной pre-handler sequence, в которую можно безопасно встроить optional topology bootstrap без переписывания всего startup lifecycle
+- **Симптом 6**: не зафиксировано, должен ли source-side bootstrap идти через тот же row-by-row reader path, или допустим отдельный topology-specific projection adapter
 
 ---
 
@@ -67,6 +69,8 @@
 - Невозможно использовать hierarchy как сигнал в `enrich`, `match` и `resolve`
 - Любая попытка собрать topology "по пути" рискует скрыто сломать streaming contract
 - Без явного lifecycle graph build будет размазан между слоями и плохо диагностироваться
+- Без явного разделения `build pre-handler / wire in handler` topology integration конфликтует с текущей точкой materialization dataset-specific pipeline
+- Без отдельного решения по source-side projection непонятно, как минимизировать стоимость repeated read и не превратить bootstrap во второй object-level transform flow
 
 ---
 
@@ -85,14 +89,19 @@
 - **Минусы**: topology не готова для ранних stage queries, появляется hidden buffering/barrier
 
 ### Вариант 3: Отдельный bootstrap pass до основного pipeline
-- **Идея**: Сначала построить `source_topology` / `target_topology`, затем запускать основной pipeline
+- **Идея**: Сначала построить source topology snapshot / target topology snapshot, затем запускать основной pipeline
 - **Плюсы**: Явный lifecycle, готовый snapshot до начала stage processing, не ломает streaming contract
-- **Минусы**: Дополнительное чтение source, отдельный orchestration step
+- **Минусы**: Дополнительное чтение source, отдельный orchestration step, всё ещё нужно отдельно решить pre-handler build vs handler-scope wiring
 
 ### Вариант 4: Общая Initialization Phase приложения
-- **Идея**: Встроить topology bootstrap в единый startup lifecycle вместе с preflight и resource init
-- **Плюсы**: Целостная архитектура startup/readiness
-- **Минусы**: Требует более широкого orchestration design, может затянуть внедрение самой topology feature
+- **Идея**: Формализовать уже существующие preflight/resource-init шаги как явную pre-handler sequence и добавить в неё optional bootstrap slot
+- **Плюсы**: Целостная архитектура startup/readiness без обязательного greenfield framework; естественное место для topology bootstrap diagnostics
+- **Минусы**: Всё равно требует аккуратно разделить build topology до handler и wiring topology provider внутри handler; при чрезмерном обобщении может затянуть внедрение topology feature
+
+### Дополнительное ограничение: source-side projection boundary
+- **Наблюдение**: topology bootstrap использует только hierarchy-related subset source данных, а основной source reader path остаётся row-oriented
+- **Проблема**: если жёстко привязать topology bootstrap к тому же reader implementation, repeated read легко превращается во второй Python object flow
+- **Следствие**: problem statement должен допускать отдельный topology-specific projection adapter в `infra/`, если он лучше сохраняет streaming-инварианты основного pipeline и упрощает bootstrap
 
 ---
 
@@ -108,4 +117,5 @@
 | Дата | Событие |
 |------|---------|
 | 2026-05-28 | Проблема зафиксирована |
+| 2026-05-31 | Уточнены problem constraints: initialization sequence, build-vs-wire split и source-side projection boundary |
 | 2026-05-28 | Решение принято в [TRANSFORM-DEC-010](./TRANSFORM-DEC-010-topology-bootstrap-before-main-pipeline.md) |
