@@ -20,6 +20,7 @@ from typing import Protocol
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.ports.topology.models import (
     SourceTopologyCanonicalPath,
+    TopologyLinkResolutionResult,
     TopologyMatchResult,
 )
 
@@ -38,3 +39,15 @@ class TopologyMatchServicePort(Protocol):
         source_locator: SourceTopologyCanonicalPath,
         target_candidate_ids: tuple[str, ...],
     ) -> TopologyMatchResult: ...
+
+
+class TopologyLinkResolutionServicePort(Protocol):
+    """Интерпретировать topology signal для FK-resolution на resolve-стадии."""
+
+    def resolve_link(
+        self,
+        *,
+        field: str,
+        source_locator: SourceTopologyCanonicalPath,
+        target_candidate_ids: tuple[str, ...],
+    ) -> TopologyLinkResolutionResult: ...

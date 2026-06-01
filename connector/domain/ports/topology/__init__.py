@@ -8,6 +8,7 @@ from connector.domain.ports.topology.models import (
     SourceTopologyCanonicalPath,
     TargetHierarchyReadMeta,
     TargetHierarchyRow,
+    TopologyLinkResolutionResult,
     TopologyMatchResult,
     TopologyFreshnessPolicy,
     TopologyRuntimeRequirements,
@@ -21,6 +22,7 @@ from connector.domain.ports.topology.provider import (
 from connector.domain.ports.topology.readers import TopologyTargetReadPort
 from connector.domain.ports.topology.services import (
     SourceTopologyLocatorBuilderPort,
+    TopologyLinkResolutionServicePort,
     TopologyMatchServicePort,
 )
 
@@ -32,6 +34,8 @@ __all__ = [
     "TargetHierarchyRow",
     "TargetHierarchyTopologyBuilderPort",
     "TopologyEventSink",
+    "TopologyLinkResolutionResult",
+    "TopologyLinkResolutionServicePort",
     "TopologyMatchResult",
     "TopologyMatchServicePort",
     "TopologyFreshnessPolicy",

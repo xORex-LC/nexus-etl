@@ -43,6 +43,19 @@ class TopologyMatchResult:
 
 
 @dataclass(frozen=True)
+class TopologyLinkResolutionResult:
+    """Типизированный результат topology-backed link resolution для resolve-стадии."""
+
+    resolved_field: str
+    resolved_target_id: str | int | None
+    is_pending: bool
+    is_ambiguous: bool
+    mode: TopologyMatchMode
+    reason: str | None
+    evidence: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
 class TargetHierarchyRow:
     """Target adjacency row, передаваемый в target topology builder
 

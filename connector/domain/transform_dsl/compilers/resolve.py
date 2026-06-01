@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
+from connector.domain.dependency_tree.comparison import TopologyMatchMode
 from connector.domain.models import Identity
 from connector.domain.transform.common import normalize_text
 from connector.domain.dsl.issues import DslLoadError
@@ -118,7 +119,7 @@ class ResolveTopologyLinkPolicy:
     field: str = ""
     on_missing_topology: str = "pending"
     on_ambiguous_topology: str = "pending"
-    comparison_ladder: tuple[str, ...] = ()
+    comparison_ladder: tuple[TopologyMatchMode, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -186,7 +187,8 @@ class ResolveDsl:
                         spec.resolve.topology_link.on_ambiguous_topology
                     ),
                     comparison_ladder=tuple(
-                        spec.resolve.topology_link.comparison_ladder
+                        TopologyMatchMode(item)
+                        for item in spec.resolve.topology_link.comparison_ladder
                     ),
                 )
             return CompiledResolveRules(

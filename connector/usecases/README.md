@@ -21,6 +21,7 @@
 | `cache_clear_usecase.py` | Очистка кэша |
 | `cache_status_usecase.py` | Статус кэша |
 | `topology_match.py` | `SourceTopologyLocatorBuilder`, `TopologyMatchService` — topology-aware consumer для `MatchStage` |
+| `topology_resolve.py` | `TopologyLinkResolutionService` — topology-aware FK disambiguation для `ResolveStage` |
 | `topology_target_build.py` | `TargetTopologyBuildUseCase` — read → build → readiness для target topology |
 | `topology_bootstrap.py` | `TopologyRequirementResolver`, `TopologyBootstrapUseCase`, `StaticTopologyProvider`, `TraceToSink` |
 | `apply/` | `ApplyResult`, `ApplySummary`, `ApplyTelemetrySink` |
