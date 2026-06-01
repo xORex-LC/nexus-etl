@@ -184,13 +184,13 @@ def _build_target_usecase(
     compiled,
 ) -> TargetTopologyBuildUseCase:
     cache_bundle = container.cache_dsl()
-    cache_gateway = container.cache.gateway()
+    cache_read = container.cache.roles().topology_read
     cache_spec = next(
         spec for spec in cache_bundle.cache_specs if spec.dataset == topology_spec.dataset
     )
     trace = TraceToSink.from_sink(sink=event_sink, namespace="target")
     reader = SqliteTopologyTargetReader(
-        cache_gateway=cache_gateway,
+        cache_read=cache_read,
         cache_spec=cache_spec,
         node_id_field=topology_spec.topology.target.node_id_field,
         parent_id_field=topology_spec.topology.target.parent_id_field,

@@ -17,6 +17,7 @@ from connector.domain.ports.topology import TopologyFreshnessPolicy
 from connector.domain.transform_dsl import load_topology_spec_for_dataset
 from connector.domain.transform_dsl.compilers.topology import TopologyDsl
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
+from connector.infra.cache.roles.topology_read import SqliteTopologyCacheReadAdapter
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.infra.sqlite.engine import open_sqlite
@@ -95,7 +96,7 @@ def test_sqlite_target_reader_reads_adjacency_and_metadata(
         )
 
     reader = SqliteTopologyTargetReader(
-        cache_gateway=gateway,
+        cache_read=SqliteTopologyCacheReadAdapter(gateway),
         cache_spec=cache_spec,
         node_id_field=topology_spec.topology.target.node_id_field,
         parent_id_field=topology_spec.topology.target.parent_id_field,
@@ -131,7 +132,7 @@ def test_target_topology_build_usecase_returns_empty_snapshot_failure(
     topology_spec, compiled, cache_spec = _organizations_runtime()
 
     reader = SqliteTopologyTargetReader(
-        cache_gateway=gateway,
+        cache_read=SqliteTopologyCacheReadAdapter(gateway),
         cache_spec=cache_spec,
         node_id_field=topology_spec.topology.target.node_id_field,
         parent_id_field=topology_spec.topology.target.parent_id_field,
