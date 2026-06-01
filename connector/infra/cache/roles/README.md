@@ -13,6 +13,7 @@
 | `planning_runtime.py` | `MatchRuntimePort` + `ResolveRuntimePort` — runtime state для match/resolve |
 | `apply_runtime.py` | `ApplyRuntimePort` — post-apply синхронизация identity и pending |
 | `cache_refresh.py` | `CacheRefreshPort` — composite порт для refresh операций |
+| `topology_read.py` | `TopologyCacheReadPort` — read-only выборка adjacency-строк/meta/count для topology bootstrap |
 | `bundle.py` | `CacheRoleBundle` — агрегирует все роли для удобной инициализации в DI |
 
 ## Зависимости

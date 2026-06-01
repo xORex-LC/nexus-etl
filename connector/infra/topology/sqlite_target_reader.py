@@ -17,10 +17,11 @@ topology DTO. Этот адаптер знает о таблице кэша и f
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime
 
 from connector.domain.ports.cache.models import CacheSpec
+from connector.domain.ports.cache.roles import TopologyCacheReadPort
 from connector.domain.ports.topology import (
     TargetHierarchyReadMeta,
     TargetHierarchyRow,
@@ -29,16 +30,15 @@ from connector.domain.ports.topology import (
 from connector.domain.transform_dsl.compilers.topology import (
     CompiledTopologyCanonicalizer,
 )
-from connector.infra.cache.cache_gateway import SqliteCacheGateway
 
 
 class SqliteTopologyTargetReader(TopologyTargetReadPort):
-    """Прочитать target hierarchy и metadata из SQLite cache snapshot-а"""
+    """Прочитать target hierarchy и metadata через узкий cache read-порт"""
 
     def __init__(
         self,
         *,
-        cache_gateway: SqliteCacheGateway,
+        cache_read: TopologyCacheReadPort,
         cache_spec: CacheSpec,
         node_id_field: str,
         parent_id_field: str,
@@ -46,7 +46,7 @@ class SqliteTopologyTargetReader(TopologyTargetReadPort):
         canonicalizer: CompiledTopologyCanonicalizer,
         payload_target_id_field: str | None = None,
     ) -> None:
-        self._cache_gateway = cache_gateway
+        self._cache_read = cache_read
         self._cache_spec = cache_spec
         self._node_id_field = node_id_field
         self._parent_id_field = parent_id_field
@@ -56,34 +56,24 @@ class SqliteTopologyTargetReader(TopologyTargetReadPort):
 
     def read_hierarchy(self, dataset: str) -> Iterable[TargetHierarchyRow]:
         self._require_dataset(dataset)
-        select_fields = [
-            self._node_id_field,
-            self._parent_id_field,
-            self._target_label_field,
-        ]
-        if self._payload_target_id_field is not None:
-            select_fields.append(self._payload_target_id_field)
-        cursor = self._cache_gateway.engine.execute(
-            f"SELECT {', '.join(select_fields)} "
-            f"FROM {self._cache_spec.table} "
-            f"ORDER BY {self._node_id_field}"
-        )
-        return tuple(self._iter_rows(cursor))
+        rows = self._cache_read.read_all(dataset, include_deleted=True)
+        ordered = sorted(rows, key=lambda row: str(row[self._node_id_field]))
+        return tuple(self._iter_rows(ordered))
 
     def read_snapshot_metadata(self, dataset: str) -> TargetHierarchyReadMeta:
         self._require_dataset(dataset)
-        meta = self._cache_gateway.cache.get_meta(dataset).values
+        meta = self._cache_read.get_meta(dataset).values
         return TargetHierarchyReadMeta(
             cache_snapshot_revision=meta.get("cache_snapshot_revision")
             or meta.get("last_refresh_run_id"),
             refreshed_at=_parse_iso_datetime(
                 meta.get("refreshed_at") or meta.get("last_refresh_at")
             ),
-            row_count=self._cache_gateway.cache.count(dataset),
+            row_count=self._cache_read.count(dataset),
         )
 
-    def _iter_rows(self, cursor) -> Iterator[TargetHierarchyRow]:
-        for row in cursor:
+    def _iter_rows(self, rows: Iterable[Mapping[str, object]]) -> Iterator[TargetHierarchyRow]:
+        for row in rows:
             raw_label = row[self._target_label_field]
             yield TargetHierarchyRow(
                 node_id=str(row[self._node_id_field]),

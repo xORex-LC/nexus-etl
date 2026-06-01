@@ -117,6 +117,26 @@ class SqliteCacheRepository:
         results = self.find(dataset, filters, include_deleted=include_deleted, mode=mode)
         return results[0] if results else None
 
+    def read_all(self, dataset: str, *, include_deleted: bool = False) -> list[dict]:
+        """
+        Назначение:
+            Прочитать все строки dataset-таблицы (read-all примитив).
+
+            В отличие от find(), не требует фильтров — нужен потребителям, которым
+            нужна полная выборка (например topology adjacency read seam).
+        """
+        handler = _get_handler(self._handlers, dataset)
+        spec = getattr(handler, "spec", None)
+        if spec is None:
+            raise ValueError(f"Cache handler for dataset '{dataset}' does not expose spec")
+
+        field_map = _build_field_map(spec.fields)
+        where_sql = "1=1"
+        if not include_deleted and "deletion_date" in field_map:
+            where_sql = "deletion_date IS NULL"
+        rows = self.engine.fetchall(f"SELECT * FROM {spec.table} WHERE {where_sql}")
+        return _rows_to_dicts(rows)
+
 
 def _build_handlers(cache_specs: list[CacheSpec]) -> dict[str, GenericCacheHandler]:
     handlers: dict[str, GenericCacheHandler] = {}
