@@ -75,6 +75,7 @@ def run_with_report(
     finalize_report_artifacts: Callable[..., RuntimeExecutionResult],
     apply_result_to_report: Callable[..., None],
     exit_code_from_result: Callable[[Any], int],
+    run_topology_bootstrap: Callable[..., TopologyBootstrapStepResult] | None = None,
 ) -> None:
     """
     Назначение:
@@ -88,6 +89,7 @@ def run_with_report(
     paths = to_operational_paths(app_config)
     observability = app_config.observability
     run_id = ctx.run_id
+    run_topology_bootstrap = run_topology_bootstrap or _run_topology_bootstrap_if_needed
 
     start_monotonic = time.monotonic()
     original_stdout = sys.stdout
@@ -171,7 +173,7 @@ def run_with_report(
                 secondary=False,
             )
         else:
-            topology_step_result = _run_topology_bootstrap_if_needed(
+            topology_step_result = run_topology_bootstrap(
                 ctx=ctx,
                 command_name=command_name,
                 opts=opts,
@@ -344,6 +346,7 @@ def run_without_report(
     initialize_container_resources: Callable[..., RuntimeExecutionResult],
     shutdown_container_resources: Callable[..., RuntimeExecutionResult],
     exit_code_from_result: Callable[[Any], int],
+    run_topology_bootstrap: Callable[..., TopologyBootstrapStepResult] | None = None,
 ) -> None:
     """
     Назначение:
@@ -356,6 +359,7 @@ def run_without_report(
     paths = app_config.paths
     observability = app_config.observability
     run_id = ctx.run_id
+    run_topology_bootstrap = run_topology_bootstrap or _run_topology_bootstrap_if_needed
 
     start_monotonic = time.monotonic()
     original_stdout = sys.stdout
@@ -398,7 +402,7 @@ def run_without_report(
         if init_result is not None:
             exit_result = init_result
         else:
-            topology_step_result = _run_topology_bootstrap_if_needed(
+            topology_step_result = run_topology_bootstrap(
                 ctx=ctx,
                 command_name=command_name,
                 opts=opts,
