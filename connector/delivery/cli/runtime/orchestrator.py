@@ -54,6 +54,7 @@ from .result_mapper import (
 
 from connector.domain.diagnostics.policies import SystemErrorCode
 from .result_adapter import result_with
+from .topology_bootstrap import TopologyBootstrapStep, attach_topology_runtime
 
 
 def run_with_report(
@@ -84,11 +85,15 @@ def run_with_report(
     run_id = ctx.run_id
 
     start_monotonic = time.monotonic()
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
     logger, log_file_path = create_command_logger(
         command_name=command_name,
         log_dir=paths.log_dir,
         run_id=run_id,
         log_level=observability.log_level,
+        mirror_to_console=_console_log_mirror_enabled(ctx),
+        console_stream=original_stderr,
     )
     ctx = replace(ctx, logger=logger)
 
@@ -124,9 +129,6 @@ def run_with_report(
     if report_items_limit is None:
         report_items_limit = observability.report_items_limit
     report_sink.emit(SetMetaEvent(items_limit=report_items_limit))
-
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
 
     stdout_logger_stream = StdStreamToLogger(logger, logging.INFO, run_id, "stdout")
     stderr_logger_stream = StdStreamToLogger(logger, logging.ERROR, run_id, "stderr")
@@ -164,16 +166,41 @@ def run_with_report(
                 secondary=False,
             )
         else:
-            bound_ctx = bind_context_with_container(ctx, container=container)
-            exit_result = handler(bound_ctx, opts, report_sink)
-            apply_result_to_report(
-                report_sink,
-                report_context,
-                exit_result,
+            topology_step_result = _run_topology_bootstrap_if_needed(
+                ctx=ctx,
                 command_name=command_name,
-                source="handler_result",
-                secondary=False,
+                opts=opts,
+                requirements=requirements,
+                container=container,
+                report_sink=report_sink,
+                logger=logger,
+                run_id=run_id,
             )
+            ctx = attach_topology_runtime(
+                ctx=ctx,
+                runtime_binding=topology_step_result.runtime_binding,
+            )
+            if topology_step_result.command_result is not None:
+                exit_result = topology_step_result.command_result
+                apply_result_to_report(
+                    report_sink,
+                    report_context,
+                    exit_result,
+                    command_name=command_name,
+                    source="topology_bootstrap",
+                    secondary=False,
+                )
+            else:
+                bound_ctx = bind_context_with_container(ctx, container=container)
+                exit_result = handler(bound_ctx, opts, report_sink)
+                apply_result_to_report(
+                    report_sink,
+                    report_context,
+                    exit_result,
+                    command_name=command_name,
+                    source="handler_result",
+                    secondary=False,
+                )
 
     except SettingsLoadError as exc:
         stage = stage_for_command(command_name)
@@ -326,16 +353,17 @@ def run_without_report(
     run_id = ctx.run_id
 
     start_monotonic = time.monotonic()
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
     logger, log_file_path = create_command_logger(
         command_name=command_name,
         log_dir=paths.log_dir,
         run_id=run_id,
         log_level=observability.log_level,
+        mirror_to_console=_console_log_mirror_enabled(ctx),
+        console_stream=original_stderr,
     )
     ctx = replace(ctx, logger=logger)
-
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
 
     stdout_logger_stream = StdStreamToLogger(logger, logging.INFO, run_id, "stdout")
     stderr_logger_stream = StdStreamToLogger(logger, logging.ERROR, run_id, "stderr")
@@ -365,8 +393,25 @@ def run_without_report(
         if init_result is not None:
             exit_result = init_result
         else:
-            bound_ctx = bind_context_with_container(ctx, container=container)
-            exit_result = handler(bound_ctx, opts, NullReportSink())
+            topology_step_result = _run_topology_bootstrap_if_needed(
+                ctx=ctx,
+                command_name=command_name,
+                opts=opts,
+                requirements=requirements,
+                container=container,
+                report_sink=NullReportSink(),
+                logger=logger,
+                run_id=run_id,
+            )
+            ctx = attach_topology_runtime(
+                ctx=ctx,
+                runtime_binding=topology_step_result.runtime_binding,
+            )
+            if topology_step_result.command_result is not None:
+                exit_result = topology_step_result.command_result
+            else:
+                bound_ctx = bind_context_with_container(ctx, container=container)
+                exit_result = handler(bound_ctx, opts, NullReportSink())
 
     except SettingsLoadError as exc:
         stage = stage_for_command(command_name)
@@ -663,6 +708,49 @@ def config_sources(ctx: CommandContext[Any]) -> list[str]:
 
 def require_app_settings(ctx: CommandContext[Any]) -> AppConfig:
     return ctx.app_config
+
+
+def _console_log_mirror_enabled(ctx: CommandContext[Any]) -> bool:
+    extra = ctx.extra or {}
+    quiet = bool(extra.get("quiet"))
+    requested = bool(extra.get("console_log_mirror"))
+    return requested and not quiet
+
+
+def _run_topology_bootstrap_if_needed(
+    *,
+    ctx: UnboundCommandContext,
+    command_name: str,
+    opts: Any,
+    requirements: Requirements,
+    container: AppContainer,
+    report_sink,
+    logger: logging.Logger,
+    run_id: str,
+):
+    if command_name not in {"mapping", "normalize", "enrich", "match", "resolve", "import-plan"}:
+        return TopologyBootstrapStepResultFallback()
+    dataset_name = resolve_dataset_opt(opts, ctx.app_config)
+    if dataset_name is None:
+        return TopologyBootstrapStepResultFallback()
+    step = TopologyBootstrapStep()
+    return step.run(
+        ctx=ctx,
+        command_name=command_name,
+        dataset_name=dataset_name,
+        requirements=requirements,
+        container=container,
+        report_sink=report_sink,
+        logger=logger,
+        run_id=run_id,
+    )
+
+
+class TopologyBootstrapStepResultFallback:
+    """Null-object для команд без dataset-bound topology bootstrap."""
+
+    runtime_binding = None
+    command_result = None
 
 
 def echo_command_diagnostics(prefix: str, diagnostics: list[Any]) -> None:

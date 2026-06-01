@@ -20,6 +20,7 @@
 | `cache_status.py` | `nexus cache status` |
 | `vault_management.py` | `nexus vault-management {init,status,rotate,rewrap}` |
 | `common.py` | Общие утилиты для команд |
+| `topology_runtime.py` | Handler-scope helper для topology provider wiring в planning pipeline composition |
 
 ## Зависимости
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.cli.stages import CheckpointName
 from connector.delivery.commands.common import sqlite_cache_error_result
+from connector.delivery.commands.topology_runtime import pipeline_topology_scope
 from connector.delivery.cli.containers import (
     build_dataset_spec,
     build_diagnostics_catalog,
@@ -53,7 +54,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     try:
         pipeline = ctx.container.pipeline
         composer = pipeline.pipeline_composer()
-        with pipeline.dataset_spec.override(dataset_spec), \
+        with pipeline_topology_scope(ctx=ctx, pipeline=pipeline), \
+             pipeline.dataset_spec.override(dataset_spec), \
              pipeline.run_id.override(run_id), \
              pipeline.catalog.override(catalog), \
              pipeline.include_deleted.override(include_deleted_value):

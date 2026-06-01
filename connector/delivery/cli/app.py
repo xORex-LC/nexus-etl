@@ -59,7 +59,11 @@ def _build_ctx(
         raise RuntimeError("App config is not initialized")
     operational_paths = to_operational_paths(app_config)
     catalog = build_diagnostics_catalog(dataset, strict=app_config.observability.diagnostics_strict)
-    extra: dict[str, Any] = {"sources": ctx.obj.get("sources")}
+    extra: dict[str, Any] = {
+        "sources": ctx.obj.get("sources"),
+        "quiet": bool(ctx.obj.get("quiet")),
+        "console_log_mirror": bool(ctx.obj.get("console_log_mirror")),
+    }
     if command_key:
         usecase_name = COMMAND_TO_USECASE.get(command_key)
         extra["settings_contract"] = {
@@ -85,6 +89,16 @@ def main(
     ctx: typer.Context,
     config: str | None = typer.Option(None, "--config", help="Path to config.yml"),
     run_id: str | None = typer.Option(None, "--run-id", help="Run identifier (UUID). If omitted, generated."),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        help="Disable console log mirroring; fatal user-facing errors still go to stderr.",
+    ),
+    console_log_mirror: bool = typer.Option(
+        False,
+        "--console-log-mirror",
+        help="Mirror structured runtime logs to the console stderr in addition to the log file.",
+    ),
     log_level: str | None = typer.Option(None, "--log-level", help="Log level: ERROR|WARN|INFO|DEBUG"),
     log_json: bool | None = typer.Option(None, "--log-json", help="Enable JSON logging (reserved)"),
     log_dir: str | None = typer.Option(None, "--log-dir", help="Directory for logs."),
@@ -183,6 +197,8 @@ def main(
         "settings_source_trace": loaded_app.source_trace,
         "configPath": config,
         "logger": None,
+        "quiet": quiet,
+        "console_log_mirror": console_log_mirror,
     }
 
 

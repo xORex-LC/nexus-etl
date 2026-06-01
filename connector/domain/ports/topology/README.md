@@ -13,6 +13,7 @@ Runtime-facing topology порты и DTO. Это boundary между topology d
 | `provider.py` | `TopologyProviderPort`, `TopologyNotAvailableError` |
 | `builders.py` | `SourcePathTopologyBuilderPort`, `TargetHierarchyTopologyBuilderPort` |
 | `readers.py` | `TopologyTargetReadPort` — cache-backed read seam для target hierarchy |
+| `observability.py` | `TopologyEventSink` — transport-neutral runtime seam для topology lifecycle событий |
 
 ## Правило
 

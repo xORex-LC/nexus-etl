@@ -21,6 +21,7 @@
 | `cache_clear_usecase.py` | Очистка кэша |
 | `cache_status_usecase.py` | Статус кэша |
 | `topology_target_build.py` | `TargetTopologyBuildUseCase` — read → build → readiness для target topology |
+| `topology_bootstrap.py` | `TopologyRequirementResolver`, `TopologyBootstrapUseCase`, `StaticTopologyProvider`, `TraceToSink` |
 | `apply/` | `ApplyResult`, `ApplySummary`, `ApplyTelemetrySink` |
 | `common/` | `IdentityIndexSyncer` — post-apply синхронизация |
 | `operations/` | Legacy re-exports vault key management |

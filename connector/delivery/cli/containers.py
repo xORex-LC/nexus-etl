@@ -51,6 +51,7 @@ from connector.domain.ports.cache.roles import (
     MatchRuntimePort,
     ResolveRuntimePort,
 )
+from connector.domain.ports.topology import TopologyProviderPort
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
@@ -516,6 +517,7 @@ def _build_planning_context(
     metadata: PipelineMetadata,
     cache_roles: SqliteCacheRolePorts,
     resolver_settings: object | None,
+    topology_provider: TopologyProviderPort | None,
 ) -> StageExecutionContext:
     """Scoped context для match/resolve: MatchRuntimePort + ResolveRuntimePort."""
     caps: dict[type, object] = {
@@ -524,6 +526,8 @@ def _build_planning_context(
     }
     if resolver_settings is not None:
         caps[ResolverSettings] = resolver_settings
+    if topology_provider is not None:
+        caps[TopologyProviderPort] = topology_provider
     return StageExecutionContext(metadata=metadata, capabilities=caps)
 
 
@@ -579,6 +583,8 @@ class PipelineContainer(containers.DeclarativeContainer):
     secret_store = providers.Object(None)
     dictionaries = providers.Object(None)
     include_deleted = providers.Object(False)
+    topology_provider = providers.Object(None)
+    topology_requirements = providers.Object(None)
 
     # ── Derived metadata ──────────────────────────────────────────────────────
 
@@ -643,6 +649,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         metadata=pipeline_metadata,
         cache_roles=cache_roles,
         resolver_settings=resolver_settings,
+        topology_provider=topology_provider,
     )
 
     # ── Singletons ────────────────────────────────────────────────────────────

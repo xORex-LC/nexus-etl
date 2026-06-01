@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TextIO
 
 class EnsureFieldsFilter(logging.Filter):
     """
@@ -116,6 +117,8 @@ def create_command_logger(
     log_dir: str | Path,
     run_id: str,
     log_level: str,
+    mirror_to_console: bool = False,
+    console_stream: TextIO | None = None,
 ) -> tuple[logging.Logger, str]:
     """
     Назначение:
@@ -154,6 +157,13 @@ def create_command_logger(
     file_handler.setFormatter(formatter)
     file_handler.addFilter(EnsureFieldsFilter(run_id=run_id))
     logger.addHandler(file_handler)
+
+    if mirror_to_console:
+        console_handler = logging.StreamHandler(console_stream)
+        console_handler.setLevel(level)
+        console_handler.setFormatter(formatter)
+        console_handler.addFilter(EnsureFieldsFilter(run_id=run_id))
+        logger.addHandler(console_handler)
 
     return logger, log_file_path
 

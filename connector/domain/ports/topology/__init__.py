@@ -11,6 +11,7 @@ from connector.domain.ports.topology.models import (
     TopologyFreshnessPolicy,
     TopologyTargetReadinessResult,
 )
+from connector.domain.ports.topology.observability import TopologyEventSink
 from connector.domain.ports.topology.provider import (
     TopologyNotAvailableError,
     TopologyProviderPort,
@@ -23,6 +24,7 @@ __all__ = [
     "TargetHierarchyReadMeta",
     "TargetHierarchyRow",
     "TargetHierarchyTopologyBuilderPort",
+    "TopologyEventSink",
     "TopologyFreshnessPolicy",
     "TopologyNotAvailableError",
     "TopologyProviderPort",
