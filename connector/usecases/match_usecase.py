@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import Counter
+
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.models import DiagnosticStage
@@ -7,10 +9,11 @@ from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.adapters.result_policy import StageCommandResultResolver
 from connector.domain.reporting.adapters.stage_result_reporter import StageResultReporter
 from connector.domain.reporting.adapters.strategies import PlanningStageReportStrategy
+from connector.domain.reporting.events import SetContextEvent
 from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.reporting.sink import IReportSink
 from connector.domain.transform.core.extractor import Extractor
-from connector.domain.transform.core.iterators import iter_ok
+from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.stages.stages import PipelineOrchestrator
 
 
@@ -66,8 +69,20 @@ class MatchUseCase:
             ok_label="matched_ok",
             failed_label="match_failed",
             strategy=PlanningStageReportStrategy(
+                should_skip=_should_skip_match_result,
                 meta_builder=lambda r: {
-                    "match_status": (r.row.match_decision.status.value if r.row else None)
+                    "match_status": (r.row.match_decision.status.value if r.row else None),
+                    "topology_match_mode": (
+                        r.row.match_decision.topology_match_mode.value
+                        if r.row and r.row.match_decision.topology_match_mode is not None
+                        else None
+                    ),
+                    "topology_reason": (
+                        r.row.match_decision.topology_reason if r.row else None
+                    ),
+                    "topology_evidence": (
+                        dict(r.row.match_decision.topology_evidence) if r.row else {}
+                    ),
                 },
             ),
             report_stage=DiagnosticStage.MATCH,
@@ -75,10 +90,53 @@ class MatchUseCase:
         )
 
         extractor = Extractor(row_source, catalog=catalog)
-        for matched in iter_ok(pipeline.run(extractor.run())):
+        topology_mode_counter: Counter[str] = Counter()
+        topology_enabled = False
+        for matched in pipeline.run(extractor.run()):
             force_failed = bool((matched.meta or {}).get("match_drop_reason"))
+            if matched.row is not None:
+                decision = matched.row.match_decision
+                if decision.topology_match_mode is not None:
+                    topology_enabled = True
+                    topology_mode_counter[decision.topology_match_mode.value] += 1
+                elif bool(decision.meta.get("topology_applied")):
+                    topology_enabled = True
             reporter.process(matched, force_failed=force_failed)
 
-        stats = reporter.publish_context()
+        stats = reporter.snapshot()
+        report_sink.emit(
+            SetContextEvent(
+                name=ReportContextKey.MATCH,
+                value={
+                    **stats.to_context_payload(
+                        ok_label="matched_ok",
+                        failed_label="match_failed",
+                    ),
+                    "topology": {
+                        "enabled": topology_enabled,
+                        "by_mode": dict(sorted(topology_mode_counter.items())),
+                    },
+                },
+            )
+        )
         has_conflicts = stats.failed_rows > 0
         return StageCommandResultResolver().resolve(stats, has_conflicts=has_conflicts)
+
+
+def _should_skip_match_result(result: TransformResult | None) -> bool:
+    """Пропустить upstream-only записи, не дошедшие до собственного match/topology решения."""
+    if result is None:
+        return False
+    if (result.meta or {}).get("match_drop_reason"):
+        return False
+    if result.row is not None:
+        return False
+    return not _has_match_stage_diagnostics(result)
+
+
+def _has_match_stage_diagnostics(result: TransformResult) -> bool:
+    """Проверить, есть ли у результата diagnostics именно match-стадии."""
+    return any(
+        item.stage == DiagnosticStage.MATCH or item.stage == DiagnosticStage.MATCH.value
+        for item in (*result.errors, *result.warnings)
+    )

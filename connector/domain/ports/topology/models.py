@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Mapping
 
+from connector.domain.dependency_tree.comparison import TopologyMatchMode
 from connector.domain.models import DiagnosticItem
 
 
@@ -28,6 +29,17 @@ class SourceTopologyCanonicalPath:
     """Canonical source hierarchy path для source-side builder-ов и consumer-ов"""
 
     canonical_segments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TopologyMatchResult:
+    """Типизированный результат topology-refinement для match-стадии."""
+
+    matched_target_id: str | None
+    is_ambiguous: bool
+    mode: TopologyMatchMode
+    reason: str | None
+    evidence: Mapping[str, Any]
 
 
 @dataclass(frozen=True)
@@ -89,11 +101,11 @@ class TopologyTargetReadinessResult:
 
 @dataclass(frozen=True)
 class TopologyRuntimeRequirements:
-    """Run-scoped topology activation semantics for pipeline composition.
+    """Run-scoped семантика topology activation для pipeline composition.
 
     Этот DTO не хранит snapshot-ы и не подменяет provider boundary. Он нужен как
-    composition input для topology-aware consumers, которым важно понимать, была
-    ли topology затребована, для какого dataset и по какой activation reason.
+    composition input для topology-aware consumer-ов, которым важно понимать,
+    была ли topology затребована, для какого dataset и по какой activation reason.
     """
 
     pipeline_dataset: str

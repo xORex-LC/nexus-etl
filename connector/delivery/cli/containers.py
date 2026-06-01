@@ -28,7 +28,7 @@
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator, cast
 
 from dependency_injector import containers, providers
 
@@ -63,6 +63,8 @@ from connector.domain.secrets.vault_startup_guard import VaultStartupGuard
 from connector.domain.transform.context import PipelineMetadata, StageExecutionContext
 from connector.domain.transform.providers import ProviderGateway
 from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
+from connector.domain.transform_dsl.compilers.match import MatchDsl, TopologyMatchPolicy
+from connector.domain.transform_dsl.compilers.topology import TopologyDsl
 from connector.domain.transform.pipeline_run_context import PipelineRunContext
 from connector.domain.transform.matcher.dedup_store import LocalSourceDedupStore
 from connector.domain.transform.matcher.match_engine import MatchEngine
@@ -72,7 +74,7 @@ from connector.domain.transform.resolver.pending_expiry_service import PendingEx
 from connector.domain.transform.resolver.resolve_engine import ResolveEngine
 from connector.domain.transform.stages.stages import MatchStage, ResolveContextStage, ResolveStage
 from connector.datasets.registry import get_spec, resolve_dataset_name, validate_registry
-from connector.datasets.spec import DatasetSpec
+from connector.datasets.spec import DatasetSpec, UnsupportedStageError
 from connector.delivery.cli.stages import PIPELINE_CHECKPOINTS, StageName
 from connector.delivery.cli.stages import PipelineComposer
 from connector.delivery.cli.stages import build_stage_factory
@@ -86,6 +88,8 @@ from connector.domain.transform_dsl import (
     load_normalize_build_options_for_dataset,
     load_resolve_build_options_for_dataset,
 )
+from connector.domain.transform_dsl.build_options import MatchDslBuildOptions
+from connector.domain.transform_dsl.specs import MatchSpec, ResolveSpec, SinkSpec, TopologySpec
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
@@ -107,6 +111,10 @@ from connector.infra.target.core.factory import (
 from connector.usecases.management.vault import (
     VaultKeyManagementUseCase,
     VaultStartupGuardPostVerifier,
+)
+from connector.usecases.topology_match import (
+    build_source_locator_builder,
+    build_topology_match_service,
 )
 
 if TYPE_CHECKING:
@@ -537,10 +545,80 @@ def _build_planning_context(
 
 def _compile_resolve_rules(dataset_spec: DatasetSpec) -> object:
     """Compile resolve spec → resolve_rules (needed by match_engine_factory)."""
-    resolve_spec = dataset_spec.build_spec_for("resolve")
-    sink_spec = dataset_spec.build_spec_for("sink")
+    resolve_spec = cast(ResolveSpec, dataset_spec.build_spec_for("resolve"))
+    sink_spec = cast(SinkSpec, dataset_spec.build_spec_for("sink"))
     compiled = ResolveDsl().compile(resolve_spec, sink_spec=sink_spec)
     return compiled.resolve_rules
+
+
+def _build_match_topology_dependencies(
+    dataset_spec: DatasetSpec,
+    match_options: MatchDslBuildOptions,
+    topology_provider: TopologyProviderPort | None,
+    topology_requirements: TopologyRuntimeRequirements | None,
+) -> dict[str, object | None]:
+    """Собрать topology-aware зависимости для MatchEngine.
+
+    Контракт:
+        - topology consumer включается только когда `match.yaml` реально содержит
+          enabled topology-policy;
+        - runtime requirements используются как явный composition input, а не
+          выводятся косвенно из факта наличия provider-а;
+        - при enabled match-policy отсутствие target topology считается wiring error.
+    """
+    try:
+        match_spec = cast(MatchSpec, dataset_spec.build_spec_for("match"))
+        topology_spec = cast(TopologySpec, dataset_spec.build_spec_for("topology"))
+    except UnsupportedStageError:
+        return {
+            "topology_match_service": None,
+            "source_topology_locator_builder": None,
+            "topology_target_node_id_field": None,
+        }
+
+    compiled_match = MatchDsl(options=match_options).compile(match_spec)
+    topology_policy: TopologyMatchPolicy | None = compiled_match.topology
+    if topology_policy is None or not topology_policy.enabled:
+        return {
+            "topology_match_service": None,
+            "source_topology_locator_builder": None,
+            "topology_target_node_id_field": None,
+        }
+
+    if (
+        topology_requirements is None
+        or not topology_requirements.requires_target_topology
+    ):
+        raise ValueError(
+            "match topology policy is enabled but topology requirements were not activated"
+        )
+    if topology_provider is None:
+        raise ValueError(
+            "match topology policy is enabled but TopologyProviderPort is not wired"
+        )
+
+    target_snapshot = topology_provider.get_target()
+    if target_snapshot is None:
+        raise ValueError(
+            "match topology policy is enabled but target topology snapshot is unavailable"
+        )
+
+    compiled_topology = TopologyDsl().compile(topology_spec)
+    locator_builder = build_source_locator_builder(
+        path_fields=(
+            item.field for item in topology_spec.topology.source.path_columns
+        ),
+        canonicalizer=compiled_topology.python,
+    )
+    match_service = build_topology_match_service(
+        snapshot=target_snapshot,
+        policy=topology_policy,
+    )
+    return {
+        "topology_match_service": match_service,
+        "source_topology_locator_builder": locator_builder,
+        "topology_target_node_id_field": topology_spec.topology.target.node_id_field,
+    }
 
 
 def _create_stage(
@@ -713,6 +791,14 @@ class PipelineContainer(containers.DeclarativeContainer):
         dataset_spec=dataset_spec,
     )
 
+    match_topology_dependencies = providers.Factory(
+        _build_match_topology_dependencies,
+        dataset_spec=dataset_spec,
+        match_options=match_options,
+        topology_provider=topology_provider,
+        topology_requirements=topology_requirements,
+    )
+
     # ── Row source ────────────────────────────────────────────────────────────
 
     row_source = providers.Factory(
@@ -768,6 +854,18 @@ class PipelineContainer(containers.DeclarativeContainer):
         include_deleted=include_deleted,
         options=match_options,
         dedup_store=_dedup_store,
+        topology_match_service=providers.Callable(
+            lambda deps: deps["topology_match_service"],
+            deps=match_topology_dependencies,
+        ),
+        source_topology_locator_builder=providers.Callable(
+            lambda deps: deps["source_topology_locator_builder"],
+            deps=match_topology_dependencies,
+        ),
+        topology_target_node_id_field=providers.Callable(
+            lambda deps: deps["topology_target_node_id_field"],
+            deps=match_topology_dependencies,
+        ),
     )
 
     match_stage = providers.Singleton(
