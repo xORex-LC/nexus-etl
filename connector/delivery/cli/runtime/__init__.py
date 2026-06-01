@@ -62,6 +62,7 @@ def run_with_report(
         finalize_report_artifacts=_finalize_report_artifacts,
         apply_result_to_report=_apply_cli_result_to_report,
         exit_code_from_result=_exit_code_from_result,
+        run_topology_bootstrap=_run_topology_bootstrap_if_needed,
     )
 
 
@@ -87,7 +88,20 @@ def run_without_report(
         initialize_container_resources=_initialize_container_resources,
         shutdown_container_resources=_shutdown_container_resources,
         exit_code_from_result=_exit_code_from_result,
+        run_topology_bootstrap=_run_topology_bootstrap_if_needed,
     )
+
+
+def _run_topology_bootstrap_if_needed(**kwargs):
+    """
+    Назначение:
+        Compatibility facade для topology bootstrap step (инжектируемый seam).
+
+    Граница:
+        Делает topology bootstrap таким же подменяемым в тестах runtime-обвязки,
+        как и остальные инфраструктурные ресурсы (init/shutdown/finalize).
+    """
+    return runtime_orchestrator._run_topology_bootstrap_if_needed(**kwargs)
 
 
 def _bind_context_with_container(ctx: UnboundCommandContext, *, container: AppContainer) -> BoundCommandContext:

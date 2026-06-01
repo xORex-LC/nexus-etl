@@ -12,6 +12,7 @@ from connector.config.models import AppConfig
 from connector.delivery.cli import runtime as runtime_module
 from connector.delivery.cli.context import CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
+from connector.delivery.cli.runtime.topology_bootstrap import TopologyBootstrapStepResult
 from connector.domain.diagnostics import build_catalog
 from connector.domain.reporting.assembler import ReportAssembler
 
@@ -82,6 +83,13 @@ def _run_with_capture(
     monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
     monkeypatch.setattr(runtime_module, "_shutdown_container_resources", lambda **_: None)
     monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", _capture_finalize)
+    # Topology bootstrap — такой же инжектируемый runtime-seam, как init/shutdown:
+    # report-policy тест не строит реальную topology, поэтому нейтрализуем шаг (inactive).
+    monkeypatch.setattr(
+        runtime_module,
+        "_run_topology_bootstrap_if_needed",
+        lambda *, requirements, **_: TopologyBootstrapStepResult.inactive(requirements),
+    )
 
     runtime_module.run_with_report(
         ctx=_ctx(tmp_path, profile=profile),
