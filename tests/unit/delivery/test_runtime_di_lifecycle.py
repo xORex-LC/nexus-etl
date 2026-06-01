@@ -15,7 +15,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 import typer

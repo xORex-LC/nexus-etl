@@ -8,7 +8,8 @@
 
 | Файл | Назначение |
 |---|---|
-| `setup.py` | `create_command_logger(command_name, log_dir, run_id, log_level)` → `(logger, log_file_path)`; `EnsureFieldsFilter` — инжектирует `runId`/`component` в каждый `LogRecord`; `StdStreamToLogger`, `TeeStream` — перехват stdout/stderr |
+| `setup.py` | `create_command_logger(...)` → `(logger, log_file_path)`; file logger + optional console mirror на original stderr; `EnsureFieldsFilter`, `StdStreamToLogger`, `TeeStream` |
+| `topology.py` | `LegacyLogEventSink` — bridge `TopologyEventSink` → текущий stdlib command logger (`comp=topology`) |
 
 ## Формат лога
 

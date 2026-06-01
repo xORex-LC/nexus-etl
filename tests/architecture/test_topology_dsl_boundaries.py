@@ -55,6 +55,25 @@ def test_runtime_topology_modules_do_not_import_pydantic() -> None:
     )
 
 
+def test_domain_dependency_tree_does_not_import_delivery_or_infra_or_logging() -> None:
+    violations: list[str] = []
+    forbidden_prefixes = (
+        "connector.delivery",
+        "connector.infra",
+        "structlog",
+        "logging",
+    )
+    for path in _py_files(DEPENDENCY_TREE_ROOT):
+        rel = path.relative_to(REPO_ROOT)
+        for module in _imports(path):
+            if module.startswith(forbidden_prefixes):
+                violations.append(f"{rel}: {module}")
+    assert violations == [], (
+        "dependency_tree domain layer must stay backend-free:\n"
+        + "\n".join(violations)
+    )
+
+
 def test_topology_runtime_contracts_are_dataclasses_not_basemodels() -> None:
     assert dataclasses.is_dataclass(TopologyNode)
     assert dataclasses.is_dataclass(TopologySnapshot)
@@ -69,3 +88,9 @@ def test_topology_runtime_contracts_are_dataclasses_not_basemodels() -> None:
 
 def test_topology_spec_boundary_uses_pydantic_models() -> None:
     assert issubclass(TopologySpec, BaseModel)
+
+
+def test_topology_event_sink_lives_in_runtime_ports_not_domain_trace_module() -> None:
+    from connector.domain.ports.topology import TopologyEventSink
+
+    assert TopologyEventSink.__module__ == "connector.domain.ports.topology.observability"

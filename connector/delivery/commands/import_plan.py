@@ -10,6 +10,7 @@ from connector.common.time import get_now_iso
 from connector.config.projections import to_operational_paths, to_vault_rollout_policy_settings
 from connector.delivery.cli.containers import build_dataset_spec, build_diagnostics_catalog
 from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.commands.topology_runtime import pipeline_topology_scope
 from connector.delivery.commands.common import (
     attach_dictionary_report_snapshot_if_available,
     result_with,
@@ -20,7 +21,7 @@ from connector.delivery.commands.vault_unseal import provide_runtime_unseal_pass
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.planning.plan_builder import PlanBuilder
-from connector.domain.reporting.contracts import ReportContextKey, ReportItemStatus
+from connector.domain.reporting.contracts import ReportItemStatus
 from connector.domain.reporting.events import AddItemEvent, SetMetaEvent, SetRowCountersEvent
 from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.secrets.errors import (
@@ -124,7 +125,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
             report_sink.emit(SetMetaEvent(dataset=dataset_name))
 
         pipeline = ctx.container.pipeline
-        with pipeline.dataset_spec.override(_spec), \
+        with pipeline_topology_scope(ctx=ctx, pipeline=pipeline), \
+             pipeline.dataset_spec.override(_spec), \
              pipeline.run_id.override(run_id), \
              pipeline.catalog.override(catalog), \
              pipeline.include_deleted.override(include_deleted_value), \
