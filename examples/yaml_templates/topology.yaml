@@ -1,0 +1,41 @@
+# Dataset identifier used by registry entries that point to this topology spec.
+dataset: dataset_name
+
+topology:
+  # Shared segment-level canonicalization contract.
+  # The same rules apply to source path segments and to target label values.
+  canonicalization:
+    # Whitelisted deterministic ops for Phase 1.
+    # Supported baseline ops: trim, lower, compact, regex_replace.
+    # The same rule-set must compile to both:
+    #   1. a Polars-expression plan for source bootstrap
+    #   2. a Python callable plan for row-level lookup / target labels
+    ops:
+      - op: trim
+      - op: lower
+      - op: regex_replace
+        pattern: "\\s+"
+        repl: " "
+      - op: compact
+
+  # Source-side hierarchy projection contract.
+  source:
+    # Phase 1 source mode: ordered hierarchy path columns.
+    # Segment order is defined by YAML list order.
+    mode: path_columns
+    path_columns:
+      - field: level_1_name
+      - field: level_2_name
+      - field: level_3_name
+  # Target-side hierarchy read contract (cache-backed adjacency list).
+  target:
+    mode: adjacency_list
+    # Field used as topology node id in cache-backed hierarchy.
+    node_id_field: _ouid
+    # Field containing parent node id; null means root.
+    # Invariant: parent_id_field must be in the same id-space as node_id_field.
+    parent_id_field: parent_id
+    # Human-readable label field used for canonicalization and diagnostics.
+    target_label_field: name
+    # Optional payload write-id when graph node id and API payload id differ.
+    payload_target_id_field: _id

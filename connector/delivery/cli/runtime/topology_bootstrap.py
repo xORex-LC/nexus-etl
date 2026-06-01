@@ -45,6 +45,15 @@ class TopologyBootstrapStepResult:
     runtime_binding: TopologyRuntimeBinding | None
     command_result: CommandResult | None
 
+    @classmethod
+    def inactive(cls, requirements: Requirements) -> "TopologyBootstrapStepResult":
+        """Skip-результат для команд без активного topology bootstrap.
+
+        Сохраняет единый контракт результата (включая `requirements`), чтобы
+        вызывающий код не натыкался на разные формы и не получал AttributeError.
+        """
+        return cls(requirements=requirements, runtime_binding=None, command_result=None)
+
 
 class TopologyBootstrapStep:
     """Запустить topology bootstrap до handler logic и подготовить runtime binding."""

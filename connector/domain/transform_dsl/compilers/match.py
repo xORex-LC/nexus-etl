@@ -14,17 +14,23 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from connector.domain.models import Identity
 from connector.domain.transform.common.values import read_field_value
-from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.transform_dsl.build_options import MatchDslBuildOptions
 from connector.domain.transform_dsl.specs import MatchRule, MatchSpec
 
-BuildIdentity = Callable[[Any, MatchContext], Identity]
-BuildLinks = Callable[[Any, MatchContext], dict[str, Identity]]
+if TYPE_CHECKING:
+    # Type-only: компилятор (DSL-слой) не должен зависеть от stage-слоя в runtime.
+    # MatchContext нужен лишь для аннотаций BuildIdentity/BuildLinks. Импорт под
+    # TYPE_CHECKING + forward-ref разрывает цикл compilers.match <-> transform.matcher
+    # (correct-направление matcher -> compilers сохраняется).
+    from connector.domain.transform.matcher.context import MatchContext
+
+BuildIdentity = Callable[[Any, "MatchContext"], Identity]
+BuildLinks = Callable[[Any, "MatchContext"], dict[str, Identity]]
 
 
 # ========== COMPILED MODELS ==========

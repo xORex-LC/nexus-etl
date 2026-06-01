@@ -43,3 +43,14 @@ match:
     top_k: 3
     # Decimal places for score rounding.
     score_round: 4
+  # Optional topology-aware refinement/disambiguation policy.
+  topology:
+    # Whether topology signal is enabled for this dataset.
+    enabled: false
+    # When topology refinement runs. Supported: ambiguous_only, all_candidates.
+    apply_on: ambiguous_only
+    # Behavior when runtime topology is unavailable. Supported: skip, hard_error.
+    on_missing_topology: skip
+    # Ordered topology comparison ladder.
+    comparison_ladder:
+      - exact_canonical_path

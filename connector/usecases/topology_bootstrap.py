@@ -98,10 +98,7 @@ class TopologyActivationDecision:
         return (
             self.capability_enabled
             and bool(self.activation_sources)
-            and (
-                self.request.require_source_topology
-                or self.request.require_target_topology
-            )
+            and self.request.require_target_topology
         )
 
 
@@ -267,17 +264,24 @@ class TraceToSink(TopologyTracePort):
         )
 
 
+# Единый источник истины о command-vocabulary для topology activation.
+# Это имена команд (app.py), НЕ значения CheckpointName ("map" != "mapping").
+# Команды, чей checkpoint включает Match или идёт после него — кандидаты на bootstrap.
+TOPOLOGY_PIPELINE_COMMANDS: frozenset[str] = frozenset(
+    {"mapping", "normalize", "enrich", "match", "resolve", "import-plan"}
+)
+# Pre-Match checkpoints: capability видна, но bootstrap не нужен.
+_PRE_MATCH_COMMANDS: frozenset[str] = frozenset({"mapping", "normalize", "enrich"})
+# Подмножество, активирующее topology-aware match.
+_MATCH_ACTIVATING_COMMANDS: frozenset[str] = frozenset({"match", "import-plan"})
+# Подмножество, активирующее topology-backed resolve link.
+_RESOLVE_ACTIVATING_COMMANDS: frozenset[str] = frozenset({"resolve", "import-plan"})
+
+
 class TopologyRequirementResolver:
     """Материализовать activation decision из command checkpoint и topology policy."""
 
-    _PIPELINE_COMMANDS = {
-        "mapping",
-        "normalize",
-        "enrich",
-        "match",
-        "resolve",
-        "import-plan",
-    }
+    _PIPELINE_COMMANDS = TOPOLOGY_PIPELINE_COMMANDS
 
     def resolve(
         self,
@@ -315,7 +319,7 @@ class TopologyRequirementResolver:
                 target_failure_is_hard=False,
             )
 
-        if normalized_command in {"mapping", "normalize", "enrich"}:
+        if normalized_command in _PRE_MATCH_COMMANDS:
             return TopologyActivationDecision(
                 request=TopologyBootstrapRequest(
                     pipeline_dataset=dataset_name,
@@ -331,22 +335,30 @@ class TopologyRequirementResolver:
 
         match_policy = (
             self._load_match_policy(dataset_name)
-            if normalized_command in {"match", "import-plan"}
+            if normalized_command in _MATCH_ACTIVATING_COMMANDS
             else None
         )
         resolve_policy = (
             self._load_resolve_policy(dataset_name)
-            if normalized_command in {"resolve", "import-plan"}
+            if normalized_command in _RESOLVE_ACTIVATING_COMMANDS
             else None
         )
 
         activation_sources: list[str] = []
         target_failure_is_hard = False
-        if normalized_command in {"match", "import-plan"} and match_policy is not None and match_policy.enabled:
+        if (
+            normalized_command in _MATCH_ACTIVATING_COMMANDS
+            and match_policy is not None
+            and match_policy.enabled
+        ):
             activation_sources.append("match")
             if match_policy.on_missing_topology == "hard_error":
                 target_failure_is_hard = True
-        if normalized_command in {"resolve", "import-plan"} and resolve_policy is not None and resolve_policy.enabled:
+        if (
+            normalized_command in _RESOLVE_ACTIVATING_COMMANDS
+            and resolve_policy is not None
+            and resolve_policy.enabled
+        ):
             activation_sources.append("resolve")
             if resolve_policy.on_missing_topology == "hard_error":
                 target_failure_is_hard = True
@@ -357,7 +369,11 @@ class TopologyRequirementResolver:
                 pipeline_dataset=dataset_name,
                 topology_dataset=None,
                 run_id="",
-                require_source_topology=activated,
+                # Phase 1a/1b работают от row-level canonical path и не требуют
+                # полного source snapshot. Source builder и его consumer появляются
+                # на Stage G+, где флаг будет активироваться по наличию такого consumer,
+                # а не по факту включённости match/resolve policy.
+                require_source_topology=False,
                 require_target_topology=activated,
             ),
             capability_enabled=True,
