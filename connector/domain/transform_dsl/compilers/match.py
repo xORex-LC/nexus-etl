@@ -16,6 +16,7 @@ import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
+from connector.domain.dependency_tree import TopologyMatchMode
 from connector.domain.models import Identity
 from connector.domain.transform.common.values import read_field_value
 from connector.domain.dsl.issues import DslLoadError
@@ -111,7 +112,7 @@ class TopologyMatchPolicy:
     enabled: bool = False
     apply_on: str = "ambiguous_only"
     on_missing_topology: str = "skip"
-    comparison_ladder: tuple[str, ...] = ()
+    comparison_ladder: tuple[TopologyMatchMode, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -190,7 +191,10 @@ class MatchDsl:
                     enabled=spec.match.topology.enabled,
                     apply_on=spec.match.topology.apply_on,
                     on_missing_topology=spec.match.topology.on_missing_topology,
-                    comparison_ladder=tuple(spec.match.topology.comparison_ladder),
+                    comparison_ladder=tuple(
+                        TopologyMatchMode(item)
+                        for item in spec.match.topology.comparison_ladder
+                    ),
                 )
             return MatchingRules(
                 identity_rules=identity_rules,

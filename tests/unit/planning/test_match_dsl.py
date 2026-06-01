@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from connector.domain.transform_dsl import load_match_spec_for_dataset
+from connector.domain.dependency_tree import TopologyMatchMode
 from connector.domain.transform_dsl.specs import MatchSpec
 from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.transform_dsl.compilers.match import MatchDsl
@@ -73,9 +74,9 @@ def test_match_dsl_compile_matches_organizations_topology_policy() -> None:
     assert compiled.topology.apply_on == "ambiguous_only"
     assert compiled.topology.on_missing_topology == "hard_error"
     assert compiled.topology.comparison_ladder == (
-        "exact_canonical_path",
-        "exact_leaf_parent_chain",
-        "exact_leaf_root_depth",
+        TopologyMatchMode.EXACT_CANONICAL_PATH,
+        TopologyMatchMode.EXACT_LEAF_PARENT_CHAIN,
+        TopologyMatchMode.EXACT_LEAF_ROOT_DEPTH,
     )
 
 

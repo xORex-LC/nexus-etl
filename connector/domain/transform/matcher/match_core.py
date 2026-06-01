@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from connector.domain.dependency_tree import TopologyMatchMode
 from connector.domain.models import (
     DiagnosticStage,
     Identity,
@@ -24,6 +25,11 @@ from connector.domain.models import (
 )
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
+from connector.domain.ports.topology import (
+    SourceTopologyLocatorBuilderPort,
+    TopologyMatchResult,
+    TopologyMatchServicePort,
+)
 from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.transform.matcher.match_models import (
     MatchCandidate,
@@ -70,6 +76,9 @@ class MatchCore:
         include_deleted: bool,
         catalog: ErrorCatalog,
         dedup_store: ISourceDedupStore,
+        topology_match_service: TopologyMatchServicePort | None = None,
+        source_topology_locator_builder: SourceTopologyLocatorBuilderPort | None = None,
+        topology_target_node_id_field: str | None = None,
     ) -> None:
         self.dataset = dataset
         self.cache_gateway = cache_gateway
@@ -80,6 +89,9 @@ class MatchCore:
         self.include_deleted = include_deleted
         self.catalog = catalog
         self._dedup_store = dedup_store
+        self._topology_match_service = topology_match_service
+        self._source_topology_locator_builder = source_topology_locator_builder
+        self._topology_target_node_id_field = topology_target_node_id_field
 
     def match_stream(self, enriched_source: Iterable[TransformResult[Any]]) -> Iterable[TransformResult[MatchedRow]]:
         """
@@ -150,7 +162,7 @@ class MatchCore:
         """
         row, match_context = _extract_row_and_context(enriched)
         if row is None:
-            extra_errors = ()
+            extra_errors: tuple[DiagnosticItem, ...] = ()
             if not enriched.errors:
                 extra_errors = (
                     _make_match_error(
@@ -215,11 +227,17 @@ class MatchCore:
         match_mode = "exact"
         score: float | None = None
         decision_reason: str | None = None
+        topology_result: TopologyMatchResult | None = None
+        topology_error: DiagnosticItem | None = None
+        candidate_records: tuple[dict[str, Any], ...] = ()
         top_candidates: tuple[dict[str, Any], ...] = ()
 
         if decision_status == MatchDecisionStatus.MATCHED:
             score = 1.0
             decision_reason = MatchDecisionReason.IDENTITY_EXACT
+            candidate_records = (
+                (existing,) if existing is not None else ()
+            )
             top_candidates = self._build_top_candidates(
                 [(existing, score)] if existing is not None else [],
                 top_k=max(1, self.matching_rules.fuzzy.top_k),
@@ -231,6 +249,7 @@ class MatchCore:
                 decision_status,
                 score,
                 decision_reason,
+                candidate_records,
                 top_candidates,
             ) = self._match_with_fuzzy(
                 row=row,
@@ -241,6 +260,31 @@ class MatchCore:
         else:
             decision_reason = MatchDecisionReason.IDENTITY_NOT_FOUND
             decision_status = MatchDecisionStatus.NOT_FOUND
+
+        (
+            existing,
+            decision_status,
+            decision_reason,
+            topology_result,
+            topology_error,
+        ) = self._refine_with_topology(
+            enriched=enriched,
+            existing=existing,
+            decision_status=decision_status,
+            decision_reason=decision_reason,
+            candidate_records=candidate_records,
+        )
+        if topology_error is not None:
+            return TransformResult(
+                record=enriched.record,
+                row=None,
+                row_ref=match_context.row_ref,
+                match_key=enriched.match_key,
+                meta=enriched.meta,
+                secret_candidates=enriched.secret_candidates,
+                errors=(*enriched.errors, topology_error),
+                warnings=enriched.warnings,
+            )
 
         links = {}
         if self.matching_rules.build_links:
@@ -256,7 +300,12 @@ class MatchCore:
                 existing=existing,
                 identity=identity,
                 score=score,
-                match_mode=match_mode,
+                match_mode=(
+                    topology_result.mode.value
+                    if topology_result is not None
+                    and topology_result.matched_target_id is not None
+                    else match_mode
+                ),
             )
             if selected_candidate is not None and not decision_candidates:
                 decision_candidates = (selected_candidate,)
@@ -266,7 +315,19 @@ class MatchCore:
             selected=selected_candidate,
             candidates=decision_candidates,
             score=score,
-            meta={"match_mode": match_mode},
+            topology_match_mode=(
+                topology_result.mode if topology_result is not None else None
+            ),
+            topology_reason=(
+                topology_result.reason if topology_result is not None else None
+            ),
+            topology_evidence=(
+                dict(topology_result.evidence) if topology_result is not None else {}
+            ),
+            meta={
+                "match_mode": match_mode,
+                "topology_applied": topology_result is not None,
+            },
         )
 
         row_ref = _ensure_row_ref(match_context, identity, identity_value)
@@ -305,6 +366,7 @@ class MatchCore:
         float | None,
         str,
         tuple[dict[str, Any], ...],
+        tuple[dict[str, Any], ...],
     ]:
         fuzzy = self.matching_rules.fuzzy
         candidates = self._collect_blocking_candidates(
@@ -319,6 +381,7 @@ class MatchCore:
                 MatchDecisionStatus.NOT_FOUND,
                 None,
                 MatchDecisionReason.FUZZY_NO_CANDIDATES,
+                (),
                 (),
             )
 
@@ -336,7 +399,14 @@ class MatchCore:
             score_round=max(0, fuzzy.score_round),
         )
         if not ranked:
-            return None, MatchDecisionStatus.NOT_FOUND, None, MatchDecisionReason.FUZZY_NO_RANKED, ()
+            return (
+                None,
+                MatchDecisionStatus.NOT_FOUND,
+                None,
+                MatchDecisionReason.FUZZY_NO_RANKED,
+                (),
+                (),
+            )
 
         top_candidates = self._build_top_candidates(
             [(item.candidate, item.score) for item in ranked],
@@ -349,6 +419,7 @@ class MatchCore:
                 MatchDecisionStatus.AMBIGUOUS,
                 best.score,
                 MatchDecisionReason.FUZZY_TIE,
+                tuple(item.candidate for item in ranked),
                 top_candidates,
             )
 
@@ -360,6 +431,7 @@ class MatchCore:
                 MatchDecisionStatus.MATCHED,
                 best.score,
                 MatchDecisionReason.FUZZY_ACCEPT,
+                tuple(item.candidate for item in ranked),
                 top_candidates,
             )
         if best.score >= review_threshold:
@@ -368,6 +440,7 @@ class MatchCore:
                 MatchDecisionStatus.AMBIGUOUS,
                 best.score,
                 MatchDecisionReason.FUZZY_REVIEW,
+                tuple(item.candidate for item in ranked),
                 top_candidates,
             )
         return (
@@ -375,7 +448,111 @@ class MatchCore:
             MatchDecisionStatus.NOT_FOUND,
             best.score,
             MatchDecisionReason.FUZZY_REJECT,
+            tuple(item.candidate for item in ranked),
             top_candidates,
+        )
+
+    def _refine_with_topology(
+        self,
+        *,
+        enriched: TransformResult[Any],
+        existing: dict[str, Any] | None,
+        decision_status: MatchDecisionStatus,
+        decision_reason: str | None,
+        candidate_records: tuple[dict[str, Any], ...],
+    ) -> tuple[
+        dict[str, Any] | None,
+        MatchDecisionStatus,
+        str | None,
+        TopologyMatchResult | None,
+        DiagnosticItem | None,
+    ]:
+        policy = self.matching_rules.topology
+        if policy is None or not policy.enabled:
+            return existing, decision_status, decision_reason, None, None
+        if not candidate_records:
+            return existing, decision_status, decision_reason, None, None
+        if not self._should_apply_topology(
+            decision_status=decision_status,
+            candidate_records=candidate_records,
+        ):
+            return existing, decision_status, decision_reason, None, None
+
+        locator_builder = self._source_topology_locator_builder
+        service = self._topology_match_service
+        if locator_builder is None or service is None or self._topology_target_node_id_field is None:
+            return existing, decision_status, decision_reason, None, None
+
+        source_locator = locator_builder.build(enriched.record)
+        if source_locator is None:
+            if policy.on_missing_topology == "hard_error":
+                return (
+                    existing,
+                    decision_status,
+                    decision_reason,
+                    None,
+                    _build_topology_locator_missing_error(
+                        self.catalog,
+                        enriched.row_ref,
+                    ),
+                )
+            return existing, decision_status, decision_reason, None, None
+
+        candidates_by_node_id = _candidate_rows_by_topology_id(
+            candidate_records,
+            target_node_id_field=self._topology_target_node_id_field,
+        )
+        if not candidates_by_node_id:
+            return existing, decision_status, decision_reason, None, None
+
+        topology_result = service.compare(
+            source_locator,
+            tuple(candidates_by_node_id.keys()),
+        )
+        if topology_result.matched_target_id is not None:
+            resolved_candidate = candidates_by_node_id.get(topology_result.matched_target_id)
+            if resolved_candidate is not None:
+                return (
+                    resolved_candidate,
+                    MatchDecisionStatus.MATCHED,
+                    _topology_reason_code(topology_result.mode),
+                    topology_result,
+                    None,
+                )
+
+        if topology_result.is_ambiguous:
+            return (
+                existing,
+                MatchDecisionStatus.AMBIGUOUS,
+                MatchDecisionReason.TOPOLOGY_AMBIGUOUS,
+                topology_result,
+                None,
+            )
+        if topology_result.mode == TopologyMatchMode.NO_MATCH:
+            return (
+                existing,
+                MatchDecisionStatus.AMBIGUOUS,
+                MatchDecisionReason.TOPOLOGY_NO_MATCH,
+                topology_result,
+                None,
+            )
+        return existing, decision_status, decision_reason, topology_result, None
+
+    def _should_apply_topology(
+        self,
+        *,
+        decision_status: MatchDecisionStatus,
+        candidate_records: tuple[dict[str, Any], ...],
+    ) -> bool:
+        policy = self.matching_rules.topology
+        if policy is None or not policy.enabled:
+            return False
+        if policy.apply_on == "all_candidates":
+            return len(candidate_records) > 0
+        return (
+            policy.apply_on == "ambiguous_only"
+            and decision_status == MatchDecisionStatus.AMBIGUOUS
+            and len(candidate_records) > 1
         )
 
     def _collect_blocking_candidates(
@@ -651,11 +828,12 @@ def _to_match_candidates(
 ) -> tuple[MatchCandidate, ...]:
     candidates: list[MatchCandidate] = []
     for item in top_candidates:
+        raw_score = item.get("score")
         candidates.append(
             MatchCandidate(
                 target_id=str(item.get("target_id")) if item.get("target_id") is not None else None,
                 identity=None,
-                score=float(item.get("score")) if item.get("score") is not None else None,
+                score=float(raw_score) if isinstance(raw_score, (int, float)) else None,
                 match_mode=match_mode,
                 evidence=None,
             )
@@ -697,6 +875,46 @@ def _drop_matched_row(
     if error is not None:
         builder.add_error_item(error)
     return builder.build()
+
+
+def _candidate_rows_by_topology_id(
+    candidate_records: tuple[dict[str, Any], ...],
+    *,
+    target_node_id_field: str,
+) -> dict[str, dict[str, Any]]:
+    rows_by_node_id: dict[str, dict[str, Any]] = {}
+    for candidate in candidate_records:
+        node_id = candidate.get(target_node_id_field)
+        if node_id in (None, ""):
+            continue
+        rows_by_node_id.setdefault(str(node_id), candidate)
+    return rows_by_node_id
+
+
+def _topology_reason_code(mode: TopologyMatchMode) -> str:
+    if mode == TopologyMatchMode.EXACT_CANONICAL_PATH:
+        return MatchDecisionReason.TOPOLOGY_EXACT_CANONICAL_PATH
+    if mode == TopologyMatchMode.EXACT_LEAF_PARENT_CHAIN:
+        return MatchDecisionReason.TOPOLOGY_EXACT_LEAF_PARENT_CHAIN
+    if mode == TopologyMatchMode.EXACT_LEAF_ROOT_DEPTH:
+        return MatchDecisionReason.TOPOLOGY_EXACT_LEAF_ROOT_DEPTH
+    if mode == TopologyMatchMode.AMBIGUOUS:
+        return MatchDecisionReason.TOPOLOGY_AMBIGUOUS
+    return MatchDecisionReason.TOPOLOGY_NO_MATCH
+
+
+def _build_topology_locator_missing_error(
+    catalog: ErrorCatalog,
+    record_ref: RowRef | None,
+) -> DiagnosticItem:
+    return diag_error(
+        catalog=catalog,
+        stage=DiagnosticStage.MATCH,
+        code="TOPOLOGY_SOURCE_PATH_EMPTY",
+        field=None,
+        message="topology source path is empty for current row",
+        record_ref=record_ref,
+    )
 
 
 def _build_source_duplicate_warning(catalog: ErrorCatalog, row: MatchedRow) -> DiagnosticItem:

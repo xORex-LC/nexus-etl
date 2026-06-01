@@ -14,10 +14,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from connector.domain.diagnostics.catalog import ErrorCatalog
+from connector.domain.diagnostics.catalog import ErrorCatalog, build_catalog
 from connector.domain.ports.cache.roles import MatchRuntimePort
+from connector.domain.ports.topology import (
+    SourceTopologyLocatorBuilderPort,
+    TopologyMatchServicePort,
+)
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform_dsl.build_options import MatchDslBuildOptions
 from connector.domain.transform_dsl.specs import MatchSpec
@@ -60,15 +64,20 @@ class MatchEngine:
         dsl: MatchDsl | None = None,
         options: MatchDslBuildOptions | None = None,
         dedup_store: ISourceDedupStore | None = None,
-    ) -> None:
+        topology_match_service: TopologyMatchServicePort | None = None,
+        source_topology_locator_builder: SourceTopologyLocatorBuilderPort | None = None,
+        topology_target_node_id_field: str | None = None,
+        ) -> None:
         if ctx is not None:
             resolved_dataset = ctx.metadata.dataset_name
-            resolved_gateway = ctx.require(MatchRuntimePort)
+            resolved_gateway = ctx.require(MatchRuntimePort)  # type: ignore[type-abstract]
             resolved_catalog = ctx.metadata.catalog
         else:
             resolved_dataset = dataset or ""
-            resolved_gateway = cache_gateway  # type: ignore[assignment]
-            resolved_catalog = catalog or ErrorCatalog(dataset=resolved_dataset, items={})
+            if cache_gateway is None:
+                raise ValueError("cache_gateway is required when ctx is not provided")
+            resolved_gateway = cache_gateway
+            resolved_catalog = catalog or build_catalog(resolved_dataset, strict=True)
 
         self.dsl = dsl or MatchDsl(options=options)
         self.matching_rules = self.dsl.compile(spec)
@@ -79,7 +88,13 @@ class MatchEngine:
             resolve_rules=resolve_rules,
             include_deleted=include_deleted,
             catalog=resolved_catalog,
-            dedup_store=dedup_store or LocalSourceDedupStore(),
+            dedup_store=cast(
+                ISourceDedupStore,
+                dedup_store or LocalSourceDedupStore(),
+            ),
+            topology_match_service=topology_match_service,
+            source_topology_locator_builder=source_topology_locator_builder,
+            topology_target_node_id_field=topology_target_node_id_field,
         )
 
     def match(self, enriched: TransformResult) -> TransformResult[MatchedRow]:

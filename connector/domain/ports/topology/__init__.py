@@ -8,6 +8,7 @@ from connector.domain.ports.topology.models import (
     SourceTopologyCanonicalPath,
     TargetHierarchyReadMeta,
     TargetHierarchyRow,
+    TopologyMatchResult,
     TopologyFreshnessPolicy,
     TopologyRuntimeRequirements,
     TopologyTargetReadinessResult,
@@ -18,14 +19,21 @@ from connector.domain.ports.topology.provider import (
     TopologyProviderPort,
 )
 from connector.domain.ports.topology.readers import TopologyTargetReadPort
+from connector.domain.ports.topology.services import (
+    SourceTopologyLocatorBuilderPort,
+    TopologyMatchServicePort,
+)
 
 __all__ = [
     "SourcePathTopologyBuilderPort",
+    "SourceTopologyLocatorBuilderPort",
     "SourceTopologyCanonicalPath",
     "TargetHierarchyReadMeta",
     "TargetHierarchyRow",
     "TargetHierarchyTopologyBuilderPort",
     "TopologyEventSink",
+    "TopologyMatchResult",
+    "TopologyMatchServicePort",
     "TopologyFreshnessPolicy",
     "TopologyNotAvailableError",
     "TopologyProviderPort",
