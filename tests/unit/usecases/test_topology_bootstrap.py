@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from types import SimpleNamespace
 
 import pytest
 
@@ -143,25 +142,10 @@ def test_topology_requirement_resolver_activates_match_policy(
     assert decision.target_failure_is_hard is True
 
 
-def test_topology_requirement_resolver_activates_link_policy_even_without_match(
-    monkeypatch: pytest.MonkeyPatch,
+def test_topology_requirement_resolver_activates_link_policy_for_target_dataset(
+    employees_registry_path,
 ) -> None:
     resolver = TopologyRequirementResolver()
-    monkeypatch.setattr(
-        resolver,
-        "_load_capability",
-        staticmethod(lambda _dataset: SimpleNamespace(enabled=True, spec=None)),
-    )
-    monkeypatch.setattr(
-        resolver,
-        "_load_resolve_policy",
-        staticmethod(
-            lambda _dataset: SimpleNamespace(
-                enabled=True,
-                on_missing_topology="hard_error",
-            )
-        ),
-    )
 
     decision = resolver.resolve(
         command_name="resolve",
@@ -172,6 +156,7 @@ def test_topology_requirement_resolver_activates_link_policy_even_without_match(
     # Phase 1a/1b работают от row-level canonical path: source snapshot не требуется (Stage G+).
     assert decision.request.require_source_topology is False
     assert decision.request.require_target_topology is True
+    assert decision.request.topology_dataset == "organizations"
     assert decision.activation_sources == ("resolve",)
     assert decision.target_failure_is_hard is True
 

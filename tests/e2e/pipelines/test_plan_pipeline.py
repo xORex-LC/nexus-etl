@@ -120,6 +120,57 @@ def _seed_org(repo: SqliteCacheRepository, ouid: int) -> None:
     finally:
         identity_engine.close()
 
+
+def _seed_org_row(
+    repo: SqliteCacheRepository,
+    *,
+    record_id: str,
+    ouid: int,
+    code: str,
+    name: str,
+    parent_id: int | None,
+) -> None:
+    identity_engine = _open_identity_engine(repo.engine.db_path)
+    try:
+        identity_repo = SqliteIdentityRepository(identity_engine)
+        with repo.engine.transaction():
+            repo.upsert(
+                "organizations",
+                {
+                    "_id": record_id,
+                    "_ouid": ouid,
+                    "code": code,
+                    "name": name,
+                    "match_key": code,
+                    "parent_id": parent_id,
+                    "updated_at": "2026-06-01T00:00:00+00:00",
+                },
+            )
+            repo.set_meta("organizations", "cache_snapshot_revision", "rev-topology")
+            repo.set_meta(
+                "organizations",
+                "last_refresh_at",
+                "2026-06-01T00:30:00+00:00",
+            )
+        with identity_engine.transaction():
+            identity_repo.upsert_identity(
+                "organizations",
+                format_identity_key("_ouid", str(ouid)),
+                str(ouid),
+            )
+            identity_repo.upsert_identity(
+                "organizations",
+                format_identity_key("name", name),
+                str(ouid),
+            )
+            identity_repo.upsert_identity(
+                "organizations",
+                format_identity_key("code", code),
+                str(ouid),
+            )
+    finally:
+        identity_engine.close()
+
 def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: str, organization_id: int) -> None:
     identity_engine = _open_identity_engine(repo.engine.db_path)
     try:
@@ -393,7 +444,87 @@ def test_plan_error_when_org_missing(tmp_path: Path):
     )
 
     exit_code, plan_path = _run_plan(tmp_path, csv_path, run_id="plan-org-missing")
+    assert exit_code != 0
+    assert plan_path.exists() is False
+
+
+def test_plan_resolve_topology_propagates_organization_fk_into_plan(tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    repo = _build_repo(db_path)
+    _seed_org_row(
+        repo,
+        record_id="org-root",
+        ouid=10,
+        code="10",
+        name="Head Office",
+        parent_id=None,
+    )
+    _seed_org_row(
+        repo,
+        record_id="org-branch-a",
+        ouid=20,
+        code="20",
+        name="Branch A",
+        parent_id=10,
+    )
+    _seed_org_row(
+        repo,
+        record_id="org-branch-b",
+        ouid=30,
+        code="30",
+        name="Branch B",
+        parent_id=10,
+    )
+    _seed_org_row(
+        repo,
+        record_id="org-a",
+        ouid=100,
+        code="A-100",
+        name="Shared Team",
+        parent_id=20,
+    )
+    _seed_org_row(
+        repo,
+        record_id="org-b",
+        ouid=200,
+        code="B-200",
+        name="Shared Team",
+        parent_id=30,
+    )
+
+    csv_path = tmp_path / "topology-resolve.csv"
+    _write_csv(
+        csv_path,
+        [
+            [
+                "100",
+                "Doe John M",
+                "Head Office",
+                "Branch A",
+                "",
+                "",
+                "",
+                "Shared Team",
+                "Engineer",
+                "",
+                "+111111",
+                "",
+                "",
+                "",
+                "",
+            ]
+        ],
+    )
+
+    exit_code, plan_path = _run_plan(
+        tmp_path,
+        csv_path,
+        run_id="plan-topology-resolve",
+    )
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
-    assert plan["items"] == []
+    assert plan["summary"]["planned_create"] == 1
+    assert len(plan["items"]) == 1
+    assert plan["items"][0]["desired_state"]["organization_id"] == 100

@@ -19,13 +19,21 @@ from typing import TYPE_CHECKING, Any
 
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.roles import ResolveRuntimePort
+from connector.domain.ports.topology import (
+    SourceTopologyLocatorBuilderPort,
+    TopologyLinkResolutionServicePort,
+)
+from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform_dsl.build_options import ResolveDslBuildOptions
 from connector.domain.transform_dsl.specs import ResolveSpec, SinkSpec
 from connector.domain.transform.resolver.resolve_core import ResolveCore
 from connector.domain.transform.resolver.ports import IPendingCodec
 from connector.domain.transform.matcher.match_models import MatchedRow
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
-from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
+from connector.domain.transform_dsl.compilers.resolve import (
+    ResolveDsl,
+    ResolveTopologyLinkPolicy,
+)
 
 if TYPE_CHECKING:
     from connector.domain.transform.context import StageExecutionContext
@@ -57,6 +65,9 @@ class ResolveEngine:
         dsl: ResolveDsl | None = None,
         options: ResolveDslBuildOptions | None = None,
         codec: IPendingCodec,
+        topology_link_service: TopologyLinkResolutionServicePort | None = None,
+        source_topology_locator_builder: SourceTopologyLocatorBuilderPort | None = None,
+        topology_link_policy: ResolveTopologyLinkPolicy | None = None,
     ) -> None:
         if ctx is not None:
             resolved_gateway = ctx.get(ResolveRuntimePort)
@@ -73,6 +84,7 @@ class ResolveEngine:
         compiled = self.dsl.compile(spec, sink_spec=resolved_sink_spec)
         self.resolve_rules = compiled.resolve_rules
         self.link_rules = compiled.link_rules
+        self.topology_link = topology_link_policy or compiled.topology_link
         self.core = ResolveCore(
             self.resolve_rules,
             self.link_rules,
@@ -81,6 +93,9 @@ class ResolveEngine:
             catalog=resolved_catalog,
             sink_spec=resolved_sink_spec,
             codec=codec,
+            topology_link_policy=self.topology_link,
+            topology_link_service=topology_link_service,
+            source_topology_locator_builder=source_topology_locator_builder,
         )
 
     @property
@@ -98,12 +113,14 @@ class ResolveEngine:
         self,
         matched: MatchedRow,
         *,
+        source_record: SourceRecord,
         target_id_map: dict[str, str],
         meta: dict[str, Any] | None = None,
         batch_index: dict[str, list[str]] | None = None,
     ):
         return self.core.resolve(
             matched,
+            source_record=source_record,
             target_id_map=target_id_map,
             meta=meta,
             batch_index=batch_index,

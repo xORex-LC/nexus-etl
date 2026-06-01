@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from connector.domain.dependency_tree import TopologyMatchMode
 from connector.domain.models import Identity
 from connector.domain.transform_dsl import load_resolve_spec_for_dataset
 from connector.domain.transform_dsl import load_sink_spec_for_dataset
@@ -62,9 +63,9 @@ def test_resolve_dsl_compile_matches_employees_contract():
     assert compiled.topology_link.on_missing_topology == "hard_error"
     assert compiled.topology_link.on_ambiguous_topology == "hard_error"
     assert compiled.topology_link.comparison_ladder == (
-        "exact_canonical_path",
-        "exact_leaf_parent_chain",
-        "exact_leaf_root_depth",
+        TopologyMatchMode.EXACT_CANONICAL_PATH,
+        TopologyMatchMode.EXACT_LEAF_PARENT_CHAIN,
+        TopologyMatchMode.EXACT_LEAF_ROOT_DEPTH,
     )
 
 

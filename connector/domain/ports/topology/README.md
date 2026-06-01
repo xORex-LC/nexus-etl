@@ -9,12 +9,12 @@ Runtime-facing topology порты и DTO. Это boundary между topology d
 
 | Файл | Назначение |
 |---|---|
-| `models.py` | `SourceTopologyCanonicalPath`, `TopologyMatchResult`, `TargetHierarchyRow`, readiness/freshness DTO, `TopologyRuntimeRequirements` |
+| `models.py` | `SourceTopologyCanonicalPath`, `TopologyMatchResult`, `TopologyLinkResolutionResult`, `TargetHierarchyRow`, readiness/freshness DTO, `TopologyRuntimeRequirements` |
 | `provider.py` | `TopologyProviderPort`, `TopologyNotAvailableError` |
 | `builders.py` | `SourcePathTopologyBuilderPort`, `TargetHierarchyTopologyBuilderPort` |
 | `readers.py` | `TopologyTargetReadPort` — cache-backed read seam для target hierarchy |
 | `observability.py` | `TopologyEventSink` — transport-neutral runtime seam для topology lifecycle событий |
-| `services.py` | `SourceTopologyLocatorBuilderPort`, `TopologyMatchServicePort` — match-consumer contracts |
+| `services.py` | `SourceTopologyLocatorBuilderPort`, `TopologyMatchServicePort`, `TopologyLinkResolutionServicePort` — stage-facing topology consumer contracts |
 
 ## Правило
 

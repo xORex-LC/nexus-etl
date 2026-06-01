@@ -63,6 +63,7 @@ from connector.domain.secrets.vault_startup_guard import VaultStartupGuard
 from connector.domain.transform.context import PipelineMetadata, StageExecutionContext
 from connector.domain.transform.providers import ProviderGateway
 from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
+from connector.domain.transform_dsl.compilers.resolve import ResolveTopologyLinkPolicy
 from connector.domain.transform_dsl.compilers.match import MatchDsl, TopologyMatchPolicy
 from connector.domain.transform_dsl.compilers.topology import TopologyDsl
 from connector.domain.transform.pipeline_run_context import PipelineRunContext
@@ -87,9 +88,16 @@ from connector.domain.transform_dsl import (
     load_match_build_options_for_dataset,
     load_normalize_build_options_for_dataset,
     load_resolve_build_options_for_dataset,
+    load_topology_spec_for_dataset,
 )
 from connector.domain.transform_dsl.build_options import MatchDslBuildOptions
-from connector.domain.transform_dsl.specs import MatchSpec, ResolveSpec, SinkSpec, TopologySpec
+from connector.domain.transform_dsl.specs import (
+    MappingSpec,
+    MatchSpec,
+    ResolveSpec,
+    SinkSpec,
+    TopologySpec,
+)
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
@@ -116,6 +124,7 @@ from connector.usecases.topology_match import (
     build_source_locator_builder,
     build_topology_match_service,
 )
+from connector.usecases.topology_resolve import build_topology_link_resolution_service
 
 if TYPE_CHECKING:
     from connector.delivery.cli.requirements import Requirements
@@ -621,6 +630,107 @@ def _build_match_topology_dependencies(
     }
 
 
+def _build_resolve_topology_dependencies(
+    dataset_spec: DatasetSpec,
+    resolve_options: object,
+    topology_provider: TopologyProviderPort | None,
+    topology_requirements: TopologyRuntimeRequirements | None,
+) -> dict[str, object | None]:
+    """Собрать topology-aware зависимости для ResolveEngine.
+
+    Контракт:
+        - topology consumer включается только когда `resolve.yaml` реально содержит
+          enabled `topology_link`;
+        - topology spec загружается по `topology_requirements.topology_dataset`, а не
+          по pipeline dataset, чтобы employee-like datasets могли использовать
+          topology capability связанного target dataset;
+        - отсутствие runtime wiring при enabled policy считается composition error.
+    """
+
+    try:
+        resolve_spec = cast(ResolveSpec, dataset_spec.build_spec_for("resolve"))
+        sink_spec = cast(SinkSpec, dataset_spec.build_spec_for("sink"))
+    except UnsupportedStageError:
+        return {
+            "topology_link_service": None,
+            "source_topology_locator_builder": None,
+            "topology_link_policy": None,
+        }
+
+    compiled_resolve = ResolveDsl(options=resolve_options).compile(
+        resolve_spec,
+        sink_spec=sink_spec,
+    )
+    topology_policy: ResolveTopologyLinkPolicy | None = compiled_resolve.topology_link
+    if topology_policy is None or not topology_policy.enabled:
+        return {
+            "topology_link_service": None,
+            "source_topology_locator_builder": None,
+            "topology_link_policy": None,
+        }
+
+    if (
+        topology_requirements is None
+        or not topology_requirements.requires_target_topology
+    ):
+        raise ValueError(
+            "resolve topology policy is enabled but topology requirements were not activated"
+        )
+    if topology_provider is None:
+        raise ValueError(
+            "resolve topology policy is enabled but TopologyProviderPort is not wired"
+        )
+
+    target_snapshot = topology_provider.get_target()
+    if target_snapshot is None:
+        raise ValueError(
+            "resolve topology policy is enabled but target topology snapshot is unavailable"
+        )
+
+    topology_spec = load_topology_spec_for_dataset(topology_requirements.topology_dataset)
+    compiled_topology = TopologyDsl().compile(topology_spec)
+    path_fields = _resolve_topology_path_fields(dataset_spec, topology_policy.field)
+    locator_builder = build_source_locator_builder(
+        path_fields=path_fields,
+        canonicalizer=compiled_topology.python,
+    )
+    link_service = build_topology_link_resolution_service(
+        snapshot=target_snapshot,
+        policy=topology_policy,
+    )
+    return {
+        "topology_link_service": link_service,
+        "source_topology_locator_builder": locator_builder,
+        "topology_link_policy": topology_policy,
+    }
+
+
+def _resolve_topology_path_fields(
+    dataset_spec: DatasetSpec,
+    field_name: str,
+) -> tuple[str, ...]:
+    """Найти ordered source path columns для resolve-side topology locator.
+
+    Для Phase 1b path locator берётся из pipeline dataset mapping-contract, потому что
+    `topology.source.path_columns` у topology dataset может оставаться illustrative
+    до отдельной source-side topology поставки.
+    """
+
+    mapping_spec = cast(MappingSpec, dataset_spec.build_spec_for("map"))
+    for rule in mapping_spec.mapping.rules:
+        targets = tuple(rule.targets or ([rule.target] if rule.target is not None else []))
+        if field_name not in targets:
+            continue
+        if rule.sources:
+            return tuple(rule.sources)
+        if rule.source is not None:
+            return (rule.source,)
+        break
+    raise ValueError(
+        f"resolve topology field '{field_name}' does not have source mapping path columns"
+    )
+
+
 def _create_stage(
     factory: object,
     stage_type: str,
@@ -798,6 +908,13 @@ class PipelineContainer(containers.DeclarativeContainer):
         topology_provider=topology_provider,
         topology_requirements=topology_requirements,
     )
+    resolve_topology_dependencies = providers.Factory(
+        _build_resolve_topology_dependencies,
+        dataset_spec=dataset_spec,
+        resolve_options=resolve_options,
+        topology_provider=topology_provider,
+        topology_requirements=topology_requirements,
+    )
 
     # ── Row source ────────────────────────────────────────────────────────────
 
@@ -882,6 +999,18 @@ class PipelineContainer(containers.DeclarativeContainer):
         ctx=planning_context,
         options=resolve_options,
         codec=pending_codec,
+        topology_link_service=providers.Callable(
+            lambda deps: deps["topology_link_service"],
+            deps=resolve_topology_dependencies,
+        ),
+        source_topology_locator_builder=providers.Callable(
+            lambda deps: deps["source_topology_locator_builder"],
+            deps=resolve_topology_dependencies,
+        ),
+        topology_link_policy=providers.Callable(
+            lambda deps: deps["topology_link_policy"],
+            deps=resolve_topology_dependencies,
+        ),
     )
 
     resolve_context_stage = providers.Singleton(

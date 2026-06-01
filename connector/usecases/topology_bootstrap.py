@@ -304,23 +304,7 @@ class TopologyRequirementResolver:
         dataset_name: str,
     ) -> TopologyActivationDecision:
         normalized_command = command_name.strip().lower()
-        capability = self._load_capability(dataset_name)
         if normalized_command not in self._PIPELINE_COMMANDS:
-            return TopologyActivationDecision(
-                request=TopologyBootstrapRequest(
-                    pipeline_dataset=dataset_name,
-                    topology_dataset=None,
-                    run_id="",
-                    require_source_topology=False,
-                    require_target_topology=False,
-                ),
-                capability_enabled=bool(capability and capability.enabled),
-                activation_sources=(),
-                target_failure_is_hard=False,
-                skipped_reason="command_not_supported",
-            )
-
-        if capability is None or not capability.enabled:
             return TopologyActivationDecision(
                 request=TopologyBootstrapRequest(
                     pipeline_dataset=dataset_name,
@@ -332,9 +316,10 @@ class TopologyRequirementResolver:
                 capability_enabled=False,
                 activation_sources=(),
                 target_failure_is_hard=False,
-                skipped_reason="capability_disabled",
+                skipped_reason="command_not_supported",
             )
 
+        capability = self._load_capability(dataset_name)
         if normalized_command in _PRE_MATCH_COMMANDS:
             return TopologyActivationDecision(
                 request=TopologyBootstrapRequest(
@@ -344,10 +329,14 @@ class TopologyRequirementResolver:
                     require_source_topology=False,
                     require_target_topology=False,
                 ),
-                capability_enabled=True,
+                capability_enabled=bool(capability and capability.enabled),
                 activation_sources=(),
                 target_failure_is_hard=False,
-                skipped_reason="checkpoint_before_topology_consumer",
+                skipped_reason=(
+                    "checkpoint_before_topology_consumer"
+                    if capability is not None and capability.enabled
+                    else "capability_disabled"
+                ),
             )
 
         match_policy = (
@@ -360,31 +349,80 @@ class TopologyRequirementResolver:
             if normalized_command in _RESOLVE_ACTIVATING_COMMANDS
             else None
         )
+        topology_dataset = dataset_name
 
         activation_sources: list[str] = []
         target_failure_is_hard = False
+        capability_enabled = False
         if (
             normalized_command in _MATCH_ACTIVATING_COMMANDS
             and match_policy is not None
             and match_policy.enabled
         ):
-            activation_sources.append("match")
-            if match_policy.on_missing_topology == "hard_error":
-                target_failure_is_hard = True
+            capability = self._load_capability(dataset_name)
+            if capability is not None and capability.enabled:
+                capability_enabled = True
+                topology_dataset = dataset_name
+                activation_sources.append("match")
+                if match_policy.on_missing_topology == "hard_error":
+                    target_failure_is_hard = True
+            else:
+                return TopologyActivationDecision(
+                    request=TopologyBootstrapRequest(
+                        pipeline_dataset=dataset_name,
+                        topology_dataset=None,
+                        run_id="",
+                        require_source_topology=False,
+                        require_target_topology=False,
+                    ),
+                    capability_enabled=False,
+                    activation_sources=(),
+                    target_failure_is_hard=False,
+                    skipped_reason="capability_disabled",
+                )
         if (
             normalized_command in _RESOLVE_ACTIVATING_COMMANDS
             and resolve_policy is not None
             and resolve_policy.enabled
         ):
-            activation_sources.append("resolve")
-            if resolve_policy.on_missing_topology == "hard_error":
-                target_failure_is_hard = True
+            resolve_capability = self._load_resolve_topology_capability(
+                dataset_name=dataset_name,
+                field=resolve_policy.field,
+            )
+            if (
+                resolve_capability is not None
+                and resolve_capability.capability is not None
+                and resolve_capability.capability.enabled
+            ):
+                capability_enabled = True
+                if activation_sources and topology_dataset != resolve_capability.target_dataset:
+                    raise ValueError(
+                        "match and resolve topology policies point to different topology datasets"
+                    )
+                topology_dataset = resolve_capability.target_dataset
+                activation_sources.append("resolve")
+                if resolve_policy.on_missing_topology == "hard_error":
+                    target_failure_is_hard = True
+            else:
+                return TopologyActivationDecision(
+                    request=TopologyBootstrapRequest(
+                        pipeline_dataset=dataset_name,
+                        topology_dataset=None,
+                        run_id="",
+                        require_source_topology=False,
+                        require_target_topology=False,
+                    ),
+                    capability_enabled=False,
+                    activation_sources=(),
+                    target_failure_is_hard=False,
+                    skipped_reason="capability_disabled",
+                )
 
         activated = bool(activation_sources)
         return TopologyActivationDecision(
             request=TopologyBootstrapRequest(
                 pipeline_dataset=dataset_name,
-                topology_dataset=None,
+                topology_dataset=topology_dataset if activated else None,
                 run_id="",
                 # Phase 1a/1b работают от row-level canonical path и не требуют
                 # полного source snapshot. Source builder и его consumer появляются
@@ -393,7 +431,7 @@ class TopologyRequirementResolver:
                 require_source_topology=False,
                 require_target_topology=activated,
             ),
-            capability_enabled=True,
+            capability_enabled=capability_enabled,
             activation_sources=tuple(activation_sources),
             target_failure_is_hard=target_failure_is_hard,
             skipped_reason=None if activated else "topology_policy_disabled",
@@ -419,6 +457,36 @@ class TopologyRequirementResolver:
         spec = load_resolve_spec_for_dataset(dataset_name)
         sink_spec = load_sink_spec_for_dataset(dataset_name)
         return ResolveDsl().compile(spec, sink_spec=sink_spec).topology_link
+
+    @classmethod
+    def _load_resolve_topology_capability(
+        cls,
+        *,
+        dataset_name: str,
+        field: str,
+    ) -> "_ResolveTopologyCapability | None":
+        from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
+
+        spec = load_resolve_spec_for_dataset(dataset_name)
+        sink_spec = load_sink_spec_for_dataset(dataset_name)
+        compiled = ResolveDsl().compile(spec, sink_spec=sink_spec)
+        for rule in compiled.link_rules.fields:
+            if rule.field != field:
+                continue
+            capability = cls._load_capability(rule.target_dataset)
+            return _ResolveTopologyCapability(
+                target_dataset=rule.target_dataset,
+                capability=capability,
+            )
+        return None
+
+
+@dataclass(frozen=True)
+class _ResolveTopologyCapability:
+    """Связка resolve-side topology policy с целевым dataset capability."""
+
+    target_dataset: str
+    capability: Any
 
 
 class TopologyBootstrapUseCase:
