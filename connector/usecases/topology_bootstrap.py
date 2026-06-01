@@ -29,6 +29,7 @@ from connector.domain.ports.topology import (
     TopologyEventSink,
     TopologyNotAvailableError,
     TopologyProviderPort,
+    TopologyRuntimeRequirements,
 )
 from connector.domain.models import DiagnosticItem
 from connector.domain.transform_dsl import (
@@ -92,6 +93,7 @@ class TopologyActivationDecision:
     capability_enabled: bool
     activation_sources: tuple[str, ...]
     target_failure_is_hard: bool
+    skipped_reason: str | None = None
 
     @property
     def activated(self) -> bool:
@@ -113,6 +115,18 @@ class TopologyRuntimeBinding:
     warnings: tuple[DiagnosticItem, ...]
     activation_sources: tuple[str, ...]
     skipped_reason: str | None = None
+
+    def to_runtime_requirements(self) -> TopologyRuntimeRequirements:
+        """Build domain-level topology activation contract for pipeline composition."""
+
+        return TopologyRuntimeRequirements(
+            pipeline_dataset=self.request.pipeline_dataset,
+            topology_dataset=self.request.topology_dataset or self.request.pipeline_dataset,
+            requires_source_topology=self.request.require_source_topology,
+            requires_target_topology=self.request.require_target_topology,
+            activation_sources=self.activation_sources,
+            skipped_reason=self.skipped_reason,
+        )
 
     def report_context_payload(self) -> dict[str, Any]:
         """Собрать report payload для `ReportContextKey.TOPOLOGY`."""
@@ -303,6 +317,7 @@ class TopologyRequirementResolver:
                 capability_enabled=bool(capability and capability.enabled),
                 activation_sources=(),
                 target_failure_is_hard=False,
+                skipped_reason="command_not_supported",
             )
 
         if capability is None or not capability.enabled:
@@ -317,6 +332,7 @@ class TopologyRequirementResolver:
                 capability_enabled=False,
                 activation_sources=(),
                 target_failure_is_hard=False,
+                skipped_reason="capability_disabled",
             )
 
         if normalized_command in _PRE_MATCH_COMMANDS:
@@ -331,6 +347,7 @@ class TopologyRequirementResolver:
                 capability_enabled=True,
                 activation_sources=(),
                 target_failure_is_hard=False,
+                skipped_reason="checkpoint_before_topology_consumer",
             )
 
         match_policy = (
@@ -379,6 +396,7 @@ class TopologyRequirementResolver:
             capability_enabled=True,
             activation_sources=tuple(activation_sources),
             target_failure_is_hard=target_failure_is_hard,
+            skipped_reason=None if activated else "topology_policy_disabled",
         )
 
     @staticmethod
@@ -430,6 +448,9 @@ class TopologyBootstrapUseCase:
         """Выполнить target-only topology bootstrap текущего этапа."""
 
         resolved_request = _normalized_request(request)
+        topology_dataset = (
+            resolved_request.topology_dataset or resolved_request.pipeline_dataset
+        )
         started_at = time.monotonic()
         self._event_sink.emit(
             level=logging.INFO,
@@ -441,7 +462,7 @@ class TopologyBootstrapUseCase:
                 "require_target": resolved_request.require_target_topology,
             },
         )
-        topology_spec = self._topology_loader(resolved_request.topology_dataset)
+        topology_spec = self._topology_loader(topology_dataset)
         self._event_sink.emit(
             level=logging.INFO,
             event="spec.loaded",
@@ -469,7 +490,7 @@ class TopologyBootstrapUseCase:
         if resolved_request.require_target_topology:
             target_usecase = self._target_usecase_factory(topology_spec, compiled)
             target_result = target_usecase.build(
-                dataset=resolved_request.topology_dataset,
+                dataset=topology_dataset,
                 freshness_policy=_default_freshness_policy(),
                 require_target_topology=target_failure_is_hard,
             )
@@ -490,7 +511,7 @@ class TopologyBootstrapUseCase:
                     source_snapshot=None,
                     target_snapshot=target_result.snapshot,
                     metadata=TopologyBuildMetadata(
-                        dataset_name=resolved_request.topology_dataset,
+                        dataset_name=topology_dataset,
                         source_file_fingerprint=None,
                         cache_snapshot_revision=(
                             target_result.metadata.cache_snapshot_revision

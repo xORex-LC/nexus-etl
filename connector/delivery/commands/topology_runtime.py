@@ -49,7 +49,8 @@ def pipeline_topology_scope(
     requirements_override = nullcontext()
     if runtime.provider is not None:
         provider_override = pipeline.topology_provider.override(runtime.provider)
-    requirements_override = pipeline.topology_requirements.override(runtime.request)
+    requirements_override = pipeline.topology_requirements.override(
+        runtime.to_runtime_requirements()
+    )
     with provider_override, requirements_override:
         yield
-

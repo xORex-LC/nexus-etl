@@ -52,6 +52,7 @@ from connector.domain.ports.cache.roles import (
     ResolveRuntimePort,
 )
 from connector.domain.ports.topology import TopologyProviderPort
+from connector.domain.ports.topology import TopologyRuntimeRequirements
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
@@ -518,6 +519,7 @@ def _build_planning_context(
     cache_roles: SqliteCacheRolePorts,
     resolver_settings: object | None,
     topology_provider: TopologyProviderPort | None,
+    topology_requirements: TopologyRuntimeRequirements | None,
 ) -> StageExecutionContext:
     """Scoped context для match/resolve: MatchRuntimePort + ResolveRuntimePort."""
     caps: dict[type, object] = {
@@ -528,6 +530,8 @@ def _build_planning_context(
         caps[ResolverSettings] = resolver_settings
     if topology_provider is not None:
         caps[TopologyProviderPort] = topology_provider
+    if topology_requirements is not None:
+        caps[TopologyRuntimeRequirements] = topology_requirements
     return StageExecutionContext(metadata=metadata, capabilities=caps)
 
 
@@ -650,6 +654,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         cache_roles=cache_roles,
         resolver_settings=resolver_settings,
         topology_provider=topology_provider,
+        topology_requirements=topology_requirements,
     )
 
     # ── Singletons ────────────────────────────────────────────────────────────

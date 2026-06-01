@@ -22,7 +22,9 @@ from connector.domain.dependency_tree import (
     TargetHierarchyTopologyBuilder,
     TopologyTargetReadinessEvaluator,
 )
+from connector.domain.diagnostics import build_error
 from connector.domain.diagnostics.command_result import CommandResult
+from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.events import SetContextEvent
 from connector.infra.logging.topology import LegacyLogEventSink
@@ -89,9 +91,33 @@ class TopologyBootstrapStep:
         )
 
         if not decision.activated:
+            binding = TopologyRuntimeBinding(
+                provider=None,
+                request=request,
+                artifacts=None,
+                errors=(),
+                warnings=(),
+                activation_sources=decision.activation_sources,
+                skipped_reason=decision.skipped_reason or "not_required",
+            )
+            event_sink = LegacyLogEventSink(logger=logger, run_id=run_id)
+            event_sink.emit(
+                level=logging.DEBUG,
+                event="bootstrap.skipped",
+                payload={
+                    "reason": binding.skipped_reason,
+                    "dataset": dataset_name,
+                },
+            )
+            report_sink.emit(
+                SetContextEvent(
+                    name=ReportContextKey.TOPOLOGY,
+                    value=binding.report_context_payload(),
+                )
+            )
             return TopologyBootstrapStepResult(
                 requirements=resolved_requirements,
-                runtime_binding=None,
+                runtime_binding=binding,
                 command_result=None,
             )
 
@@ -106,10 +132,42 @@ class TopologyBootstrapStep:
             ),
             event_sink=event_sink,
         )
-        result = usecase.run(
-            request=request,
-            target_failure_is_hard=decision.target_failure_is_hard,
-        )
+        command_result: CommandResult | None = None
+        try:
+            result = usecase.run(
+                request=request,
+                target_failure_is_hard=decision.target_failure_is_hard,
+            )
+        except _TopologyBootstrapConfigurationError as exc:
+            binding = TopologyRuntimeBinding(
+                provider=None,
+                request=request,
+                artifacts=None,
+                errors=(exc.diagnostic,),
+                warnings=(),
+                activation_sources=decision.activation_sources,
+            )
+            report_sink.emit(
+                SetContextEvent(
+                    name=ReportContextKey.TOPOLOGY,
+                    value=binding.report_context_payload(),
+                )
+            )
+            event_sink.emit(
+                level=logging.ERROR,
+                event="bootstrap.short_circuit",
+                payload={
+                    "diag_code": exc.diagnostic.code,
+                    "side": "target",
+                },
+            )
+            command_result = CommandResult()
+            command_result.add_diagnostics((exc.diagnostic,), catalog)
+            return TopologyBootstrapStepResult(
+                requirements=resolved_requirements,
+                runtime_binding=binding,
+                command_result=command_result,
+            )
         provider = None
         if result.artifacts is not None:
             provider = StaticTopologyProvider(
@@ -132,7 +190,6 @@ class TopologyBootstrapStep:
             )
         )
 
-        command_result = None
         if result.errors:
             event_sink.emit(
                 level=logging.ERROR,
@@ -143,7 +200,10 @@ class TopologyBootstrapStep:
                 },
             )
             command_result = CommandResult()
-            command_result.add_diagnostics(result.errors, catalog)
+            command_result.add_diagnostics(
+                (*result.errors, *result.warnings),
+                catalog,
+            )
 
         return TopologyBootstrapStepResult(
             requirements=resolved_requirements,
@@ -185,8 +245,10 @@ def _build_target_usecase(
 ) -> TargetTopologyBuildUseCase:
     cache_bundle = container.cache_dsl()
     cache_read = container.cache.roles().topology_read
-    cache_spec = next(
-        spec for spec in cache_bundle.cache_specs if spec.dataset == topology_spec.dataset
+    cache_spec = _require_cache_spec(
+        cache_specs=cache_bundle.cache_specs,
+        topology_dataset=topology_spec.dataset,
+        catalog=catalog,
     )
     trace = TraceToSink.from_sink(sink=event_sink, namespace="target")
     reader = SqliteTopologyTargetReader(
@@ -217,3 +279,34 @@ def _build_target_usecase(
         builder=builder,
         readiness_evaluator=readiness,
     )
+
+
+@dataclass(frozen=True)
+class _TopologyBootstrapConfigurationError(Exception):
+    """Bootstrap configuration error already translated into a diagnostic."""
+
+    diagnostic: DiagnosticItem
+
+
+def _require_cache_spec(
+    *,
+    cache_specs,
+    topology_dataset: str,
+    catalog,
+):
+    for spec in cache_specs:
+        if spec.dataset == topology_dataset:
+            return spec
+    diagnostic = build_error(
+        catalog=catalog,
+        stage=DiagnosticStage.TOPOLOGY_BOOTSTRAP,
+        code="TOPOLOGY_TARGET_CACHE_SPEC_MISSING",
+        field=None,
+        message=(
+            "Target topology cache spec is missing for topology dataset "
+            f"'{topology_dataset}'"
+        ),
+        record_ref=None,
+        details={"topology_dataset": topology_dataset},
+    )
+    raise _TopologyBootstrapConfigurationError(diagnostic=diagnostic)

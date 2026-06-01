@@ -85,3 +85,20 @@ class TopologyTargetReadinessResult:
     errors: tuple[DiagnosticItem, ...]
     warnings: tuple[DiagnosticItem, ...]
     details: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class TopologyRuntimeRequirements:
+    """Run-scoped topology activation semantics for pipeline composition.
+
+    Этот DTO не хранит snapshot-ы и не подменяет provider boundary. Он нужен как
+    composition input для topology-aware consumers, которым важно понимать, была
+    ли topology затребована, для какого dataset и по какой activation reason.
+    """
+
+    pipeline_dataset: str
+    topology_dataset: str
+    requires_source_topology: bool
+    requires_target_topology: bool
+    activation_sources: tuple[str, ...]
+    skipped_reason: str | None = None

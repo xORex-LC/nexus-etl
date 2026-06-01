@@ -345,6 +345,11 @@ def build_core_catalog(*, strict: bool) -> ErrorCatalog:
             severity=DiagnosticSeverity.ERROR,
         ),
         CatalogEntry(
+            "TOPOLOGY_TARGET_CACHE_SPEC_MISSING",
+            SystemErrorCode.CACHE_ERROR,
+            severity=DiagnosticSeverity.ERROR,
+        ),
+        CatalogEntry(
             "TOPOLOGY_SNAPSHOT_NOT_AVAILABLE",
             SystemErrorCode.INTERNAL_ERROR,
             severity=DiagnosticSeverity.ERROR,

@@ -25,6 +25,10 @@ def test_topology_codes_are_classified_in_core_catalog() -> None:
     assert catalog.classify("TOPOLOGY_TARGET_EMPTY") == SystemErrorCode.CACHE_ERROR
     assert catalog.classify("TOPOLOGY_TARGET_STALE") == SystemErrorCode.CACHE_ERROR
     assert (
+        catalog.classify("TOPOLOGY_TARGET_CACHE_SPEC_MISSING")
+        == SystemErrorCode.CACHE_ERROR
+    )
+    assert (
         catalog.classify("TOPOLOGY_SNAPSHOT_NOT_AVAILABLE")
         == SystemErrorCode.INTERNAL_ERROR
     )
