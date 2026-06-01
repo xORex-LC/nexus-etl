@@ -54,7 +54,12 @@ from .result_mapper import (
 
 from connector.domain.diagnostics.policies import SystemErrorCode
 from .result_adapter import result_with
-from .topology_bootstrap import TopologyBootstrapStep, attach_topology_runtime
+from connector.usecases.topology_bootstrap import TOPOLOGY_PIPELINE_COMMANDS
+from .topology_bootstrap import (
+    TopologyBootstrapStep,
+    TopologyBootstrapStepResult,
+    attach_topology_runtime,
+)
 
 
 def run_with_report(
@@ -728,11 +733,11 @@ def _run_topology_bootstrap_if_needed(
     logger: logging.Logger,
     run_id: str,
 ):
-    if command_name not in {"mapping", "normalize", "enrich", "match", "resolve", "import-plan"}:
-        return TopologyBootstrapStepResultFallback()
+    if command_name not in TOPOLOGY_PIPELINE_COMMANDS:
+        return TopologyBootstrapStepResult.inactive(requirements)
     dataset_name = resolve_dataset_opt(opts, ctx.app_config)
     if dataset_name is None:
-        return TopologyBootstrapStepResultFallback()
+        return TopologyBootstrapStepResult.inactive(requirements)
     step = TopologyBootstrapStep()
     return step.run(
         ctx=ctx,
@@ -744,13 +749,6 @@ def _run_topology_bootstrap_if_needed(
         logger=logger,
         run_id=run_id,
     )
-
-
-class TopologyBootstrapStepResultFallback:
-    """Null-object для команд без dataset-bound topology bootstrap."""
-
-    runtime_binding = None
-    command_result = None
 
 
 def echo_command_diagnostics(prefix: str, diagnostics: list[Any]) -> None:

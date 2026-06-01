@@ -67,3 +67,26 @@ def test_create_command_logger_mirrors_to_original_console_stream(tmp_path) -> N
     logger.info("mirrored", extra={"runId": "run-1", "component": "test"})
 
     assert "mirrored" in buffer.getvalue()
+
+
+def test_console_mirror_drops_captured_stdout_stderr(tmp_path) -> None:
+    buffer = io.StringIO()
+    logger, _ = create_command_logger(
+        command_name="match",
+        log_dir=tmp_path,
+        run_id="run-1",
+        log_level="INFO",
+        mirror_to_console=True,
+        console_stream=buffer,
+    )
+
+    # Перехваченный stdout/stderr уже выведен напрямую через TeeStream — на консоль не зеркалим.
+    logger.info("captured noise", extra={"runId": "run-1", "component": "stdout"})
+    logger.error("captured err", extra={"runId": "run-1", "component": "stderr"})
+    # Структурное событие проходит.
+    logger.info("topology event", extra={"runId": "run-1", "component": "topology"})
+
+    mirrored = buffer.getvalue()
+    assert "topology event" in mirrored
+    assert "captured noise" not in mirrored
+    assert "captured err" not in mirrored

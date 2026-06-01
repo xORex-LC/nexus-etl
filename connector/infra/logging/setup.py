@@ -29,6 +29,23 @@ class EnsureFieldsFilter(logging.Filter):
             record.component = self.default_component
         return True
 
+class DropCapturedStdStreamsFilter(logging.Filter):
+    """
+    Назначение:
+        Не зеркалировать на консоль перехваченные stdout/stderr.
+
+        Перехваченный вывод уже попадает в оригинальный stream напрямую через
+        TeeStream. Без этого фильтра console-mirror handler печатал бы его второй
+        раз (TeeStream -> StdStreamToLogger -> logger -> console_handler -> stream),
+        давая дубль. Структурные события (comp=topology/core/...) проходят.
+    """
+
+    _CAPTURED_COMPONENTS = frozenset({"stdout", "stderr"})
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return getattr(record, "component", None) not in self._CAPTURED_COMPONENTS
+
+
 class StdStreamToLogger:
     """
     Назначение:
@@ -163,6 +180,7 @@ def create_command_logger(
         console_handler.setLevel(level)
         console_handler.setFormatter(formatter)
         console_handler.addFilter(EnsureFieldsFilter(run_id=run_id))
+        console_handler.addFilter(DropCapturedStdStreamsFilter())
         logger.addHandler(console_handler)
 
     return logger, log_file_path

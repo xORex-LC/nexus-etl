@@ -135,7 +135,8 @@ def test_topology_requirement_resolver_activates_match_policy(
     )
 
     assert decision.activated is True
-    assert decision.request.require_source_topology is True
+    # Phase 1a/1b работают от row-level canonical path: source snapshot не требуется (Stage G+).
+    assert decision.request.require_source_topology is False
     assert decision.request.require_target_topology is True
     assert decision.activation_sources == ("match",)
     assert decision.target_failure_is_hard is True
@@ -167,7 +168,8 @@ def test_topology_requirement_resolver_activates_link_policy_even_without_match(
     )
 
     assert decision.activated is True
-    assert decision.request.require_source_topology is True
+    # Phase 1a/1b работают от row-level canonical path: source snapshot не требуется (Stage G+).
+    assert decision.request.require_source_topology is False
     assert decision.request.require_target_topology is True
     assert decision.activation_sources == ("resolve",)
     assert decision.target_failure_is_hard is True
