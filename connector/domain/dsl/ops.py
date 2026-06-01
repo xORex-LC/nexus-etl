@@ -711,6 +711,16 @@ def op_digits_only(value: Any, **_: Any) -> str | None:
     return digits or None
 
 
+def op_strip_non_alnum(value: Any, **_: Any) -> str | None:
+    """
+    Назначение:
+        Удалить из строкового значения все символы, кроме ASCII-букв и цифр.
+    """
+    if value is None:
+        return None
+    return "".join(ch for ch in str(value) if ch.isascii() and ch.isalnum())
+
+
 def op_random_digits(_: Any, *, length: int) -> str:
     """
     Назначение:

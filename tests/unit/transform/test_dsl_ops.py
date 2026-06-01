@@ -20,6 +20,7 @@ from connector.domain.dsl.ops import (
     op_pick_when_blank,
     op_random_digits,
     op_reject_regex,
+    op_strip_non_alnum,
     op_substring,
     op_title,
     op_to_bool,
@@ -199,6 +200,32 @@ def test_op_parse_bool_rejects_unknown_value() -> None:
 def test_op_digits_only_extracts_digits() -> None:
     assert op_digits_only("+7 (999) 123-45-67") == "79991234567"
     assert op_digits_only("abc") is None
+
+
+def test_op_strip_non_alnum_keeps_ascii_alnum_only() -> None:
+    # апостроф из transliterate (ь -> ') удаляется, буквы/цифры сохраняются
+    assert op_strip_non_alnum("IGOR'") == "IGOR"
+    assert op_strip_non_alnum("A.B_C-1") == "ABC1"
+    assert op_strip_non_alnum(None) is None
+    # пустой результат -> "", а не None (решение за downstream-политикой)
+    assert op_strip_non_alnum("''") == ""
+    assert op_strip_non_alnum("") == ""
+    # не-ASCII alnum (кириллица) тоже удаляется
+    assert op_strip_non_alnum("Иван123") == "123"
+
+
+def test_op_strip_non_alnum_runs_after_transliterate_in_engine() -> None:
+    engine = TransformationEngine.with_core_ops()
+    result = engine.apply(
+        "Игорь",
+        [
+            OperationCall(op="transliterate", args={}),
+            OperationCall(op="upper", args={}),
+            OperationCall(op="strip_non_alnum", args={}),
+        ],
+    )
+    assert result.value == "IGOR"
+    assert not result.issues
 
 
 def test_op_random_digits_returns_exact_digit_string() -> None:

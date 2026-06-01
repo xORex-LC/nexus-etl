@@ -96,6 +96,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_split_name,
         op_split,
         op_digits_only,
+        op_strip_non_alnum,
         op_random_digits,
         op_format_mask,
         op_parse_kv_pairs,
@@ -144,6 +145,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("reject_regex", op_reject_regex)
     registry.register("regex_replace", op_regex_replace)
     registry.register("digits_only", op_digits_only)
+    registry.register("strip_non_alnum", op_strip_non_alnum)
     registry.register("random_digits", op_random_digits)
     registry.register("format_mask", op_format_mask)
     registry.register("parse_kv_pairs", op_parse_kv_pairs)
