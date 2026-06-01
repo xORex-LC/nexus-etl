@@ -195,3 +195,56 @@ def test_match_core_returns_hard_error_when_topology_locator_is_missing(
 
     assert result.row is None
     assert [item.code for item in result.errors] == ["TOPOLOGY_SOURCE_PATH_EMPTY"]
+
+
+def test_match_core_aligns_selected_score_with_topology_resolved_candidate(
+    employees_registry_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_repo = _FakeCacheRepo(
+        responses={
+            ("match_key", "SRC-001"): [],
+        }
+    )
+    core = _core(cache_repo)
+
+    def _fake_match_with_fuzzy(*, row, desired_state, identity):
+        _ = (row, desired_state, identity)
+        candidate_a = {"_id": "org-a", "_ouid": "100", "name": "Shared Team", "code": "A-100"}
+        candidate_b = {"_id": "org-b", "_ouid": "200", "name": "Shared Team", "code": "B-200"}
+        return (
+            None,
+            MatchDecisionStatus.AMBIGUOUS,
+            0.82,
+            MatchDecisionReason.FUZZY_REVIEW,
+            (candidate_a, candidate_b),
+            {
+                "id:org-a": 0.82,
+                "id:org-b": 0.74,
+            },
+            (
+                {"target_id": "org-a", "score": 0.82},
+                {"target_id": "org-b", "score": 0.74},
+            ),
+        )
+
+    monkeypatch.setattr(core, "_match_with_fuzzy", _fake_match_with_fuzzy)
+
+    result = core.match(
+        _match_result(
+            raw_values={
+                "level_1_name": "Head Office",
+                "level_2_name": "Branch B",
+                "level_3_name": "Shared Team",
+            }
+        )
+    )
+
+    assert result.row is not None
+    decision = result.row.match_decision
+    assert decision.status == MatchDecisionStatus.MATCHED
+    assert decision.reason_code == MatchDecisionReason.TOPOLOGY_EXACT_CANONICAL_PATH
+    assert decision.selected is not None
+    assert decision.selected.target_id == "org-b"
+    assert decision.selected.score == 0.74
+    assert decision.score == 0.74
