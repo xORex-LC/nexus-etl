@@ -230,6 +230,7 @@ class MatchCore:
         topology_result: TopologyMatchResult | None = None
         topology_error: DiagnosticItem | None = None
         candidate_records: tuple[dict[str, Any], ...] = ()
+        candidate_scores: dict[str, float] = {}
         top_candidates: tuple[dict[str, Any], ...] = ()
 
         if decision_status == MatchDecisionStatus.MATCHED:
@@ -237,6 +238,11 @@ class MatchCore:
             decision_reason = MatchDecisionReason.IDENTITY_EXACT
             candidate_records = (
                 (existing,) if existing is not None else ()
+            )
+            candidate_scores = (
+                {_candidate_dedup_key(existing): score}
+                if existing is not None and score is not None
+                else {}
             )
             top_candidates = self._build_top_candidates(
                 [(existing, score)] if existing is not None else [],
@@ -250,6 +256,7 @@ class MatchCore:
                 score,
                 decision_reason,
                 candidate_records,
+                candidate_scores,
                 top_candidates,
             ) = self._match_with_fuzzy(
                 row=row,
@@ -265,6 +272,7 @@ class MatchCore:
             existing,
             decision_status,
             decision_reason,
+            score,
             topology_result,
             topology_error,
         ) = self._refine_with_topology(
@@ -273,6 +281,8 @@ class MatchCore:
             decision_status=decision_status,
             decision_reason=decision_reason,
             candidate_records=candidate_records,
+            candidate_scores=candidate_scores,
+            score=score,
         )
         if topology_error is not None:
             return TransformResult(
@@ -366,6 +376,7 @@ class MatchCore:
         float | None,
         str,
         tuple[dict[str, Any], ...],
+        dict[str, float],
         tuple[dict[str, Any], ...],
     ]:
         fuzzy = self.matching_rules.fuzzy
@@ -382,6 +393,7 @@ class MatchCore:
                 None,
                 MatchDecisionReason.FUZZY_NO_CANDIDATES,
                 (),
+                {},
                 (),
             )
 
@@ -405,9 +417,13 @@ class MatchCore:
                 None,
                 MatchDecisionReason.FUZZY_NO_RANKED,
                 (),
+                {},
                 (),
             )
 
+        candidate_scores = _build_candidate_scores(
+            [(item.candidate, item.score) for item in ranked]
+        )
         top_candidates = self._build_top_candidates(
             [(item.candidate, item.score) for item in ranked],
             top_k=max(1, fuzzy.top_k),
@@ -420,6 +436,7 @@ class MatchCore:
                 best.score,
                 MatchDecisionReason.FUZZY_TIE,
                 tuple(item.candidate for item in ranked),
+                candidate_scores,
                 top_candidates,
             )
 
@@ -432,6 +449,7 @@ class MatchCore:
                 best.score,
                 MatchDecisionReason.FUZZY_ACCEPT,
                 tuple(item.candidate for item in ranked),
+                candidate_scores,
                 top_candidates,
             )
         if best.score >= review_threshold:
@@ -441,6 +459,7 @@ class MatchCore:
                 best.score,
                 MatchDecisionReason.FUZZY_REVIEW,
                 tuple(item.candidate for item in ranked),
+                candidate_scores,
                 top_candidates,
             )
         return (
@@ -449,6 +468,7 @@ class MatchCore:
             best.score,
             MatchDecisionReason.FUZZY_REJECT,
             tuple(item.candidate for item in ranked),
+            candidate_scores,
             top_candidates,
         )
 
@@ -460,28 +480,31 @@ class MatchCore:
         decision_status: MatchDecisionStatus,
         decision_reason: str | None,
         candidate_records: tuple[dict[str, Any], ...],
+        candidate_scores: dict[str, float],
+        score: float | None,
     ) -> tuple[
         dict[str, Any] | None,
         MatchDecisionStatus,
         str | None,
+        float | None,
         TopologyMatchResult | None,
         DiagnosticItem | None,
     ]:
         policy = self.matching_rules.topology
         if policy is None or not policy.enabled:
-            return existing, decision_status, decision_reason, None, None
+            return existing, decision_status, decision_reason, score, None, None
         if not candidate_records:
-            return existing, decision_status, decision_reason, None, None
+            return existing, decision_status, decision_reason, score, None, None
         if not self._should_apply_topology(
             decision_status=decision_status,
             candidate_records=candidate_records,
         ):
-            return existing, decision_status, decision_reason, None, None
+            return existing, decision_status, decision_reason, score, None, None
 
         locator_builder = self._source_topology_locator_builder
         service = self._topology_match_service
         if locator_builder is None or service is None or self._topology_target_node_id_field is None:
-            return existing, decision_status, decision_reason, None, None
+            return existing, decision_status, decision_reason, score, None, None
 
         source_locator = locator_builder.build(enriched.record)
         if source_locator is None:
@@ -490,20 +513,21 @@ class MatchCore:
                     existing,
                     decision_status,
                     decision_reason,
+                    score,
                     None,
                     _build_topology_locator_missing_error(
                         self.catalog,
                         enriched.row_ref,
                     ),
                 )
-            return existing, decision_status, decision_reason, None, None
+            return existing, decision_status, decision_reason, score, None, None
 
         candidates_by_node_id = _candidate_rows_by_topology_id(
             candidate_records,
             target_node_id_field=self._topology_target_node_id_field,
         )
         if not candidates_by_node_id:
-            return existing, decision_status, decision_reason, None, None
+            return existing, decision_status, decision_reason, score, None, None
 
         topology_result = service.compare(
             source_locator,
@@ -516,6 +540,7 @@ class MatchCore:
                     resolved_candidate,
                     MatchDecisionStatus.MATCHED,
                     _topology_reason_code(topology_result.mode),
+                    _candidate_score(candidate_scores, resolved_candidate),
                     topology_result,
                     None,
                 )
@@ -525,6 +550,7 @@ class MatchCore:
                 existing,
                 MatchDecisionStatus.AMBIGUOUS,
                 MatchDecisionReason.TOPOLOGY_AMBIGUOUS,
+                score,
                 topology_result,
                 None,
             )
@@ -533,10 +559,11 @@ class MatchCore:
                 existing,
                 MatchDecisionStatus.AMBIGUOUS,
                 MatchDecisionReason.TOPOLOGY_NO_MATCH,
+                score,
                 topology_result,
                 None,
             )
-        return existing, decision_status, decision_reason, topology_result, None
+        return existing, decision_status, decision_reason, score, topology_result, None
 
     def _should_apply_topology(
         self,
@@ -819,6 +846,22 @@ def _candidate_dedup_key(candidate: dict[str, Any]) -> str:
         return f"id:{target_id}"
     parts = [f"{k}={candidate.get(k)}" for k in sorted(candidate.keys())]
     return "|".join(parts)
+
+
+def _build_candidate_scores(
+    ranked: list[tuple[dict[str, Any], float]],
+) -> dict[str, float]:
+    return {
+        _candidate_dedup_key(candidate): float(candidate_score)
+        for candidate, candidate_score in ranked
+    }
+
+
+def _candidate_score(
+    candidate_scores: dict[str, float],
+    candidate: dict[str, Any],
+) -> float | None:
+    return candidate_scores.get(_candidate_dedup_key(candidate))
 
 
 def _to_match_candidates(
