@@ -19,6 +19,7 @@ from connector.usecases.topology_bootstrap import (
     TopologyBootstrapRequest,
     TopologyBootstrapUseCase,
     TopologyRequirementResolver,
+    TopologyRuntimeBinding,
     TraceToSink,
 )
 from connector.usecases.topology_target_build import TargetTopologyBuildResult
@@ -271,6 +272,32 @@ def test_topology_bootstrap_usecase_returns_no_artifacts_on_fatal_diagnostics(
     assert result.artifacts is None
     assert [item.code for item in result.errors] == ["TOPOLOGY_TARGET_EMPTY"]
     assert result.warnings == ()
+
+
+def test_topology_runtime_binding_exports_runtime_requirements() -> None:
+    binding = TopologyRuntimeBinding(
+        provider=None,
+        request=TopologyBootstrapRequest(
+            pipeline_dataset="employees",
+            topology_dataset=None,
+            run_id="run-1",
+            require_source_topology=False,
+            require_target_topology=True,
+        ),
+        artifacts=None,
+        errors=(),
+        warnings=(),
+        activation_sources=("match",),
+        skipped_reason="capability_disabled",
+    )
+
+    requirements = binding.to_runtime_requirements()
+
+    assert requirements.pipeline_dataset == "employees"
+    assert requirements.topology_dataset == "employees"
+    assert requirements.requires_target_topology is True
+    assert requirements.activation_sources == ("match",)
+    assert requirements.skipped_reason == "capability_disabled"
 
 
 def test_trace_to_sink_emits_expected_debug_payloads() -> None:

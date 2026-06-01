@@ -17,16 +17,23 @@ from connector.delivery.cli.context import CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.runtime.topology_bootstrap import (
     TopologyBootstrapStep,
+    _TopologyBootstrapConfigurationError,
     attach_topology_runtime,
 )
 from connector.delivery.commands.topology_runtime import pipeline_topology_scope
-from connector.domain.diagnostics import build_catalog
+from connector.domain.diagnostics import build_catalog, build_error, build_warning
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.ports.topology import TopologyProviderPort
+from connector.domain.ports.topology import TopologyProviderPort, TopologyRuntimeRequirements
+from connector.domain.models import DiagnosticStage
 from connector.domain.reporting.assembler import ReportAssembler
 from connector.domain.reporting.context import InMemoryReportContext
 from connector.domain.reporting.sink import ReportSink
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
+from connector.usecases.topology_bootstrap import (
+    TopologyActivationDecision,
+    TopologyBootstrapRequest,
+    TopologyBootstrapResult,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -156,7 +163,8 @@ def test_run_with_report_skips_bootstrap_for_dataset_without_capability(
     assembler = captured["report_assembler"]
     assert isinstance(assembler, ReportAssembler)
     envelope = assembler.assemble()
-    assert "topology" not in envelope.context
+    assert envelope.context["topology"]["status"] == "skipped"
+    assert envelope.context["topology"]["skip_reason"] == "capability_disabled"
 
 
 def test_topology_provider_is_injected_into_planning_context(
@@ -226,4 +234,137 @@ def test_topology_provider_is_injected_into_planning_context(
     assert provider is not None
     assert planning_context.has(TopologyProviderPort) is True
     assert planning_context.require(TopologyProviderPort) is provider
+    assert planning_context.has(TopologyRuntimeRequirements) is True
+    assert planning_context.require(TopologyRuntimeRequirements).requires_target_topology is True
     assert hasattr(provider, "metadata") is False
+
+
+def test_topology_step_short_circuit_keeps_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    employees_registry_path,
+) -> None:
+    import connector.delivery.cli.runtime.topology_bootstrap as step_module
+
+    catalog = containers_module.build_diagnostics_catalog("organizations", strict=True)
+    report_context = InMemoryReportContext(
+        run_id="integration-run",
+        command="match",
+    )
+    sink = ReportSink(report_context)
+
+    error_diag = build_error(
+        catalog=catalog,
+        stage=DiagnosticStage.TOPOLOGY_BOOTSTRAP,
+        code="TOPOLOGY_TARGET_EMPTY",
+        message="empty target topology",
+    )
+    warning_diag = build_warning(
+        catalog=catalog,
+        stage=DiagnosticStage.TOPOLOGY_BOOTSTRAP,
+        code="TOPOLOGY_SOURCE_PATH_MALFORMED",
+        message="row path collapsed after normalization",
+    )
+
+    class _AlwaysActiveResolver:
+        def resolve(self, *, command_name: str, dataset_name: str) -> TopologyActivationDecision:
+            return TopologyActivationDecision(
+                request=TopologyBootstrapRequest(
+                    pipeline_dataset=dataset_name,
+                    topology_dataset=None,
+                    run_id="",
+                    require_source_topology=False,
+                    require_target_topology=True,
+                ),
+                capability_enabled=True,
+                activation_sources=("match",),
+                target_failure_is_hard=True,
+            )
+
+    class _FakeUseCase:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def run(
+            self,
+            *,
+            request: TopologyBootstrapRequest,
+            target_failure_is_hard: bool,
+        ) -> TopologyBootstrapResult:
+            return TopologyBootstrapResult(
+                artifacts=None,
+                errors=(error_diag,),
+                warnings=(warning_diag,),
+            )
+
+    monkeypatch.setattr(step_module, "TopologyBootstrapUseCase", _FakeUseCase)
+
+    step_result = TopologyBootstrapStep(
+        requirement_resolver=_AlwaysActiveResolver()
+    ).run(
+        ctx=_ctx(tmp_path, dataset_name="organizations"),
+        command_name="match",
+        dataset_name="organizations",
+        requirements=Requirements(
+            requires_source=True,
+            requires_dataset=True,
+            requires_cache=True,
+        ),
+        container=object(),
+        report_sink=sink,
+        logger=logging.getLogger("topology-short-circuit"),
+        run_id="integration-run",
+    )
+
+    assert step_result.command_result is not None
+    assert [diag.code for diag in step_result.command_result.diagnostics] == [
+        "TOPOLOGY_TARGET_EMPTY",
+        "TOPOLOGY_SOURCE_PATH_MALFORMED",
+    ]
+
+
+def test_topology_step_converts_missing_cache_spec_into_topology_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    employees_registry_path,
+) -> None:
+    import connector.delivery.cli.runtime.topology_bootstrap as step_module
+
+    def _raise_config_error(*args, **kwargs):
+        catalog = kwargs["catalog"]
+        diagnostic = build_error(
+            catalog=catalog,
+            stage=DiagnosticStage.TOPOLOGY_BOOTSTRAP,
+            code="TOPOLOGY_TARGET_CACHE_SPEC_MISSING",
+            message="missing cache spec",
+        )
+        raise _TopologyBootstrapConfigurationError(diagnostic=diagnostic)
+
+    monkeypatch.setattr(step_module, "_build_target_usecase", _raise_config_error)
+
+    report_context = InMemoryReportContext(
+        run_id="integration-run",
+        command="match",
+    )
+    sink = ReportSink(report_context)
+
+    step_result = TopologyBootstrapStep().run(
+        ctx=_ctx(tmp_path, dataset_name="organizations"),
+        command_name="match",
+        dataset_name="organizations",
+        requirements=Requirements(
+            requires_source=True,
+            requires_dataset=True,
+            requires_cache=True,
+        ),
+        container=object(),
+        report_sink=sink,
+        logger=logging.getLogger("topology-missing-cache-spec"),
+        run_id="integration-run",
+    )
+
+    assert step_result.command_result is not None
+    assert [diag.code for diag in step_result.command_result.diagnostics] == [
+        "TOPOLOGY_TARGET_CACHE_SPEC_MISSING"
+    ]
+    assert report_context.snapshot().context["topology"]["status"] == "error"

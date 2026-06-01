@@ -9,6 +9,7 @@ from connector.domain.ports.topology.models import (
     TargetHierarchyReadMeta,
     TargetHierarchyRow,
     TopologyFreshnessPolicy,
+    TopologyRuntimeRequirements,
     TopologyTargetReadinessResult,
 )
 from connector.domain.ports.topology.observability import TopologyEventSink
@@ -28,6 +29,7 @@ __all__ = [
     "TopologyFreshnessPolicy",
     "TopologyNotAvailableError",
     "TopologyProviderPort",
+    "TopologyRuntimeRequirements",
     "TopologyTargetReadinessResult",
     "TopologyTargetReadPort",
 ]

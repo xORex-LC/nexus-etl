@@ -30,6 +30,8 @@ dev = [
   "ruff>=0.6.0",
   "pytest-cov>=7.0.0",
   "import-linter>=2.0.0",
+  "mypy>=1.11",
+  "types-PyYAML>=6.0",
 ]
 
 perf = [
@@ -49,3 +51,99 @@ python_files = ["test_*.py"]
 
 [project.scripts]
 nexus = "connector.main:app"
+
+# ── import-linter (lint-imports) ─────────────────────────────────────────────
+# Layered Hexagonal Architecture: delivery → usecases → domain ← infra.
+# Зависимости направлены внутрь: domain ничего не знает о внешних слоях; usecases
+# и infra — независимые siblings, оба зависят только от domain (через порты);
+# delivery — composition root и может импортировать всё.
+[tool.importlinter]
+root_package = "connector"
+# Требуется для контракта, запрещающего внешние IO/CLI/DI-библиотеки в core-слоях.
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain is the inner layer (no outward imports)"
+type = "forbidden"
+source_modules = [
+    "connector.domain",
+]
+forbidden_modules = [
+    "connector.usecases",
+    "connector.infra",
+    "connector.delivery",
+]
+# Прямых domain -> infra импортов нет. Косвенная цепочка идёт через
+# registry/config-слой: domain.diagnostics.catalog -> datasets.registry, а
+# datasets.yaml_spec мостит на infra CSV reader. Это known debt слоя datasets
+# (csv reader стоит спрятать за порт / поднять в composition root).
+ignore_imports = [
+    "connector.datasets.yaml_spec -> connector.infra.sources.csv_reader",
+]
+
+[[tool.importlinter.contracts]]
+name = "usecases must not depend on infra or delivery"
+type = "forbidden"
+source_modules = [
+    "connector.usecases",
+]
+forbidden_modules = [
+    "connector.infra",
+    "connector.delivery",
+]
+# Известный технический долг: logging — cross-cutting concern, два use case-сервиса
+# напрямую зовут infra.logging.log_event. Целевое состояние — logging seam
+# (см. OBSERVABILITY-DEC-001). До миграции импорты явно whitelisted, а не молча
+# ослабляют контракт.
+ignore_imports = [
+    "connector.usecases.cache_command_service -> connector.infra.logging.setup",
+    "connector.usecases.cache_refresh_service -> connector.infra.logging.setup",
+    # Тот же datasets-мост, что и у domain (см. контракт выше): enrich_usecase ->
+    # datasets.registry -> datasets.yaml_spec -> infra.sources.csv_reader.
+    "connector.datasets.yaml_spec -> connector.infra.sources.csv_reader",
+]
+
+[[tool.importlinter.contracts]]
+name = "infra must not depend on usecases or delivery"
+type = "forbidden"
+source_modules = [
+    "connector.infra",
+]
+forbidden_modules = [
+    "connector.usecases",
+    "connector.delivery",
+]
+
+[[tool.importlinter.contracts]]
+name = "core layers stay free of IO/CLI/DI libraries"
+type = "forbidden"
+source_modules = [
+    "connector.domain",
+    "connector.usecases",
+]
+forbidden_modules = [
+    "httpx",
+    "polars",
+    "typer",
+    "dependency_injector",
+]
+
+# ── mypy ─────────────────────────────────────────────────────────────────────
+# Baseline-конфигурация с ratchet-стратегией: на старте НЕ включаем strict/
+# disallow_untyped_defs, чтобы не закрывать весь legacy одним махом. Гигиенические
+# проверки включены; строгость наращивается по мере сокращения текущего baseline.
+[tool.mypy]
+python_version = "3.11"
+files = ["connector"]
+namespace_packages = true
+explicit_package_bases = true
+show_error_codes = true
+pretty = true
+warn_redundant_casts = true
+warn_unused_configs = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+# PyYAML: стабы в dev (types-PyYAML), но конфиг самодостаточен и без них.
+module = ["yaml"]
+ignore_missing_imports = true
