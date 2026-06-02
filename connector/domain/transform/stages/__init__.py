@@ -15,6 +15,9 @@ from connector.domain.transform.stages.stages import (
     MatchStage,
     ResolveStage,
 )
+from connector.domain.transform.stages.source_topology_filter import (
+    SourceTopologyFilterStage,
+)
 
 __all__ = [
     "StageContract",
@@ -30,4 +33,5 @@ __all__ = [
     "EnrichStage",
     "MatchStage",
     "ResolveStage",
+    "SourceTopologyFilterStage",
 ]

@@ -12,6 +12,7 @@ query API, source/target builders и deterministic hash helpers.
 | `models.py` | `TopologyNode` — неизменяемый контракт topology-узла |
 | `snapshot.py` | `TopologyQueryPort`, `TopologySnapshot` — read-only graph/query-слой |
 | `comparison.py` | `TopologyMatchMode`, `TopologyComparisonResult`, `compare_topology_candidates()` — shared comparison ladder для consumer-ов |
+| `anchoring.py` | `anchor_source_nodes()` и DTO source adjacency anchoring — валидация, что source-узлы достижимы от target или batch parent |
 | `source_builder.py` | `SourcePathTopologyBuilder` — source-side сборка из canonical path-ов |
 | `target_builder.py` | `TargetHierarchyTopologyBuilder` — target-side валидация adjacency и сборка |
 | `readiness.py` | `TopologyTargetReadinessEvaluator` — readiness/freshness оценка target snapshot-а |
