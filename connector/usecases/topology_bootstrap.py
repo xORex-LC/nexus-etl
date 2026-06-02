@@ -22,10 +22,11 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from connector.domain.dependency_tree import NullTopologyTrace, TopologySnapshot, TopologyTracePort
 from connector.domain.ports.topology import (
+    SourceTopologyValidationState,
     TopologyEventSink,
     TopologyNotAvailableError,
     TopologyProviderPort,
@@ -39,9 +40,14 @@ from connector.domain.transform_dsl import (
     load_topology_spec_for_dataset,
 )
 from connector.domain.transform_dsl.compilers.topology import TopologyDsl
+from connector.domain.transform_dsl.specs.topology import TopologySourceAdjacencyListSpec
 from connector.usecases.topology_target_build import (
     TargetTopologyBuildResult,
     TargetTopologyBuildUseCase,
+)
+from connector.usecases.topology_source_validation import (
+    SourceTopologyValidationResult,
+    SourceTopologyValidationUseCase,
 )
 
 
@@ -62,6 +68,8 @@ class TopologyRunArtifacts:
 
     source_snapshot: TopologySnapshot | None
     target_snapshot: TopologySnapshot | None
+    source_validation: SourceTopologyValidationState | None
+    source_validation_summary: Mapping[str, Any]
     metadata: TopologyBuildMetadata
 
 
@@ -139,6 +147,10 @@ class TopologyRuntimeBinding:
         built_sides: list[str] = []
         if self.artifacts is not None and self.artifacts.source_snapshot is not None:
             built_sides.append("source")
+        source_validation_summary: Mapping[str, Any] = {}
+        if self.artifacts is not None and self.artifacts.source_validation is not None:
+            built_sides.append("source_validation")
+            source_validation_summary = self.artifacts.source_validation_summary
         if self.artifacts is not None and self.artifacts.target_snapshot is not None:
             built_sides.append("target")
         if self.errors:
@@ -179,6 +191,7 @@ class TopologyRuntimeBinding:
                 if self.artifacts is not None and self.artifacts.source_snapshot is not None
                 else 0
             ),
+            "source_validation": dict(source_validation_summary),
             "target_snapshot_nodes": (
                 len(self.artifacts.target_snapshot.nodes_by_id)
                 if self.artifacts is not None and self.artifacts.target_snapshot is not None
@@ -430,17 +443,49 @@ class TopologyRequirementResolver:
                     ),
                 )
 
+        source_validation_policy = (
+            self._load_source_validation_policy(dataset_name)
+            if normalized_command in _RESOLVE_ACTIVATING_COMMANDS
+            else None
+        )
+        if source_validation_policy is not None:
+            capability = self._load_capability(dataset_name)
+            if capability is not None and capability.enabled:
+                capability_enabled = True
+                if activation_sources and topology_dataset != dataset_name:
+                    raise ValueError(
+                        "source validation and topology consumers point to different topology datasets"
+                    )
+                topology_dataset = dataset_name
+                activation_sources.append("source_validation")
+                target_failure_is_hard = True
+            else:
+                return TopologyActivationDecision(
+                    request=TopologyBootstrapRequest(
+                        pipeline_dataset=dataset_name,
+                        topology_dataset=None,
+                        run_id="",
+                        require_source_topology=False,
+                        require_target_topology=False,
+                    ),
+                    capability_enabled=False,
+                    activation_sources=(),
+                    target_failure_is_hard=False,
+                    skipped_reason="capability_disabled",
+                    activation_error=(
+                        f"source topology validation is enabled for dataset '{dataset_name}', "
+                        "but its topology capability is disabled"
+                    ),
+                )
+
         activated = bool(activation_sources)
+        requires_source_topology = "source_validation" in activation_sources
         return TopologyActivationDecision(
             request=TopologyBootstrapRequest(
                 pipeline_dataset=dataset_name,
                 topology_dataset=topology_dataset if activated else None,
                 run_id="",
-                # Phase 1a/1b работают от row-level canonical path и не требуют
-                # полного source snapshot. Source builder и его consumer появляются
-                # на Stage G+, где флаг будет активироваться по наличию такого consumer,
-                # а не по факту включённости match/resolve policy.
-                require_source_topology=False,
+                require_source_topology=requires_source_topology,
                 require_target_topology=activated,
             ),
             capability_enabled=capability_enabled,
@@ -492,6 +537,17 @@ class TopologyRequirementResolver:
             )
         return None
 
+    @staticmethod
+    def _load_source_validation_policy(dataset_name: str) -> str | None:
+        try:
+            topology_spec = load_topology_spec_for_dataset(dataset_name)
+        except Exception:
+            return None
+        source = topology_spec.topology.source
+        if not isinstance(source, TopologySourceAdjacencyListSpec):
+            return None
+        return source.on_unanchored
+
 
 @dataclass(frozen=True)
 class _ResolveTopologyCapability:
@@ -508,12 +564,16 @@ class TopologyBootstrapUseCase:
         self,
         *,
         target_usecase_factory: Callable[[Any, Any], TargetTopologyBuildUseCase],
+        source_validation_usecase_factory: (
+            Callable[[Any, Any], SourceTopologyValidationUseCase] | None
+        ) = None,
         event_sink: TopologyEventSink,
         topology_loader: Callable[[str], Any] = load_topology_spec_for_dataset,
         compiler: TopologyDsl | None = None,
         built_at_provider: Callable[[], datetime] | None = None,
     ) -> None:
         self._target_usecase_factory = target_usecase_factory
+        self._source_validation_usecase_factory = source_validation_usecase_factory
         self._event_sink = event_sink
         self._topology_loader = topology_loader
         self._compiler = compiler or TopologyDsl()
@@ -550,9 +610,7 @@ class TopologyBootstrapUseCase:
                 "dataset": topology_spec.dataset,
                 "source_mode": topology_spec.topology.source.mode,
                 "target_mode": topology_spec.topology.target.mode,
-                "path_columns": [
-                    item.field for item in topology_spec.topology.source.path_columns
-                ],
+                "path_columns": _source_path_columns(topology_spec.topology.source),
             },
         )
         compiled = self._compiler.compile(topology_spec)
@@ -579,6 +637,37 @@ class TopologyBootstrapUseCase:
                 result=target_result,
             )
 
+        source_validation_result: SourceTopologyValidationResult | None = None
+        if resolved_request.require_source_topology:
+            if self._source_validation_usecase_factory is None:
+                raise ValueError("source topology validation usecase factory is not configured")
+            source_validation_usecase = self._source_validation_usecase_factory(
+                topology_spec,
+                compiled,
+            )
+            source = topology_spec.topology.source
+            if getattr(source, "mode", None) != "adjacency_list":
+                raise ValueError(
+                    "source topology validation requires topology.source.mode='adjacency_list'"
+                )
+            source_validation_result = source_validation_usecase.validate(
+                topology_dataset=topology_dataset,
+                node_id_field=source.node_id_field,
+                on_unanchored=source.on_unanchored,
+            )
+            self._event_sink.emit(
+                level=logging.INFO,
+                event="source.validation.finish",
+                payload={
+                    "source_nodes": source_validation_result.source_node_count,
+                    "target_membership": (
+                        source_validation_result.target_membership_count
+                    ),
+                    "dropped": len(source_validation_result.anchoring.dropped),
+                    "on_unanchored": source.on_unanchored,
+                },
+            )
+
         artifacts: TopologyRunArtifacts | None = None
         errors: tuple[DiagnosticItem, ...] = ()
         warnings: tuple[DiagnosticItem, ...] = ()
@@ -586,20 +675,35 @@ class TopologyBootstrapUseCase:
         if target_result is not None:
             errors = tuple(target_result.errors)
             warnings = tuple(target_result.warnings)
-            if target_result.readiness.is_ready:
-                artifacts = TopologyRunArtifacts(
-                    source_snapshot=None,
-                    target_snapshot=target_result.snapshot,
-                    metadata=TopologyBuildMetadata(
-                        dataset_name=topology_dataset,
-                        source_file_fingerprint=None,
-                        cache_snapshot_revision=(
-                            target_result.metadata.cache_snapshot_revision
-                        ),
-                        built_at=self._built_at_provider(),
-                        topology_normalization_version=compiled.normalization_version,
+        if source_validation_result is not None:
+            errors = (*errors, *source_validation_result.errors)
+            warnings = (*warnings, *source_validation_result.warnings)
+        target_ready = target_result is None or target_result.readiness.is_ready
+        if target_ready and not errors:
+            artifacts = TopologyRunArtifacts(
+                source_snapshot=None,
+                target_snapshot=target_result.snapshot if target_result is not None else None,
+                source_validation=(
+                    source_validation_result.validation_state
+                    if source_validation_result is not None
+                    else None
+                ),
+                source_validation_summary=_source_validation_summary(
+                    source_validation_result
+                ),
+                metadata=TopologyBuildMetadata(
+                    dataset_name=topology_dataset,
+                    source_file_fingerprint=None,
+                    cache_snapshot_revision=(
+                        target_result.metadata.cache_snapshot_revision
+                        if target_result is not None
+                        else None
                     ),
-                )
+                    built_at=self._built_at_provider(),
+                    topology_normalization_version=compiled.normalization_version,
+                ),
+            )
+            if target_result is not None:
                 self._event_sink.emit(
                     level=logging.INFO,
                     event="target.build.finish",
@@ -622,11 +726,7 @@ class TopologyBootstrapUseCase:
             event="bootstrap.finish",
             payload={
                 "duration_ms": duration_ms,
-                "built_sides": (
-                    ["target"]
-                    if artifacts is not None and artifacts.target_snapshot is not None
-                    else []
-                ),
+                "built_sides": _built_sides(artifacts),
                 "status": _bootstrap_status(errors=errors, warnings=warnings),
                 "errors": len(errors),
                 "warnings": len(warnings),
@@ -683,6 +783,48 @@ def _bootstrap_status(
     if warnings:
         return "warn"
     return "ok"
+
+
+def _source_path_columns(source: Any) -> list[str]:
+    if getattr(source, "mode", None) != "path_columns":
+        return []
+    return [item.field for item in source.path_columns]
+
+
+def _source_validation_summary(
+    result: SourceTopologyValidationResult | None,
+) -> dict[str, Any]:
+    if result is None:
+        return {}
+    return {
+        "enabled": True,
+        "source_nodes": result.source_node_count,
+        "target_membership": result.target_membership_count,
+        "anchored": len(result.anchoring.anchored_ids),
+        "dropped": len(result.anchoring.dropped),
+        "by_reason": _dropped_by_reason(result.anchoring.dropped),
+        "on_unanchored": result.validation_state.on_unanchored,
+    }
+
+
+def _dropped_by_reason(dropped: Mapping[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for verdict in dropped.values():
+        counts[str(verdict.reason)] = counts.get(str(verdict.reason), 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _built_sides(artifacts: TopologyRunArtifacts | None) -> list[str]:
+    if artifacts is None:
+        return []
+    sides: list[str] = []
+    if artifacts.source_snapshot is not None:
+        sides.append("source")
+    if artifacts.source_validation is not None:
+        sides.append("source_validation")
+    if artifacts.target_snapshot is not None:
+        sides.append("target")
+    return sides
 
 
 def _default_freshness_policy():

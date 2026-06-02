@@ -9,8 +9,10 @@ from types import SimpleNamespace
 import pytest
 
 from connector.domain.dependency_tree import TopologyNode, TopologySnapshot
+from connector.domain.dependency_tree import SourceAnchoringResult
 from connector.domain.models import DiagnosticItem, DiagnosticSeverity, DiagnosticStage
 from connector.domain.ports.topology import (
+    SourceTopologyValidationState,
     TargetHierarchyReadMeta,
     TopologyTargetReadinessResult,
 )
@@ -227,7 +229,7 @@ def test_topology_bootstrap_usecase_returns_artifacts_and_normalizes_dataset(
             pipeline_dataset="organizations",
             topology_dataset=None,
             run_id="run-1",
-            require_source_topology=True,
+            require_source_topology=False,
             require_target_topology=True,
         ),
         target_failure_is_hard=True,
@@ -274,7 +276,7 @@ def test_topology_bootstrap_usecase_returns_no_artifacts_on_fatal_diagnostics(
             pipeline_dataset="organizations",
             topology_dataset=None,
             run_id="run-1",
-            require_source_topology=True,
+            require_source_topology=False,
             require_target_topology=True,
         ),
         target_failure_is_hard=True,
@@ -283,6 +285,60 @@ def test_topology_bootstrap_usecase_returns_no_artifacts_on_fatal_diagnostics(
     assert result.artifacts is None
     assert [item.code for item in result.errors] == ["TOPOLOGY_TARGET_EMPTY"]
     assert result.warnings == ()
+
+
+def test_topology_bootstrap_usecase_runs_source_validation(
+    employees_registry_path,
+) -> None:
+    sink = _RecordingEventSink()
+
+    class _FakeTargetUseCase:
+        def build(self, *, dataset, freshness_policy, require_target_topology):
+            return _ready_result()
+
+    class _FakeSourceValidationUseCase:
+        def validate(self, *, topology_dataset, node_id_field, on_unanchored):
+            return SimpleNamespace(
+                anchoring=SourceAnchoringResult(
+                    anchored_ids=frozenset({"100"}),
+                    dropped={},
+                ),
+                validation_state=SourceTopologyValidationState(
+                    node_id_field=node_id_field,
+                    dropped={},
+                    on_unanchored=on_unanchored,
+                ),
+                errors=(),
+                warnings=(),
+                source_node_count=1,
+                target_membership_count=1,
+            )
+
+    usecase = TopologyBootstrapUseCase(
+        target_usecase_factory=lambda _spec, _compiled: _FakeTargetUseCase(),
+        source_validation_usecase_factory=lambda _spec, _compiled: (
+            _FakeSourceValidationUseCase()
+        ),
+        event_sink=sink,
+        topology_loader=lambda dataset: load_topology_spec_for_dataset(dataset),
+    )
+
+    result = usecase.run(
+        request=TopologyBootstrapRequest(
+            pipeline_dataset="organizations",
+            topology_dataset=None,
+            run_id="run-1",
+            require_source_topology=True,
+            require_target_topology=True,
+        ),
+        target_failure_is_hard=True,
+    )
+
+    assert result.errors == ()
+    assert result.artifacts is not None
+    assert result.artifacts.source_validation is not None
+    assert result.artifacts.source_validation_summary["source_nodes"] == 1
+    assert "source.validation.finish" in [event for _, event, _ in sink.events]
 
 
 def test_topology_runtime_binding_exports_runtime_requirements() -> None:

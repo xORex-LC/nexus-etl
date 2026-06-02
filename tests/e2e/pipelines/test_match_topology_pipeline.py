@@ -169,7 +169,43 @@ def _write_runtime_config(tmp_path: Path, source_dir: Path) -> Path:
     )
 
 
+def _write_path_columns_topology_fixture() -> None:
+    topology_path = (
+        tracked_employees_runtime_roots()["datasets_root"]
+        / "organizations"
+        / "organizations.topology.yaml"
+    )
+    topology_path.write_text(
+        """
+dataset: organizations
+topology:
+  canonicalization:
+    ops:
+      - op: trim
+      - op: lower
+      - op: regex_replace
+        pattern: '\\s+'
+        repl: " "
+      - op: compact
+  source:
+    mode: path_columns
+    path_columns:
+      - field: level_1_name
+      - field: level_2_name
+      - field: level_3_name
+  target:
+    mode: adjacency_list
+    node_id_field: _ouid
+    parent_id_field: parent_id
+    target_label_field: name
+    payload_target_id_field: _id
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+
 def test_match_command_disambiguates_duplicate_leaf_by_topology(tmp_path: Path) -> None:
+    _write_path_columns_topology_fixture()
     _seed_organizations_topology(tmp_path)
     source_dir = tmp_path / "sources"
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -234,6 +270,7 @@ def test_match_command_disambiguates_duplicate_leaf_by_topology(tmp_path: Path) 
 def test_match_command_reports_missing_topology_locator_as_row_failure(
     tmp_path: Path,
 ) -> None:
+    _write_path_columns_topology_fixture()
     _seed_organizations_topology(tmp_path)
     source_dir = tmp_path / "sources"
     source_dir.mkdir(parents=True, exist_ok=True)
