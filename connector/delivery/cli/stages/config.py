@@ -25,6 +25,7 @@ class StageName:
     """
 
     MAP = "map_stage"
+    SOURCE_TOPOLOGY_FILTER = "source_topology_filter_stage"
     NORMALIZE = "normalize_stage"
     ENRICH = "enrich_stage"
     MATCH = "match_stage"
@@ -67,21 +68,25 @@ PIPELINE_CHECKPOINTS: dict[str, list[str]] = {
     ],
     CheckpointName.NORMALIZE: [
         StageName.MAP,
+        StageName.SOURCE_TOPOLOGY_FILTER,
         StageName.NORMALIZE,
     ],
     CheckpointName.ENRICH: [
         StageName.MAP,
+        StageName.SOURCE_TOPOLOGY_FILTER,
         StageName.NORMALIZE,
         StageName.ENRICH,
     ],
     CheckpointName.MATCH: [
         StageName.MAP,
+        StageName.SOURCE_TOPOLOGY_FILTER,
         StageName.NORMALIZE,
         StageName.ENRICH,
         StageName.MATCH,
     ],
     CheckpointName.RESOLVE_CONTEXT: [
         StageName.MAP,
+        StageName.SOURCE_TOPOLOGY_FILTER,
         StageName.NORMALIZE,
         StageName.ENRICH,
         StageName.MATCH,
@@ -89,6 +94,7 @@ PIPELINE_CHECKPOINTS: dict[str, list[str]] = {
     ],
     CheckpointName.RESOLVE: [
         StageName.MAP,
+        StageName.SOURCE_TOPOLOGY_FILTER,
         StageName.NORMALIZE,
         StageName.ENRICH,
         StageName.MATCH,
@@ -97,6 +103,7 @@ PIPELINE_CHECKPOINTS: dict[str, list[str]] = {
     ],
     CheckpointName.PLAN: [
         StageName.MAP,
+        StageName.SOURCE_TOPOLOGY_FILTER,
         StageName.NORMALIZE,
         StageName.ENRICH,
         StageName.MATCH,

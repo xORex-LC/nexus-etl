@@ -21,10 +21,11 @@ from connector.domain.transform.matcher.match_models import (
     MatchDecisionStatus,
 )
 from connector.domain.transform.matcher.ports import ISourceDedupStore
-from connector.domain.transform_dsl import load_match_spec_for_dataset, load_topology_spec_for_dataset
+from connector.domain.transform_dsl import load_match_spec_for_dataset
 from connector.domain.transform_dsl.compilers.match import MatchDsl
 from connector.domain.transform_dsl.compilers.resolve import ResolveRules
 from connector.domain.transform_dsl.compilers.topology import TopologyDsl
+from connector.domain.transform_dsl.specs import TopologySpec
 from connector.usecases.topology_match import (
     build_source_locator_builder,
     build_topology_match_service,
@@ -88,6 +89,39 @@ def _resolve_rules() -> ResolveRules:
     )
 
 
+def _path_columns_topology_spec() -> TopologySpec:
+    return TopologySpec.model_validate(
+        {
+            "dataset": "organizations",
+            "topology": {
+                "canonicalization": {
+                    "ops": [
+                        {"op": "trim"},
+                        {"op": "lower"},
+                        {"op": "regex_replace", "pattern": "\\s+", "repl": " "},
+                        {"op": "compact"},
+                    ]
+                },
+                "source": {
+                    "mode": "path_columns",
+                    "path_columns": [
+                        {"field": "level_1_name"},
+                        {"field": "level_2_name"},
+                        {"field": "level_3_name"},
+                    ],
+                },
+                "target": {
+                    "mode": "adjacency_list",
+                    "node_id_field": "_ouid",
+                    "parent_id_field": "parent_id",
+                    "target_label_field": "name",
+                    "payload_target_id_field": "_id",
+                },
+            },
+        }
+    )
+
+
 def _match_result(*, raw_values: dict[str, object]) -> TransformResult:
     match_context = MatchContext(
         line_no=1,
@@ -118,7 +152,7 @@ def _match_result(*, raw_values: dict[str, object]) -> TransformResult:
 
 def _core(cache_repo: _FakeCacheRepo) -> MatchCore:
     match_rules = MatchDsl().compile(load_match_spec_for_dataset("organizations"))
-    topology_spec = load_topology_spec_for_dataset("organizations")
+    topology_spec = _path_columns_topology_spec()
     compiled_topology = TopologyDsl().compile(topology_spec)
     return MatchCore(
         dataset="organizations",

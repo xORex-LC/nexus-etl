@@ -27,8 +27,17 @@ from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.models import DiagnosticItem, DiagnosticStage
 from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.events import SetContextEvent
+from connector.domain.transform_dsl import (
+    load_mapping_spec_for_dataset,
+    load_source_spec_for_dataset,
+    resolve_source_location,
+)
 from connector.infra.logging.topology import LegacyLogEventSink
-from connector.infra.topology import SqliteTopologyTargetReader
+from connector.infra.topology import (
+    PolarsSourceAdjacencyReader,
+    SqliteTopologyTargetMembershipReader,
+    SqliteTopologyTargetReader,
+)
 from connector.usecases.topology_bootstrap import (
     StaticTopologyProvider,
     TopologyBootstrapUseCase,
@@ -36,6 +45,7 @@ from connector.usecases.topology_bootstrap import (
     TopologyRuntimeBinding,
     TraceToSink,
 )
+from connector.usecases.topology_source_validation import SourceTopologyValidationUseCase
 from connector.usecases.topology_target_build import TargetTopologyBuildUseCase
 
 
@@ -168,9 +178,16 @@ class TopologyBootstrapStep:
                 topology_spec=topology_spec,
                 compiled=compiled,
             ),
+            source_validation_usecase_factory=lambda topology_spec, compiled: (
+                _build_source_validation_usecase(
+                    container=container,
+                    catalog=catalog,
+                    topology_spec=topology_spec,
+                )
+            ),
             event_sink=event_sink,
         )
-        command_result: CommandResult | None = None
+        command_result = None
         try:
             result = usecase.run(
                 request=request,
@@ -319,6 +336,51 @@ def _build_target_usecase(
     )
 
 
+def _build_source_validation_usecase(
+    *,
+    container,
+    catalog,
+    topology_spec,
+) -> SourceTopologyValidationUseCase:
+    source_topology = _require_source_adjacency_spec(
+        source_spec=topology_spec.topology.source,
+        catalog=catalog,
+        topology_dataset=topology_spec.dataset,
+    )
+    source_spec = load_source_spec_for_dataset(topology_spec.dataset)
+    csv_options = source_spec.source.csv_options()
+    cache_bundle = container.cache_dsl()
+    cache_read = container.cache.roles().topology_read
+    cache_spec = _require_cache_spec(
+        cache_specs=cache_bundle.cache_specs,
+        topology_dataset=topology_spec.dataset,
+        catalog=catalog,
+    )
+    source_reader = PolarsSourceAdjacencyReader(
+        path=resolve_source_location(source_spec),
+        has_header=source_spec.source.has_header,
+        delimiter=csv_options.delimiter,
+        encoding=csv_options.encoding,
+        node_id_field=source_topology.node_id_field,
+        parent_id_field=source_topology.parent_id_field,
+        label_field=source_topology.label_field,
+    )
+    membership_reader = SqliteTopologyTargetMembershipReader(
+        cache_read=cache_read,
+        cache_spec=cache_spec,
+        membership_field=source_topology.target_membership_field,
+    )
+    return SourceTopologyValidationUseCase(
+        source_reader=source_reader,
+        target_membership_reader=membership_reader,
+        catalog=catalog,
+        pipeline_node_id_field=_mapped_field_for_source(
+            dataset=topology_spec.dataset,
+            source_field=source_topology.node_id_field,
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class _TopologyBootstrapConfigurationError(Exception):
     """Bootstrap configuration error already translated into a diagnostic."""
@@ -348,3 +410,40 @@ def _require_cache_spec(
         details={"topology_dataset": topology_dataset},
     )
     raise _TopologyBootstrapConfigurationError(diagnostic=diagnostic)
+
+
+def _require_source_adjacency_spec(
+    *,
+    source_spec,
+    catalog,
+    topology_dataset: str,
+):
+    if getattr(source_spec, "mode", None) == "adjacency_list":
+        return source_spec
+    diagnostic = build_error(
+        catalog=catalog,
+        stage=DiagnosticStage.TOPOLOGY_BOOTSTRAP,
+        code="TOPOLOGY_DSL_SPEC_INVALID",
+        field="topology.source.mode",
+        message=(
+            "Source topology validation requires adjacency_list source mode "
+            f"for topology dataset '{topology_dataset}'"
+        ),
+        details={
+            "topology_dataset": topology_dataset,
+            "source_mode": getattr(source_spec, "mode", None),
+        },
+    )
+    raise _TopologyBootstrapConfigurationError(diagnostic=diagnostic)
+
+
+def _mapped_field_for_source(*, dataset: str, source_field: str) -> str:
+    mapping_spec = load_mapping_spec_for_dataset(dataset)
+    for rule in mapping_spec.mapping.rules:
+        if rule.source != source_field:
+            continue
+        if rule.target is not None:
+            return rule.target
+        if rule.targets:
+            return rule.targets[0]
+    return source_field

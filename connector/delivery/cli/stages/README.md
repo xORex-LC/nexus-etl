@@ -2,14 +2,14 @@
 
 ## Назначение
 
-Типизированная фабрика и реестр стадий пайплайна для wiring в `delivery`-слое. Связывает DSL-стадии (`MapStage`, `NormalizeStage`, …) с DI-контейнером.
+Типизированная фабрика и реестр стадий пайплайна для wiring в `delivery`-слое. Связывает DSL-стадии (`MapStage`, `NormalizeStage`, …) и runtime filters с DI-контейнером.
 
 ## Файлы
 
 | Файл | Назначение |
 |---|---|
-| `registry.py` | `build_stage_factory()` — регистрирует typed factory functions для всех 6 стадий (`map`, `normalize`, `enrich`, `match`, `resolve`, `resolve_context`); содержит комментарий почему `match`/`resolve` — Singleton, а не Factory |
-| `config.py` | `CheckpointName` enum — имена контрольных точек пайплайна (напр. `"match"`) для lifecycle hooks |
+| `registry.py` | `build_stage_factory()` — регистрирует typed factory functions для базовых стадий; содержит комментарий почему `match`/`resolve` — Singleton, а не Factory |
+| `config.py` | `CheckpointName` и `StageName` enum — имена контрольных точек и порядок стадий, включая `source_topology_filter_stage` после `map` |
 | `composer.py` | `PipelineComposer` — собирает последовательность стадий из `StageDescriptor` в исполняемый конвейер |
 
 ## Зависимости

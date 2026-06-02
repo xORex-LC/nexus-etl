@@ -47,10 +47,18 @@ def pipeline_topology_scope(
 
     provider_override = nullcontext()
     requirements_override = nullcontext()
+    source_validation_override = nullcontext()
     if runtime.provider is not None:
         provider_override = pipeline.topology_provider.override(runtime.provider)
     requirements_override = pipeline.topology_requirements.override(
         runtime.to_runtime_requirements()
     )
-    with provider_override, requirements_override:
+    if (
+        runtime.artifacts is not None
+        and runtime.artifacts.source_validation is not None
+    ):
+        source_validation_override = pipeline.source_topology_validation.override(
+            runtime.artifacts.source_validation
+        )
+    with provider_override, requirements_override, source_validation_override:
         yield

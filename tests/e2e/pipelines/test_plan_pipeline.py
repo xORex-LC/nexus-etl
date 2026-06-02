@@ -47,6 +47,90 @@ def _write_csv(path: Path, rows: list[list[str | None]]) -> None:
             f.write(";".join("" if v is None else str(v) for v in row) + "\n")
 
 
+def _write_organizations_csv(path: Path, rows: list[dict[str, str | None]]) -> None:
+    with path.open("w", encoding="utf-8") as f:
+        f.write("id;name;parent_id\n")
+        for row in rows:
+            f.write(
+                ";".join(
+                    "" if row.get(field) is None else str(row.get(field))
+                    for field in ("id", "name", "parent_id")
+                )
+                + "\n"
+            )
+
+
+def _write_adjacency_topology_fixture() -> None:
+    topology_path = (
+        tracked_employees_runtime_roots()["datasets_root"]
+        / "organizations"
+        / "organizations.topology.yaml"
+    )
+    topology_path.write_text(
+        """
+dataset: organizations
+topology:
+  canonicalization:
+    ops:
+      - op: trim
+      - op: lower
+      - op: regex_replace
+        pattern: '\\s+'
+        repl: " "
+      - op: compact
+  source:
+    mode: adjacency_list
+    node_id_field: id
+    parent_id_field: parent_id
+    label_field: name
+    target_membership_field: code
+    on_unanchored: skip
+  target:
+    mode: adjacency_list
+    node_id_field: _ouid
+    parent_id_field: parent_id
+    target_label_field: name
+    payload_target_id_field: _id
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+
+def _write_path_columns_topology_fixture() -> None:
+    topology_path = (
+        tracked_employees_runtime_roots()["datasets_root"]
+        / "organizations"
+        / "organizations.topology.yaml"
+    )
+    topology_path.write_text(
+        """
+dataset: organizations
+topology:
+  canonicalization:
+    ops:
+      - op: trim
+      - op: lower
+      - op: regex_replace
+        pattern: '\\s+'
+        repl: " "
+      - op: compact
+  source:
+    mode: path_columns
+    path_columns:
+      - field: level_1_name
+      - field: level_2_name
+      - field: level_3_name
+  target:
+    mode: adjacency_list
+    node_id_field: _ouid
+    parent_id_field: parent_id
+    target_label_field: name
+    payload_target_id_field: _id
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+
 def make_row(
     *,
     raw_id: str,
@@ -207,12 +291,27 @@ def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: 
     finally:
         identity_engine.close()
 
-def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
+def _run_plan(
+    tmp_path: Path,
+    csv_path: Path,
+    run_id: str,
+    *,
+    dataset: str | None = None,
+    source_filename: str | None = None,
+) -> tuple[int, Path]:
     log_dir = tmp_path / "logs"
     report_dir = tmp_path / "reports"
     cache_dir = tmp_path / "cache"
     initialize_test_vault(cache_dir)
-    runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
+    if source_filename is None:
+        runtime_csv_path = prepare_tracked_employees_source_file(csv_path)
+    else:
+        runtime_csv_path = csv_path.parent / source_filename
+        if csv_path.resolve() != runtime_csv_path.resolve():
+            runtime_csv_path.write_text(
+                csv_path.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
     roots = tracked_employees_runtime_roots()
     config_path = write_runtime_config(
         tmp_path,
@@ -238,6 +337,8 @@ def _run_plan(tmp_path: Path, csv_path: Path, run_id: str) -> tuple[int, Path]:
         "import",
         "plan",
     ]
+    if dataset is not None:
+        args.extend(["--dataset", dataset])
     result = runner.invoke(app, args, input=f"{TEST_UNSEAL_PASSPHRASE}\n")
     plan_path = report_dir / f"plan_import_{run_id}.json"
     return result.exit_code, plan_path
@@ -449,6 +550,7 @@ def test_plan_error_when_org_missing(tmp_path: Path):
 
 
 def test_plan_resolve_topology_propagates_organization_fk_into_plan(tmp_path: Path):
+    _write_path_columns_topology_fixture()
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
     repo = _build_repo(db_path)
@@ -502,7 +604,7 @@ def test_plan_resolve_topology_propagates_organization_fk_into_plan(tmp_path: Pa
                 "Doe John M",
                 "Head Office",
                 "Branch A",
-                "",
+                "Shared Team",
                 "",
                 "",
                 "Shared Team",
@@ -528,3 +630,56 @@ def test_plan_resolve_topology_propagates_organization_fk_into_plan(tmp_path: Pa
     assert plan["summary"]["planned_create"] == 1
     assert len(plan["items"]) == 1
     assert plan["items"][0]["desired_state"]["organization_id"] == 100
+
+
+def test_plan_filters_unanchored_organization_subtree(tmp_path: Path):
+    _write_adjacency_topology_fixture()
+    cache_dir = tmp_path / "cache"
+    db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    repo = _build_repo(db_path)
+    _seed_org_row(
+        repo,
+        record_id="org-root",
+        ouid=100,
+        code="100",
+        name="Existing root",
+        parent_id=None,
+    )
+
+    csv_path = tmp_path / "organizations.csv"
+    _write_organizations_csv(
+        csv_path,
+        [
+            {"id": "100", "name": "Existing root", "parent_id": None},
+            {"id": "382", "name": "Service", "parent_id": "378"},
+            {"id": "383", "name": "Subservice", "parent_id": "382"},
+        ],
+    )
+
+    exit_code, plan_path = _run_plan(
+        tmp_path,
+        csv_path,
+        run_id="plan-org-anchoring",
+        dataset="organizations",
+        source_filename="source_departments.csv",
+    )
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    report = json.loads(
+        (tmp_path / "reports" / "report_import-plan_plan-org-anchoring.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert exit_code == 0
+    assert plan["summary"]["failed_rows"] == 2
+    assert report["context"]["topology"]["source_validation"]["dropped"] == 2
+    failed_codes = [
+        diagnostic["code"]
+        for item in report["items"]
+        for diagnostic in item["diagnostics"]
+        if item["status"] == "FAILED"
+    ]
+    assert failed_codes == [
+        "TOPOLOGY_SOURCE_UNANCHORED",
+        "TOPOLOGY_SOURCE_UNANCHORED",
+    ]

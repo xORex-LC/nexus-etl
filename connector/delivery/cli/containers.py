@@ -51,8 +51,11 @@ from connector.domain.ports.cache.roles import (
     MatchRuntimePort,
     ResolveRuntimePort,
 )
-from connector.domain.ports.topology import TopologyProviderPort
-from connector.domain.ports.topology import TopologyRuntimeRequirements
+from connector.domain.ports.topology import (
+    SourceTopologyValidationState,
+    TopologyProviderPort,
+    TopologyRuntimeRequirements,
+)
 from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
 from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
@@ -66,6 +69,7 @@ from connector.domain.transform_dsl.compilers.resolve import ResolveDsl
 from connector.domain.transform_dsl.compilers.resolve import ResolveTopologyLinkPolicy
 from connector.domain.transform_dsl.compilers.match import MatchDsl, TopologyMatchPolicy
 from connector.domain.transform_dsl.compilers.topology import TopologyDsl
+from connector.domain.transform_dsl.specs.topology import TopologySourcePathColumnsSpec
 from connector.domain.transform.pipeline_run_context import PipelineRunContext
 from connector.domain.transform.matcher.dedup_store import LocalSourceDedupStore
 from connector.domain.transform.matcher.match_engine import MatchEngine
@@ -73,6 +77,9 @@ from connector.domain.transform.resolver.batch_index_service import InMemoryBatc
 from connector.domain.transform.resolver.pending_codec import PendingCodecAdapter
 from connector.domain.transform.resolver.pending_expiry_service import PendingExpiryService
 from connector.domain.transform.resolver.resolve_engine import ResolveEngine
+from connector.domain.transform.stages.source_topology_filter import (
+    SourceTopologyFilterStage,
+)
 from connector.domain.transform.stages.stages import MatchStage, ResolveContextStage, ResolveStage
 from connector.datasets.registry import get_spec, resolve_dataset_name, validate_registry
 from connector.datasets.spec import DatasetSpec, UnsupportedStageError
@@ -612,11 +619,17 @@ def _build_match_topology_dependencies(
             "match topology policy is enabled but target topology snapshot is unavailable"
         )
 
+    path_fields = _topology_source_path_fields(topology_spec)
+    if path_fields is None:
+        return {
+            "topology_match_service": None,
+            "source_topology_locator_builder": None,
+            "topology_target_node_id_field": None,
+        }
+
     compiled_topology = TopologyDsl().compile(topology_spec)
     locator_builder = build_source_locator_builder(
-        path_fields=(
-            item.field for item in topology_spec.topology.source.path_columns
-        ),
+        path_fields=path_fields,
         canonicalizer=compiled_topology.python,
     )
     match_service = build_topology_match_service(
@@ -731,6 +744,15 @@ def _resolve_topology_path_fields(
     )
 
 
+def _topology_source_path_fields(topology_spec: TopologySpec) -> tuple[str, ...] | None:
+    """Вернуть path_columns только для row-level topology consumer-ов."""
+
+    source = topology_spec.topology.source
+    if not isinstance(source, TopologySourcePathColumnsSpec):
+        return None
+    return tuple(item.field for item in source.path_columns)
+
+
 def _create_stage(
     factory: object,
     stage_type: str,
@@ -777,6 +799,9 @@ class PipelineContainer(containers.DeclarativeContainer):
     include_deleted = providers.Object(False)
     topology_provider = providers.Object(None)
     topology_requirements = providers.Object(None)
+    source_topology_validation: providers.Provider[
+        SourceTopologyValidationState | None
+    ] = providers.Object(None)
 
     # ── Derived metadata ──────────────────────────────────────────────────────
 
@@ -934,6 +959,15 @@ class PipelineContainer(containers.DeclarativeContainer):
         options=map_options,
     )
 
+    source_topology_filter_stage = providers.Factory(
+        SourceTopologyFilterStage,
+        validation=providers.Callable(
+            lambda state: state if isinstance(state, SourceTopologyValidationState) else None,
+            state=source_topology_validation,
+        ),
+        catalog=catalog,
+    )
+
     row_builder = providers.Factory(
         lambda s: getattr(s, "row_builder", None),
         s=dataset_spec,
@@ -1035,6 +1069,7 @@ class PipelineContainer(containers.DeclarativeContainer):
         PipelineComposer,
         stage_registry={
             StageName.MAP: map_stage,
+            StageName.SOURCE_TOPOLOGY_FILTER: source_topology_filter_stage,
             StageName.NORMALIZE: normalize_stage,
             StageName.ENRICH: enrich_stage,
             StageName.MATCH: match_stage,

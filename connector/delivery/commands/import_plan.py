@@ -20,8 +20,10 @@ from connector.delivery.commands.common import (
 from connector.delivery.commands.vault_unseal import provide_runtime_unseal_passphrase
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
+from connector.domain.models import RowRef
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.reporting.contracts import ReportItemStatus
+from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.reporting.events import AddItemEvent, SetMetaEvent, SetRowCountersEvent
 from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.secrets.errors import (
@@ -154,9 +156,18 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
                             store=effective_include_skipped,
                         )
                     on_skipped_row = _on_skipped_row
+                on_failed_row = None
+                if report_sink is not None:
+                    def _on_failed_row(result) -> None:
+                        _emit_failed_report_item(
+                            report_sink=report_sink,
+                            result=result,
+                        )
+                    on_failed_row = _on_failed_row
                 plan_result = PlanBuilder().build_from_stream(
                     resolved_rows,
                     on_skipped_row=on_skipped_row,
+                    on_failed_row=on_failed_row,
                 )
                 if report_sink is not None:
                     report_sink.emit(
@@ -227,6 +238,30 @@ def _emit_skipped_report_item(*, report_sink, row_ref, store: bool) -> None:
             warnings=(),
             meta={"op": "skip"},
             store=store,
+            preaggregated=True,
+        )
+    )
+
+
+def _emit_failed_report_item(*, report_sink, result) -> None:
+    errors, warnings = split_report_diagnostics(result.errors, result.warnings)
+    row_ref = result.row_ref
+    if row_ref is None:
+        row_ref = RowRef(
+            line_no=result.record.line_no,
+            row_id=result.record.record_id,
+            identity_primary=None,
+            identity_value=None,
+        )
+    report_sink.emit(
+        AddItemEvent(
+            status=ReportItemStatus.FAILED,
+            row_ref=row_ref,
+            payload=None,
+            errors=tuple(errors),
+            warnings=tuple(warnings),
+            meta={"op": "failed"},
+            store=True,
             preaggregated=True,
         )
     )

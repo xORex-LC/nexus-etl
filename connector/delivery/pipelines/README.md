@@ -2,7 +2,7 @@
 
 ## Назначение
 
-Lifecycle-aware пайплайн для команды `import plan`. Инкапсулирует полный цикл планирования: сборку стадий трансформации, управление match-scope, буферизацию resolve-контекста и pending-replay из предыдущих прогонов.
+Lifecycle-aware пайплайн для команды `import plan`. Инкапсулирует полный цикл планирования: сборку стадий трансформации, runtime filters, управление match-scope, буферизацию resolve-контекста и pending-replay из предыдущих прогонов.
 
 ## Файлы
 
@@ -14,11 +14,15 @@ Lifecycle-aware пайплайн для команды `import plan`. Инкап
 ## Порядок стадий внутри
 
 ```
-MapStage → NormalizeStage → EnrichStage → MatchStage → ResolveContextStage → ResolveStage
+MapStage → SourceTopologyFilterStage → NormalizeStage → EnrichStage → MatchStage → ResolveContextStage → ResolveStage
 ```
 
+`SourceTopologyFilterStage` активен только когда topology bootstrap подготовил source validation state.
 `ResolveContextStage` буферизует батч, строит `batch_index`.  
 `ResolveStage` лениво разрешает записи через этот индекс.
+
+Failed `TransformResult` из стадий сохраняются в потоке до `PlanBuilder`, чтобы `import plan`
+мог корректно посчитать `failed_rows` и записать row-level диагностики в report.
 
 ## Зависимости
 
