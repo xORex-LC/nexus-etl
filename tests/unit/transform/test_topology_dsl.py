@@ -26,11 +26,12 @@ def test_load_topology_spec_for_dataset_organizations(
     spec = load_topology_spec_for_dataset("organizations")
 
     assert spec.dataset == "organizations"
-    assert [item.field for item in spec.topology.source.path_columns] == [
-        "level_1_name",
-        "level_2_name",
-        "level_3_name",
-    ]
+    assert spec.topology.source.mode == "adjacency_list"
+    assert spec.topology.source.node_id_field == "id"
+    assert spec.topology.source.parent_id_field == "parent_id"
+    assert spec.topology.source.label_field == "name"
+    assert spec.topology.source.target_membership_field == "code"
+    assert spec.topology.source.on_unanchored == "skip"
     assert spec.topology.target.node_id_field == "_ouid"
     assert spec.topology.target.parent_id_field == "parent_id"
     assert spec.topology.target.target_label_field == "name"

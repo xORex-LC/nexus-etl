@@ -1266,6 +1266,52 @@ with planning_pipeline.open(run_id, runtime) as stream:
 
 ---
 
+## 🧭 Source-side anchoring validation (Stage G)
+
+Зафиксировано как отдельная, не-блокирующая для Phase 1a/1b, capability подсистемы. Полная
+аналитика — в [worknote «Stage G»](../../notes/dependency-tree/DEPENDENCY_TREE_WORKNOTE.md);
+здесь — закреплённые архитектурные решения.
+
+### Граница: два независимых набора правил
+
+dependency_tree различает:
+
+- **target-build** (из cache): target — авторитетный источник, принимается как есть; `cache refresh`
+  НЕ является точкой отсечения source-данных;
+- **source-validation** (из source-батча): source-записи **якорятся против target**, незаякоренные
+  отсекаются.
+
+FK-matching (source-имена → target-id) **уже закрыт Stage E/F** на row-level canonical path и к
+Stage G отношения не имеет. Stage G — про целостность собственной иерархии self-referential
+id/parent_id датасетов (organizations из `source_departments.csv`).
+
+### Правило anchoring
+
+Source-узел заякорен, если при подъёме по `parent_id` доходит до корня, или до id, существующего
+в **target**, или через родителя из того же source-батча, который сам заякорен — не упираясь в id,
+отсутствующий и в source, и в target. Множество якорей = `source_ids ∪ target_ids`.
+
+- **forward-reference** (потомок раньше родителя в батче, но родитель есть в батче/target) — НЕ
+  ошибка; ordering закрывает существующий **pending-механизм resolver'а**. Stage G его не дублирует.
+- **permanently-unanchorable** (родитель отсутствует и в source, и в target) — отсекается рано,
+  вместе со **всем поддеревом**.
+
+### Закреплённые решения
+
+- источник адъяцентный: `organizations.topology.yaml` `source.mode: adjacency_list` (корректировка
+  illustrative `path_columns`); политика `source.on_unanchored: skip | warn | hard_error`
+  (вариативность), default для organizations — `skip` с ERROR-видимой диагностикой;
+- отсечение — **pre-pass до основного пайплайна** (Polars читает source → source snapshot →
+  anchoring против target snapshot → set невалидных id → основной пайплайн фильтрует на входе);
+- `Polars` source projection — только в `infra/`; domain работает с готовым adjacency;
+- `require_source_topology` **становится `True`** для organizations import (закрывает High 2 из
+  ревью Stage D, где он был `False` для Phase 1a/1b); employees не затрагивается;
+- активация — для команд, доходящих до Resolve/Plan;
+- diagnostics: catalog-first `TOPOLOGY_SOURCE_UNANCHORED` (`DATA_INVALID`, ERROR); per-row diag +
+  TOPOLOGY-контекст со счётчиком отсечённых → логи и отчёт.
+
+---
+
 ## 📚 Документация
 
 **Обновлена документация**:
@@ -1305,3 +1351,4 @@ with planning_pipeline.open(run_id, runtime) as stream:
 | 2026-06-01 | Зафиксирована полная тест-матрица: unit/integration/e2e/architecture/performance, критические корректностные тесты (symmetry/dual-form, cycle/orphan, id-детерминизм, readiness fail-fast, activation by link-policy, write-path FK), карта покрытия DoR→тесты и CI-гейты (полные таблицы по ID — worknote §18) |
 | 2026-06-01 | Зафиксированы `ResolveStage` как обязательный Phase 1b topology consumer, `resolve.yaml` topology-link policy boundary и write-path через реальные `ResolvedRow.desired_state/changes` |
 | 2026-06-01 | Зафиксированы `TopologyQueryPort`, `TopologyTargetReadPort`, catalog-first topology diagnostics, dual-form canonicalizer contract и composition-input consequences для DI/reporting |
+| 2026-06-02 | Зафиксирован Stage G (source-side anchoring validation): два независимых набора правил (target-build vs source-validation), якорь = `source_ids ∪ target_ids`, различение forward-reference (pending) и permanently-unanchorable (drop поддерева), `source.mode: adjacency_list` + политика `on_unanchored`, pre-pass до основного пайплайна, `require_source_topology=True` для organizations (закрытие High 2), catalog-код `TOPOLOGY_SOURCE_UNANCHORED`. FK-matching подтверждён как уже закрытый Stage E/F |

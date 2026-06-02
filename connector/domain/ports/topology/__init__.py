@@ -5,6 +5,7 @@ from connector.domain.ports.topology.builders import (
     TargetHierarchyTopologyBuilderPort,
 )
 from connector.domain.ports.topology.models import (
+    SourceTopologyValidationState,
     SourceTopologyCanonicalPath,
     TargetHierarchyReadMeta,
     TargetHierarchyRow,
@@ -19,7 +20,11 @@ from connector.domain.ports.topology.provider import (
     TopologyNotAvailableError,
     TopologyProviderPort,
 )
-from connector.domain.ports.topology.readers import TopologyTargetReadPort
+from connector.domain.ports.topology.readers import (
+    SourceAdjacencyReadPort,
+    TopologyTargetMembershipReadPort,
+    TopologyTargetReadPort,
+)
 from connector.domain.ports.topology.services import (
     SourceTopologyLocatorBuilderPort,
     TopologyLinkResolutionServicePort,
@@ -28,8 +33,10 @@ from connector.domain.ports.topology.services import (
 
 __all__ = [
     "SourcePathTopologyBuilderPort",
+    "SourceAdjacencyReadPort",
     "SourceTopologyLocatorBuilderPort",
     "SourceTopologyCanonicalPath",
+    "SourceTopologyValidationState",
     "TargetHierarchyReadMeta",
     "TargetHierarchyRow",
     "TargetHierarchyTopologyBuilderPort",
@@ -43,5 +50,6 @@ __all__ = [
     "TopologyProviderPort",
     "TopologyRuntimeRequirements",
     "TopologyTargetReadinessResult",
+    "TopologyTargetMembershipReadPort",
     "TopologyTargetReadPort",
 ]
