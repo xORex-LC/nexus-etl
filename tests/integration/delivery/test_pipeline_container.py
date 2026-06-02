@@ -23,8 +23,11 @@ from connector.config.models import AppConfig
 from connector.datasets.registry import get_spec
 from connector.delivery.cli.containers import PipelineContainer
 from connector.delivery.cli.stages import build_stage_factory
+from connector.domain.dependency_tree import TopologySnapshot
 from connector.domain.diagnostics.catalog import build_catalog
+from connector.domain.ports.topology import TopologyRuntimeRequirements
 from connector.domain.transform.context import PipelineMetadata, StageExecutionContext
+from connector.usecases.topology_bootstrap import StaticTopologyProvider
 from connector.domain.transform.providers import ProviderGateway
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.transform.stages.stages import MapStage, NormalizeStage, EnrichStage, MatchStage, ResolveStage
@@ -93,6 +96,22 @@ def _apply_command_overrides(
     container.include_deleted.override(include_deleted)
     container.secret_store.override(secret_store)
     container.dictionaries.override(dictionaries)
+    # employees.resolve.yaml включает topology_link → сборка resolve_stage требует
+    # активированных topology requirements + provider (в проде их даёт pre-handler
+    # bootstrap). Эти wiring-тесты строят контейнер напрямую, поэтому подаём явные
+    # composition inputs, как это делает handler через pipeline_topology_scope.
+    container.topology_requirements.override(
+        TopologyRuntimeRequirements(
+            pipeline_dataset="employees",
+            topology_dataset="organizations",
+            requires_source_topology=False,
+            requires_target_topology=True,
+            activation_sources=("resolve",),
+        )
+    )
+    container.topology_provider.override(
+        StaticTopologyProvider(source_snapshot=None, target_snapshot=TopologySnapshot.empty())
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════════

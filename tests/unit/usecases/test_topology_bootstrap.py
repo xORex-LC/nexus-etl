@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
 
@@ -159,6 +160,31 @@ def test_topology_requirement_resolver_activates_link_policy_for_target_dataset(
     assert decision.request.topology_dataset == "organizations"
     assert decision.activation_sources == ("resolve",)
     assert decision.target_failure_is_hard is True
+
+
+def test_topology_requirement_resolver_flags_capability_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Policy включена, но topology capability выключена → activation_error (не graceful skip)."""
+    resolver = TopologyRequirementResolver()
+    monkeypatch.setattr(
+        resolver,
+        "_load_capability",
+        staticmethod(lambda _dataset: SimpleNamespace(enabled=False, spec=None)),
+    )
+    monkeypatch.setattr(
+        resolver,
+        "_load_match_policy",
+        staticmethod(
+            lambda _dataset: SimpleNamespace(enabled=True, on_missing_topology="skip")
+        ),
+    )
+
+    decision = resolver.resolve(command_name="match", dataset_name="employees")
+
+    assert decision.activated is False
+    assert decision.activation_error is not None
+    assert "capability is disabled" in decision.activation_error
 
 
 def test_topology_requirement_resolver_returns_false_when_capability_disabled(
