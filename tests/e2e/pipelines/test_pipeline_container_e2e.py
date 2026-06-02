@@ -14,8 +14,11 @@ from connector.config.models import AppConfig
 from connector.common.runtime_paths import RuntimePathOverrides
 from connector.datasets.registry import get_spec
 from connector.delivery.cli.containers import PipelineContainer
+from connector.domain.dependency_tree import TopologySnapshot
 from connector.domain.dsl.loader import configure_runtime_paths
 from connector.domain.diagnostics.catalog import build_catalog
+from connector.domain.ports.topology import TopologyRuntimeRequirements
+from connector.usecases.topology_bootstrap import StaticTopologyProvider
 from connector.domain.transform.core.extractor import Extractor
 from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.stages.stages import PipelineOrchestrator, StageContract
@@ -99,6 +102,21 @@ def _build_container(csv_path: Path):
     container.include_deleted.override(False)
     container.secret_store.override(None)
     container.dictionaries.override(None)
+    # employees.resolve.yaml включает topology_link → resolve_stage требует
+    # активированных topology requirements + provider (в проде их даёт pre-handler
+    # bootstrap). Подаём явные composition inputs, как handler.
+    container.topology_requirements.override(
+        TopologyRuntimeRequirements(
+            pipeline_dataset="employees",
+            topology_dataset="organizations",
+            requires_source_topology=False,
+            requires_target_topology=True,
+            activation_sources=("resolve",),
+        )
+    )
+    container.topology_provider.override(
+        StaticTopologyProvider(source_snapshot=None, target_snapshot=TopologySnapshot.empty())
+    )
     return container, catalog
 
 

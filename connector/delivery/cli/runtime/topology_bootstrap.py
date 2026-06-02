@@ -90,6 +90,44 @@ class TopologyBootstrapStep:
             requires_target_topology=request.require_target_topology,
         )
 
+        if decision.activation_error is not None:
+            # Конфликт конфигурации: consumer policy включена, но topology capability
+            # выключена. Ловим рано, единой catalog-диагностикой, вместо сырого ValueError
+            # на поздней сборке resolve/match-стадии.
+            event_sink = LegacyLogEventSink(logger=logger, run_id=run_id)
+            diagnostic = build_error(
+                catalog=catalog,
+                stage=DiagnosticStage.TOPOLOGY_BOOTSTRAP,
+                code="TOPOLOGY_CAPABILITY_DISABLED",
+                message=decision.activation_error,
+            )
+            binding = TopologyRuntimeBinding(
+                provider=None,
+                request=request,
+                artifacts=None,
+                errors=(diagnostic,),
+                warnings=(),
+                activation_sources=decision.activation_sources,
+            )
+            report_sink.emit(
+                SetContextEvent(
+                    name=ReportContextKey.TOPOLOGY,
+                    value=binding.report_context_payload(),
+                )
+            )
+            event_sink.emit(
+                level=logging.ERROR,
+                event="bootstrap.short_circuit",
+                payload={"diag_code": diagnostic.code, "reason": "capability_disabled"},
+            )
+            command_result = CommandResult()
+            command_result.add_diagnostics((diagnostic,), catalog)
+            return TopologyBootstrapStepResult(
+                requirements=resolved_requirements,
+                runtime_binding=binding,
+                command_result=command_result,
+            )
+
         if not decision.activated:
             binding = TopologyRuntimeBinding(
                 provider=None,

@@ -164,7 +164,11 @@ def test_run_with_report_skips_bootstrap_for_dataset_without_capability(
     assert isinstance(assembler, ReportAssembler)
     envelope = assembler.assemble()
     assert envelope.context["topology"]["status"] == "skipped"
-    assert envelope.context["topology"]["skip_reason"] == "capability_disabled"
+    # employees не включает match-topology policy → активация не происходит по
+    # policy-гейту (до проверки capability). Точная причина в новой таксономии —
+    # topology_policy_disabled (capability_disabled резервируется за случаем
+    # "policy включена, но capability выключена").
+    assert envelope.context["topology"]["skip_reason"] == "topology_policy_disabled"
 
 
 def test_topology_provider_is_injected_into_planning_context(

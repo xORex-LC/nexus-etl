@@ -360,6 +360,11 @@ def build_core_catalog(*, strict: bool) -> ErrorCatalog:
             severity=DiagnosticSeverity.ERROR,
         ),
         CatalogEntry(
+            "TOPOLOGY_CAPABILITY_DISABLED",
+            SystemErrorCode.DATA_INVALID,
+            severity=DiagnosticSeverity.ERROR,
+        ),
+        CatalogEntry(
             "settings.source.config_read_failed",
             SystemErrorCode.IO_ERROR,
             severity=DiagnosticSeverity.ERROR,

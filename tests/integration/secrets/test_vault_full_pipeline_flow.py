@@ -261,6 +261,34 @@ def _seed_organization_identities(
     finally:
         engine.close()
 
+    # Stage F: import-plan активирует topology-bootstrap (employees.resolve.topology_link),
+    # который строит target topology из org cache-таблицы. Без хотя бы одной org-строки
+    # snapshot пуст → TOPOLOGY_TARGET_EMPTY и команда падает на bootstrap. Сеем одну
+    # org-строку, чтобы target был непустым; FK по-прежнему резолвится по identity-index
+    # (1 кандидат → topology refinement не срабатывает).
+    cache_db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    cache_engine = open_sqlite(to_cache_db_config(AppConfig()), cache_db_path)
+    try:
+        cache_specs = list(load_cache_dsl_runtime().cache_specs)
+        ensure_cache_ready(cache_engine, cache_specs)
+        cache_repo = SqliteCacheRepository(cache_engine, cache_specs)
+        with cache_engine.transaction():
+            cache_repo.upsert(
+                "organizations",
+                {
+                    "_id": f"org-{value}",
+                    "_ouid": resolved_org_id,
+                    "code": value,
+                    "name": organization_name,
+                    "match_key": value,
+                    "parent_id": None,
+                    "updated_at": "2026-02-18T10:00:00Z",
+                },
+            )
+            cache_repo.set_meta("organizations", "cache_snapshot_revision", "vault-flow-rev")
+    finally:
+        cache_engine.close()
+
 
 def test_vault_full_pipeline_create_flow(tmp_path: Path):
     csv_path = tmp_path / "employees-create.csv"

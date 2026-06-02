@@ -94,6 +94,10 @@ class TopologyActivationDecision:
     activation_sources: tuple[str, ...]
     target_failure_is_hard: bool
     skipped_reason: str | None = None
+    # Конфликт конфигурации: consumer policy (match/resolve) включена, но topology
+    # capability у целевого датасета выключена. Не graceful skip — bootstrap step
+    # обязан short-circuit-ить команду с catalog-диагностикой TOPOLOGY_CAPABILITY_DISABLED.
+    activation_error: str | None = None
 
     @property
     def activated(self) -> bool:
@@ -379,6 +383,10 @@ class TopologyRequirementResolver:
                     activation_sources=(),
                     target_failure_is_hard=False,
                     skipped_reason="capability_disabled",
+                    activation_error=(
+                        f"match topology policy is enabled for dataset '{dataset_name}', "
+                        "but its topology capability is disabled"
+                    ),
                 )
         if (
             normalized_command in _RESOLVE_ACTIVATING_COMMANDS
@@ -416,6 +424,10 @@ class TopologyRequirementResolver:
                     activation_sources=(),
                     target_failure_is_hard=False,
                     skipped_reason="capability_disabled",
+                    activation_error=(
+                        f"resolve topology_link is enabled for dataset '{dataset_name}', "
+                        "but the target topology capability is disabled"
+                    ),
                 )
 
         activated = bool(activation_sources)
