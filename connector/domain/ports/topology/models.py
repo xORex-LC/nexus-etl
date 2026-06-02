@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Mapping
 
+from connector.domain.dependency_tree.anchoring import SourceAnchoringVerdict
 from connector.domain.dependency_tree.comparison import TopologyMatchMode
 from connector.domain.models import DiagnosticItem
 
@@ -29,6 +30,19 @@ class SourceTopologyCanonicalPath:
     """Canonical source hierarchy path для source-side builder-ов и consumer-ов"""
 
     canonical_segments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SourceTopologyValidationState:
+    """Run-scoped source anchoring verdicts для pipeline filter-а.
+
+    DTO хранит только node-id keyed graph verdicts. Row-level diagnostics
+    создаёт stage основного потока, где уже есть актуальный row_ref.
+    """
+
+    node_id_field: str
+    dropped: Mapping[str, SourceAnchoringVerdict]
+    on_unanchored: Literal["skip", "warn", "hard_error"]
 
 
 @dataclass(frozen=True)

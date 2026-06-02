@@ -32,6 +32,10 @@ def test_topology_codes_are_classified_in_core_catalog() -> None:
         catalog.classify("TOPOLOGY_SNAPSHOT_NOT_AVAILABLE")
         == SystemErrorCode.INTERNAL_ERROR
     )
+    assert (
+        catalog.classify("TOPOLOGY_SOURCE_UNANCHORED")
+        == SystemErrorCode.DATA_INVALID
+    )
 
 
 def test_topology_warning_codes_keep_warning_severity() -> None:

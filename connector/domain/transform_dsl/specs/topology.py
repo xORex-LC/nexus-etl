@@ -18,6 +18,7 @@ TopologyComparisonLadderStep = Literal[
 ]
 
 TopologyMatchApplyOn = Literal["ambiguous_only", "all_candidates"]
+TopologySourceUnanchoredPolicy = Literal["skip", "warn", "hard_error"]
 
 
 class TopologyPathColumnSpec(DslBaseModel):
@@ -139,6 +140,40 @@ class TopologySourcePathColumnsSpec(DslBaseModel):
         return self
 
 
+class TopologySourceAdjacencyListSpec(DslBaseModel):
+    """
+    Назначение:
+        Декларативный source-side ingress через id/parent_id adjacency list.
+    """
+
+    mode: Literal["adjacency_list"] = "adjacency_list"
+    node_id_field: str
+    parent_id_field: str
+    label_field: str
+    target_membership_field: str
+    on_unanchored: TopologySourceUnanchoredPolicy = "skip"
+
+    @field_validator(
+        "node_id_field",
+        "parent_id_field",
+        "label_field",
+        "target_membership_field",
+        mode="after",
+    )
+    @classmethod
+    def _validate_required_fields(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("topology.source adjacency fields must not be blank")
+        return normalized
+
+
+TopologySourceSpec = Annotated[
+    TopologySourcePathColumnsSpec | TopologySourceAdjacencyListSpec,
+    Field(discriminator="mode"),
+]
+
+
 class TopologyTargetAdjacencySpec(DslBaseModel):
     """
     Назначение:
@@ -233,7 +268,7 @@ class TopologyBlock(DslBaseModel):
     canonicalization: TopologyCanonicalizationSpec = Field(
         default_factory=TopologyCanonicalizationSpec
     )
-    source: TopologySourcePathColumnsSpec
+    source: TopologySourceSpec
     target: TopologyTargetAdjacencySpec
 
 

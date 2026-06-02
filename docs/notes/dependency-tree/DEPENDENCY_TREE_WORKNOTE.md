@@ -3564,3 +3564,151 @@ U-U06 (activation by link-policy), E-04 (write-path FK до `plan.json`).
 - merge: `pytest -m unit` + `-m integration` + `-m architecture` + `lint-imports` + `mypy`;
 - PR: `-m e2e`;
 - `-m performance` — отдельный nightly/manual.
+
+## Stage G: source-side anchoring validation (обсуждение, 2026-06-02)
+
+### Отправная точка: что уже сделано (E/F), а что нет
+
+Сценарий «source-иерархия по именам → target-id для FK» **полностью закрыт Stage E/F** (row-level):
+
+- employees source имеет колонки «Орг. единица уровня 1..5», маппятся в `organization_id`;
+- `SourceTopologyLocatorBuilder` канонизирует значения этих колонок → source path из имён;
+- target topology (organizations) строится из `_ouid/parent_id`, но каждый узел помечен
+  канонизированным `name` (`target_label_field`), поэтому `canonical_path(_ouid)` — это
+  цепочка имён;
+- сравнение идёт имя-путь vs имя-путь (одни и те же canonicalization ops), matched-узел
+  отдаёт `_ouid` → `organization_id`; одинаковые leaf-имена различаются полной цепочкой
+  предков (`exact_canonical_path`);
+- FK доходит до `plan.json` (`test_plan_resolve_topology_propagates_organization_fk_into_plan`).
+
+Сопоставление id↔name, которое поначалу казалось отдельной задачей, решается **неявно**:
+target хранит канонизированное `name` на каждый id-узел, сравнение — по именам, на выходе — id.
+
+Вывод: **Stage G — это НЕ про FK-matching** (он готов), а про отдельную потребность —
+валидацию целостности source-иерархии для self-referential id/parent_id датасетов.
+
+### Оценка применимости row-level модели
+
+Row-level FK-by-canonical-path — правильный дефолт для частой формы ETL («в source иерархия
+как имена/уровни, в target — граф id»): потоковый, stateless-per-row, без буферизации,
+переносимый на любой датасет такой формы. Принципиальная граница: row-level **не** рассуждает
+о собственном графе source через несколько строк. Это ровно и есть зона Stage G. Модели
+комплементарны и разделение принципиальное.
+
+### Скорректированное правило валидности (target — авторитет)
+
+dependency_tree держит **два независимых набора правил**:
+
+- **target-build** (из cache): target авторитетен, принимаем как есть, свои валидаторы
+  (duplicate/cycle/parent_missing). `cache refresh` — НЕ точка отсечения source-данных.
+- **source-validation** (из source-батча): якорим **против target**, отсекаем незаякоренные.
+
+Source-запись (organizations из `source_departments.csv`, id/parent_id) **заякорена**, если
+при подъёме по `parent_id`:
+
+- доходит до корня (`parent_id` пустой), **или**
+- доходит до id, существующего в **target**, **или**
+- проходит через родителя, который есть в этом же **source-батче** и сам заякорен,
+
+…не упираясь в id, которого нет ни в source, ни в target. Множество якорей =
+`source_ids ∪ target_ids`.
+
+### Ключевое различие: forward-reference vs permanently-unanchorable
+
+Stage G разделяет два случая, которые иначе сливаются:
+
+- **forward-reference** (потомок в source раньше родителя, но родитель есть в батче/target) —
+  НЕ ошибка; ordering закрывает **существующий pending-механизм resolver'а**. Stage G сюда
+  не лезет и pending не дублирует.
+- **permanently-unanchorable** (родитель `378` отсутствует и в source, и в target) — запись
+  никогда не построит иерархию; создавать doomed-pending бессмысленно → **отсекаем рано**,
+  вместе со **всем поддеревом** (потомки незаякоренного узла тоже не попадут в target).
+
+Пример: `382;Линейно-эксплуатационная служба;378`, где `378` нет ни в source, ни в target →
+`382` и все его потомки отсекаются.
+
+### Зафиксированные ответы
+
+1. in-batch parent — валиден (reachability через заякоренных in-batch родителей); ordering
+   отдаётся pending'у resolver'а.
+2. Полный `hard_error` в кейсе organizations **не нужен**, но нужна **вариативность**: политика
+   `on_unanchored: skip | warn | hard_error` per-dataset. organizations — `skip` с ERROR-видимой
+   диагностикой.
+3. Отсечение — **pre-pass до основного пайплайна** organizations (Polars читает source →
+   source-snapshot → anchoring против target → set невалидных id → основной `import plan`
+   фильтрует строки на входе).
+4. employees source-validation **не нужна** (там name-path FK-matching, Stage E/F).
+5. `organizations.topology.yaml` `source.mode` должен быть `adjacency_list` (текущий
+   `path_columns` — illustrative и неверен для реальных id/parent_id данных); `on_unanchored`
+   живёт под `source:`.
+6. Активация — для команд, доходящих до Resolve/Plan (где FK/parent реально резолвятся).
+
+Здесь же `require_source_topology` **наконец становится `True`** (для organizations import) —
+закрывает High 2 из ревью Stage D (где он был выставлен в `False` для Phase 1a/1b).
+
+### Диагностика и наблюдаемость
+
+- новый catalog-код `TOPOLOGY_SOURCE_UNANCHORED` (`DATA_INVALID`, ERROR);
+- per-row diagnostics + TOPOLOGY-контекст со счётчиком отсечённых → логи и отчёт (трассируемость).
+
+### Зафиксированный domain contract anchoring (2026-06-02)
+
+**Принцип:** DTO и domain-функция — **dataset-agnostic**. Конкретику (`id`/`code`/`_ouid`/
+`organization_id`, имена колонок) знают только topology-spec и infra-адаптеры; domain их не
+видит. Наш случай — проверка применимости, не форма контракта.
+
+**id-space (для organizations):** anchoring идёт по бизнес-id (source `id` = target `code`),
+**exact-match** — это отличие от E/F (там сравнение по канонизированным именам). Множество
+якорей = `{source id-ов батча} ∪ {target codes}`. Anchoring'у нужен **набор target-ключей**
+(плоское membership из cache по spec-настроенному полю), **а не** `_ouid`-tree снапшот Stage C.
+В domain это абстрактный `frozenset[str]` — без знания, что это «code».
+
+**DTO (domain/dependency_tree, generic):**
+
+```python
+@dataclass(frozen=True)
+class SourceAdjacencyNode:
+    node_id: str            # exact business id в abstract id-space; ключ anchoring
+    parent_id: str | None   # None = корень
+    label: str              # только для текста диагностики
+
+@dataclass(frozen=True)
+class SourceAnchoringVerdict:
+    node_id: str
+    reason: str               # "missing_parent" | "unanchored_subtree" | "cycle"
+    broken_at_parent_id: str | None
+
+@dataclass(frozen=True)
+class SourceAnchoringResult:
+    anchored_ids: frozenset[str]
+    dropped: Mapping[str, SourceAnchoringVerdict]   # только отсечённые
+
+def anchor_source_nodes(
+    nodes: Iterable[SourceAdjacencyNode],
+    *,
+    target_ids: frozenset[str],
+) -> SourceAnchoringResult: ...
+```
+
+- **row_ref в DTO НЕТ** — anchoring работает над графом в id-space, не над строками;
+- **dropped subtree формируется в domain-функции** через reachability (мемоизированный подъём,
+  cycle-guard); потомок незаякоренного предка → `unanchored_subtree`, `broken_at_parent_id` =
+  исходный сломавший id;
+- `target_ids` — абстрактный `frozenset[str]`, без dataset-семантики.
+
+**Связывание dropped ↔ source rows (Option A):**
+
+- pre-pass отдаёт только `SourceAnchoringResult` (node_id-keyed) + агрегат для report-контекста,
+  **без per-row диагностик** и **без row_ref**;
+- основной поток organizations: тонкий фильтр **после Map** (где есть `code` = node_id); строки
+  с `code ∈ dropped` → `TransformResult(row=None, errors=[TOPOLOGY_SOURCE_UNANCHORED …,
+  record_ref=<row_ref ЭТОЙ строки>])`; заякоренные — pass-through;
+- через границу едет только node_id-keyed map (детерминированно, без зависимости от
+  порядка/dedup Polars) → диагностика эмитится **один раз**, с **собственным row_ref** потока,
+  без рассинхрона line_no/record_id между двумя чтениями source.
+
+**Граница ответственности:** pre-pass = граф (id-space), основной поток = строки (row_ref +
+reporting). Общение — только через множество id + вердикты.
+
+**Дубликаты node_id** — **ортогональный валидатор** (`TOPOLOGY_DUPLICATE_NODE`, своя политика),
+не смешивается с anchoring-фильтром (anchoring keying по node_id корректен при уникальных id).
