@@ -13,6 +13,10 @@ def test_topology_bootstrap_stage_exists() -> None:
     assert DiagnosticStage.TOPOLOGY_BOOTSTRAP.value == "TOPOLOGY_BOOTSTRAP"
 
 
+def test_topology_validate_stage_exists() -> None:
+    assert DiagnosticStage.TOPOLOGY_VALIDATE.value == "TOPOLOGY_VALIDATE"
+
+
 def test_topology_codes_are_classified_in_core_catalog() -> None:
     catalog = build_core_catalog(strict=True)
 

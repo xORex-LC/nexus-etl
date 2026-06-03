@@ -27,6 +27,7 @@ class DiagnosticStage(str, Enum):
     APPLY = "APPLY"
     CACHE = "CACHE"
     SINK = "SINK"
+    TOPOLOGY_VALIDATE = "TOPOLOGY_VALIDATE"
     TOPOLOGY_BOOTSTRAP = "TOPOLOGY_BOOTSTRAP"
 
 

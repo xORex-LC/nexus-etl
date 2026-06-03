@@ -112,7 +112,7 @@ def _duplicate_node_diagnostics(
     return tuple(
         build_error(
             catalog=catalog,
-            stage=DiagnosticStage.TOPOLOGY_BOOTSTRAP,
+            stage=DiagnosticStage.TOPOLOGY_VALIDATE,
             code="TOPOLOGY_DUPLICATE_NODE",
             field="node_id",
             message=f"Duplicate source topology node id: {node_id}",
@@ -132,7 +132,7 @@ def _unanchored_bootstrap_diagnostics(
     return tuple(
         build_error(
             catalog=catalog,
-            stage=DiagnosticStage.TOPOLOGY_BOOTSTRAP,
+            stage=DiagnosticStage.TOPOLOGY_VALIDATE,
             code="TOPOLOGY_SOURCE_UNANCHORED",
             field=field,
             message=f"Source topology node '{node_id}' is not anchored",
