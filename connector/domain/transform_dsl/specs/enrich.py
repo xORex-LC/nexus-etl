@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pydantic import Field, model_validator
 
 from connector.domain.dsl.specs import DslBaseModel, OperationCall, SourceOpsBlock
+from connector.domain.transform_dsl.specs.canonicalization import CanonicalizationSpec
 
 
 class MatchKeySpec(DslBaseModel):
@@ -29,6 +30,7 @@ class ProviderRef(DslBaseModel):
 
     name: str
     args: dict[str, Any] = Field(default_factory=dict)
+    canonicalization: CanonicalizationSpec | None = None
 
 
 class ExistsRef(DslBaseModel):

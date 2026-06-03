@@ -34,3 +34,5 @@ class SqliteEnrichLookupAdapter(EnrichLookupPort):
     ) -> dict | None:
         return self._gateway.cache.find_one(dataset, filters, include_deleted=include_deleted, mode=mode)
 
+    def read_all(self, dataset: str, *, include_deleted: bool = False) -> list[dict]:
+        return self._gateway.cache.read_all(dataset, include_deleted=include_deleted)

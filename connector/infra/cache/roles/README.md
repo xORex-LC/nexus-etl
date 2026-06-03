@@ -9,7 +9,7 @@
 | Файл | Реализует порт |
 |---|---|
 | `admin.py` | `CacheAdminPort` — полный admin-доступ (upsert, rebuild, clear, meta) |
-| `enrich_lookup.py` | `EnrichLookupPort` — read-only поиск для enrich стадии |
+| `enrich_lookup.py` | `EnrichLookupPort` — read-only поиск для enrich стадии, включая `read_all()` для canonicalized lookup scan path |
 | `planning_runtime.py` | `MatchRuntimePort` + `ResolveRuntimePort` — runtime state для match/resolve |
 | `apply_runtime.py` | `ApplyRuntimePort` — post-apply синхронизация identity и pending |
 | `cache_refresh.py` | `CacheRefreshPort` — composite порт для refresh операций |

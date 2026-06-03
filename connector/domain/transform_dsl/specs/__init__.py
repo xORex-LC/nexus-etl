@@ -14,6 +14,14 @@ from connector.domain.transform_dsl.specs.enrich import (
     ProviderRef,
     SecretsSpec,
 )
+from connector.domain.transform_dsl.specs.canonicalization import (
+    CanonicalizationSpec,
+    CanonicalizeOpSpec,
+    CompactOpSpec,
+    LowerOpSpec,
+    RegexReplaceOpSpec,
+    TrimOpSpec,
+)
 from connector.domain.transform_dsl.specs.mapping import (
     MappingBlock,
     MappingRule,
@@ -99,6 +107,12 @@ __all__ = [
     "SourceConfig",
     "SourceSpec",
     # Topology
+    "TrimOpSpec",
+    "LowerOpSpec",
+    "CompactOpSpec",
+    "RegexReplaceOpSpec",
+    "CanonicalizeOpSpec",
+    "CanonicalizationSpec",
     "TopologyPathColumnSpec",
     "TopologyTrimOpSpec",
     "TopologyLowerOpSpec",

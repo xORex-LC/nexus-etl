@@ -8,9 +8,10 @@
 
 | Файл | Что компилирует |
 |---|---|
+| `canonicalization.py` | `CanonicalizationSpec` → `CompiledCanonicalizerPlan` для shared comparison/lookups runtime |
 | `mapping.py` | `MappingSpec` → `MapperCore` |
 | `normalize.py` | `NormalizeSpec` → `NormalizerEngine` |
-| `enrich.py` | `EnrichSpec` → `EnricherCore` (с `ProviderGateway`, `SecretProvider`) |
+| `enrich.py` | `EnrichSpec` → `EnricherCore` (с `ProviderGateway`, `SecretProvider`); provider-level canonicalization компилируется через shared canonicalization DSL |
 | `match.py` | `MatchSpec` → `MatchEngine` |
 | `resolve.py` | `ResolveSpec` → `ResolveEngine` |
 | `topology.py` | `TopologySpec` → `CompiledTopologyCanonicalizerPlan`, который строится поверх shared canonicalization layer из `domain/transform/common/` и затем может исполняться через Python runtime или infra-level Polars adapter |
