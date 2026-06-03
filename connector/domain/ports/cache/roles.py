@@ -67,6 +67,8 @@ class EnrichLookupPort(Protocol):
         mode: str = "exact",
     ) -> dict | None: ...
 
+    def read_all(self, dataset: str, *, include_deleted: bool = False) -> list[dict]: ...
+
 
 class MatchRuntimePort(Protocol):
     """

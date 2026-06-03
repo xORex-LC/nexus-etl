@@ -1,7 +1,4 @@
-"""
-Назначение:
-    Transform DSL: спецификации topology/canonicalizer capability.
-"""
+"""Transform DSL: спецификации topology и topology-specific capability policy."""
 
 from __future__ import annotations
 
@@ -9,6 +6,14 @@ from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 
+from connector.domain.transform_dsl.specs.canonicalization import (
+    CanonicalizationSpec,
+    CanonicalizeOpSpec,
+    CompactOpSpec,
+    LowerOpSpec,
+    RegexReplaceOpSpec,
+    TrimOpSpec,
+)
 from connector.domain.dsl.specs._base import DslBaseModel
 
 TopologyComparisonLadderStep = Literal[
@@ -38,69 +43,12 @@ class TopologyPathColumnSpec(DslBaseModel):
         return normalized
 
 
-class TopologyTrimOpSpec(DslBaseModel):
-    """
-    Назначение:
-        Декларативный trim-оператор topology canonicalizer-а.
-    """
-
-    op: Literal["trim"] = "trim"
-
-
-class TopologyLowerOpSpec(DslBaseModel):
-    """
-    Назначение:
-        Декларативный lower-оператор topology canonicalizer-а.
-    """
-
-    op: Literal["lower"] = "lower"
-
-
-class TopologyCompactOpSpec(DslBaseModel):
-    """
-    Назначение:
-        Декларативный compact-оператор topology canonicalizer-а.
-    """
-
-    op: Literal["compact"] = "compact"
-
-
-class TopologyRegexReplaceOpSpec(DslBaseModel):
-    """
-    Назначение:
-        Декларативный regex_replace-оператор topology canonicalizer-а.
-    """
-
-    op: Literal["regex_replace"] = "regex_replace"
-    pattern: str
-    repl: str
-
-    @field_validator("pattern", mode="after")
-    @classmethod
-    def _validate_pattern(cls, value: str) -> str:
-        if value == "":
-            raise ValueError(
-                "topology.canonicalization.ops[].pattern must not be empty"
-            )
-        return value
-
-
-TopologyCanonicalizeOpSpec = Annotated[
-    TopologyTrimOpSpec
-    | TopologyLowerOpSpec
-    | TopologyCompactOpSpec
-    | TopologyRegexReplaceOpSpec,
-    Field(discriminator="op"),
-]
-
-
-class TopologyCanonicalizationSpec(DslBaseModel):
-    """
-    Назначение:
-        Общий contract segment/path canonicalization для source и target topology.
-    """
-
-    ops: list[TopologyCanonicalizeOpSpec] = Field(default_factory=list)
+TopologyTrimOpSpec = TrimOpSpec
+TopologyLowerOpSpec = LowerOpSpec
+TopologyCompactOpSpec = CompactOpSpec
+TopologyRegexReplaceOpSpec = RegexReplaceOpSpec
+TopologyCanonicalizeOpSpec = CanonicalizeOpSpec
+TopologyCanonicalizationSpec = CanonicalizationSpec
 
 
 class TopologyFreshnessPolicySpec(DslBaseModel):

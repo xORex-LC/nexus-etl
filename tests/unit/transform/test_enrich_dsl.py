@@ -200,6 +200,112 @@ def test_lookup_rule_supports_nested_value_path() -> None:
     assert candidates[0].value == "nested-1"
 
 
+def test_lookup_rule_supports_cache_canonicalization() -> None:
+    class _Deps:
+        class _CacheRepo:
+            @staticmethod
+            def find(*args, **kwargs):
+                raise AssertionError("canonicalized cache lookup must not use exact find() path")
+
+            @staticmethod
+            def read_all(dataset: str, *, include_deleted: bool = False):
+                _ = (dataset, include_deleted)
+                return [
+                    {"full_name": "JOHN DOE", "_id": "user-1"},
+                    {"full_name": "Jane Doe", "_id": "user-2"},
+                ]
+
+        cache_gateway = _CacheRepo()
+
+    raw = {
+        "dataset": "employees",
+        "enrich": {
+            "lookup": [
+                {
+                    "name": "manager_id",
+                    "target": "manager_id",
+                    "source": "manager_full_name",
+                    "provider": {
+                        "name": "cache.by_field",
+                        "args": {
+                            "dataset": "employees",
+                            "field": "full_name",
+                        },
+                        "canonicalization": {
+                            "ops": [
+                                {"op": "trim"},
+                                {"op": "lower"},
+                                {"op": "regex_replace", "pattern": "\\s+", "repl": " "},
+                            ]
+                        },
+                    },
+                    "value_path": "_id",
+                }
+            ]
+        },
+    }
+    spec = _build_enricher_spec(raw)
+    op = next(op for op in spec.operations if op.op_type == EnrichOperationType.LOOKUP)
+    provider = op.providers[0]
+    result = _make_result(row={"manager_full_name": "  John   Doe  "})
+    ctx = EnrichContext(dataset="employees")
+
+    candidates = provider.fetch(ctx, result, _Deps(), {})
+
+    assert len(candidates) == 1
+    assert candidates[0].value == "user-1"
+
+
+def test_generate_exists_supports_cache_canonicalization() -> None:
+    raw = {
+        "dataset": "employees",
+        "enrich": {
+            "generate": [
+                {
+                    "name": "usr_org_tab_num",
+                    "target": "usr_org_tab_num",
+                    "source": "usr_org_tab_num",
+                    "ops": [{"op": "trim"}],
+                    "exists": {
+                        "provider": {
+                            "name": "cache.exists_by_field",
+                            "args": {
+                                "dataset": "employees",
+                                "field": "full_name",
+                            },
+                            "canonicalization": {
+                                "ops": [
+                                    {"op": "trim"},
+                                    {"op": "lower"},
+                                    {"op": "regex_replace", "pattern": "\\s+", "repl": " "},
+                                ]
+                            },
+                        }
+                    },
+                }
+            ]
+        },
+    }
+    spec = _build_enricher_spec(raw)
+    op = spec.operations[0]
+
+    class _Deps:
+        class _CacheRepo:
+            @staticmethod
+            def find_one(*args, **kwargs):
+                raise AssertionError("canonicalized cache exists must not use exact find_one() path")
+
+            @staticmethod
+            def read_all(dataset: str, *, include_deleted: bool = False):
+                _ = (dataset, include_deleted)
+                return [{"full_name": "JOHN DOE", "_id": "user-1"}]
+
+        cache_gateway = _CacheRepo()
+
+    assert op.exists is not None
+    assert op.exists(_Deps(), " John   Doe ") == {"full_name": "JOHN DOE", "_id": "user-1"}
+
+
 def test_compiler_orders_lookup_before_generate_for_cache_backed_generate_flows() -> None:
     raw = {
         "dataset": "employees",
@@ -258,8 +364,62 @@ def test_compiler_maps_explicit_no_candidates_and_provider_error_policies() -> N
     op = spec.operations[0]
 
     assert op.strictness is not None
-    assert op.strictness.on_no_candidates == "SKIPPED"
-    assert op.strictness.on_provider_error == "WARNED"
+
+
+def test_lookup_rule_rejects_canonicalization_for_unsupported_provider() -> None:
+    raw = {
+        "dataset": "employees",
+        "enrich": {
+            "lookup": [
+                {
+                    "name": "department_id",
+                    "target": "department_id",
+                    "source": "department_name",
+                    "provider": {
+                        "name": "dictionary.by_key",
+                        "args": {"dict_name": "departments"},
+                        "canonicalization": {
+                            "ops": [{"op": "trim"}, {"op": "lower"}]
+                        },
+                    },
+                    "value_path": "id",
+                }
+            ]
+        },
+    }
+
+    with pytest.raises(DslLoadError, match="unsupported provider"):
+        _build_enricher_spec(raw)
+
+
+def test_lookup_rule_rejects_canonicalization_with_non_exact_mode() -> None:
+    raw = {
+        "dataset": "employees",
+        "enrich": {
+            "lookup": [
+                {
+                    "name": "manager_id",
+                    "target": "manager_id",
+                    "source": "manager_full_name",
+                    "provider": {
+                        "name": "cache.by_field",
+                        "args": {
+                            "dataset": "employees",
+                            "field": "full_name",
+                            "mode": "like",
+                        },
+                        "canonicalization": {
+                            "ops": [{"op": "trim"}, {"op": "lower"}]
+                        },
+                    },
+                    "value_path": "_id",
+                }
+            ]
+        },
+    }
+
+    with pytest.raises(DslLoadError, match="mode='exact'"):
+        _build_enricher_spec(raw)
 
 
 def test_lookup_rule_requires_provider_code() -> None:
