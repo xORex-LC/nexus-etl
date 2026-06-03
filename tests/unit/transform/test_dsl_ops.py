@@ -23,6 +23,7 @@ from connector.domain.dsl.ops import (
     op_strip_non_alnum,
     op_substring,
     op_title,
+    op_upper_first_preserve_rest,
     op_to_bool,
     op_transliterate,
     op_unique,
@@ -124,6 +125,14 @@ def test_op_reject_regex_excludes_matches() -> None:
 def test_op_title_and_capitalize_transform_case() -> None:
     assert op_title("иванов иван") == "Иванов Иван"
     assert op_capitalize("иванов иван") == "Иванов иван"
+
+
+def test_op_upper_first_preserve_rest_changes_only_first_character() -> None:
+    assert op_upper_first_preserve_rest("иванов ИВАН") == "Иванов ИВАН"
+    assert op_upper_first_preserve_rest("iT DeParTment") == "IT DeParTment"
+    assert op_upper_first_preserve_rest("ИТ ОТДЕЛ") == "ИТ ОТДЕЛ"
+    assert op_upper_first_preserve_rest("") == ""
+    assert op_upper_first_preserve_rest(None) is None
 
 
 def test_op_transliterate_returns_ascii_and_preserves_ascii_input() -> None:
@@ -321,6 +330,7 @@ def test_register_core_ops_exposes_new_stage_one_operations() -> None:
         "reject_regex",
         "title",
         "capitalize",
+        "upper_first_preserve_rest",
         "parse_bool",
         "digits_only",
         "random_digits",
