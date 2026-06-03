@@ -10,6 +10,7 @@ Boundary:
 from __future__ import annotations
 
 from typing import Any, TYPE_CHECKING
+from collections.abc import Iterable
 
 from connector.domain.models import DiagnosticItem, DiagnosticStage, RowRef
 from connector.domain.reporting.adapters.payload_sanitizer import PayloadSanitizer
@@ -49,6 +50,7 @@ class StageResultReporter:
         failed_label: str,
         strategy: IStageReportStrategy,
         report_stage: DiagnosticStage | None = None,
+        report_stages: Iterable[DiagnosticStage] | None = None,
         include_upstream_diagnostics: bool = False,
         stats_accumulator: ExecutionStatsAccumulator | None = None,
         payload_sanitizer: PayloadSanitizer | None = None,
@@ -61,6 +63,10 @@ class StageResultReporter:
         self.failed_label = failed_label
         self.strategy = strategy
         self.report_stage = report_stage
+        resolved_report_stages = tuple(report_stages or ())
+        if report_stage is not None and report_stage not in resolved_report_stages:
+            resolved_report_stages = (*resolved_report_stages, report_stage)
+        self.report_stages = resolved_report_stages
         self.include_upstream_diagnostics = self.report_policy.resolve_include_upstream_diagnostics(
             include_upstream_diagnostics
         )
@@ -192,10 +198,14 @@ class StageResultReporter:
         errors: list[DiagnosticItem],
         warnings: list[DiagnosticItem],
     ) -> tuple[list[DiagnosticItem], list[DiagnosticItem], int, int]:
-        if self.include_upstream_diagnostics or self.report_stage is None:
+        if self.include_upstream_diagnostics or not self.report_stages:
             return errors, warnings, 0, 0
-        report_errors = [item for item in errors if _diag_stage_equals(item, self.report_stage)]
-        report_warnings = [item for item in warnings if _diag_stage_equals(item, self.report_stage)]
+        report_errors = [
+            item for item in errors if _diag_stage_in(item, self.report_stages)
+        ]
+        report_warnings = [
+            item for item in warnings if _diag_stage_in(item, self.report_stages)
+        ]
         upstream_errors_count = len(errors) - len(report_errors)
         upstream_warnings_count = len(warnings) - len(report_warnings)
         return report_errors, report_warnings, upstream_errors_count, upstream_warnings_count
@@ -208,3 +218,7 @@ def _diag_stage_equals(item: DiagnosticItem, stage: DiagnosticStage) -> bool:
     if isinstance(item_stage, str):
         return item_stage.upper() == stage.value
     return False
+
+
+def _diag_stage_in(item: DiagnosticItem, stages: tuple[DiagnosticStage, ...]) -> bool:
+    return any(_diag_stage_equals(item, stage) for stage in stages)

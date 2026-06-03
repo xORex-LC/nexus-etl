@@ -86,6 +86,10 @@ class MatchUseCase:
                 },
             ),
             report_stage=DiagnosticStage.MATCH,
+            report_stages=(
+                DiagnosticStage.MATCH,
+                DiagnosticStage.TOPOLOGY_VALIDATE,
+            ),
             include_upstream_diagnostics=False,
         )
 
