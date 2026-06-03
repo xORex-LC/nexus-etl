@@ -29,9 +29,9 @@ from connector.domain.ports.topology import (
     TopologyMatchResult,
     TopologyMatchServicePort,
 )
+from connector.domain.transform.common import CompiledCanonicalizer
 from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform_dsl.compilers.match import TopologyMatchPolicy
-from connector.domain.transform_dsl.compilers.topology import CompiledTopologyCanonicalizer
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ class SourceTopologyLocatorBuilder(SourceTopologyLocatorBuilderPort):
     """Построить canonical source locator из настроенных raw source path columns."""
 
     path_fields: tuple[str, ...]
-    canonicalizer: CompiledTopologyCanonicalizer
+    canonicalizer: CompiledCanonicalizer
 
     def build(self, record: SourceRecord) -> SourceTopologyCanonicalPath | None:
         raw_segments = tuple(record.values.get(field) for field in self.path_fields)
@@ -96,7 +96,7 @@ def build_topology_match_service(
 def build_source_locator_builder(
     *,
     path_fields: Iterable[str],
-    canonicalizer: CompiledTopologyCanonicalizer | None,
+    canonicalizer: CompiledCanonicalizer | None,
 ) -> SourceTopologyLocatorBuilderPort | None:
     """Собрать row-level source locator builder при наличии topology canonicalization."""
 

@@ -1,10 +1,17 @@
-"""
-Назначение:
-    TopologyDsl: компиляция topology-spec в shared canonicalizer plan.
+"""Topology DSL compiler — topology spec to shared canonicalizer plan.
 
-Граница ответственности:
-    - Owns: trust-boundary compile topology whitelist-ops в dual-form contract.
-    - Does NOT: строить source/target snapshot, читать Polars или выполнять bootstrap orchestration.
+Topology-specific responsibility этого модуля ограничена trust-boundary compile
+из topology YAML whitelist ops в generic compiled canonicalization contract.
+Runtime execution canonicalizer-а вынесено в `transform.common`.
+
+Responsibilities:
+    - Компилировать topology canonicalization spec в shared compiled ops
+    - Считать deterministic normalization version для topology contract
+
+Out of scope:
+    - Runtime canonicalization execution details
+    - Построение source/target snapshot и bootstrap orchestration
+    - Реальный Polars adapter и vectorized execution
 """
 
 from __future__ import annotations
@@ -12,10 +19,14 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Literal
 
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
+from connector.domain.transform.common import (
+    CompiledCanonicalizeOp,
+    CompiledCanonicalizer,
+    CompiledPolarsExpressionPlan,
+)
 from connector.domain.transform_dsl.specs import (
     TopologyCanonicalizeOpSpec,
     TopologyCompactOpSpec,
@@ -25,72 +36,14 @@ from connector.domain.transform_dsl.specs import (
     TopologyTrimOpSpec,
 )
 
-TopologyOpScope = Literal["segment", "segments"]
-
-
-@dataclass(frozen=True)
-class CompiledTopologyCanonicalizeOp:
-    """
-    Назначение:
-        Скомпилированный шаг topology canonicalizer-а.
-    """
-
-    op: str
-    scope: TopologyOpScope
-    args: tuple[tuple[str, str], ...] = ()
-
-    def args_dict(self) -> dict[str, str]:
-        return dict(self.args)
-
-
-@dataclass(frozen=True)
-class CompiledTopologyCanonicalizer:
-    """
-    Назначение:
-        Python-форма topology canonicalizer-а для runtime lookup/build.
-    """
-
-    ops: tuple[CompiledTopologyCanonicalizeOp, ...]
-    _registry: OperationRegistry
-
-    def canonicalize_segments(self, segments: tuple[str, ...]) -> tuple[str, ...]:
-        return _apply_compiled_canonicalizer_ops(
-            ops=self.ops,
-            registry=self._registry,
-            segments=segments,
-        )
-
-
-@dataclass(frozen=True)
-class CompiledTopologyPolarsExpressionPlan:
-    """
-    Назначение:
-        Декларативная Polars-friendly форма topology canonicalizer-а.
-
-    Примечание:
-        На Stage B это ещё не реальный `pl.Expr` adapter. До появления
-        vectorized-адаптера placeholder исполняет тот же shared op-path,
-        что и python-форма, чтобы dual-form identity держалась по построению,
-        а не на совпадении двух независимых реализаций.
-    """
-
-    ops: tuple[CompiledTopologyCanonicalizeOp, ...]
-    _registry: OperationRegistry
-
-    def apply_to_segments(self, segments: tuple[str, ...]) -> tuple[str, ...]:
-        return _apply_compiled_canonicalizer_ops(
-            ops=self.ops,
-            registry=self._registry,
-            segments=segments,
-        )
+CompiledTopologyCanonicalizeOp = CompiledCanonicalizeOp
+CompiledTopologyCanonicalizer = CompiledCanonicalizer
+CompiledTopologyPolarsExpressionPlan = CompiledPolarsExpressionPlan
 
 
 @dataclass(frozen=True)
 class CompiledTopologyCanonicalizerPlan:
-    """
-    Назначение:
-        Dual-form compiled contract для topology canonicalization.
-    """
+    """Dual-form compiled contract для topology canonicalization."""
 
     python: CompiledTopologyCanonicalizer
     polars_expression_plan: CompiledTopologyPolarsExpressionPlan
@@ -98,10 +51,7 @@ class CompiledTopologyCanonicalizerPlan:
 
 
 class TopologyDsl:
-    """
-    Назначение:
-        Скомпилировать `TopologySpec` в shared compiled canonicalizer plan.
-    """
+    """Скомпилировать `TopologySpec` в shared compiled canonicalizer plan."""
 
     def __init__(self, *, registry: OperationRegistry | None = None) -> None:
         resolved_registry = registry or OperationRegistry()
@@ -137,15 +87,15 @@ class TopologyDsl:
 
 def _compile_canonicalize_op(
     spec: TopologyCanonicalizeOpSpec,
-) -> CompiledTopologyCanonicalizeOp:
+) -> CompiledCanonicalizeOp:
     if isinstance(spec, TopologyTrimOpSpec):
-        return CompiledTopologyCanonicalizeOp(op="trim", scope="segment")
+        return CompiledCanonicalizeOp(op="trim", scope="segment")
     if isinstance(spec, TopologyLowerOpSpec):
-        return CompiledTopologyCanonicalizeOp(op="lower", scope="segment")
+        return CompiledCanonicalizeOp(op="lower", scope="segment")
     if isinstance(spec, TopologyCompactOpSpec):
-        return CompiledTopologyCanonicalizeOp(op="compact", scope="segments")
+        return CompiledCanonicalizeOp(op="compact", scope="segments")
     if isinstance(spec, TopologyRegexReplaceOpSpec):
-        return CompiledTopologyCanonicalizeOp(
+        return CompiledCanonicalizeOp(
             op="regex_replace",
             scope="segment",
             args=(("pattern", spec.pattern), ("repl", spec.repl)),
@@ -157,7 +107,7 @@ def _compile_canonicalize_op(
 
 
 def _build_normalization_version(
-    ops: tuple[CompiledTopologyCanonicalizeOp, ...],
+    ops: tuple[CompiledCanonicalizeOp, ...],
 ) -> str:
     payload = [
         {
@@ -175,39 +125,3 @@ def _build_normalization_version(
     )
     digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
     return f"sha256:{digest}"
-
-
-def _apply_compiled_canonicalizer_ops(
-    *,
-    ops: tuple[CompiledTopologyCanonicalizeOp, ...],
-    registry: OperationRegistry,
-    segments: tuple[str, ...],
-) -> tuple[str, ...]:
-    """
-    Назначение:
-        Исполнить topology canonicalizer через единый shared op-path.
-
-    Границы:
-        - Использует только зарегистрированные core DSL operations.
-        - Не строит `pl.Expr` и не знает ничего о vectorized runtime.
-    """
-
-    current: tuple[str, ...] = tuple(str(segment) for segment in segments)
-    for step in ops:
-        operation = registry.get(step.op)
-        if operation is None:
-            raise DslLoadError(
-                code="TOPOLOGY_DSL_COMPILE_INVALID",
-                message=f"Unknown topology canonicalizer operation: {step.op}",
-            )
-        if step.scope == "segment":
-            current = tuple(
-                "" if value is None else str(value)
-                for value in (
-                    operation.func(segment, **step.args_dict()) for segment in current
-                )
-            )
-            continue
-        compacted = operation.func(list(current), **step.args_dict())
-        current = tuple("" if value is None else str(value) for value in compacted)
-    return current
