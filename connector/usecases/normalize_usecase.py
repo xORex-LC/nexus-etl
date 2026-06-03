@@ -49,6 +49,10 @@ class NormalizeUseCase:
             failed_label="normalize_failed",
             strategy=TransformStageReportStrategy(),
             report_stage=DiagnosticStage.NORMALIZE,
+            report_stages=(
+                DiagnosticStage.NORMALIZE,
+                DiagnosticStage.TOPOLOGY_VALIDATE,
+            ),
             include_upstream_diagnostics=False,
         )
 

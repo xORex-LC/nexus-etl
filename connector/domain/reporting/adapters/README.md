@@ -8,7 +8,7 @@
 
 | Файл | Назначение |
 |---|---|
-| `stage_result_reporter.py` | `StageResultReporter.process(result, row_ref)` — конвертирует `TransformResult` → `AddItemEvent` + `SetContextEvent`; применяет stage policy (какие диагностики показывать) |
+| `stage_result_reporter.py` | `StageResultReporter.process(result, row_ref)` — конвертирует `TransformResult` → `AddItemEvent` + `SetContextEvent`; применяет stage policy по `report_stage` / `report_stages` |
 | `payload_sanitizer.py` | `PayloadSanitizer` — маскирует `secret_fields` в `desired_state` перед записью в отчёт |
 | `result_policy.py` | `ResultPolicy` — определяет статус итема (OK/FAILED/SKIPPED) по наличию errors/warnings |
 | `stats_accumulator.py` | `ExecutionStatsAccumulator` — накапливает статистику выполнения (timing, counts) |

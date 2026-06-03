@@ -51,6 +51,10 @@ class EnrichUseCase:
             failed_label="enrich_failed",
             strategy=TransformStageReportStrategy(payload_builder=payload_builder),
             report_stage=DiagnosticStage.ENRICH,
+            report_stages=(
+                DiagnosticStage.ENRICH,
+                DiagnosticStage.TOPOLOGY_VALIDATE,
+            ),
             include_upstream_diagnostics=False,
         )
 
