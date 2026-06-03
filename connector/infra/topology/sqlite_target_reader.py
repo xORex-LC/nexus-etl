@@ -27,9 +27,7 @@ from connector.domain.ports.topology import (
     TargetHierarchyRow,
     TopologyTargetReadPort,
 )
-from connector.domain.transform_dsl.compilers.topology import (
-    CompiledTopologyCanonicalizer,
-)
+from connector.domain.transform.common import CompiledCanonicalizer
 
 
 class SqliteTopologyTargetReader(TopologyTargetReadPort):
@@ -43,7 +41,7 @@ class SqliteTopologyTargetReader(TopologyTargetReadPort):
         node_id_field: str,
         parent_id_field: str,
         target_label_field: str,
-        canonicalizer: CompiledTopologyCanonicalizer,
+        canonicalizer: CompiledCanonicalizer,
         payload_target_id_field: str | None = None,
     ) -> None:
         self._cache_read = cache_read
@@ -101,13 +99,10 @@ def _optional_str(value: object) -> str | None:
 
 
 def _canonicalize_label(
-    canonicalizer: CompiledTopologyCanonicalizer,
+    canonicalizer: CompiledCanonicalizer,
     value: object,
 ) -> str:
-    canonical_segments = canonicalizer.canonicalize_segments((str(value),))
-    if not canonical_segments:
-        return ""
-    return canonical_segments[0]
+    return canonicalizer.canonicalize_scalar(str(value))
 
 
 def _parse_iso_datetime(value: str | None) -> datetime | None:
