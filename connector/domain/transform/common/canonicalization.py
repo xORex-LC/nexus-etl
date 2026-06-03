@@ -12,7 +12,7 @@
 Вне области ответственности:
     - Компиляция конкретного YAML DSL в canonicalization ops
     - Match/resolve/topology consumer orchestration
-    - Реальный Polars adapter и vectorized execution
+    - Реализация Polars adapter-а; она живёт в infra-слое
 """
 
 from __future__ import annotations
@@ -67,9 +67,11 @@ class CompiledCanonicalizer:
 class CompiledPolarsExpressionPlan:
     """Декларативная vector-friendly форма canonicalizer-а.
 
-    На текущем этапе это placeholder runtime path, который использует тот же
-    shared executor, что и python-форма. Позже сюда может быть подключён
-    реальный Polars adapter без смены compile contract.
+    Объект остаётся transport-neutral и не зависит от Polars напрямую.
+    Реальный vectorized adapter строится в infra-слое поверх этого плана.
+
+    Метод `apply_to_segments()` сохранён как fallback parity-path для unit-
+    тестов compile contract и для безопасного Python-only исполнения.
     """
 
     ops: tuple[CompiledCanonicalizeOp, ...]
