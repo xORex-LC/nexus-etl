@@ -68,7 +68,7 @@ class SourceTopologyFilterStage:
             )
             diagnostic = diagnostic_factory(
                 catalog=self._catalog,
-                stage=DiagnosticStage.RESOLVE,
+                stage=DiagnosticStage.TOPOLOGY_VALIDATE,
                 code="TOPOLOGY_SOURCE_UNANCHORED",
                 field=validation.node_id_field,
                 message=f"Source topology node '{node_id}' is not anchored",
