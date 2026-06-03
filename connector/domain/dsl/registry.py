@@ -61,6 +61,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
         op_upper,
         op_title,
         op_capitalize,
+        op_upper_first_preserve_rest,
         op_transliterate,
         op_to_int,
         op_to_float,
@@ -110,6 +111,7 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
     registry.register("upper", op_upper)
     registry.register("title", op_title)
     registry.register("capitalize", op_capitalize)
+    registry.register("upper_first_preserve_rest", op_upper_first_preserve_rest)
     registry.register("transliterate", op_transliterate)
     registry.register("to_int", op_to_int)
     registry.register("to_float", op_to_float)

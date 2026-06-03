@@ -83,6 +83,21 @@ class TestYamlDatasetSpecBuildSpecFor:
         assert isinstance(result, TopologySpec)
         assert result.dataset == "organizations"
 
+    def test_organizations_normalize_uses_upper_first_preserve_rest(
+        self,
+        employees_registry_path,
+    ):
+        build_isolated_test_runtime_root(
+            tracked_employees_runtime_roots()["runtime_root"]
+        )
+        spec = get_spec("organizations")
+
+        result = spec.build_spec_for("normalize")
+
+        assert isinstance(result, NormalizeSpec)
+        name_rule = next(rule for rule in result.normalize.rules if rule.field == "name")
+        assert [op.op for op in name_rule.ops] == ["trim", "upper_first_preserve_rest"]
+
     def test_unsupported_stage(self, spec):
         with pytest.raises(UnsupportedStageError) as exc_info:
             spec.build_spec_for("nonexistent")
