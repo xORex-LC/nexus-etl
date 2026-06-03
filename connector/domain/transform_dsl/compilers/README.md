@@ -13,7 +13,7 @@
 | `enrich.py` | `EnrichSpec` → `EnricherCore` (с `ProviderGateway`, `SecretProvider`) |
 | `match.py` | `MatchSpec` → `MatchEngine` |
 | `resolve.py` | `ResolveSpec` → `ResolveEngine` |
-| `topology.py` | `TopologySpec` → `CompiledTopologyCanonicalizerPlan`, который строится поверх shared canonicalization layer из `domain/transform/common/` |
+| `topology.py` | `TopologySpec` → `CompiledTopologyCanonicalizerPlan`, который строится поверх shared canonicalization layer из `domain/transform/common/` и затем может исполняться через Python runtime или infra-level Polars adapter |
 
 ## Зависимости
 
