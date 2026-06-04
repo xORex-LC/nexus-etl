@@ -123,6 +123,8 @@ from connector.infra.secrets import (
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
+from connector.infra.logging.redaction import LogRedactionEngine
+from connector.infra.observability.retention import ObservabilityRetentionSweeper
 from connector.infra.target.core.factory import (
     TargetRuntimeBuildResult,
     build_target_runtime_with_info,
@@ -1128,11 +1130,11 @@ class ObservabilityContainer(containers.DeclarativeContainer):
         config=app_config,
     )
     redaction_engine = providers.Singleton(
-        lambda policy: policy,
+        LogRedactionEngine,
         policy=redaction_policy,
     )
     sweeper = providers.Factory(
-        lambda layout: layout,
+        ObservabilityRetentionSweeper,
         layout=observability_layout,
     )
     component_mapper = providers.Object(component_for_command)

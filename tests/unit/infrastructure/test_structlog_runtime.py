@@ -1,0 +1,238 @@
+"""Юнит-тесты нового structlog runtime и связанных observability-механик."""
+
+from __future__ import annotations
+
+import io
+import json
+import logging
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+from connector.common.observability import (
+    ObservabilityLayout,
+    ObservabilityLayoutPolicy,
+    ObservabilityRedactionPolicy,
+    ServiceComponent,
+)
+from connector.common.runtime_paths import RuntimePathOverrides, detect_runtime_paths
+from connector.config.models import (
+    ComponentLoggingConfig,
+    ConsoleLoggingSinkConfig,
+    FileLoggingSinkConfig,
+    LoggingConfig,
+    LoggingSinksConfig,
+)
+from connector.delivery.cli.stream_capture import StdStreamToLogger
+from connector.infra.logging.redaction import LogRedactionEngine
+from connector.infra.logging.runtime import (
+    DailySizeRotatingFileHandler,
+    bind_observability_context,
+    build_structured_logging_runtime,
+)
+
+pytestmark = pytest.mark.unit
+
+
+def _layout(tmp_path: Path) -> ObservabilityLayout:
+    runtime_paths = detect_runtime_paths(
+        overrides=RuntimePathOverrides(
+            runtime_root=Path.cwd(),
+            cache_root=tmp_path / "var" / "cache",
+            logs_root=tmp_path / "var" / "logs",
+            reports_root=tmp_path / "reports",
+            plans_root=tmp_path / "var" / "plans",
+        ),
+    )
+    return ObservabilityLayout(
+        runtime_paths=runtime_paths,
+        policy=ObservabilityLayoutPolicy(partition_by_component=True, clock="utc"),
+    )
+
+
+def _json_line(buffer: io.StringIO) -> list[dict[str, object]]:
+    return [json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()]
+
+
+def test_structlog_runtime_writes_json_to_stderr_with_correlation_fields(tmp_path: Path) -> None:
+    stderr = io.StringIO()
+    runtime = build_structured_logging_runtime(
+        config=LoggingConfig(
+            sinks=LoggingSinksConfig(
+                file=FileLoggingSinkConfig(enabled=False),
+                console=ConsoleLoggingSinkConfig(enabled=True, stream="stderr", format="json"),
+            )
+        ),
+        layout=_layout(tmp_path),
+        redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
+        component=ServiceComponent.MAPPER,
+        stderr_stream=stderr,
+    )
+    bind_observability_context(
+        run_id="run-1",
+        pipeline_run_id="pipe-1",
+        component=ServiceComponent.MAPPER,
+        dataset="employees",
+    )
+
+    runtime.get_logger(ServiceComponent.MAPPER).info("row processed", row_ref="r-1")
+
+    payload = _json_line(stderr)[0]
+    assert payload["event"] == "row processed"
+    assert payload["run_id"] == "run-1"
+    assert payload["pipeline_run_id"] == "pipe-1"
+    assert payload["component"] == "mapper"
+    assert payload["dataset"] == "employees"
+    assert payload["level"] == "info"
+    assert payload["schema_version"] == "1.0"
+    runtime.close()
+
+
+def test_daily_size_handler_appends_same_day_and_switches_on_new_day(tmp_path: Path) -> None:
+    current = datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc)
+    logger = logging.getLogger("tests.daily-size")
+    logger.handlers.clear()
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+
+    handler = DailySizeRotatingFileHandler(
+        layout=_layout(tmp_path),
+        component=ServiceComponent.APPLIER,
+        max_bytes=1000,
+        backup_count=2,
+        clock=lambda: current,
+    )
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+
+    logger.info("first")
+    logger.info("second")
+    first_path = tmp_path / "var" / "logs" / "applier" / "2026-06-04_applier.log"
+    assert first_path.read_text(encoding="utf-8").splitlines() == ["first", "second"]
+
+    current = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    logger.info("third")
+    second_path = tmp_path / "var" / "logs" / "applier" / "2026-06-05_applier.log"
+    assert second_path.read_text(encoding="utf-8").splitlines() == ["third"]
+    handler.close()
+
+
+def test_daily_size_handler_rolls_within_same_day(tmp_path: Path) -> None:
+    logger = logging.getLogger("tests.roll-size")
+    logger.handlers.clear()
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+
+    handler = DailySizeRotatingFileHandler(
+        layout=_layout(tmp_path),
+        component=ServiceComponent.ENRICHER,
+        max_bytes=20,
+        backup_count=2,
+        clock=lambda: datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc),
+    )
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+
+    logger.info("0123456789")
+    logger.info("abcdefghij")
+    active = tmp_path / "var" / "logs" / "enricher" / "2026-06-04_enricher.log"
+    backup = tmp_path / "var" / "logs" / "enricher" / "2026-06-04_enricher.1.log"
+
+    assert active.exists()
+    assert backup.exists()
+    assert backup.read_text(encoding="utf-8").splitlines() == ["0123456789"]
+    assert active.read_text(encoding="utf-8").splitlines() == ["abcdefghij"]
+    handler.close()
+
+
+def test_component_override_allows_debug_only_for_selected_component(tmp_path: Path) -> None:
+    stderr = io.StringIO()
+    runtime = build_structured_logging_runtime(
+        config=LoggingConfig(
+            level="INFO",
+            components={ServiceComponent.ENRICHER: ComponentLoggingConfig(level="DEBUG")},
+            sinks=LoggingSinksConfig(
+                file=FileLoggingSinkConfig(enabled=False),
+                console=ConsoleLoggingSinkConfig(enabled=True, stream="stderr", format="json"),
+            ),
+        ),
+        layout=_layout(tmp_path),
+        redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
+        component=ServiceComponent.MAPPER,
+        stderr_stream=stderr,
+    )
+    bind_observability_context(
+        run_id="run-1",
+        pipeline_run_id="pipe-1",
+        component=ServiceComponent.MAPPER,
+    )
+
+    runtime.get_logger(ServiceComponent.MAPPER, logger_name="tests.component.mapper").debug("drop-me")
+    runtime.get_logger(ServiceComponent.ENRICHER, logger_name="tests.component.enricher").debug("keep-me")
+
+    payloads = _json_line(stderr)
+    assert [payload["event"] for payload in payloads] == ["keep-me"]
+    runtime.close()
+
+
+def test_redaction_covers_kwargs_regex_traceback_foreign_and_capture(tmp_path: Path) -> None:
+    stderr = io.StringIO()
+    redaction_engine = LogRedactionEngine(
+        ObservabilityRedactionPolicy(enabled=True, keys=("password", "token", "secret"))
+    )
+    runtime = build_structured_logging_runtime(
+        config=LoggingConfig(
+            sinks=LoggingSinksConfig(
+                file=FileLoggingSinkConfig(enabled=False),
+                console=ConsoleLoggingSinkConfig(enabled=True, stream="stderr", format="json"),
+            )
+        ),
+        layout=_layout(tmp_path),
+        redaction_engine=redaction_engine,
+        component=ServiceComponent.APPLIER,
+        stderr_stream=stderr,
+        root_logger_name="",
+    )
+    bind_observability_context(
+        run_id="run-2",
+        pipeline_run_id="pipe-2",
+        component=ServiceComponent.APPLIER,
+    )
+
+    logger = runtime.get_logger(ServiceComponent.APPLIER, logger_name="tests.redaction")
+    logger.info(
+        "token=event-secret",
+        password="kw-secret",
+        details={"secret": "nested-secret"},
+        note="password=string-secret",
+    )
+    try:
+        raise RuntimeError("token=trace-secret")
+    except RuntimeError:
+        logger.exception("password=exception-secret")
+
+    logging.getLogger("foreign.runtime").error("foreign token=foreign-secret")
+
+    capture_logger = logging.getLogger("capture.runtime")
+    capture_stream = StdStreamToLogger(
+        capture_logger,
+        logging.INFO,
+        "run-2",
+        "stdout",
+        redaction_engine=redaction_engine,
+    )
+    capture_stream.write("password=captured-secret\n")
+    capture_stream.flush()
+
+    raw_output = stderr.getvalue()
+    assert "kw-secret" not in raw_output
+    assert "event-secret" not in raw_output
+    assert "trace-secret" not in raw_output
+    assert "foreign-secret" not in raw_output
+    assert "captured-secret" not in raw_output
+    assert "***" in raw_output
+    payloads = _json_line(stderr)
+    assert any(payload["event"] == "foreign token=***" for payload in payloads)
+    assert any(payload["event"] == "password=***" for payload in payloads)
+    runtime.close()
