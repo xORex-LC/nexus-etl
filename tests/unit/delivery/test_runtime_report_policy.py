@@ -41,11 +41,13 @@ def _app_config(tmp_path: Path, *, profile: str) -> AppConfig:
         "paths": {"cache_dir": str(tmp_path / "cache"), "log_dir": str(tmp_path / "logs"),
                   "report_dir": str(tmp_path / "reports")},
         "observability": {
-            "log_level": "INFO",
-            "report_items_limit": 100,
-            "report_include_skipped": True,
-            "report_policy_profile": profile,
-            "diagnostics_strict": True,
+            "logging": {"level": "INFO"},
+            "reporting": {
+                "items_limit": 100,
+                "include_skipped": True,
+                "policy_profile": profile,
+            },
+            "diagnostics": {"strict": True},
         },
         "dataset": {"dataset_name": "employees"},
         "execution": {"dry_run": True},

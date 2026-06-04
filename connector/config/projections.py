@@ -34,6 +34,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from connector.common.observability import (
+    ObservabilityLayout,
+    ObservabilityLayoutPolicy,
+    ObservabilityRedactionPolicy,
+)
 from connector.common.runtime_paths import RuntimePathOverrides, detect_runtime_paths
 from connector.config.models import AppConfig
 from connector.domain.secrets.policy.rollout_metrics import VaultRolloutThresholds
@@ -49,6 +54,7 @@ class OperationalPaths:
     cache_dir: str
     log_dir: str
     report_dir: str
+    plans_dir: str
 
 
 def to_resolver_settings(config: AppConfig) -> ResolverSettings:
@@ -218,13 +224,41 @@ def to_dataset_registry_path(config: AppConfig) -> str | None:
     return str((runtime_root / registry_path_obj).resolve())
 
 
+def to_observability_layout_policy(config: AppConfig) -> ObservabilityLayoutPolicy:
+    """AppConfig.observability → value-only layout policy."""
+    observability = config.observability
+    return ObservabilityLayoutPolicy(
+        partition_by_component=observability.partition_by_component,
+        clock=observability.clock,
+    )
+
+
+def to_observability_redaction_policy(config: AppConfig) -> ObservabilityRedactionPolicy:
+    """AppConfig.observability.logging.redaction → value-only redaction policy."""
+    redaction = config.observability.logging.redaction
+    return ObservabilityRedactionPolicy(
+        enabled=redaction.enabled,
+        keys=redaction.keys,
+    )
+
+
+def to_observability_layout(config: AppConfig) -> ObservabilityLayout:
+    """Собрать чистый layout resolver из config-layer модели."""
+    runtime_paths = detect_runtime_paths(overrides=to_runtime_path_overrides(config))
+    return ObservabilityLayout(
+        runtime_paths=runtime_paths,
+        policy=to_observability_layout_policy(config),
+    )
+
+
 def to_operational_paths(config: AppConfig) -> OperationalPaths:
-    """Resolve cache/log/report directories against runtime root."""
+    """Resolve cache/log/report/plan directories against runtime root."""
     runtime_paths = detect_runtime_paths(overrides=to_runtime_path_overrides(config))
     return OperationalPaths(
         cache_dir=str(runtime_paths.cache_root),
         log_dir=str(runtime_paths.logs_root),
         report_dir=str(runtime_paths.reports_root),
+        plans_dir=str(runtime_paths.plans_root),
     )
 
 
@@ -244,6 +278,7 @@ def to_runtime_path_overrides(config: AppConfig) -> RuntimePathOverrides:
         cache_root=paths.cache_dir,
         logs_root=paths.log_dir,
         reports_root=paths.report_dir,
+        plans_root=paths.plans_dir,
     )
 
 
@@ -257,6 +292,9 @@ __all__ = [
     "to_identity_db_config",
     "to_vault_management_settings",
     "to_dataset_registry_path",
+    "to_observability_layout",
+    "to_observability_layout_policy",
+    "to_observability_redaction_policy",
     "to_operational_paths",
     "to_runtime_path_overrides",
 ]

@@ -9,12 +9,17 @@ override chain (per-DB vs global), намеренное отсутствие sch
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from connector.config.models import AppConfig, SqliteConfig
 from connector.config.projections import (
     to_cache_db_config,
     to_dataset_registry_path,
     to_identity_db_config,
     to_match_batch_settings,
+    to_observability_layout,
+    to_observability_layout_policy,
+    to_observability_redaction_policy,
     to_operational_paths,
     to_resolver_settings,
     to_vault_management_settings,
@@ -28,6 +33,11 @@ from connector.domain.transform.matcher.match_deps import MatchBatchSettings
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.infra.sqlite.config import SqliteDbConfig
 from connector.usecases.operations.vault_management_settings import VaultManagementSettings
+
+
+def _write(path: Path, content: str = "datasets: {}\n") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -324,6 +334,66 @@ def test_to_dataset_registry_path_keeps_absolute_path() -> None:
     result = to_dataset_registry_path(cfg)
 
     assert result == "/srv/nexus/datasets/registry.yaml"
+
+
+def test_to_operational_paths_includes_plans_dir(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "runtime"
+    _write(runtime_root / "datasets" / "registry.yaml")
+    cfg = AppConfig.model_validate({
+        "runtime": {"runtime_root": str(runtime_root), "datasets_root": str(runtime_root / "datasets")},
+        "paths": {"plans_dir": "var/custom-plans"},
+        "dataset": {"registry_path": str(runtime_root / "datasets" / "registry.yaml")},
+    })
+
+    result = to_operational_paths(cfg)
+
+    assert result.plans_dir == str((runtime_root / "var" / "custom-plans").resolve())
+
+
+def test_to_observability_layout_policy_maps_nested_fields() -> None:
+    cfg = AppConfig.model_validate({
+        "observability": {
+            "partition_by_component": False,
+            "clock": "local",
+        }
+    })
+
+    result = to_observability_layout_policy(cfg)
+
+    assert result.partition_by_component is False
+    assert result.clock == "local"
+
+
+def test_to_observability_redaction_policy_maps_nested_fields() -> None:
+    cfg = AppConfig.model_validate({
+        "observability": {
+            "logging": {
+                "redaction": {
+                    "enabled": False,
+                    "keys": ["password", "api_key"],
+                }
+            }
+        }
+    })
+
+    result = to_observability_redaction_policy(cfg)
+
+    assert result.enabled is False
+    assert result.keys == ("password", "api_key")
+
+
+def test_to_observability_layout_resolves_plan_root(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "runtime"
+    _write(runtime_root / "datasets" / "registry.yaml")
+    cfg = AppConfig.model_validate({
+        "runtime": {"runtime_root": str(runtime_root), "datasets_root": str(runtime_root / "datasets")},
+        "paths": {"plans_dir": "var/custom-plans"},
+        "dataset": {"registry_path": str(runtime_root / "datasets" / "registry.yaml")},
+    })
+
+    layout = to_observability_layout(cfg)
+
+    assert str(layout.runtime_paths.plans_root) == str((runtime_root / "var" / "custom-plans").resolve())
 
 
 def test_to_operational_paths_resolves_relative_dirs_against_runtime_root(tmp_path) -> None:

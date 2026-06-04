@@ -101,7 +101,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
                 else runtime_policy.refresh_with_deps_default
             ),
             report_items_limit=(
-                opts.report_items_limit or app_config.observability.report_items_limit
+                opts.report_items_limit or app_config.observability.reporting.items_limit
             ),
             api_base_url=endpoint,
             retries=opts.retries or app_config.api.retries,
