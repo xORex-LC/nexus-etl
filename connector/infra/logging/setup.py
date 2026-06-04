@@ -1,3 +1,19 @@
+"""Legacy logging setup — совместимый stdlib adapter до полного switch-over на structlog
+
+Модуль сохраняет текущий per-command logging API, который ещё используется
+оркестратором и рядом команд. Новая structlog-модель живёт в соседних модулях
+`infra/logging/runtime.py` и `delivery/cli/stream_capture.py`; здесь остаётся
+только backward-compatible façade до поздней фазы миграции.
+
+Responsibilities:
+    - Поддерживать legacy `create_command_logger()`/`log_event()` call-sites.
+    - Давать совместимый текстовый file+console logger без смены поведения.
+
+Out of scope:
+    - Новая structlog-конфигурация observability runtime.
+    - Bind/clear contextvars и per-component observability layout.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -45,66 +61,6 @@ class DropCapturedStdStreamsFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return getattr(record, "component", None) not in self._CAPTURED_COMPONENTS
 
-
-class StdStreamToLogger:
-    """
-    Назначение:
-        Перехват stdout/stderr и логирование построчно.
-
-    Входные данные:
-        logger: logging.Logger
-        level: int
-        runId: str
-        component: str
-            Обычно 'stdout' или 'stderr'
-    """
-
-    def __init__(self, logger: logging.Logger, level: int, run_id: str, component: str):
-        self.logger = logger
-        self.level = level
-        self.run_id = run_id
-        self.component = component
-        self.buffer = ""
-
-    def write(self, s: str) -> int:
-        if not s:
-            return 0
-        self.buffer += s
-        while "\n" in self.buffer:
-            line, self.buffer = self.buffer.split("\n", 1)
-            if line.strip():
-                self.logger.log(self.level, line.rstrip(), extra={"runId": self.run_id, "component": self.component})
-        return len(s)
-
-    def flush(self) -> None:
-        if self.buffer.strip():
-            self.logger.log(self.level, self.buffer.rstrip(), extra={"runId": self.run_id, "component": self.component})
-        self.buffer = ""
-
-class TeeStream:
-    """
-    Назначение:
-        Дублирует вывод: пишет в оригинальный stream и в stream-логгер.
-
-    Входные данные:
-        primary:
-            Оригинальный sys.stdout/sys.stderr
-        secondary:
-            Объект, совместимый с stream (StdStreamToLogger)
-    """
-
-    def __init__(self, primary, secondary):
-        self.primary = primary
-        self.secondary = secondary
-
-    def write(self, s: str) -> int:
-        a = self.primary.write(s)
-        self.secondary.write(s)
-        return a
-
-    def flush(self) -> None:
-        self.primary.flush()
-        self.secondary.flush()
 
 def map_log_level(level_name: str) -> int:
     """
@@ -198,3 +154,6 @@ def log_event(logger: logging.Logger, level: int, run_id: str, component: str, m
         message: str
     """
     logger.log(level, message, extra={"runId": run_id, "component": component})
+
+
+__all__ = ["DropCapturedStdStreamsFilter", "EnsureFieldsFilter", "create_command_logger", "log_event", "map_log_level"]

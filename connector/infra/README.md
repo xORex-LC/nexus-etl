@@ -19,7 +19,8 @@
 | `sources/` | `CsvSourceReader` (polars-бэкенд) |
 | `polars/` | Shared Polars adapters для vectorized исполнения transport-neutral domain contracts |
 | `topology/` | `SqliteTopologyTargetReader` — cache-backed adapter для target topology read seam |
-| `logging/` | `create_command_logger()`, `EnsureFieldsFilter` |
+| `logging/` | Legacy `create_command_logger()` + новый structlog runtime (`StructuredLoggingRuntime`, redaction, daily+size file sink) |
+| `observability/` | `ObservabilityRetentionSweeper` — safe cleanup observability log artifacts |
 | `artifacts/` | `PlanReader`, `PlanWriter`, `ReportRenderer` |
 
 ## Зависимости

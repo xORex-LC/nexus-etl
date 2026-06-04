@@ -36,7 +36,8 @@ from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.reporting.sink import NullReportSink, ReportSink
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.artifacts.report_renderer import JsonReportRenderer
-from connector.infra.logging.setup import StdStreamToLogger, TeeStream, create_command_logger, log_event
+from connector.delivery.cli.stream_capture import StdStreamToLogger, TeeStream
+from connector.infra.logging.setup import create_command_logger, log_event
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve_source_location
 from connector.delivery.cli.context import BoundCommandContext, CommandContext, UnboundCommandContext
