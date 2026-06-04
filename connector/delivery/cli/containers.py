@@ -28,14 +28,18 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Iterator, cast
 
 from dependency_injector import containers, providers
 
+from connector.common.observability import component_for_command
 from connector.config.models import ApiConfig, AppConfig, DatasetConfig
 from connector.config.projections import (
     to_cache_db_config,
     to_dataset_registry_path,
+    to_observability_layout,
+    to_observability_redaction_policy,
     to_identity_db_config,
     to_resolver_settings,
     to_runtime_path_overrides,
@@ -179,6 +183,15 @@ def _identity_db_path(app_config: AppConfig) -> str:
         override=app_config.sqlite.identity_db_path,
         default_name="identity.sqlite3",
     )
+
+
+@dataclass(frozen=True)
+class _ObservabilityProviderPlaceholder:
+    kind: str
+
+
+def _placeholder_resource(kind: str) -> Iterator[_ObservabilityProviderPlaceholder]:
+    yield _ObservabilityProviderPlaceholder(kind=kind)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1093,6 +1106,42 @@ class PipelineContainer(containers.DeclarativeContainer):
     )
 
 
+class ObservabilityContainer(containers.DeclarativeContainer):
+    """
+    Назначение:
+        Провайдеры observability-подсистемы с корректной классификацией lifecycle.
+
+    Контракт:
+        - На Этапе 1 эти провайдеры не подключены к runtime orchestration.
+        - Stateless/value-only зависимости уже доступны для следующих фаз.
+        - Resource seams зафиксированы без изменения текущего поведения команд.
+    """
+
+    app_config = providers.Dependency(instance_of=AppConfig)
+
+    observability_layout = providers.Singleton(
+        to_observability_layout,
+        config=app_config,
+    )
+    redaction_policy = providers.Singleton(
+        to_observability_redaction_policy,
+        config=app_config,
+    )
+    redaction_engine = providers.Singleton(
+        lambda policy: policy,
+        policy=redaction_policy,
+    )
+    sweeper = providers.Factory(
+        lambda layout: layout,
+        layout=observability_layout,
+    )
+    component_mapper = providers.Object(component_for_command)
+
+    logging_runtime = providers.Resource(_placeholder_resource, kind="logging_runtime")
+    logging_handler_stack = providers.Resource(_placeholder_resource, kind="logging_handler_stack")
+    ledger_backend = providers.Resource(_placeholder_resource, kind="ledger_backend")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # DI-контейнер: AppContainer — единый Composition Root
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1204,6 +1253,11 @@ class AppContainer(containers.DeclarativeContainer):
         registry_path=_dataset_registry_path,
         dictionary_specs_root=_dictionary_specs_root,
         dictionary_data_root=_dictionary_data_root,
+    )
+
+    observability = providers.Container(
+        ObservabilityContainer,
+        app_config=app_config,
     )
 
     pipeline = providers.Container(

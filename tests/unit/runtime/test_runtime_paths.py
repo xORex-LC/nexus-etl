@@ -49,6 +49,7 @@ def test_detect_runtime_paths_uses_standalone_layout_near_argv0(tmp_path: Path) 
     assert paths.root == dist_root.resolve()
     assert paths.cache_root == (dist_root / "var" / "cache").resolve()
     assert paths.resolve_report_file("report.json") == (dist_root / "reports" / "report.json").resolve()
+    assert paths.resolve_plan_file("plan.json") == (dist_root / "var" / "plans" / "plan.json").resolve()
 
 
 def test_detect_runtime_paths_uses_module_parent_search_for_dev_checkout(tmp_path: Path) -> None:
@@ -133,3 +134,4 @@ def test_runtime_paths_resolve_resource_families_against_expected_roots(tmp_path
     assert paths.resolve_identity_db_file() == (
         runtime_root / "var" / "cache" / "identity.sqlite3"
     ).resolve()
+    assert paths.plans_root == (runtime_root / "var" / "plans").resolve()

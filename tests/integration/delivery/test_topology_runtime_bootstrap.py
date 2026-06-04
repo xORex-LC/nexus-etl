@@ -56,9 +56,9 @@ def _app_config(tmp_path: Path, *, dataset_name: str = "employees") -> AppConfig
                 "report_dir": str(tmp_path / "reports"),
             },
             "observability": {
-                "log_level": "INFO",
-                "report_items_limit": 100,
-                "diagnostics_strict": True,
+                "logging": {"level": "INFO"},
+                "reporting": {"items_limit": 100},
+                "diagnostics": {"strict": True},
             },
             "dataset": {"dataset_name": dataset_name},
             "execution": {"dry_run": True},

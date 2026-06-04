@@ -87,7 +87,7 @@ class TopologyBootstrapStep:
     ) -> TopologyBootstrapStepResult:
         catalog = build_diagnostics_catalog(
             dataset_name,
-            strict=ctx.app_config.observability.diagnostics_strict,
+            strict=ctx.app_config.observability.diagnostics.strict,
         )
         decision = self._requirement_resolver.resolve(
             command_name=command_name,

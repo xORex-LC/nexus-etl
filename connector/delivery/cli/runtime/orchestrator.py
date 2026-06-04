@@ -98,7 +98,7 @@ def run_with_report(
         command_name=command_name,
         log_dir=paths.log_dir,
         run_id=run_id,
-        log_level=observability.log_level,
+        log_level=observability.logging.level,
         mirror_to_console=_console_log_mirror_enabled(ctx),
         console_stream=original_stderr,
     )
@@ -110,10 +110,10 @@ def run_with_report(
     sources = config_sources(ctx)
     if sources:
         report_sink.emit(SetContextEvent(name=ReportContextKey.CONFIG, value={"sources": sources}))
-    report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
+    report_policy = ReportPolicy.from_profile(app_config.observability.reporting.policy_profile)
     cli_include_skipped_raw = get_opt(opts, ("report_include_skipped",))
     cli_include_skipped = (
-        app_config.observability.report_include_skipped
+        app_config.observability.reporting.include_skipped
         if cli_include_skipped_raw is None
         else bool(cli_include_skipped_raw)
     )
@@ -134,7 +134,7 @@ def run_with_report(
 
     report_items_limit = get_opt(opts, ("report_items_limit", "items_limit"))
     if report_items_limit is None:
-        report_items_limit = observability.report_items_limit
+        report_items_limit = observability.reporting.items_limit
     report_sink.emit(SetMetaEvent(items_limit=report_items_limit))
 
     stdout_logger_stream = StdStreamToLogger(logger, logging.INFO, run_id, "stdout")
@@ -368,7 +368,7 @@ def run_without_report(
         command_name=command_name,
         log_dir=paths.log_dir,
         run_id=run_id,
-        log_level=observability.log_level,
+        log_level=observability.logging.level,
         mirror_to_console=_console_log_mirror_enabled(ctx),
         console_stream=original_stderr,
     )
@@ -495,6 +495,7 @@ def bind_context_with_container(ctx: UnboundCommandContext, *, container: AppCon
     return CommandContext(
         logger=ctx.logger,
         run_id=ctx.run_id,
+        pipeline_run_id=ctx.pipeline_run_id,
         catalog=ctx.catalog,
         strict=ctx.strict,
         app_config=ctx.app_config,

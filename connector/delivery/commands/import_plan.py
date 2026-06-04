@@ -1,3 +1,5 @@
+"""Delivery-команда import plan — оркестрация planning pipeline до построения plan.json."""
+
 from __future__ import annotations
 
 import logging
@@ -116,13 +118,13 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
         report_items_limit_value = (
             opts.report_items_limit
             if opts.report_items_limit is not None
-            else app_config.observability.report_items_limit
+            else app_config.observability.reporting.items_limit
         )
         catalog = build_diagnostics_catalog(
             dataset_name,
-            strict=app_config.observability.diagnostics_strict,
+            strict=app_config.observability.diagnostics.strict,
         )
-        report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
+        report_policy = ReportPolicy.from_profile(app_config.observability.reporting.policy_profile)
         if report_sink is not None:
             report_sink.emit(SetMetaEvent(dataset=dataset_name))
 
@@ -274,7 +276,7 @@ def _resolve_effective_include_skipped_items(
     report_policy: ReportPolicy,
 ) -> bool:
     cli_include_skipped = (
-        app_config.observability.report_include_skipped
+        app_config.observability.reporting.include_skipped
         if opts.report_include_skipped is None
         else bool(opts.report_include_skipped)
     )

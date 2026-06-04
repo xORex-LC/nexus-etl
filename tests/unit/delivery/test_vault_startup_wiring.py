@@ -28,7 +28,11 @@ def _app_config(tmp_path) -> AppConfig:
                 "retries": 1, "retry_backoff_seconds": 0.1, "resource_exists_retries": 1},
         "paths": {"cache_dir": str(tmp_path / "cache"), "log_dir": str(tmp_path / "logs"),
                   "report_dir": str(tmp_path / "reports")},
-        "observability": {"log_level": "INFO", "report_items_limit": 100, "diagnostics_strict": True},
+        "observability": {
+            "logging": {"level": "INFO"},
+            "reporting": {"items_limit": 100},
+            "diagnostics": {"strict": True},
+        },
         "dataset": {"dataset_name": "employees"},
         "execution": {"dry_run": True},
         "refresh": {"page_size": 100, "max_pages": 1},

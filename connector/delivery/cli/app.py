@@ -1,3 +1,19 @@
+"""CLI entrypoint — декларация Typer-команд и первичная сборка runtime command context.
+
+Модуль отвечает за user-facing CLI surface: парсинг глобальных опций, загрузку конфигурации,
+инициализацию root command context и делегирование в runtime orchestration. Бизнес-логика
+команд и infra wiring здесь не живут.
+
+Responsibilities:
+    - Зарегистрировать команды Typer и их delivery-level опции.
+    - Загрузить `AppConfig`, подготовить runtime directories и собрать `CommandContext`.
+    - Передать выполнение в `run_with_report()` / `run_without_report()`.
+
+Out of scope:
+    - Реализация use cases и pipeline stages.
+    - Ручное создание infra-объектов вне DI composition root.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,7 +25,7 @@ from connector.config.config import SettingsLoadError
 from connector.config.loader import load_app_config
 from connector.config.diagnostics import translate_settings_load_error
 from connector.config.projections import to_dataset_registry_path, to_operational_paths, to_runtime_path_overrides
-from connector.common.run_id import generate_run_id
+from connector.common.run_id import generate_run_id, resolve_pipeline_run_id
 from connector.delivery.cli.context import CommandPaths, CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.runtime import run_with_report, run_without_report
@@ -58,7 +74,7 @@ def _build_ctx(
     if app_config is None:
         raise RuntimeError("App config is not initialized")
     operational_paths = to_operational_paths(app_config)
-    catalog = build_diagnostics_catalog(dataset, strict=app_config.observability.diagnostics_strict)
+    catalog = build_diagnostics_catalog(dataset, strict=app_config.observability.diagnostics.strict)
     extra: dict[str, Any] = {
         "sources": ctx.obj.get("sources"),
         "quiet": bool(ctx.obj.get("quiet")),
@@ -75,8 +91,9 @@ def _build_ctx(
     return CommandContext(
         logger=ctx.obj["logger"],
         run_id=ctx.obj["run_id"],
+        pipeline_run_id=ctx.obj.get("pipeline_run_id"),
         catalog=catalog,
-        strict=app_config.observability.diagnostics_strict,
+        strict=app_config.observability.diagnostics.strict,
         app_config=app_config,
         container=None,
         paths=CommandPaths(report_dir=operational_paths.report_dir, work_dir=None),
@@ -143,14 +160,17 @@ def main(
 
     if not run_id:
         run_id = generate_run_id()
+    pipeline_run_id = resolve_pipeline_run_id(run_id)
 
     cli_overrides = {
         "api.host": host,
         "api.port": port,
         "api.username": api_username,
         "api.password": api_password,
-        "observability.log_level": log_level,
-        "observability.log_json": log_json,
+        "observability.logging.level": log_level,
+        "observability.logging.sinks.console.format": (
+            "json" if log_json is True else "text" if log_json is False else None
+        ),
         "paths.log_dir": log_dir,
         "paths.report_dir": report_dir,
         "paths.cache_dir": cache_dir,
@@ -165,7 +185,7 @@ def main(
         "matching_runtime.match_flush_interval_ms": match_flush_interval_ms,
         "resolver.resolve_batch_size": resolve_batch_size,
         "resolver.resolve_flush_interval_ms": resolve_flush_interval_ms,
-        "observability.diagnostics_strict": strict_diagnostics,
+        "observability.diagnostics.strict": strict_diagnostics,
     }
     try:
         loaded_app = load_app_config(config, cli_overrides=cli_overrides)
@@ -187,10 +207,12 @@ def main(
     operational_paths = to_operational_paths(loaded_app.app_config)
     _ensure_dir(operational_paths.log_dir)
     _ensure_dir(operational_paths.report_dir)
+    _ensure_dir(operational_paths.plans_dir)
     _ensure_dir(operational_paths.cache_dir)
 
     ctx.obj = {
         "run_id": run_id,
+        "pipeline_run_id": pipeline_run_id,
         "app_config": loaded_app.app_config,
         "operational_paths": operational_paths,
         "sources": sorted({v for v in loaded_app.source_trace.values() if v != "default"}),

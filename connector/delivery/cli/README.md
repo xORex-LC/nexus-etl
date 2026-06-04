@@ -9,7 +9,7 @@
 | Файл | Назначение |
 |---|---|
 | `app.py` | Typer-приложение с корневым callback (опции конфига, run-id, логирование, dataset, vault) и sub-app'ами: `cache_app`, `import_app`, `user_app`, `vault_management_app` |
-| `containers.py` | DI-контейнеры (`dependency-injector`): `ConfigContainer`, `CacheContainer`, `TargetContainer`, `VaultContainer`, `PipelineContainer`, `ReportingContainer` и др. |
+| `containers.py` | DI-контейнеры (`dependency-injector`): `SqliteContainer`, `CacheContainer`, `TargetContainer`, `VaultContainer`, `ObservabilityContainer`, `PipelineContainer` и др. |
 | `dictionaries_container.py` | Отдельный DI-контейнер для справочников (выделен из-за объёма и независимости) |
 | `context.py` | `BoundCommandContext` — typed runtime context, передаваемый в каждый handler |
 

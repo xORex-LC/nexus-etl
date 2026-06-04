@@ -1,8 +1,8 @@
 api:
-  host: "10.10.10.10"
-  port: 473
-  username: "Username"
-  password: "Password"
+  host: "10.27.38.187"
+  port: 8443
+  username: "ankey"
+  password: "Gazprom12345^789"
   tls_skip_verify: true
   ca_file: null
   timeout_seconds: 20.0
@@ -14,10 +14,10 @@ runtime:
   runtime_root: "."
   config_root: "./examples/configs"
   datasets_root: "./datasets"
-  dictionary_specs_root: "./datasets/dictionaries"
+  dictionary_specs_root: "./datasets"
   dictionary_data_root: "./dictionaries"
   source_data_root: "./examples/sources"
-  source_projection_root: "./datasets/employees/source_2"
+  source_projection_root: "./datasets"
   target_projection_root: "./datasets/targets"
 
 paths:
@@ -50,7 +50,7 @@ observability:
   reporting:
     format: "json"
     policy_profile: "standard"
-    items_limit: 20
+    items_limit: 200
     include_skipped: true
     retention_days: 30
   plans:
@@ -62,10 +62,10 @@ observability:
     backend: "jsonl"
 
 dataset:
-  dataset_name: employees
+  dataset_name: organizations
   # Optional explicit dataset registry YAML override. If omitted, runtime resolves
   # runtime.datasets_root/registry.yaml.
-  registry_path: "./datasets/employees.registry.yaml"
+  registry_path: "./datasets/registry.yaml"
   include_deleted: false
 
 execution:
@@ -74,8 +74,8 @@ execution:
   dry_run: false
 
 refresh:
-  page_size: 200
-  max_pages: null
+  page_size: 500
+  max_pages: 10
 
 matching_runtime:
   match_batch_size: 500

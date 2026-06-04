@@ -12,7 +12,11 @@ from connector.domain.reporting.sink import ReportSink
 
 
 def _app_config(default_cli_include_skipped: bool = True):
-    return SimpleNamespace(observability=SimpleNamespace(report_include_skipped=default_cli_include_skipped))
+    return SimpleNamespace(
+        observability=SimpleNamespace(
+            reporting=SimpleNamespace(include_skipped=default_cli_include_skipped)
+        )
+    )
 
 
 def test_import_plan_include_skipped_true_stores_items_and_keeps_rows_skipped() -> None:

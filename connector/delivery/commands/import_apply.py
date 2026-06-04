@@ -7,13 +7,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-import sqlite3
 
 import typer
 
 from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.cli.containers import build_diagnostics_catalog
-from connector.delivery.commands.common import log_sqlite_cache_error, result_with, vault_startup_error_result
+from connector.delivery.commands.common import result_with, vault_startup_error_result
 from connector.delivery.commands.vault_unseal import provide_runtime_unseal_passphrase
 from connector.delivery.commands.import_apply_dry_run_executor import DryRunExecutor
 from connector.delivery.presenters.apply_report_presenter import ApplyReportPresenter
@@ -87,7 +86,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     report_items_limit = (
         opts.report_items_limit
         if opts.report_items_limit is not None
-        else app_config.observability.report_items_limit
+        else app_config.observability.reporting.items_limit
     )
     stop_on_first_error = (
         opts.stop_on_first_error
@@ -149,7 +148,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     dataset_name = plan.meta.dataset
     catalog = ctx.catalog or build_diagnostics_catalog(
         dataset_name,
-        strict=app_config.observability.diagnostics_strict,
+        strict=app_config.observability.diagnostics.strict,
     )
 
     cache_roles = ctx.container.cache.roles()
