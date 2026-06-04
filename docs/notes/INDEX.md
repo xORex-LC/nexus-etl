@@ -17,3 +17,5 @@
 
 - [Dependency Tree Worknote](./dependency-tree/DEPENDENCY_TREE_WORKNOTE.md)
 - [Dependency Tree Implementation Plan](./dependency-tree/DEPENDENCY_TREE_IMPLEMENTATION_PLAN.md)
+- [Observability Rework Worknote](./observability/OBSERVABILITY_WORKNOTE.md)
+- [Observability Rework Implementation Plan](./observability/OBSERVABILITY_IMPLEMENTATION_PLAN.md)
