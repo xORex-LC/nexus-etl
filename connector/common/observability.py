@@ -25,6 +25,7 @@ from typing import Callable, Literal, Protocol
 from connector.common.sanitize import DEFAULT_SENSITIVE_FIELD_KEYS
 
 ClockMode = Literal["utc", "local"]
+LedgerBackendName = Literal["jsonl", "sqlite"]
 
 
 class ServiceComponent(str, Enum):
@@ -123,6 +124,24 @@ class ObservabilityLayout:
         filename = f"{resolved_now:%Y-%m-%dT%H-%M-%S}_{resolved_component.value}.json"
         return directory / filename
 
+    def ledger_file(
+        self,
+        component: ServiceComponent | ComponentIdentity,
+        *,
+        backend: LedgerBackendName,
+    ) -> Path:
+        """Разрешить canonical ledger-файл компонента для выбранного backend.
+
+        Ledger хранится рядом с логами компонента и не зависит от времени запуска:
+        один индекс обслуживает всю историю запусков компонента.
+        """
+        resolved_component = _coerce_component(component)
+        directory = self._component_dir(
+            self.runtime_paths.logs_root, resolved_component
+        )
+        suffix = ".jsonl" if backend == "jsonl" else ".sqlite3"
+        return directory / f"index{suffix}"
+
     def _resolve_now(self, now: datetime | None) -> datetime:
         current = now if now is not None else self._clock()()
         if self.policy.clock == "utc":
@@ -157,6 +176,7 @@ def _coerce_component(
 __all__ = [
     "ClockMode",
     "ComponentIdentity",
+    "LedgerBackendName",
     "ObservabilityLayout",
     "ObservabilityLayoutPolicy",
     "ObservabilityRedactionPolicy",

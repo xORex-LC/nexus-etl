@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Callable
 
 from connector.common.observability import ObservabilityLayout, ServiceComponent
+from connector.infra.observability.ledger import RunLedgerBackend
 
 _STAMP_PATTERN = re.compile(
     r"^(?P<stamp>\d{4}-\d{2}-\d{2}(?:T\d{2}-\d{2}-\d{2})?)_(?P<component>[a-z0-9_-]+)(?:\.(?P<roll>\d+))?\.(?P<ext>[a-z0-9]+)$"
@@ -44,9 +45,11 @@ class ObservabilityRetentionSweeper:
         self,
         *,
         layout: ObservabilityLayout,
+        ledger_backend: RunLedgerBackend | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._layout = layout
+        self._ledger_backend = ledger_backend
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     def sweep_logs(
@@ -102,6 +105,38 @@ class ObservabilityRetentionSweeper:
             retention_backups=0,
             now=resolved_now,
             marker_name=".plan-retention.marker",
+        )
+
+    def sweep_ledger(
+        self,
+        *,
+        component: ServiceComponent,
+        retention_days: int,
+        now: datetime | None = None,
+    ) -> RetentionSweepResult:
+        """Выполнить best-effort retention для run ledger компонента."""
+        if self._ledger_backend is None:
+            return RetentionSweepResult(deleted_files=(), skipped_by_marker=True)
+
+        resolved_now = now or self._clock()
+        root_dir = self._layout.log_file(component, now=resolved_now).parent
+        marker_path = root_dir / ".ledger-retention.marker"
+        marker_day = resolved_now.astimezone(timezone.utc).date().isoformat()
+        if marker_path.exists() and marker_path.is_file():
+            marker_value = marker_path.read_text(encoding="utf-8").strip()
+            if marker_value == marker_day:
+                return RetentionSweepResult(deleted_files=(), skipped_by_marker=True)
+
+        root_dir.mkdir(parents=True, exist_ok=True)
+        touched_files = self._ledger_backend.prune(
+            component=component,
+            retention_days=retention_days,
+            now=resolved_now,
+        )
+        marker_path.write_text(marker_day, encoding="utf-8")
+        return RetentionSweepResult(
+            deleted_files=tuple(sorted(touched_files)),
+            skipped_by_marker=False,
         )
 
     def _sweep_root(

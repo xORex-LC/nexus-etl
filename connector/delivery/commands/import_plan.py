@@ -220,6 +220,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
                 run_id=run_id,
                 generated_at=generated_at,
             )
+            if ctx.extra is not None:
+                ctx.extra["plan_path"] = plan_path
             log_event(
                 ctx.logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}"
             )

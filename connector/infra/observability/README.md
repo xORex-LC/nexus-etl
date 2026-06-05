@@ -4,15 +4,16 @@
 
 Инфраструктурные adapters observability-подсистемы поверх value-object layout/policy из `common/observability.py`.
 
-Здесь живёт безопасная ретенция observability-артефактов: логов, отчётов и
-планов. Sweeper запускается из CLI orchestration на старте команды и работает
-только внутри component-partition каталогов.
+Здесь живут append-only run ledger и безопасная ретенция observability-артефактов:
+логов, отчётов, планов и самого ledger. Sweeper запускается из CLI orchestration
+на старте команды и работает только внутри component-partition каталогов.
 
 ## Файлы
 
 | Файл | Назначение |
 |---|---|
-| `retention.py` | `ObservabilityRetentionSweeper` — safe sweep логов, отчётов и планов по age/backups внутри каталога компонента; не следует по симлинкам, использует marker-throttling |
+| `ledger.py` | `JsonlRunLedger` / `SqliteRunLedger` — best-effort индекс запусков `run_id -> status + artifact paths` по компоненту |
+| `retention.py` | `ObservabilityRetentionSweeper` — safe sweep логов, отчётов, планов и ledger по age/backups внутри каталога компонента; не следует по симлинкам, использует marker-throttling |
 
 ## Зависимости
 

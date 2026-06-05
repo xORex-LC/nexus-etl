@@ -15,12 +15,13 @@ import sqlite3
 import sys
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
 import typer
 
-from connector.common.time import get_duration_ms
+from connector.common.time import get_duration_ms, get_now_iso
 from connector.config.config import SettingsLoadError
 from connector.config.models import AppConfig
 from connector.config.diagnostics import translate_settings_load_error
@@ -47,6 +48,10 @@ from connector.infra.logging.runtime import (
     clear_observability_context,
 )
 from connector.infra.logging.setup import log_event
+from connector.infra.observability.ledger import (
+    RunLedgerRowCounters,
+    build_run_ledger_record,
+)
 from connector.datasets.registry import get_spec, resolve_dataset_name
 from connector.domain.transform_dsl import (
     load_source_spec_for_dataset,
@@ -161,6 +166,11 @@ def _run_observability_sweeper(
             component=session.component,
             retention_days=app_config.observability.plans.retention_days,
         )
+        if app_config.observability.ledger.enabled:
+            sweeper.sweep_ledger(
+                component=session.component,
+                retention_days=app_config.observability.logging.sinks.file.retention_days,
+            )
     except Exception as exc:
         log_event(
             logger,
@@ -220,6 +230,7 @@ def run_with_report(
     report_policy = ReportPolicy.from_profile(
         app_config.observability.reporting.policy_profile
     )
+    report_started_at = report_context.meta_snapshot().started_at
     cli_include_skipped_raw = get_opt(opts, ("report_include_skipped",))
     cli_include_skipped = (
         app_config.observability.reporting.include_skipped
@@ -490,6 +501,22 @@ def run_with_report(
                 )
             if exit_result is None and finalize_result is not None:
                 exit_result = finalize_result
+            if observability_session is not None:
+                _record_run_ledger_for_report(
+                    container=container,
+                    enabled=app_config.observability.ledger.enabled,
+                    component=observability_session.component,
+                    layout=observability_session.layout,
+                    report_assembler=report_assembler,
+                    logger=logger,
+                    run_id=run_id,
+                    pipeline_run_id=pipeline_run_id,
+                    started_at=report_started_at,
+                    log_file_path=log_file_path,
+                    plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
+                    final_result=exit_result,
+                    exit_code_from_result=exit_code_from_result,
+                )
         finally:
             clear_observability_context()
 
@@ -528,6 +555,7 @@ def run_without_report(
     run_topology_bootstrap = run_topology_bootstrap or _run_topology_bootstrap_if_needed
 
     start_monotonic = time.monotonic()
+    started_at = get_now_iso()
     original_stdout = sys.stdout
     original_stderr = sys.stderr
 
@@ -680,6 +708,20 @@ def run_without_report(
             log_event(
                 logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}"
             )
+            if observability_session is not None:
+                _record_run_ledger_without_report(
+                    container=container,
+                    enabled=app_config.observability.ledger.enabled,
+                    component=observability_session.component,
+                    logger=logger,
+                    run_id=run_id,
+                    pipeline_run_id=pipeline_run_id,
+                    started_at=started_at,
+                    log_file_path=log_file_path,
+                    plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
+                    final_result=exit_result,
+                    exit_code_from_result=exit_code_from_result,
+                )
         finally:
             clear_observability_context()
 
@@ -815,10 +857,12 @@ def finalize_report_artifacts(
         envelope = report_assembler.assemble()
         if layout is None or component is None:
             raise RuntimeError("observability layout is not initialized")
+        report_timestamp = _resolve_report_artifact_timestamp(envelope)
         report_path = JsonReportRenderer().render_with_layout(
             envelope=envelope,
             layout=layout,
             component=component,
+            now=report_timestamp,
         )
         log_event(
             logger, logging.INFO, run_id, "report", f"Report written: {report_path}"
@@ -835,6 +879,191 @@ def finalize_report_artifacts(
             typer.echo("ERROR: failed to finalize report (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     return None
+
+
+def _record_run_ledger_for_report(
+    *,
+    container: AppContainer | None,
+    enabled: bool,
+    component: ServiceComponent,
+    layout: ObservabilityLayout,
+    report_assembler: ReportAssembler,
+    logger: Any,
+    run_id: str,
+    pipeline_run_id: str,
+    started_at: str,
+    log_file_path: str | None,
+    plan_path: str | None,
+    final_result: RuntimeExecutionResult,
+    exit_code_from_result: Callable[[Any], int],
+) -> None:
+    """Собрать ledger-запись из финального отчёта и записать её best-effort."""
+    try:
+        envelope = report_assembler.assemble()
+        report_path = None
+        if envelope.meta.finished_at is not None:
+            report_path = str(
+                layout.report_file(
+                    component,
+                    now=_resolve_report_artifact_timestamp(envelope),
+                )
+            )
+            if not Path(report_path).exists():
+                report_path = None
+
+        record = build_run_ledger_record(
+            run_id=run_id,
+            pipeline_run_id=pipeline_run_id,
+            component=component,
+            started_at=envelope.meta.started_at or started_at,
+            finished_at=envelope.meta.finished_at,
+            status=_resolve_ledger_status(
+                final_result=final_result,
+                fallback_status=envelope.status,
+                exit_code_from_result=exit_code_from_result,
+            ),
+            log_path=_existing_path_or_none(log_file_path),
+            report_path=report_path,
+            plan_path=_existing_path_or_none(plan_path),
+            row_counters=RunLedgerRowCounters(
+                rows_total=envelope.summary.rows_total,
+                rows_passed=envelope.summary.rows_passed,
+                rows_blocked=envelope.summary.rows_blocked,
+                rows_skipped=envelope.summary.rows_skipped,
+                rows_with_warnings=envelope.summary.rows_with_warnings,
+                errors_total=envelope.summary.errors_total,
+                warnings_total=envelope.summary.warnings_total,
+            ),
+        )
+        _persist_run_ledger_record(
+            container=container,
+            enabled=enabled,
+            component=component,
+            logger=logger,
+            run_id=run_id,
+            record=record,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            run_id,
+            "observability",
+            f"Ledger record assembly failed: {exc}",
+        )
+
+
+def _record_run_ledger_without_report(
+    *,
+    container: AppContainer | None,
+    enabled: bool,
+    component: ServiceComponent,
+    logger: Any,
+    run_id: str,
+    pipeline_run_id: str,
+    started_at: str,
+    log_file_path: str | None,
+    plan_path: str | None,
+    final_result: RuntimeExecutionResult,
+    exit_code_from_result: Callable[[Any], int],
+) -> None:
+    """Записать ledger для команд без report-артефакта."""
+    try:
+        finished_at = get_now_iso()
+        record = build_run_ledger_record(
+            run_id=run_id,
+            pipeline_run_id=pipeline_run_id,
+            component=component,
+            started_at=started_at,
+            finished_at=finished_at,
+            status=_resolve_ledger_status(
+                final_result=final_result,
+                fallback_status="SUCCESS",
+                exit_code_from_result=exit_code_from_result,
+            ),
+            log_path=_existing_path_or_none(log_file_path),
+            report_path=None,
+            plan_path=_existing_path_or_none(plan_path),
+        )
+        _persist_run_ledger_record(
+            container=container,
+            enabled=enabled,
+            component=component,
+            logger=logger,
+            run_id=run_id,
+            record=record,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            run_id,
+            "observability",
+            f"Ledger record assembly failed: {exc}",
+        )
+
+
+def _persist_run_ledger_record(
+    *,
+    container: AppContainer | None,
+    enabled: bool,
+    component: ServiceComponent,
+    logger: Any,
+    run_id: str,
+    record,
+) -> None:
+    """Сделать best-effort append в run ledger без влияния на exit code."""
+    if not enabled or container is None:
+        return
+    try:
+        backend = container.observability.ledger_backend()
+        backend.append(component=component, record=record)
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            run_id,
+            "observability",
+            f"Ledger append failed: {exc}",
+        )
+
+
+def _resolve_report_artifact_timestamp(envelope) -> datetime:
+    """Преобразовать `meta.finished_at` в datetime для детерминированного report path."""
+    if envelope.meta.finished_at is None:
+        raise RuntimeError("report meta.finished_at is missing")
+    return datetime.fromisoformat(envelope.meta.finished_at)
+
+
+def _resolve_runtime_plan_path(*, ctx: CommandContext[Any], opts: Any) -> str | None:
+    """Извлечь путь плана из runtime context или CLI opts без знания handler-деталей."""
+    extra = ctx.extra or {}
+    plan_path = extra.get("plan_path")
+    if isinstance(plan_path, str) and plan_path.strip():
+        return plan_path
+    opt_value = get_opt(opts, ("plan_path",))
+    if isinstance(opt_value, str) and opt_value.strip():
+        return opt_value
+    return None
+
+
+def _resolve_ledger_status(
+    *,
+    final_result: RuntimeExecutionResult,
+    fallback_status: str,
+    exit_code_from_result: Callable[[Any], int],
+) -> str:
+    """Нормализовать статус ledger к итоговому exit code выполнения."""
+    if final_result is None:
+        return fallback_status
+    return "SUCCESS" if exit_code_from_result(final_result) == 0 else "FAILED"
+
+
+def _existing_path_or_none(path_value: str | None) -> str | None:
+    """Вернуть путь только если файл уже существует на диске."""
+    if not path_value:
+        return None
+    return path_value if Path(path_value).exists() else None
 
 
 def validate_requirements(

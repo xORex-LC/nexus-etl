@@ -44,14 +44,27 @@ class _OverrideProbe:
 
 
 class _FakeContainer:
-    def __init__(self, *, shutdown_exc: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        shutdown_exc: Exception | None = None,
+        ledger_exc: Exception | None = None,
+    ) -> None:
         self._shutdown_exc = shutdown_exc
+        self._ledger_exc = ledger_exc
         self.app_config = _OverrideProbe()
         self.target = SimpleNamespace(transport=_OverrideProbe())
+        self.observability = SimpleNamespace(
+            ledger_backend=lambda: SimpleNamespace(append=self._append_ledger)
+        )
 
     def shutdown_resources(self) -> None:
         if self._shutdown_exc is not None:
             raise self._shutdown_exc
+
+    def _append_ledger(self, **_: object) -> None:
+        if self._ledger_exc is not None:
+            raise self._ledger_exc
 
 
 @dataclass(frozen=True)
@@ -219,6 +232,33 @@ def test_run_with_report_sets_internal_error_on_finalize_failure(
         )
 
     assert exc_info.value.exit_code == 2
+
+
+def test_run_with_report_keeps_success_when_ledger_append_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    fake = _FakeContainer(ledger_exc=RuntimeError("ledger failed"))
+    _patch_fake_observability(monkeypatch, tmp_path)
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(
+        runtime_module, "_shutdown_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", lambda **_: None)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_with_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: _result_with(SystemErrorCode.OK),
+            requirements=Requirements(),
+        )
+
+    assert exc_info.value.exit_code == 0
 
 
 def test_run_without_report_sets_internal_error_on_teardown_only_failure(
