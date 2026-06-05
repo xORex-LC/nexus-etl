@@ -4,12 +4,12 @@
 каталога компонента, не следует по симлинкам и троттлит sweep не чаще одного
 раза в день через marker-файл.
 
-Responsibilities:
+Границы ответственности:
     - Удалять файлы старше заданного retention_days.
     - Ограничивать число size-roll backup-файлов внутри одного дня.
     - Соблюдать guardrails по симлинкам и допустимым паттернам имён.
 
-Out of scope:
+Вне ответственности:
     - Вызов sweeper из CLI orchestration.
     - Ретенция отчётов и планов на текущем этапе.
 """
@@ -82,7 +82,9 @@ class ObservabilityRetentionSweeper:
 
         component_dir.mkdir(parents=True, exist_ok=True)
         marker_path.write_text(marker_day, encoding="utf-8")
-        return RetentionSweepResult(deleted_files=tuple(sorted(deleted)), skipped_by_marker=False)
+        return RetentionSweepResult(
+            deleted_files=tuple(sorted(deleted)), skipped_by_marker=False
+        )
 
     def _delete_expired_files(
         self,
@@ -110,7 +112,9 @@ class ObservabilityRetentionSweeper:
                 deleted.append(entry)
                 continue
             roll = match.group("roll")
-            candidates_by_stamp.setdefault(stamp, []).append((entry, int(roll) if roll is not None else None))
+            candidates_by_stamp.setdefault(stamp, []).append(
+                (entry, int(roll) if roll is not None else None)
+            )
 
         for stamp_entries in candidates_by_stamp.values():
             backups = sorted(

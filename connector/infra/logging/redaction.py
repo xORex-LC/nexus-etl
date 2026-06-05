@@ -5,12 +5,12 @@
 чтобы один и тот же policy-источник применялся к structlog event_dict,
 traceback, foreign-логам и перехваченным stdout/stderr строкам.
 
-Responsibilities:
+Границы ответственности:
     - Преобразовывать policy value-object в исполняемый redaction engine.
     - Маскировать mapping/list/scalar структуры рекурсивно.
     - Давать structlog-compatible processor для общей processor-цепочки.
 
-Out of scope:
+Вне ответственности:
     - Загрузка конфигурации observability из YAML/ENV.
     - Решение, когда именно вызывать redaction в runtime orchestration.
 """
@@ -60,9 +60,13 @@ class LogRedactionEngine:
     _patterns: tuple[re.Pattern[str], ...] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        normalized_keys = frozenset(key.casefold() for key in self.policy.keys if key.strip())
+        normalized_keys = frozenset(
+            key.casefold() for key in self.policy.keys if key.strip()
+        )
         object.__setattr__(self, "_normalized_keys", normalized_keys)
-        object.__setattr__(self, "_patterns", _compile_text_patterns(tuple(normalized_keys)))
+        object.__setattr__(
+            self, "_patterns", _compile_text_patterns(tuple(normalized_keys))
+        )
 
     def redact_text(self, value: str) -> str:
         """Вернуть строку с замаскированными секретами."""
@@ -81,8 +85,13 @@ class LogRedactionEngine:
         if key is not None and key.casefold() in self._normalized_keys:
             return self.replacement
         if isinstance(value, Mapping):
-            return {item_key: self.redact_value(item_value, key=str(item_key)) for item_key, item_value in value.items()}
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            return {
+                item_key: self.redact_value(item_value, key=str(item_key))
+                for item_key, item_value in value.items()
+            }
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
             return [self.redact_value(item) for item in value]
         if isinstance(value, str):
             return self.redact_text(value)
@@ -91,8 +100,7 @@ class LogRedactionEngine:
     def redact_event_dict(self, event_dict: Mapping[str, Any]) -> dict[str, Any]:
         """Применить redaction к structlog event_dict."""
         return {
-            key: self.redact_value(value, key=key)
-            for key, value in event_dict.items()
+            key: self.redact_value(value, key=key) for key, value in event_dict.items()
         }
 
     def processor(

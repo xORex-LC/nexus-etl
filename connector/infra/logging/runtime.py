@@ -5,12 +5,12 @@
 daily+size sink, при этом orchestration-код ещё не переключается на новый путь
 до последующих фаз DEC-002.
 
-Responsibilities:
+Границы ответственности:
     - Конфигурировать structlog и stdlib bridge один раз на runtime-экземпляр.
     - Создавать stderr/file handler stack с единым JSON/text renderer.
     - Выдавать component-aware логгер с учётом override уровней.
 
-Out of scope:
+Вне ответственности:
     - Привязка bind/clear contextvars в CLI orchestrator.
     - Миграция legacy `create_command_logger()` call-sites.
 """
@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import socket
+import sys
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -45,6 +46,14 @@ _HOSTNAME = socket.gethostname()
 _PID = os.getpid()
 
 
+@dataclass(frozen=True)
+class LoggingRuntimeMeta:
+    """Дополнительные runtime-поля, общие для всех записей данного runtime."""
+
+    app_version: str | None = None
+    git_rev: str | None = None
+
+
 def _map_log_level(level_name: str) -> int:
     normalized = level_name.strip().upper()
     mapping = {
@@ -60,21 +69,38 @@ def _map_log_level(level_name: str) -> int:
         raise ValueError(f"Unsupported log level: {level_name}") from exc
 
 
-def _add_schema_version(_logger: Any, _method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+def _add_schema_version(
+    _logger: Any, _method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
     event_dict.setdefault("schema_version", _LOG_SCHEMA_VERSION)
     return event_dict
 
 
-def _add_runtime_meta(_logger: Any, _method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    event_dict.setdefault("host", _HOSTNAME)
-    event_dict.setdefault("pid", _PID)
-    return event_dict
+def _build_runtime_meta_processor(
+    runtime_meta: LoggingRuntimeMeta,
+) -> Callable[[Any, str, dict[str, Any]], dict[str, Any]]:
+    def _add_runtime_meta(
+        _logger: Any,
+        _method_name: str,
+        event_dict: dict[str, Any],
+    ) -> dict[str, Any]:
+        event_dict.setdefault("host", _HOSTNAME)
+        event_dict.setdefault("pid", _PID)
+        if runtime_meta.app_version is not None:
+            event_dict.setdefault("app_version", runtime_meta.app_version)
+        if runtime_meta.git_rev is not None:
+            event_dict.setdefault("git_rev", runtime_meta.git_rev)
+        return event_dict
+
+    return _add_runtime_meta
 
 
 class _JsonTextRenderer:
     """Рендерить event_dict в logfmt-подобный текст для файлового sink."""
 
-    def __call__(self, _logger: Any, _method_name: str, event_dict: dict[str, Any]) -> str:
+    def __call__(
+        self, _logger: Any, _method_name: str, event_dict: dict[str, Any]
+    ) -> str:
         rendered_parts: list[str] = []
         for key, value in event_dict.items():
             rendered_parts.append(f"{key}={self._format_value(value)}")
@@ -167,7 +193,9 @@ class DailySizeRotatingFileHandler(logging.Handler):
         if self._max_bytes <= 0 or self._stream is None:
             return
         current_size = active_path.stat().st_size if active_path.exists() else 0
-        projected_size = current_size + len((message + self.terminator).encode(self._encoding))
+        projected_size = current_size + len(
+            (message + self.terminator).encode(self._encoding)
+        )
         if current_size == 0 or projected_size <= self._max_bytes:
             return
         self._stream.close()
@@ -210,7 +238,11 @@ class StructlogHandlerStack:
 
     def close(self) -> None:
         """Отвязать handlers от root logger и закрыть ресурсы."""
-        handlers = [handler for handler in (self.console_handler, self.file_handler) if handler is not None]
+        handlers = [
+            handler
+            for handler in (self.console_handler, self.file_handler)
+            if handler is not None
+        ]
         for handler in handlers:
             self.root_logger.removeHandler(handler)
             handler.close()
@@ -228,6 +260,7 @@ class StructuredLoggingRuntime:
     config: LoggingConfig
     handler_stack: StructlogHandlerStack
     redaction_engine: LogRedactionEngine
+    runtime_meta: LoggingRuntimeMeta = LoggingRuntimeMeta()
 
     def get_logger(
         self,
@@ -238,11 +271,13 @@ class StructuredLoggingRuntime:
         """Вернуть component-aware logger с filtering wrapper по уровню компонента."""
         stdlib_logger = logging.getLogger(logger_name or f"nexus.{component.value}")
         stdlib_logger.setLevel(logging.NOTSET)
-        wrapper_class = structlog.make_filtering_bound_logger(self._level_for_component(component))
+        wrapper_class = structlog.make_filtering_bound_logger(
+            self._level_for_component(component)
+        )
         return structlog.wrap_logger(
             stdlib_logger,
             wrapper_class=wrapper_class,
-            processors=_build_structlog_processors(),
+            processors=_build_structlog_processors(self.runtime_meta),
             cache_logger_on_first_use=False,
         ).bind(component=component.value)
 
@@ -253,7 +288,9 @@ class StructuredLoggingRuntime:
 
     def _level_for_component(self, component: ServiceComponent) -> int:
         override = self.config.components.get(component)
-        level_name: LogLevelName = override.level if override is not None else self.config.level
+        level_name: LogLevelName = (
+            override.level if override is not None else self.config.level
+        )
         return _map_log_level(level_name)
 
 
@@ -289,8 +326,11 @@ def build_structured_logging_runtime(
     stderr_stream: TextIO | None = None,
     root_logger_name: str = "",
     clock: Callable[[], datetime] | None = None,
+    app_version: str | None = None,
+    git_rev: str | None = None,
 ) -> StructuredLoggingRuntime:
     """Сконфигурировать structlog runtime для одного service-component."""
+    runtime_meta = LoggingRuntimeMeta(app_version=app_version, git_rev=git_rev)
     root_logger = logging.getLogger(root_logger_name)
     root_logger.handlers.clear()
     root_logger.setLevel(logging.NOTSET)
@@ -304,10 +344,13 @@ def build_structured_logging_runtime(
         root_logger=root_logger,
         stderr_stream=stderr_stream,
         clock=clock,
+        runtime_meta=runtime_meta,
     )
     structlog.configure(
-        processors=_build_structlog_processors(),
-        wrapper_class=structlog.make_filtering_bound_logger(_map_log_level(config.level)),
+        processors=_build_structlog_processors(runtime_meta),
+        wrapper_class=structlog.make_filtering_bound_logger(
+            _map_log_level(config.level)
+        ),
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=False,
     )
@@ -315,16 +358,17 @@ def build_structured_logging_runtime(
         config=config,
         handler_stack=handler_stack,
         redaction_engine=redaction_engine,
+        runtime_meta=runtime_meta,
     )
 
 
-def _build_structlog_processors() -> list[Any]:
+def _build_structlog_processors(runtime_meta: LoggingRuntimeMeta) -> list[Any]:
     return [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         _add_schema_version,
-        _add_runtime_meta,
+        _build_runtime_meta_processor(runtime_meta),
         ProcessorFormatter.wrap_for_formatter,
     ]
 
@@ -333,9 +377,10 @@ def _build_formatter(
     *,
     redaction_engine: LogRedactionEngine,
     renderer: Any,
+    runtime_meta: LoggingRuntimeMeta,
 ) -> ProcessorFormatter:
     return ProcessorFormatter(
-        foreign_pre_chain=_build_structlog_processors()[:-1],
+        foreign_pre_chain=_build_structlog_processors(runtime_meta)[:-1],
         processors=[
             structlog.processors.ExceptionRenderer(ExceptionDictTransformer()),
             redaction_engine.processor,
@@ -354,18 +399,26 @@ def _build_handler_stack(
     root_logger: logging.Logger,
     stderr_stream: TextIO | None,
     clock: Callable[[], datetime] | None,
+    runtime_meta: LoggingRuntimeMeta,
 ) -> StructlogHandlerStack:
     console_handler: logging.Handler | None = None
     file_handler: DailySizeRotatingFileHandler | None = None
 
     if config.sinks.console.enabled:
-        console_stream = stderr_stream if stderr_stream is not None else _resolve_console_stream(config.sinks.console.stream)
+        console_stream = (
+            stderr_stream
+            if stderr_stream is not None
+            else _resolve_console_stream(config.sinks.console.stream)
+        )
         console_handler = logging.StreamHandler(console_stream)
         console_handler.setLevel(logging.NOTSET)
         console_handler.setFormatter(
             _build_formatter(
                 redaction_engine=redaction_engine,
-                renderer=JSONRenderer() if config.sinks.console.format == "json" else _JsonTextRenderer(),
+                renderer=JSONRenderer()
+                if config.sinks.console.format == "json"
+                else _JsonTextRenderer(),
+                runtime_meta=runtime_meta,
             )
         )
         root_logger.addHandler(console_handler)
@@ -382,7 +435,10 @@ def _build_handler_stack(
         file_handler.setFormatter(
             _build_formatter(
                 redaction_engine=redaction_engine,
-                renderer=JSONRenderer() if config.sinks.file.format == "json" else _JsonTextRenderer(),
+                renderer=JSONRenderer()
+                if config.sinks.file.format == "json"
+                else _JsonTextRenderer(),
+                runtime_meta=runtime_meta,
             )
         )
         root_logger.addHandler(file_handler)
@@ -396,12 +452,8 @@ def _build_handler_stack(
 
 def _resolve_console_stream(stream_name: str) -> TextIO:
     if stream_name == "stderr":
-        import sys
-
         return sys.stderr
     if stream_name == "stdout":
-        import sys
-
         return sys.stdout
     raise ValueError(f"Unsupported console stream: {stream_name}")
 
