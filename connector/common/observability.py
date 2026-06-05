@@ -7,7 +7,7 @@ I/O, DI wiring или привязки к конкретным infra-реали�
 Границы ответственности:
     - Определять `ServiceComponent` как канонический ключ раскладки observability.
     - Предоставлять `ObservabilityLayout` как единственный источник имён runtime-артефактов.
-    - Хранить value-only policy для layout/redaction и command→component mapping.
+    - Хранить value-only policy для layout/redaction.
 
 Вне ответственности:
     - Создание директорий, открытие файлов, ротация и ретенция.
@@ -87,7 +87,9 @@ class ObservabilityLayout:
     ) -> Path:
         resolved_component = _coerce_component(component)
         resolved_now = self._resolve_now(now)
-        directory = self._component_dir(self.runtime_paths.logs_root, resolved_component)
+        directory = self._component_dir(
+            self.runtime_paths.logs_root, resolved_component
+        )
         filename = f"{resolved_now:%Y-%m-%d}_{resolved_component.value}.log"
         return directory / filename
 
@@ -99,7 +101,9 @@ class ObservabilityLayout:
     ) -> Path:
         resolved_component = _coerce_component(component)
         resolved_now = self._resolve_now(now)
-        directory = self._component_dir(self.runtime_paths.reports_root, resolved_component)
+        directory = self._component_dir(
+            self.runtime_paths.reports_root, resolved_component
+        )
         filename = f"{resolved_now:%Y-%m-%dT%H-%M-%S}_{resolved_component.value}.json"
         return directory / filename
 
@@ -111,7 +115,9 @@ class ObservabilityLayout:
     ) -> Path:
         resolved_component = _coerce_component(component)
         resolved_now = self._resolve_now(now)
-        directory = self._component_dir(self.runtime_paths.plans_root, resolved_component)
+        directory = self._component_dir(
+            self.runtime_paths.plans_root, resolved_component
+        )
         filename = f"{resolved_now:%Y-%m-%dT%H-%M-%S}_{resolved_component.value}.json"
         return directory / filename
 
@@ -138,29 +144,9 @@ class ObservabilityLayout:
         return root / component.value
 
 
-def component_for_command(command_name: str) -> ServiceComponent:
-    """Разрешить логический компонент по имени CLI-команды."""
-    normalized = command_name.strip().lower().replace("_", "-")
-    direct = {
-        "mapping": ServiceComponent.MAPPER,
-        "normalize": ServiceComponent.NORMALIZER,
-        "enrich": ServiceComponent.ENRICHER,
-        "match": ServiceComponent.MATCHER,
-        "resolve": ServiceComponent.RESOLVER,
-        "import-plan": ServiceComponent.PLANNER,
-        "import-apply": ServiceComponent.APPLIER,
-        "check-api": ServiceComponent.TOPOLOGY,
-    }
-    if normalized in direct:
-        return direct[normalized]
-    if normalized.startswith("cache-"):
-        return ServiceComponent.CACHE
-    if normalized.startswith("vault-"):
-        return ServiceComponent.VAULT
-    raise KeyError(f"Unknown command name for component mapping: {command_name}")
-
-
-def _coerce_component(component: ServiceComponent | ComponentIdentity) -> ServiceComponent:
+def _coerce_component(
+    component: ServiceComponent | ComponentIdentity,
+) -> ServiceComponent:
     if isinstance(component, ComponentIdentity):
         return component.component
     return component
@@ -173,5 +159,4 @@ __all__ = [
     "ObservabilityLayoutPolicy",
     "ObservabilityRedactionPolicy",
     "ServiceComponent",
-    "component_for_command",
 ]

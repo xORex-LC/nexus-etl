@@ -12,6 +12,7 @@
 | `containers.py` | DI-контейнеры (`dependency-injector`): `SqliteContainer`, `CacheContainer`, `TargetContainer`, `VaultContainer`, `ObservabilityContainer`, `PipelineContainer` и др. |
 | `dictionaries_container.py` | Отдельный DI-контейнер для справочников (выделен из-за объёма и независимости) |
 | `context.py` | `BoundCommandContext` — typed runtime context, передаваемый в каждый handler |
+| `component_mapping.py` | `component_for_command()` — разрешение CLI-команды в `ServiceComponent` (delivery-знание о вокабуляре команд; `ServiceComponent` живёт в `common/observability.py`) |
 | `stream_capture.py` | `StdStreamToLogger`, `TeeStream`, `DropCapturedStdStreamsFilter` — CLI-специфичный перехват stdout/stderr с redaction |
 
 ## Подпапки
