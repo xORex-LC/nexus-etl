@@ -11,7 +11,7 @@
 
 Вне ответственности:
     - Вызов sweeper из CLI orchestration.
-    - Ретенция отчётов и планов на текущем этапе.
+    - Удаление произвольных файлов вне observability naming pattern.
 """
 
 from __future__ import annotations
@@ -59,9 +59,63 @@ class ObservabilityRetentionSweeper:
     ) -> RetentionSweepResult:
         """Выполнить safe sweep для log-root выбранного компонента."""
         resolved_now = now or self._clock()
-        component_dir = self._layout.log_file(component, now=resolved_now).parent
-        marker_path = component_dir / ".retention.marker"
-        marker_day = resolved_now.astimezone(timezone.utc).date().isoformat()
+        return self._sweep_root(
+            root_dir=self._layout.log_file(component, now=resolved_now).parent,
+            component=component,
+            retention_days=retention_days,
+            retention_backups=retention_backups,
+            now=resolved_now,
+            marker_name=".retention.marker",
+        )
+
+    def sweep_reports(
+        self,
+        *,
+        component: ServiceComponent,
+        retention_days: int,
+        now: datetime | None = None,
+    ) -> RetentionSweepResult:
+        """Выполнить safe sweep для report-root выбранного компонента."""
+        resolved_now = now or self._clock()
+        return self._sweep_root(
+            root_dir=self._layout.report_file(component, now=resolved_now).parent,
+            component=component,
+            retention_days=retention_days,
+            retention_backups=0,
+            now=resolved_now,
+            marker_name=".report-retention.marker",
+        )
+
+    def sweep_plans(
+        self,
+        *,
+        component: ServiceComponent,
+        retention_days: int,
+        now: datetime | None = None,
+    ) -> RetentionSweepResult:
+        """Выполнить safe sweep для plan-root выбранного компонента."""
+        resolved_now = now or self._clock()
+        return self._sweep_root(
+            root_dir=self._layout.plan_file(component, now=resolved_now).parent,
+            component=component,
+            retention_days=retention_days,
+            retention_backups=0,
+            now=resolved_now,
+            marker_name=".plan-retention.marker",
+        )
+
+    def _sweep_root(
+        self,
+        *,
+        root_dir: Path,
+        component: ServiceComponent,
+        retention_days: int,
+        retention_backups: int,
+        now: datetime,
+        marker_name: str,
+    ) -> RetentionSweepResult:
+        marker_path = root_dir / marker_name
+        marker_day = now.astimezone(timezone.utc).date().isoformat()
 
         if marker_path.exists() and marker_path.is_file():
             marker_value = marker_path.read_text(encoding="utf-8").strip()
@@ -69,18 +123,18 @@ class ObservabilityRetentionSweeper:
                 return RetentionSweepResult(deleted_files=(), skipped_by_marker=True)
 
         deleted: list[Path] = []
-        if component_dir.exists():
+        if root_dir.exists():
             deleted.extend(
                 self._delete_expired_files(
-                    component_dir=component_dir,
+                    component_dir=root_dir,
                     component=component,
                     retention_days=retention_days,
                     retention_backups=retention_backups,
-                    today=resolved_now.astimezone(timezone.utc).date(),
+                    today=now.astimezone(timezone.utc).date(),
                 )
             )
 
-        component_dir.mkdir(parents=True, exist_ok=True)
+        root_dir.mkdir(parents=True, exist_ok=True)
         marker_path.write_text(marker_day, encoding="utf-8")
         return RetentionSweepResult(
             deleted_files=tuple(sorted(deleted)), skipped_by_marker=False

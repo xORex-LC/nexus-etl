@@ -9,12 +9,18 @@
 
 from __future__ import annotations
 
-import json
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from connector.common.observability import (
+    ComponentIdentity,
+    ObservabilityLayout,
+    ServiceComponent,
+)
 from connector.domain.reporting.context import asdict_envelope
 from connector.domain.reporting.models import ReportEnvelope
+from connector.infra.artifacts._atomic_json import atomic_write_json
 
 
 @runtime_checkable
@@ -50,6 +56,29 @@ class JsonReportRenderer(IReportRenderer):
         report_dir_path.mkdir(parents=True, exist_ok=True)
         report_path = str(report_dir_path / f"{file_base_name}.json")
         payload = asdict_envelope(envelope)
-        with open(report_path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        atomic_write_json(path=report_path, payload=payload)
         return report_path
+
+    def render_with_layout(
+        self,
+        *,
+        envelope: ReportEnvelope,
+        layout: ObservabilityLayout,
+        component: ServiceComponent | ComponentIdentity,
+        now: datetime | None = None,
+    ) -> str:
+        """Записать отчёт по новой component-aware observability раскладке.
+
+        Args:
+            envelope: Готовый report envelope.
+            layout: Чистый observability layout resolver.
+            component: Логический компонент сервиса.
+            now: Время для детерминированного имени файла в тестах.
+
+        Returns:
+            Абсолютный путь к записанному report artifact.
+        """
+        report_path = layout.report_file(component, now=now)
+        payload = asdict_envelope(envelope)
+        atomic_write_json(path=report_path, payload=payload)
+        return str(report_path)

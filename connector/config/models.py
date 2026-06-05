@@ -28,6 +28,7 @@ from typing import ClassVar, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from connector.common.observability import ClockMode, ServiceComponent
+from connector.common.sanitize import DEFAULT_SENSITIVE_FIELD_KEYS
 
 
 def _require_non_blank_path(value: str, *, field_name: str) -> str:
@@ -117,7 +118,7 @@ class LoggingRedactionConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     enabled: bool = True
-    keys: tuple[str, ...] = ("password", "token", "secret")
+    keys: tuple[str, ...] = DEFAULT_SENSITIVE_FIELD_KEYS
 
     @field_validator("keys", mode="before")
     @classmethod

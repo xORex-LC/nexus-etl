@@ -22,6 +22,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Literal, Protocol
 
+from connector.common.sanitize import DEFAULT_SENSITIVE_FIELD_KEYS
+
 ClockMode = Literal["utc", "local"]
 
 
@@ -53,7 +55,7 @@ class ObservabilityLayoutPolicy:
 @dataclass(frozen=True)
 class ObservabilityRedactionPolicy:
     enabled: bool = True
-    keys: tuple[str, ...] = ("password", "token", "secret")
+    keys: tuple[str, ...] = DEFAULT_SENSITIVE_FIELD_KEYS
 
 
 class RuntimePathsLike(Protocol):
