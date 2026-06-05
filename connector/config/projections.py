@@ -29,6 +29,7 @@
 Связанные ADR:
     - CONFIG-DEC-003: settings taxonomy and boundary adapters
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,7 +47,9 @@ from connector.domain.secrets.policy.rollout_policy import VaultRolloutPolicySet
 from connector.domain.transform.matcher.match_deps import MatchBatchSettings
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.infra.sqlite.config import SqliteDbConfig
-from connector.usecases.operations.vault_management_settings import VaultManagementSettings
+from connector.usecases.operations.vault_management_settings import (
+    VaultManagementSettings,
+)
 
 
 @dataclass(frozen=True)
@@ -233,7 +236,9 @@ def to_observability_layout_policy(config: AppConfig) -> ObservabilityLayoutPoli
     )
 
 
-def to_observability_redaction_policy(config: AppConfig) -> ObservabilityRedactionPolicy:
+def to_observability_redaction_policy(
+    config: AppConfig,
+) -> ObservabilityRedactionPolicy:
     """AppConfig.observability.logging.redaction → value-only redaction policy."""
     redaction = config.observability.logging.redaction
     return ObservabilityRedactionPolicy(

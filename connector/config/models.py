@@ -20,6 +20,7 @@
     - CONFIG-DEC-002: migration to Pydantic BaseModel + unified loader
     - CONFIG-DEC-003: settings taxonomy and boundary adapters
 """
+
 from __future__ import annotations
 
 from typing import ClassVar, Literal
@@ -164,7 +165,9 @@ class LoggingConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     level: LogLevelName = "INFO"
-    components: dict[ServiceComponent, ComponentLoggingConfig] = Field(default_factory=dict)
+    components: dict[ServiceComponent, ComponentLoggingConfig] = Field(
+        default_factory=dict
+    )
     redaction: LoggingRedactionConfig = LoggingRedactionConfig()
     sinks: LoggingSinksConfig = LoggingSinksConfig()
 
@@ -316,6 +319,7 @@ class VaultRolloutConfig(BaseModel):
         if isinstance(v, str):
             return tuple(s.strip() for s in v.split(",") if s.strip())
         return v
+
     # дефолт совпадает с доменным VaultRolloutPolicySettings.canary_seed
     canary_seed: str = "vault-rollout-v1"
     # дефолты выровнены по текущим VaultRolloutThresholds (regression guard)
@@ -338,7 +342,9 @@ class SqliteConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     # Глобальные дефолты (применяются ко всем DB при отсутствии per-DB override)
-    journal_mode: Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] = "WAL"
+    journal_mode: Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] = (
+        "WAL"
+    )
     synchronous: Literal["OFF", "NORMAL", "FULL", "EXTRA"] = "NORMAL"
     busy_timeout_ms: int = Field(default=5000, ge=0)
     wal_autocheckpoint: int = Field(default=1000, ge=0)
@@ -346,14 +352,18 @@ class SqliteConfig(BaseModel):
     # Vault overrides (None = использовать global)
     vault_db_path: str | None = None
     vault_transaction_mode: Literal["deferred", "immediate", "exclusive"] = "immediate"
-    vault_journal_mode: Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] | None = None
+    vault_journal_mode: (
+        Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] | None
+    ) = None
     vault_busy_timeout_ms: int | None = Field(default=None, ge=0)
     vault_schema_retry_count: int = Field(default=2, ge=0, le=10)
 
     # Cache overrides (None = использовать global)
     cache_db_path: str | None = None
     cache_transaction_mode: Literal["deferred", "immediate", "exclusive"] = "deferred"
-    cache_journal_mode: Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] | None = None
+    cache_journal_mode: (
+        Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] | None
+    ) = None
     cache_busy_timeout_ms: int | None = Field(default=None, ge=0)
 
     # Identity (только global дефолты; нет per-DB override полей)
