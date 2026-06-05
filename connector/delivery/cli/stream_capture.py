@@ -4,12 +4,12 @@
 строки в исходный stream и в logger, но сам не конфигурирует logging backend:
 это остаётся в `infra/logging/`.
 
-Responsibilities:
+Границы ответственности:
     - Захватывать stdout/stderr построчно без потери оригинального вывода.
     - Применять redaction к перехваченным строкам перед эмиссией в лог.
     - Сохранять семантику отсутствия задвоения console-mirror для stdout/stderr.
 
-Out of scope:
+Вне ответственности:
     - Создание/конфигурация logger handlers.
     - Решение, какой логгер или какой уровень использовать для конкретной команды.
 """
@@ -20,15 +20,7 @@ import logging
 from typing import TextIO
 
 from connector.infra.logging.redaction import LogRedactionEngine
-
-
-class DropCapturedStdStreamsFilter(logging.Filter):
-    """Отсекать console-mirror для уже перехваченных stdout/stderr сообщений."""
-
-    _CAPTURED_COMPONENTS = frozenset({"stdout", "stderr"})
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        return getattr(record, "component", None) not in self._CAPTURED_COMPONENTS
+from connector.infra.logging.setup import DropCapturedStdStreamsFilter
 
 
 class StdStreamToLogger:

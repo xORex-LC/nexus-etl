@@ -5,10 +5,12 @@ from __future__ import annotations
 import io
 import json
 import logging
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+import structlog
 
 from connector.common.observability import (
     ObservabilityLayout,
@@ -35,6 +37,23 @@ from connector.infra.logging.runtime import (
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _restore_logging_runtime_state() -> Iterator[None]:
+    root_logger = logging.getLogger()
+    original_handlers = list(root_logger.handlers)
+    original_level = root_logger.level
+    original_propagate = root_logger.propagate
+
+    yield
+
+    root_logger.handlers.clear()
+    for handler in original_handlers:
+        root_logger.addHandler(handler)
+    root_logger.setLevel(original_level)
+    root_logger.propagate = original_propagate
+    structlog.reset_defaults()
+
+
 def _layout(tmp_path: Path) -> ObservabilityLayout:
     runtime_paths = detect_runtime_paths(
         overrides=RuntimePathOverrides(
@@ -55,19 +74,26 @@ def _json_line(buffer: io.StringIO) -> list[dict[str, object]]:
     return [json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()]
 
 
-def test_structlog_runtime_writes_json_to_stderr_with_correlation_fields(tmp_path: Path) -> None:
+def test_structlog_runtime_writes_json_to_stderr_with_correlation_fields(
+    tmp_path: Path,
+) -> None:
     stderr = io.StringIO()
     runtime = build_structured_logging_runtime(
         config=LoggingConfig(
             sinks=LoggingSinksConfig(
                 file=FileLoggingSinkConfig(enabled=False),
-                console=ConsoleLoggingSinkConfig(enabled=True, stream="stderr", format="json"),
+                console=ConsoleLoggingSinkConfig(
+                    enabled=True, stream="stderr", format="json"
+                ),
             )
         ),
         layout=_layout(tmp_path),
         redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
         component=ServiceComponent.MAPPER,
         stderr_stream=stderr,
+        root_logger_name="",
+        app_version="1.2.3",
+        git_rev="abc123",
     )
     bind_observability_context(
         run_id="run-1",
@@ -76,7 +102,10 @@ def test_structlog_runtime_writes_json_to_stderr_with_correlation_fields(tmp_pat
         dataset="employees",
     )
 
-    runtime.get_logger(ServiceComponent.MAPPER).info("row processed", row_ref="r-1")
+    runtime.get_logger(
+        ServiceComponent.MAPPER,
+        logger_name="tests.runtime.mapper.child",
+    ).info("row processed", row_ref="r-1")
 
     payload = _json_line(stderr)[0]
     assert payload["event"] == "row processed"
@@ -86,10 +115,14 @@ def test_structlog_runtime_writes_json_to_stderr_with_correlation_fields(tmp_pat
     assert payload["dataset"] == "employees"
     assert payload["level"] == "info"
     assert payload["schema_version"] == "1.0"
+    assert payload["app_version"] == "1.2.3"
+    assert payload["git_rev"] == "abc123"
     runtime.close()
 
 
-def test_daily_size_handler_appends_same_day_and_switches_on_new_day(tmp_path: Path) -> None:
+def test_daily_size_handler_appends_same_day_and_switches_on_new_day(
+    tmp_path: Path,
+) -> None:
     current = datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc)
     logger = logging.getLogger("tests.daily-size")
     logger.handlers.clear()
@@ -146,21 +179,28 @@ def test_daily_size_handler_rolls_within_same_day(tmp_path: Path) -> None:
     handler.close()
 
 
-def test_component_override_allows_debug_only_for_selected_component(tmp_path: Path) -> None:
+def test_component_override_allows_debug_only_for_selected_component(
+    tmp_path: Path,
+) -> None:
     stderr = io.StringIO()
     runtime = build_structured_logging_runtime(
         config=LoggingConfig(
             level="INFO",
-            components={ServiceComponent.ENRICHER: ComponentLoggingConfig(level="DEBUG")},
+            components={
+                ServiceComponent.ENRICHER: ComponentLoggingConfig(level="DEBUG")
+            },
             sinks=LoggingSinksConfig(
                 file=FileLoggingSinkConfig(enabled=False),
-                console=ConsoleLoggingSinkConfig(enabled=True, stream="stderr", format="json"),
+                console=ConsoleLoggingSinkConfig(
+                    enabled=True, stream="stderr", format="json"
+                ),
             ),
         ),
         layout=_layout(tmp_path),
         redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
         component=ServiceComponent.MAPPER,
         stderr_stream=stderr,
+        root_logger_name="",
     )
     bind_observability_context(
         run_id="run-1",
@@ -168,15 +208,21 @@ def test_component_override_allows_debug_only_for_selected_component(tmp_path: P
         component=ServiceComponent.MAPPER,
     )
 
-    runtime.get_logger(ServiceComponent.MAPPER, logger_name="tests.component.mapper").debug("drop-me")
-    runtime.get_logger(ServiceComponent.ENRICHER, logger_name="tests.component.enricher").debug("keep-me")
+    runtime.get_logger(
+        ServiceComponent.MAPPER, logger_name="tests.runtime.component.mapper"
+    ).debug("drop-me")
+    runtime.get_logger(
+        ServiceComponent.ENRICHER, logger_name="tests.runtime.component.enricher"
+    ).debug("keep-me")
 
     payloads = _json_line(stderr)
     assert [payload["event"] for payload in payloads] == ["keep-me"]
     runtime.close()
 
 
-def test_redaction_covers_kwargs_regex_traceback_foreign_and_capture(tmp_path: Path) -> None:
+def test_redaction_covers_kwargs_regex_traceback_foreign_and_capture(
+    tmp_path: Path,
+) -> None:
     stderr = io.StringIO()
     redaction_engine = LogRedactionEngine(
         ObservabilityRedactionPolicy(enabled=True, keys=("password", "token", "secret"))
@@ -185,7 +231,9 @@ def test_redaction_covers_kwargs_regex_traceback_foreign_and_capture(tmp_path: P
         config=LoggingConfig(
             sinks=LoggingSinksConfig(
                 file=FileLoggingSinkConfig(enabled=False),
-                console=ConsoleLoggingSinkConfig(enabled=True, stream="stderr", format="json"),
+                console=ConsoleLoggingSinkConfig(
+                    enabled=True, stream="stderr", format="json"
+                ),
             )
         ),
         layout=_layout(tmp_path),
@@ -200,7 +248,10 @@ def test_redaction_covers_kwargs_regex_traceback_foreign_and_capture(tmp_path: P
         component=ServiceComponent.APPLIER,
     )
 
-    logger = runtime.get_logger(ServiceComponent.APPLIER, logger_name="tests.redaction")
+    logger = runtime.get_logger(
+        ServiceComponent.APPLIER,
+        logger_name="tests.runtime.redaction.app",
+    )
     logger.info(
         "token=event-secret",
         password="kw-secret",
@@ -212,9 +263,11 @@ def test_redaction_covers_kwargs_regex_traceback_foreign_and_capture(tmp_path: P
     except RuntimeError:
         logger.exception("password=exception-secret")
 
-    logging.getLogger("foreign.runtime").error("foreign token=foreign-secret")
+    logging.getLogger("tests.runtime.redaction.foreign").error(
+        "foreign token=foreign-secret"
+    )
 
-    capture_logger = logging.getLogger("capture.runtime")
+    capture_logger = logging.getLogger("tests.runtime.redaction.capture")
     capture_stream = StdStreamToLogger(
         capture_logger,
         logging.INFO,
