@@ -20,7 +20,7 @@
 | `polars/` | Shared Polars adapters для vectorized исполнения transport-neutral domain contracts |
 | `topology/` | `SqliteTopologyTargetReader` — cache-backed adapter для target topology read seam |
 | `logging/` | Structlog runtime (`StructuredLoggingRuntime`, redaction, daily+size file sink) + legacy compatibility helpers для старых logger call-sites |
-| `observability/` | `JsonlRunLedger` / `SqliteRunLedger` + `ObservabilityRetentionSweeper` — run index and safe cleanup observability artifacts |
+| `observability/` | ledger + viewer + pointer publisher + `ObservabilityRetentionSweeper` — run index, latest-artifact access and safe cleanup observability artifacts |
 | `artifacts/` | `PlanReader`, `PlanWriter`, `ReportRenderer` |
 
 ## Зависимости

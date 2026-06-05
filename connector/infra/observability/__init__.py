@@ -14,11 +14,16 @@ from .ledger import (
     build_run_ledger_backend,
     build_run_ledger_record,
 )
+from .pointers import LatestArtifactPointerPublisher, PointerPublishResult
 from .retention import ObservabilityRetentionSweeper, RetentionSweepResult
+from .viewer import ObservabilityArtifactViewer
 
 __all__ = [
     "JsonlRunLedger",
+    "LatestArtifactPointerPublisher",
     "ObservabilityRetentionSweeper",
+    "ObservabilityArtifactViewer",
+    "PointerPublishResult",
     "RetentionSweepResult",
     "RunLedgerBackend",
     "RunLedgerRecord",

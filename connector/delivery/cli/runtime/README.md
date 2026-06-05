@@ -9,7 +9,7 @@ Lifecycle-оркестрация выполнения CLI-команды: ини
 | Файл | Назначение |
 |---|---|
 | `contracts.py` | `CommandHandler` (Protocol) — явный контракт `(ctx, opts, sink) → CommandResult`; `NullReportSink` — no-op для режимов без отчёта |
-| `orchestrator.py` | Полный lifecycle: резолвит `ServiceComponent`, инициализирует structlog runtime через DI, bind/clear contextvars, запускает sweeper, вызывает handler, пишет component-aware report artifact и best-effort ledger entry |
+| `orchestrator.py` | Полный lifecycle: резолвит `ServiceComponent`, инициализирует structlog runtime через DI, bind/clear contextvars, запускает sweeper, вызывает handler, пишет component-aware report artifact, best-effort ledger entry и stable pointers `current.log` / `latest.json` |
 | `topology_bootstrap.py` | `TopologyBootstrapStep` — pre-handler topology bootstrap, source validation, short-circuit и runtime binding для planning pipeline |
 | `result_adapter.py` | Адаптирует legacy-форматы результатов в единый `CommandResult` |
 | `result_mapper.py` | Маппит `CommandResult` → report events (`SetStatusEvent`, `SetRowCountersEvent`) |

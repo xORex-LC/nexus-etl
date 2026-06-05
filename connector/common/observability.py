@@ -40,6 +40,13 @@ class ServiceComponent(str, Enum):
     CACHE = "cache"
     VAULT = "vault"
     TOPOLOGY = "topology"
+    OBSERVABILITY = "observability"
+
+
+class ObservabilityArtifactKind(str, Enum):
+    LOG = "log"
+    REPORT = "report"
+    PLAN = "plan"
 
 
 @dataclass(frozen=True)
@@ -177,6 +184,7 @@ __all__ = [
     "ClockMode",
     "ComponentIdentity",
     "LedgerBackendName",
+    "ObservabilityArtifactKind",
     "ObservabilityLayout",
     "ObservabilityLayoutPolicy",
     "ObservabilityRedactionPolicy",

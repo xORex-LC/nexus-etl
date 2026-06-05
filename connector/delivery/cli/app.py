@@ -21,12 +21,24 @@ from typing import Any
 
 import typer
 
+from connector.common.observability import (
+    ObservabilityArtifactKind,
+    ServiceComponent,
+)
 from connector.config.config import SettingsLoadError
 from connector.config.loader import load_app_config
 from connector.config.diagnostics import translate_settings_load_error
-from connector.config.projections import to_dataset_registry_path, to_operational_paths, to_runtime_path_overrides
+from connector.config.projections import (
+    to_dataset_registry_path,
+    to_operational_paths,
+    to_runtime_path_overrides,
+)
 from connector.common.run_id import generate_run_id, resolve_pipeline_run_id
-from connector.delivery.cli.context import CommandPaths, CommandContext, UnboundCommandContext
+from connector.delivery.cli.context import (
+    CommandPaths,
+    CommandContext,
+    UnboundCommandContext,
+)
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.runtime import run_with_report, run_without_report
 from connector.delivery.cli import options as cli_options
@@ -44,9 +56,11 @@ from connector.delivery.commands import (
     enrich as enrich_command,
     import_apply as import_apply_command,
     import_plan as import_plan_command,
+    maintenance_prune as maintenance_prune_command,
     match as match_command,
     mapping as mapping_command,
     normalize as normalize_command,
+    obs_artifacts as obs_artifacts_command,
     resolve as resolve_command,
     vault_management as vault_management_command,
 )
@@ -56,6 +70,8 @@ from connector.domain.dsl.loader import configure_registry_path, configure_runti
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 cache_app = typer.Typer(no_args_is_help=True)
 import_app = typer.Typer(no_args_is_help=True)
+maintenance_app = typer.Typer(no_args_is_help=True)
+obs_app = typer.Typer(no_args_is_help=True)
 user_app = typer.Typer(no_args_is_help=True)
 vault_management_app = typer.Typer(no_args_is_help=True)
 
@@ -74,7 +90,9 @@ def _build_ctx(
     if app_config is None:
         raise RuntimeError("App config is not initialized")
     operational_paths = to_operational_paths(app_config)
-    catalog = build_diagnostics_catalog(dataset, strict=app_config.observability.diagnostics.strict)
+    catalog = build_diagnostics_catalog(
+        dataset, strict=app_config.observability.diagnostics.strict
+    )
     extra: dict[str, Any] = {
         "sources": ctx.obj.get("sources"),
         "quiet": bool(ctx.obj.get("quiet")),
@@ -84,9 +102,15 @@ def _build_ctx(
         usecase_name = COMMAND_TO_USECASE.get(command_key)
         extra["settings_contract"] = {
             "command_key": command_key,
-            "command_slices": [t.__name__ for t in COMMAND_SETTINGS_SLICE_MAP.get(command_key, ())],
+            "command_slices": [
+                t.__name__ for t in COMMAND_SETTINGS_SLICE_MAP.get(command_key, ())
+            ],
             "usecase": usecase_name,
-            "usecase_slices": [t.__name__ for t in USECASE_SETTINGS_SLICE_MAP.get(usecase_name, ())] if usecase_name else [],
+            "usecase_slices": [
+                t.__name__ for t in USECASE_SETTINGS_SLICE_MAP.get(usecase_name, ())
+            ]
+            if usecase_name
+            else [],
         }
     return CommandContext(
         logger=ctx.obj["logger"],
@@ -105,7 +129,9 @@ def _build_ctx(
 def main(
     ctx: typer.Context,
     config: str | None = typer.Option(None, "--config", help="Path to config.yml"),
-    run_id: str | None = typer.Option(None, "--run-id", help="Run identifier (UUID). If omitted, generated."),
+    run_id: str | None = typer.Option(
+        None, "--run-id", help="Run identifier (UUID). If omitted, generated."
+    ),
     quiet: bool = typer.Option(
         False,
         "--quiet",
@@ -116,30 +142,60 @@ def main(
         "--console-log-mirror",
         help="Mirror structured runtime logs to the console stderr in addition to the log file.",
     ),
-    log_level: str | None = typer.Option(None, "--log-level", help="Log level: ERROR|WARN|INFO|DEBUG"),
-    log_json: bool | None = typer.Option(None, "--log-json", help="Enable JSON logging (reserved)"),
+    log_level: str | None = typer.Option(
+        None, "--log-level", help="Log level: ERROR|WARN|INFO|DEBUG"
+    ),
+    log_json: bool | None = typer.Option(
+        None, "--log-json", help="Enable JSON logging (reserved)"
+    ),
     log_dir: str | None = typer.Option(None, "--log-dir", help="Directory for logs."),
-    report_dir: str | None = typer.Option(None, "--report-dir", help="Directory for reports."),
-    cache_dir: str | None = typer.Option(None, "--cache-dir", help="Directory for cache (SQLite later)."),
+    report_dir: str | None = typer.Option(
+        None, "--report-dir", help="Directory for reports."
+    ),
+    cache_dir: str | None = typer.Option(
+        None, "--cache-dir", help="Directory for cache (SQLite later)."
+    ),
     host: str | None = typer.Option(None, "--host", help="API host/IP"),
     port: int | None = typer.Option(None, "--port", help="API port"),
-    api_username: str | None = typer.Option(None, "--api-username", help="API username"),
-    api_password: str | None = typer.Option(None, "--api-password", help="API password (avoid; use env/file)"),
-    api_passwordFile: str | None = typer.Option(None, "--api-password-file", help="Read API password from file"),
-    tls_skip_verify: bool | None = typer.Option(None, "--tls-skip-verify", help="Disable TLS verification"),
+    api_username: str | None = typer.Option(
+        None, "--api-username", help="API username"
+    ),
+    api_password: str | None = typer.Option(
+        None, "--api-password", help="API password (avoid; use env/file)"
+    ),
+    api_passwordFile: str | None = typer.Option(
+        None, "--api-password-file", help="Read API password from file"
+    ),
+    tls_skip_verify: bool | None = typer.Option(
+        None, "--tls-skip-verify", help="Disable TLS verification"
+    ),
     ca_file: str | None = typer.Option(None, "--ca-file", help="CA file path"),
-    page_size: int | None = typer.Option(None, "--page-size", help="Page size for API pagination"),
-    max_pages: int | None = typer.Option(None, "--max-pages", help="Max pages to fetch from API"),
-    timeout_seconds: float | None = typer.Option(None, "--timeout-seconds", help="API timeout in seconds"),
-    retries: int | None = typer.Option(None, "--retries", help="Retry attempts for API calls"),
-    retry_backoff_seconds: float | None = typer.Option(None, "--retry-backoff-seconds", help="Base backoff for retries"),
-    match_batch_size: int | None = typer.Option(None, "--match-batch-size", help="Match micro-batch size"),
+    page_size: int | None = typer.Option(
+        None, "--page-size", help="Page size for API pagination"
+    ),
+    max_pages: int | None = typer.Option(
+        None, "--max-pages", help="Max pages to fetch from API"
+    ),
+    timeout_seconds: float | None = typer.Option(
+        None, "--timeout-seconds", help="API timeout in seconds"
+    ),
+    retries: int | None = typer.Option(
+        None, "--retries", help="Retry attempts for API calls"
+    ),
+    retry_backoff_seconds: float | None = typer.Option(
+        None, "--retry-backoff-seconds", help="Base backoff for retries"
+    ),
+    match_batch_size: int | None = typer.Option(
+        None, "--match-batch-size", help="Match micro-batch size"
+    ),
     match_flush_interval_ms: int | None = typer.Option(
         None,
         "--match-flush-interval-ms",
         help="Match micro-batch flush interval (ms)",
     ),
-    resolve_batch_size: int | None = typer.Option(None, "--resolve-batch-size", help="Resolve micro-batch size"),
+    resolve_batch_size: int | None = typer.Option(
+        None, "--resolve-batch-size", help="Resolve micro-batch size"
+    ),
     resolve_flush_interval_ms: int | None = typer.Option(
         None,
         "--resolve-flush-interval-ms",
@@ -154,7 +210,9 @@ def main(
     if api_passwordFile and not api_password:
         p = Path(api_passwordFile)
         if not p.exists() or not p.is_file():
-            typer.echo(f"ERROR: api-password-file not found: {api_passwordFile}", err=True)
+            typer.echo(
+                f"ERROR: api-password-file not found: {api_passwordFile}", err=True
+            )
             raise typer.Exit(code=2)
         api_password = p.read_text(encoding="utf-8").strip()
 
@@ -215,7 +273,9 @@ def main(
         "pipeline_run_id": pipeline_run_id,
         "app_config": loaded_app.app_config,
         "operational_paths": operational_paths,
-        "sources": sorted({v for v in loaded_app.source_trace.values() if v != "default"}),
+        "sources": sorted(
+            {v for v in loaded_app.source_trace.values() if v != "default"}
+        ),
         "settings_source_trace": loaded_app.source_trace,
         "configPath": config,
         "logger": None,
@@ -247,7 +307,9 @@ def mapping(
         command_name="mapping",
         opts=opts,
         handler=mapping_command.handler,
-        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(
+            requires_source=True, requires_dataset=True, requires_cache=True
+        ),
     )
 
 
@@ -276,7 +338,9 @@ def match(
         command_name="match",
         opts=opts,
         handler=match_command.handler,
-        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(
+            requires_source=True, requires_dataset=True, requires_cache=True
+        ),
     )
 
 
@@ -303,7 +367,9 @@ def normalize(
         command_name="normalize",
         opts=opts,
         handler=normalize_command.handler,
-        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(
+            requires_source=True, requires_dataset=True, requires_cache=True
+        ),
     )
 
 
@@ -332,7 +398,9 @@ def resolve(
         command_name="resolve",
         opts=opts,
         handler=resolve_command.handler,
-        requirements=Requirements(requires_source=True, requires_dataset=True, requires_cache=True),
+        requirements=Requirements(
+            requires_source=True, requires_dataset=True, requires_cache=True
+        ),
     )
 
 
@@ -450,8 +518,12 @@ def checkApi(ctx: typer.Context):
 @cache_app.command("refresh")
 def cacheRefresh(
     ctx: typer.Context,
-    page_size: int | None = typer.Option(None, "--page-size", help="Page size for API pagination"),
-    max_pages: int | None = typer.Option(None, "--max-pages", help="Maximum pages to fetch from API"),
+    page_size: int | None = typer.Option(
+        None, "--page-size", help="Page size for API pagination"
+    ),
+    max_pages: int | None = typer.Option(
+        None, "--max-pages", help="Maximum pages to fetch from API"
+    ),
     timeout_seconds: float | None = cli_options.TIMEOUT_SECONDS,
     retries: int | None = cli_options.RETRIES,
     retry_backoff_seconds: float | None = cli_options.RETRY_BACKOFF_SECONDS,
@@ -530,7 +602,9 @@ def cacheClear(
 def vaultManagementInit(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
-    dryRun: bool = typer.Option(False, "--dry-run", help="Validate and show plan without writes"),
+    dryRun: bool = typer.Option(
+        False, "--dry-run", help="Validate and show plan without writes"
+    ),
     nonInteractive: bool = typer.Option(
         False,
         "--non-interactive",
@@ -561,8 +635,12 @@ def vaultManagementInit(
 @vault_management_app.command("status")
 def vaultManagementStatus(
     ctx: typer.Context,
-    force: bool = typer.Option(False, "--force", help="Accepted for command contract consistency"),
-    dryRun: bool = typer.Option(False, "--dry-run", help="No-op for read-only status command"),
+    force: bool = typer.Option(
+        False, "--force", help="Accepted for command contract consistency"
+    ),
+    dryRun: bool = typer.Option(
+        False, "--dry-run", help="No-op for read-only status command"
+    ),
     nonInteractive: bool = typer.Option(
         False,
         "--non-interactive",
@@ -594,7 +672,9 @@ def vaultManagementStatus(
 def vaultManagementRotate(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
-    dryRun: bool = typer.Option(False, "--dry-run", help="Validate and show plan without writes"),
+    dryRun: bool = typer.Option(
+        False, "--dry-run", help="Validate and show plan without writes"
+    ),
     nonInteractive: bool = typer.Option(
         False,
         "--non-interactive",
@@ -626,7 +706,9 @@ def vaultManagementRotate(
 def vaultManagementRewrap(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Skip confirmation step"),
-    dryRun: bool = typer.Option(False, "--dry-run", help="Validate and show plan without writes"),
+    dryRun: bool = typer.Option(
+        False, "--dry-run", help="Validate and show plan without writes"
+    ),
     nonInteractive: bool = typer.Option(
         False,
         "--non-interactive",
@@ -654,7 +736,88 @@ def vaultManagementRewrap(
     )
 
 
+@maintenance_app.command("prune")
+def maintenancePrune(
+    ctx: typer.Context,
+    component: ServiceComponent | None = typer.Option(
+        None,
+        "--component",
+        help="Optional component filter (e.g. planner, applier, cache).",
+    ),
+):
+    opts = maintenance_prune_command.Options(component=component)
+    command_ctx = _build_ctx(ctx, command_key="maintenance-prune")
+    run_with_report(
+        ctx=command_ctx,
+        command_name="maintenance-prune",
+        opts=opts,
+        handler=maintenance_prune_command.handler,
+        requirements=Requirements(),
+    )
+
+
+@obs_app.command("latest")
+def obsLatest(
+    ctx: typer.Context,
+    component: ServiceComponent = typer.Argument(
+        ..., help="Logical service component (planner, applier, enricher, ...)."
+    ),
+    artifact: ObservabilityArtifactKind = typer.Option(
+        ObservabilityArtifactKind.REPORT,
+        "--artifact",
+        help="Artifact type to display.",
+    ),
+):
+    opts = obs_artifacts_command.LatestOptions(
+        component=component,
+        artifact=artifact,
+    )
+    command_ctx = _build_ctx(ctx, command_key="obs-latest")
+    run_with_report(
+        ctx=command_ctx,
+        command_name="obs-latest",
+        opts=opts,
+        handler=obs_artifacts_command.latest_handler,
+        requirements=Requirements(),
+    )
+
+
+@obs_app.command("tail")
+def obsTail(
+    ctx: typer.Context,
+    component: ServiceComponent = typer.Argument(
+        ..., help="Logical service component (planner, applier, enricher, ...)."
+    ),
+    artifact: ObservabilityArtifactKind = typer.Option(
+        ObservabilityArtifactKind.LOG,
+        "--artifact",
+        help="Artifact type to read tail from.",
+    ),
+    lines: int = typer.Option(
+        20,
+        "--lines",
+        min=1,
+        help="How many last lines to print.",
+    ),
+):
+    opts = obs_artifacts_command.TailOptions(
+        component=component,
+        artifact=artifact,
+        lines=lines,
+    )
+    command_ctx = _build_ctx(ctx, command_key="obs-tail")
+    run_with_report(
+        ctx=command_ctx,
+        command_name="obs-tail",
+        opts=opts,
+        handler=obs_artifacts_command.tail_handler,
+        requirements=Requirements(),
+    )
+
+
 app.add_typer(cache_app, name="cache")
 app.add_typer(import_app, name="import")
+app.add_typer(maintenance_app, name="maintenance")
+app.add_typer(obs_app, name="obs")
 app.add_typer(user_app, name="user")
 app.add_typer(vault_management_app, name="vault-management")

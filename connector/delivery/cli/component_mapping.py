@@ -25,6 +25,9 @@ _DIRECT_COMMAND_COMPONENTS: dict[str, ServiceComponent] = {
     "import-plan": ServiceComponent.PLANNER,
     "import-apply": ServiceComponent.APPLIER,
     "check-api": ServiceComponent.TOPOLOGY,
+    "maintenance-prune": ServiceComponent.OBSERVABILITY,
+    "obs-latest": ServiceComponent.OBSERVABILITY,
+    "obs-tail": ServiceComponent.OBSERVABILITY,
 }
 
 
