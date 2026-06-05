@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from connector.common.observability import ObservabilityLayout, ObservabilityLayoutPolicy, ServiceComponent
+from connector.common.observability import (
+    ObservabilityLayout,
+    ObservabilityLayoutPolicy,
+    ServiceComponent,
+)
 from connector.common.runtime_paths import RuntimePathOverrides, detect_runtime_paths
 from connector.infra.observability.retention import ObservabilityRetentionSweeper
 

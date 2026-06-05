@@ -4,13 +4,15 @@
 
 Инфраструктурные adapters observability-подсистемы поверх value-object layout/policy из `common/observability.py`.
 
-На текущем этапе здесь живёт безопасная ретенция логов; следующие этапы смогут добавить runtime adapters для ledger и artifact maintenance.
+На текущем этапе здесь живёт безопасная ретенция observability-артефактов:
+логов, отчётов и планов. Sweeper работает только внутри component-partition
+каталогов и не переключает orchestration call-sites сам по себе.
 
 ## Файлы
 
 | Файл | Назначение |
 |---|---|
-| `retention.py` | `ObservabilityRetentionSweeper` — safe sweep логов по age/backups внутри каталога компонента; не следует по симлинкам, использует marker-throttling |
+| `retention.py` | `ObservabilityRetentionSweeper` — safe sweep логов, отчётов и планов по age/backups внутри каталога компонента; не следует по симлинкам, использует marker-throttling |
 
 ## Зависимости
 
