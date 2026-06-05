@@ -14,7 +14,7 @@ import logging
 import sqlite3
 import sys
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -25,7 +25,9 @@ from connector.config.config import SettingsLoadError
 from connector.config.models import AppConfig
 from connector.config.diagnostics import translate_settings_load_error
 from connector.config.projections import to_operational_paths
-from connector.domain.diagnostics.command_result import CommandResult as DomainCommandResult
+from connector.domain.diagnostics.command_result import (
+    CommandResult as DomainCommandResult,
+)
 from connector.domain.dsl.diagnostics import translate_dsl_load_error
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.reporting.assembler import ReportAssembler
@@ -36,11 +38,25 @@ from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.reporting.sink import NullReportSink, ReportSink
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.artifacts.report_renderer import JsonReportRenderer
+from connector.common.observability import ObservabilityLayout, ServiceComponent
 from connector.delivery.cli.stream_capture import StdStreamToLogger, TeeStream
-from connector.infra.logging.setup import create_command_logger, log_event
+from connector.delivery.cli.component_mapping import component_for_command
+from connector.infra.logging.runtime import (
+    StructuredLoggingRuntime,
+    bind_observability_context,
+    clear_observability_context,
+)
+from connector.infra.logging.setup import log_event
 from connector.datasets.registry import get_spec, resolve_dataset_name
-from connector.domain.transform_dsl import load_source_spec_for_dataset, resolve_source_location
-from connector.delivery.cli.context import BoundCommandContext, CommandContext, UnboundCommandContext
+from connector.domain.transform_dsl import (
+    load_source_spec_for_dataset,
+    resolve_source_location,
+)
+from connector.delivery.cli.context import (
+    BoundCommandContext,
+    CommandContext,
+    UnboundCommandContext,
+)
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.containers import AppContainer
 from .contracts import (
@@ -61,6 +77,98 @@ from .topology_bootstrap import (
     TopologyBootstrapStepResult,
     attach_topology_runtime,
 )
+
+
+@dataclass(frozen=True)
+class RuntimeObservabilitySession:
+    """Собрать observability-зависимости одного command execution lifecycle.
+
+    Сессия живёт только внутри runtime orchestration и связывает вместе
+    service-component, чистый artifact layout и активный structlog runtime.
+    Она не владеет teardown: закрытие остаётся за DI `Resource`.
+    """
+
+    component: ServiceComponent
+    layout: ObservabilityLayout
+    runtime: StructuredLoggingRuntime
+    logger: Any
+    log_file_path: str | None
+
+
+def _resolve_command_dataset(
+    *,
+    command_name: str,
+    opts: Any,
+    app_config: AppConfig,
+) -> str | None:
+    """Разрешить dataset для bind-contextvars, если команда dataset-aware."""
+    if command_name in {
+        "check-api",
+        "vault-management-init",
+        "vault-management-status",
+        "vault-management-rotate",
+        "vault-management-rewrap",
+    }:
+        return None
+    return resolve_dataset_opt(opts, app_config)
+
+
+def _initialize_observability_session(
+    *,
+    container: AppContainer,
+    command_name: str,
+    stderr_stream,
+) -> RuntimeObservabilitySession:
+    """Инициализировать observability runtime через DI container."""
+    component = component_for_command(command_name)
+    container.observability.component.override(component)
+    container.observability.stderr_stream.override(stderr_stream)
+    container.observability.logging_runtime.init()
+    runtime = container.observability.logging_runtime()
+    layout = container.observability.observability_layout()
+    logger = runtime.get_command_logger(command_name=command_name, component=component)
+    return RuntimeObservabilitySession(
+        component=component,
+        layout=layout,
+        runtime=runtime,
+        logger=logger,
+        log_file_path=runtime.current_log_file_path(),
+    )
+
+
+def _run_observability_sweeper(
+    *,
+    container: AppContainer,
+    app_config: AppConfig,
+    session: RuntimeObservabilitySession,
+    logger: Any,
+    run_id: str,
+) -> None:
+    """Выполнить best-effort sweep observability-артефактов на старте команды."""
+    sweeper = container.observability.sweeper()
+    try:
+        if app_config.observability.logging.sinks.file.enabled:
+            sweeper.sweep_logs(
+                component=session.component,
+                retention_days=app_config.observability.logging.sinks.file.retention_days,
+                retention_backups=app_config.observability.logging.sinks.file.retention_backups,
+            )
+        sweeper.sweep_reports(
+            component=session.component,
+            retention_days=app_config.observability.reporting.retention_days,
+        )
+        sweeper.sweep_plans(
+            component=session.component,
+            retention_days=app_config.observability.plans.retention_days,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            run_id,
+            "observability",
+            f"Observability sweep failed: {exc}",
+        )
 
 
 def run_with_report(
@@ -90,35 +198,37 @@ def run_with_report(
     paths = to_operational_paths(app_config)
     observability = app_config.observability
     run_id = ctx.run_id
+    pipeline_run_id = ctx.pipeline_run_id or run_id
+    dataset_name = _resolve_command_dataset(
+        command_name=command_name,
+        opts=opts,
+        app_config=app_config,
+    )
     run_topology_bootstrap = run_topology_bootstrap or _run_topology_bootstrap_if_needed
 
     start_monotonic = time.monotonic()
     original_stdout = sys.stdout
     original_stderr = sys.stderr
-    logger, log_file_path = create_command_logger(
-        command_name=command_name,
-        log_dir=paths.log_dir,
-        run_id=run_id,
-        log_level=observability.logging.level,
-        mirror_to_console=_console_log_mirror_enabled(ctx),
-        console_stream=original_stderr,
-    )
-    ctx = replace(ctx, logger=logger)
-
     report_context = InMemoryReportContext(run_id=run_id, command=command_name)
     report_sink = ReportSink(report_context)
     report_assembler = ReportAssembler(context=report_context)
     sources = config_sources(ctx)
     if sources:
-        report_sink.emit(SetContextEvent(name=ReportContextKey.CONFIG, value={"sources": sources}))
-    report_policy = ReportPolicy.from_profile(app_config.observability.reporting.policy_profile)
+        report_sink.emit(
+            SetContextEvent(name=ReportContextKey.CONFIG, value={"sources": sources})
+        )
+    report_policy = ReportPolicy.from_profile(
+        app_config.observability.reporting.policy_profile
+    )
     cli_include_skipped_raw = get_opt(opts, ("report_include_skipped",))
     cli_include_skipped = (
         app_config.observability.reporting.include_skipped
         if cli_include_skipped_raw is None
         else bool(cli_include_skipped_raw)
     )
-    effective_include_skipped_items = report_policy.resolve_include_skipped_items(cli_include_skipped)
+    effective_include_skipped_items = report_policy.resolve_include_skipped_items(
+        cli_include_skipped
+    )
     report_sink.emit(
         SetContextEvent(
             name=ReportContextKey.REPORT_POLICY,
@@ -131,32 +241,73 @@ def run_with_report(
 
     csv_path = get_opt(opts, ("csv_path", "csv", "input_csv"))
     if csv_path:
-        report_sink.emit(SetContextEvent(name=ReportContextKey.INPUT, value={"csv_path": Path(csv_path).name}))
+        report_sink.emit(
+            SetContextEvent(
+                name=ReportContextKey.INPUT, value={"csv_path": Path(csv_path).name}
+            )
+        )
 
     report_items_limit = get_opt(opts, ("report_items_limit", "items_limit"))
     if report_items_limit is None:
         report_items_limit = observability.reporting.items_limit
     report_sink.emit(SetMetaEvent(items_limit=report_items_limit))
 
-    stdout_logger_stream = StdStreamToLogger(logger, logging.INFO, run_id, "stdout")
-    stderr_logger_stream = StdStreamToLogger(logger, logging.ERROR, run_id, "stderr")
-
-    sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
-    sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
-
     exit_result: RuntimeExecutionResult = None
     container: AppContainer | None = None
+    observability_session: RuntimeObservabilitySession | None = None
+    logger: Any = logging.getLogger("nexus.runtime.bootstrap")
+    log_file_path: str | None = None
 
     try:
-        log_event(logger, logging.INFO, run_id, "core", "Command started")
-
-        validate_requirements(ctx, opts, requirements)
-
         container = create_container()
         container.app_config.override(app_config)
         api_transport = get_opt(opts, ("api_transport",))
         if api_transport is not None:
             container.target.transport.override(api_transport)
+
+        observability_session = _initialize_observability_session(
+            container=container,
+            command_name=command_name,
+            stderr_stream=original_stderr,
+        )
+        logger = observability_session.logger
+        log_file_path = observability_session.log_file_path
+        ctx = replace(ctx, logger=logger)
+        bind_observability_context(
+            run_id=run_id,
+            pipeline_run_id=pipeline_run_id,
+            component=observability_session.component,
+            dataset=dataset_name,
+        )
+        _run_observability_sweeper(
+            container=container,
+            app_config=app_config,
+            session=observability_session,
+            logger=logger,
+            run_id=run_id,
+        )
+
+        stdout_logger_stream = StdStreamToLogger(
+            logger,
+            logging.INFO,
+            run_id,
+            "stdout",
+            redaction_engine=observability_session.runtime.redaction_engine,
+        )
+        stderr_logger_stream = StdStreamToLogger(
+            logger,
+            logging.ERROR,
+            run_id,
+            "stderr",
+            redaction_engine=observability_session.runtime.redaction_engine,
+        )
+        sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
+        sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
+
+        log_event(logger, logging.INFO, run_id, "core", "Command started")
+
+        validate_requirements(ctx, opts, requirements)
+
         init_result = initialize_container_resources(
             container=container,
             requirements=requirements,
@@ -259,7 +410,10 @@ def run_with_report(
             catalog=ctx.catalog,
             command_name=command_name,
             message=str(exc),
-            details={"runtime_exit_code": exc.exit_code, "runtime_error": "RuntimeErrorWithCode"},
+            details={
+                "runtime_exit_code": exc.exit_code,
+                "runtime_error": "RuntimeErrorWithCode",
+            },
         )
         apply_result_to_report(
             report_sink,
@@ -288,6 +442,8 @@ def run_with_report(
         )
     finally:
         try:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
             shutdown_result = shutdown_container_resources(
                 container=container,
                 logger=logger,
@@ -315,6 +471,12 @@ def run_with_report(
                 command_name=command_name,
                 run_id=run_id,
                 logger=logger,
+                layout=observability_session.layout
+                if observability_session is not None
+                else None,
+                component=observability_session.component
+                if observability_session is not None
+                else None,
                 emit_user_error=exit_result is None,
             )
             if finalize_result is not None:
@@ -329,8 +491,7 @@ def run_with_report(
             if exit_result is None and finalize_result is not None:
                 exit_result = finalize_result
         finally:
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
+            clear_observability_context()
 
         if exit_result is not None:
             raise typer.Exit(code=exit_code_from_result(exit_result))
@@ -357,43 +518,75 @@ def run_without_report(
         Handler вызывается по тому же 3-arg контракту с `NullReportSink`.
     """
     app_config = require_app_settings(ctx)
-    paths = app_config.paths
-    observability = app_config.observability
     run_id = ctx.run_id
+    pipeline_run_id = ctx.pipeline_run_id or run_id
+    dataset_name = _resolve_command_dataset(
+        command_name=command_name,
+        opts=opts,
+        app_config=app_config,
+    )
     run_topology_bootstrap = run_topology_bootstrap or _run_topology_bootstrap_if_needed
 
     start_monotonic = time.monotonic()
     original_stdout = sys.stdout
     original_stderr = sys.stderr
-    logger, log_file_path = create_command_logger(
-        command_name=command_name,
-        log_dir=paths.log_dir,
-        run_id=run_id,
-        log_level=observability.logging.level,
-        mirror_to_console=_console_log_mirror_enabled(ctx),
-        console_stream=original_stderr,
-    )
-    ctx = replace(ctx, logger=logger)
-
-    stdout_logger_stream = StdStreamToLogger(logger, logging.INFO, run_id, "stdout")
-    stderr_logger_stream = StdStreamToLogger(logger, logging.ERROR, run_id, "stderr")
-
-    sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
-    sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
 
     exit_result: RuntimeExecutionResult = None
     container: AppContainer | None = None
+    observability_session: RuntimeObservabilitySession | None = None
+    logger: Any = logging.getLogger("nexus.runtime.bootstrap")
+    log_file_path: str | None = None
 
     try:
-        log_event(logger, logging.INFO, run_id, "core", "Command started")
-
-        validate_requirements(ctx, opts, requirements)
-
         container = create_container()
         container.app_config.override(app_config)
         api_transport = get_opt(opts, ("api_transport",))
         if api_transport is not None:
             container.target.transport.override(api_transport)
+
+        observability_session = _initialize_observability_session(
+            container=container,
+            command_name=command_name,
+            stderr_stream=original_stderr,
+        )
+        logger = observability_session.logger
+        log_file_path = observability_session.log_file_path
+        ctx = replace(ctx, logger=logger)
+        bind_observability_context(
+            run_id=run_id,
+            pipeline_run_id=pipeline_run_id,
+            component=observability_session.component,
+            dataset=dataset_name,
+        )
+        _run_observability_sweeper(
+            container=container,
+            app_config=app_config,
+            session=observability_session,
+            logger=logger,
+            run_id=run_id,
+        )
+
+        stdout_logger_stream = StdStreamToLogger(
+            logger,
+            logging.INFO,
+            run_id,
+            "stdout",
+            redaction_engine=observability_session.runtime.redaction_engine,
+        )
+        stderr_logger_stream = StdStreamToLogger(
+            logger,
+            logging.ERROR,
+            run_id,
+            "stderr",
+            redaction_engine=observability_session.runtime.redaction_engine,
+        )
+        sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
+        sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
+
+        log_event(logger, logging.INFO, run_id, "core", "Command started")
+
+        validate_requirements(ctx, opts, requirements)
+
         init_result = initialize_container_resources(
             container=container,
             requirements=requirements,
@@ -456,7 +649,10 @@ def run_without_report(
             catalog=ctx.catalog,
             command_name=command_name,
             message=str(exc),
-            details={"runtime_exit_code": exc.exit_code, "runtime_error": "RuntimeErrorWithCode"},
+            details={
+                "runtime_exit_code": exc.exit_code,
+                "runtime_error": "RuntimeErrorWithCode",
+            },
         )
     except Exception as exc:
         log_event(logger, logging.ERROR, run_id, "core", f"Command failed: {exc}")
@@ -469,6 +665,8 @@ def run_without_report(
         )
     finally:
         try:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
             shutdown_result = shutdown_container_resources(
                 container=container,
                 logger=logger,
@@ -479,16 +677,19 @@ def run_without_report(
                 exit_result = shutdown_result
 
             _ = get_duration_ms(start_monotonic, time.monotonic())
-            log_event(logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}")
+            log_event(
+                logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}"
+            )
         finally:
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
+            clear_observability_context()
 
         if exit_result is not None:
             raise typer.Exit(code=exit_code_from_result(exit_result))
 
 
-def bind_context_with_container(ctx: UnboundCommandContext, *, container: AppContainer) -> BoundCommandContext:
+def bind_context_with_container(
+    ctx: UnboundCommandContext, *, container: AppContainer
+) -> BoundCommandContext:
     """
     Назначение:
         Привязать command-context к инициализированному DI container.
@@ -524,16 +725,32 @@ def initialize_container_resources(
         # Dictionary/DSL init failures must reach outer DSL error handling path unchanged.
         raise
     except sqlite3.Error as exc:
-        log_event(logger, logging.ERROR, run_id, "cache", f"Container cache init failed: {exc}")
-        typer.echo("ERROR: failed to initialize cache resources (see logs/report)", err=True)
+        log_event(
+            logger,
+            logging.ERROR,
+            run_id,
+            "cache",
+            f"Container cache init failed: {exc}",
+        )
+        typer.echo(
+            "ERROR: failed to initialize cache resources (see logs/report)", err=True
+        )
         return result_with(SystemErrorCode.CACHE_ERROR)
     except VaultDomainError as exc:
         log_event(logger, logging.ERROR, run_id, "vault", f"{exc.code}: {exc}")
         typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     except Exception as exc:
-        log_event(logger, logging.ERROR, run_id, "core", f"Container resource init failed: {exc}")
-        typer.echo("ERROR: failed to initialize runtime resources (see logs/report)", err=True)
+        log_event(
+            logger,
+            logging.ERROR,
+            run_id,
+            "core",
+            f"Container resource init failed: {exc}",
+        )
+        typer.echo(
+            "ERROR: failed to initialize runtime resources (see logs/report)", err=True
+        )
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     return None
 
@@ -554,7 +771,9 @@ def shutdown_container_resources(
     try:
         container.shutdown_resources()
     except Exception as exc:
-        log_event(logger, logging.ERROR, run_id, "core", f"Container shutdown failed: {exc}")
+        log_event(
+            logger, logging.ERROR, run_id, "core", f"Container shutdown failed: {exc}"
+        )
         if emit_user_error:
             typer.echo("ERROR: runtime teardown failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
@@ -567,10 +786,12 @@ def finalize_report_artifacts(
     report_assembler: ReportAssembler,
     start_monotonic: float,
     paths,
-    log_file_path: str,
+    log_file_path: str | None,
     command_name: str,
     run_id: str,
-    logger: logging.Logger,
+    logger: Any,
+    layout: ObservabilityLayout | None,
+    component: ServiceComponent | None,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
     """
@@ -586,26 +807,39 @@ def finalize_report_artifacts(
                     "log_file": log_file_path,
                     "cache_dir": paths.cache_dir,
                     "report_dir": paths.report_dir,
+                    "plans_dir": paths.plans_dir,
                 },
             )
         )
         report_sink.emit(FinishEvent(duration_ms=duration_ms))
         envelope = report_assembler.assemble()
-        report_path = JsonReportRenderer().render(
+        if layout is None or component is None:
+            raise RuntimeError("observability layout is not initialized")
+        report_path = JsonReportRenderer().render_with_layout(
             envelope=envelope,
-            report_dir=paths.report_dir,
-            file_base_name=f"report_{command_name}_{run_id}",
+            layout=layout,
+            component=component,
         )
-        log_event(logger, logging.INFO, run_id, "report", f"Report written: {report_path}")
+        log_event(
+            logger, logging.INFO, run_id, "report", f"Report written: {report_path}"
+        )
     except Exception as exc:
-        log_event(logger, logging.ERROR, run_id, "report", f"Report finalization failed: {exc}")
+        log_event(
+            logger,
+            logging.ERROR,
+            run_id,
+            "report",
+            f"Report finalization failed: {exc}",
+        )
         if emit_user_error:
             typer.echo("ERROR: failed to finalize report (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     return None
 
 
-def validate_requirements(ctx: CommandContext[Any], opts: Any, requirements: Requirements) -> None:
+def validate_requirements(
+    ctx: CommandContext[Any], opts: Any, requirements: Requirements
+) -> None:
     """
     Назначение:
         Быстрые и предсказуемые проверки требований команды.
@@ -634,7 +868,9 @@ def validate_requirements(ctx: CommandContext[Any], opts: Any, requirements: Req
 
 def require_source(dataset: str | None) -> None:
     if not dataset:
-        raise RuntimeErrorWithCode("Dataset is required for source resolution", exit_code=2)
+        raise RuntimeErrorWithCode(
+            "Dataset is required for source resolution", exit_code=2
+        )
     try:
         source_spec = load_source_spec_for_dataset(dataset)
     except DslLoadError as exc:
@@ -643,7 +879,9 @@ def require_source(dataset: str | None) -> None:
             exit_code=2,
         ) from exc
     except Exception as exc:
-        raise RuntimeErrorWithCode(f"Source spec is not configured for dataset '{dataset}': {exc}", exit_code=2) from exc
+        raise RuntimeErrorWithCode(
+            f"Source spec is not configured for dataset '{dataset}': {exc}", exit_code=2
+        ) from exc
     try:
         location = resolve_source_location(source_spec)
     except DslLoadError as exc:
@@ -652,11 +890,16 @@ def require_source(dataset: str | None) -> None:
             exit_code=2,
         ) from exc
     except ValueError as exc:
-        raise RuntimeErrorWithCode(f"Source location is not configured for dataset '{dataset}': {exc}", exit_code=2) from exc
+        raise RuntimeErrorWithCode(
+            f"Source location is not configured for dataset '{dataset}': {exc}",
+            exit_code=2,
+        ) from exc
     if source_spec.source.type == "file":
         path = Path(location)
         if not path.exists() or not path.is_file():
-            raise RuntimeErrorWithCode(f"Source file not found: {location}", exit_code=2)
+            raise RuntimeErrorWithCode(
+                f"Source file not found: {location}", exit_code=2
+            )
 
 
 def require_api(app_config: AppConfig) -> None:
@@ -671,7 +914,9 @@ def require_api(app_config: AppConfig) -> None:
     if not api.password:
         missing.append("api_password")
     if missing:
-        raise RuntimeErrorWithCode(f"Missing API settings: {', '.join(missing)}", exit_code=2)
+        raise RuntimeErrorWithCode(
+            f"Missing API settings: {', '.join(missing)}", exit_code=2
+        )
 
 
 def require_cache(app_config: AppConfig) -> None:
@@ -679,13 +924,17 @@ def require_cache(app_config: AppConfig) -> None:
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        raise RuntimeErrorWithCode(f"Cache dir not доступен: {exc}", exit_code=2) from exc
+        raise RuntimeErrorWithCode(
+            f"Cache dir not доступен: {exc}", exit_code=2
+        ) from exc
 
 
 def require_secrets(vault_mode: str | None) -> None:
     normalized = (vault_mode or "auto").strip().lower()
     if normalized == "off":
-        raise RuntimeErrorWithCode("vault-mode=off is incompatible with command requirements", exit_code=2)
+        raise RuntimeErrorWithCode(
+            "vault-mode=off is incompatible with command requirements", exit_code=2
+        )
 
 
 def require_dataset(dataset: str | None) -> None:

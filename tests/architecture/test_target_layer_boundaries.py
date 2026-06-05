@@ -19,14 +19,28 @@ CONNECTOR_ROOT = REPO_ROOT / "connector"
 COMMANDS_ROOT = REPO_ROOT / "connector" / "delivery" / "commands"
 USECASES_ROOT = REPO_ROOT / "connector" / "usecases"
 DOMAIN_ROOT = REPO_ROOT / "connector" / "domain"
-CACHE_REFRESH_USECASE = REPO_ROOT / "connector" / "usecases" / "cache_refresh_service.py"
-TARGET_GATEWAY_CORE = REPO_ROOT / "connector" / "infra" / "target" / "core" / "gateway.py"
-TARGET_EXECUTION_PORT = REPO_ROOT / "connector" / "domain" / "ports" / "target" / "execution.py"
+CACHE_REFRESH_USECASE = (
+    REPO_ROOT / "connector" / "usecases" / "cache_refresh_service.py"
+)
+TARGET_GATEWAY_CORE = (
+    REPO_ROOT / "connector" / "infra" / "target" / "core" / "gateway.py"
+)
+TARGET_EXECUTION_PORT = (
+    REPO_ROOT / "connector" / "domain" / "ports" / "target" / "execution.py"
+)
 TARGET_DRIVER_CONTRACT = REPO_ROOT / "connector" / "infra" / "target" / "driver.py"
 TARGET_SAFE_LOGGING_ENGINE = (
-    REPO_ROOT / "connector" / "infra" / "target" / "core" / "engines" / "safe_logging.py"
+    REPO_ROOT
+    / "connector"
+    / "infra"
+    / "target"
+    / "core"
+    / "engines"
+    / "safe_logging.py"
 )
-TARGET_FACTORY_CORE = REPO_ROOT / "connector" / "infra" / "target" / "core" / "factory.py"
+TARGET_FACTORY_CORE = (
+    REPO_ROOT / "connector" / "infra" / "target" / "core" / "factory.py"
+)
 
 FORBIDDEN_ANKEY_NAMES = {
     "AnkeyApiClient",
@@ -66,6 +80,7 @@ ALLOWED_TENACITY_IMPORT_PATHS = {
 }
 ALLOWED_STRUCTLOG_IMPORT_PATHS = {
     "connector/infra/target/core/engines/safe_logging.py",
+    "connector/infra/logging/runtime.py",
     "connector/infra/dictionaries/telemetry.py",
     # structlog-forward-adoption: новые usecase-модули используют structlog (DEC-001)
     "connector/usecases/resolve_usecase.py",
@@ -131,7 +146,9 @@ def test_delivery_commands_do_not_import_ankey_classes() -> None:
             for name in names:
                 if name in FORBIDDEN_ANKEY_NAMES:
                     violations.append(f"{rel}: from {module} import {name}")
-    assert violations == [], "Найдены запрещённые импорты Ankey:\n" + "\n".join(violations)
+    assert violations == [], "Найдены запрещённые импорты Ankey:\n" + "\n".join(
+        violations
+    )
 
 
 def test_delivery_commands_do_not_use_legacy_bootstrap_builders() -> None:
@@ -144,12 +161,16 @@ def test_delivery_commands_do_not_use_legacy_bootstrap_builders() -> None:
             for name in names:
                 if name in FORBIDDEN_BOOTSTRAP_BUILDERS:
                     violations.append(f"{rel}: from {module} import {name}")
-    assert violations == [], "Найдены запрещённые bootstrap-билдеры:\n" + "\n".join(violations)
+    assert violations == [], "Найдены запрещённые bootstrap-билдеры:\n" + "\n".join(
+        violations
+    )
 
 
 def test_legacy_target_cleanup_files_are_removed() -> None:
     existing = [path for path in LEGACY_TARGET_PATHS if (REPO_ROOT / path).exists()]
-    assert existing == [], "Legacy target-файлы должны быть удалены:\n" + "\n".join(existing)
+    assert existing == [], "Legacy target-файлы должны быть удалены:\n" + "\n".join(
+        existing
+    )
 
 
 def test_usecases_do_not_import_target_infra() -> None:
@@ -163,10 +184,17 @@ def test_domain_does_not_import_target_infra() -> None:
 
 
 def test_cache_refresh_uses_operation_alias_instead_of_raw_target_path() -> None:
-    tree = ast.parse(CACHE_REFRESH_USECASE.read_text(encoding="utf-8"), filename=str(CACHE_REFRESH_USECASE))
+    tree = ast.parse(
+        CACHE_REFRESH_USECASE.read_text(encoding="utf-8"),
+        filename=str(CACHE_REFRESH_USECASE),
+    )
     attrs = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    assert "list_path" not in attrs, "cache refresh не должен зависеть от сырых target-путей"
-    assert "list_operation_alias" in attrs, "cache refresh должен использовать operation alias из DSL-адаптера"
+    assert "list_path" not in attrs, (
+        "cache refresh не должен зависеть от сырых target-путей"
+    )
+    assert "list_operation_alias" in attrs, (
+        "cache refresh должен использовать operation alias из DSL-адаптера"
+    )
 
 
 def test_employees_spec_legacy_file_removed() -> None:
@@ -188,7 +216,9 @@ def test_domain_usecases_delivery_do_not_import_target_core_external_libs() -> N
             for module in _imports(path):
                 if module.startswith(FORBIDDEN_RUNTIME_DEPENDENCIES):
                     violations.append(f"{rel}: {module}")
-    assert violations == [], "Найдены запрещённые импорты runtime-зависимостей:\n" + "\n".join(violations)
+    assert violations == [], (
+        "Найдены запрещённые импорты runtime-зависимостей:\n" + "\n".join(violations)
+    )
 
 
 def test_tenacity_and_structlog_are_confined_to_target_engines() -> None:
@@ -202,7 +232,9 @@ def test_tenacity_and_structlog_are_confined_to_target_engines() -> None:
         if any(module.startswith("structlog") for module in modules):
             if rel not in ALLOWED_STRUCTLOG_IMPORT_PATHS:
                 violations.append(f"{rel}: импорт structlog вне target engines")
-    assert violations == [], "Нарушены границы зависимостей target runtime:\n" + "\n".join(violations)
+    assert violations == [], (
+        "Нарушены границы зависимостей target runtime:\n" + "\n".join(violations)
+    )
 
 
 def test_target_gateway_core_has_no_provider_reason_or_hardcoded_health_alias() -> None:

@@ -157,10 +157,12 @@ def _finalize_report_artifacts(
     report_assembler,
     start_monotonic: float,
     paths,
-    log_file_path: str,
+    log_file_path: str | None,
     command_name: str,
     run_id: str,
-    logger: logging.Logger,
+    logger,
+    layout=None,
+    component=None,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
     """
@@ -176,6 +178,8 @@ def _finalize_report_artifacts(
         command_name=command_name,
         run_id=run_id,
         logger=logger,
+        layout=layout,
+        component=component,
         emit_user_error=emit_user_error,
     )
 

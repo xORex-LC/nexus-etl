@@ -29,8 +29,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterator, cast
+from typing import TYPE_CHECKING, Any, Iterator, TextIO, cast
 
 from dependency_injector import containers, providers
 
@@ -47,6 +46,7 @@ from connector.config.projections import (
     to_vault_db_config,
 )
 from connector.delivery.cli.component_mapping import component_for_command
+from connector.common.observability import ObservabilityLayout, ServiceComponent
 from connector.common.runtime_paths import detect_runtime_paths
 from connector.domain.transform.matcher.match_deps import (
     MatchBatchSettings,
@@ -147,6 +147,10 @@ from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
 from connector.infra.logging.redaction import LogRedactionEngine
 from connector.infra.observability.retention import ObservabilityRetentionSweeper
+from connector.infra.logging.runtime import (
+    StructuredLoggingRuntime,
+    build_structured_logging_runtime,
+)
 from connector.infra.target.core.factory import (
     TargetRuntimeBuildResult,
     build_target_runtime_with_info,
@@ -209,13 +213,24 @@ def _identity_db_path(app_config: AppConfig) -> str:
     )
 
 
-@dataclass(frozen=True)
-class _ObservabilityProviderPlaceholder:
-    kind: str
-
-
-def _placeholder_resource(kind: str) -> Iterator[_ObservabilityProviderPlaceholder]:
-    yield _ObservabilityProviderPlaceholder(kind=kind)
+def structured_logging_runtime_resource(
+    config: AppConfig,
+    layout: ObservabilityLayout,
+    redaction_engine: LogRedactionEngine,
+    component: ServiceComponent,
+    stderr_stream: TextIO,
+) -> Iterator[StructuredLoggingRuntime]:
+    """Создать и корректно закрыть structlog runtime для одного CLI-компонента."""
+    runtime = build_structured_logging_runtime(
+        config=config.observability.logging,
+        layout=layout,
+        redaction_engine=redaction_engine,
+        component=component,
+        stderr_stream=stderr_stream,
+        root_logger_name="",
+    )
+    yield runtime
+    runtime.close()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1144,12 +1159,14 @@ class ObservabilityContainer(containers.DeclarativeContainer):
         Провайдеры observability-подсистемы с корректной классификацией lifecycle.
 
     Контракт:
-        - На Этапе 1 эти провайдеры не подключены к runtime orchestration.
-        - Stateless/value-only зависимости уже доступны для следующих фаз.
-        - Resource seams зафиксированы без изменения текущего поведения команд.
+        - `logging_runtime` — `Resource`, потому что владеет handler stack и teardown.
+        - `observability_layout`, `redaction_engine` и mapper/policy providers остаются value/stateless.
+        - Container не содержит naming-логики артефактов: она принадлежит `ObservabilityLayout`.
     """
 
     app_config = providers.Dependency(instance_of=AppConfig)
+    component = providers.Dependency(instance_of=ServiceComponent)
+    stderr_stream = providers.Dependency()
 
     observability_layout = providers.Singleton(
         to_observability_layout,
@@ -1169,11 +1186,19 @@ class ObservabilityContainer(containers.DeclarativeContainer):
     )
     component_mapper = providers.Object(component_for_command)
 
-    logging_runtime = providers.Resource(_placeholder_resource, kind="logging_runtime")
-    logging_handler_stack = providers.Resource(
-        _placeholder_resource, kind="logging_handler_stack"
+    logging_runtime = providers.Resource(
+        structured_logging_runtime_resource,
+        config=app_config,
+        layout=observability_layout,
+        redaction_engine=redaction_engine,
+        component=component,
+        stderr_stream=stderr_stream,
     )
-    ledger_backend = providers.Resource(_placeholder_resource, kind="ledger_backend")
+    logging_handler_stack = providers.Callable(
+        lambda runtime: runtime.handler_stack,
+        runtime=logging_runtime,
+    )
+    ledger_backend = providers.Object(None)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -6,12 +6,17 @@ import httpx
 from typer.testing import CliRunner
 
 from connector.config.loader import load_app_config
-from connector.config.projections import to_cache_db_config, to_identity_db_config
+from connector.config.projections import to_cache_db_config
 from connector.infra.sqlite.engine import open_sqlite
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.main import app
-from tests.runtime_test_support import tracked_employees_runtime_roots, write_runtime_config
+from tests.runtime_test_support import (
+    active_log_path,
+    latest_report_path,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 
 runner = CliRunner()
 
@@ -39,7 +44,9 @@ def _tracked_runtime_config(tmp_path: Path) -> Path:
     )
 
 
-def make_transport(responder: Callable[[httpx.Request], httpx.Response]) -> httpx.MockTransport:
+def make_transport(
+    responder: Callable[[httpx.Request], httpx.Response],
+) -> httpx.MockTransport:
     return httpx.MockTransport(responder)
 
 
@@ -51,7 +58,9 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
 
     patched_transport = transport
 
-    def factory(api_settings, *, transport=None, include_reader=True, runtime_mode=None):
+    def factory(
+        api_settings, *, transport=None, include_reader=True, runtime_mode=None
+    ):
         _ = transport
         return _build_real_runtime_with_info(
             api_settings,
@@ -98,7 +107,7 @@ def test_check_api_ok(monkeypatch, tmp_path: Path):
         ],
     )
     assert result.exit_code == 0
-    report_path = report_dir / "report_check-api_check-ok.json"
+    report_path = latest_report_path(report_dir, "check-api")
     assert report_path.exists()
 
 
@@ -238,11 +247,13 @@ def test_cache_refresh_from_api_two_pages(monkeypatch, tmp_path: Path):
     assert users_count == 2
     assert org_count == 2
 
-    report_path = report_dir / "report_cache-refresh_api-refresh.json"
+    report_path = latest_report_path(report_dir, "cache-refresh")
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["rows_blocked"] == 0
     assert report["context"]["cache_refresh"]["by_dataset"]["employees"]["pages"] == 2
-    assert report["context"]["cache_refresh"]["by_dataset"]["organizations"]["pages"] == 1
+    assert (
+        report["context"]["cache_refresh"]["by_dataset"]["organizations"]["pages"] == 1
+    )
 
 
 def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):
@@ -327,7 +338,7 @@ def test_cache_refresh_skips_deleted_users(monkeypatch, tmp_path: Path):
         ],
     )
     assert result.exit_code == 0
-    report_path = tmp_path / "reports" / "report_cache-refresh_skip-del.json"
+    report_path = latest_report_path(tmp_path / "reports", "cache-refresh")
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["context"]["cache_refresh"]["total"]["skipped"] == 2
 
@@ -346,22 +357,22 @@ def test_retry_on_500_then_ok(monkeypatch, tmp_path: Path):
             return httpx.Response(
                 200,
                 json={
-                        "items": [
-                            {
-                                "_id": "u1",
-                                "_ouid": 11,
-                                "firstName": "A",
-                                "lastName": "B",
-                                "middleName": "C",
-                                "personnelNumber": "1",
-                                "mail": "u1@example.com",
-                                "userName": "user1",
-                                "usrOrgTabNum": "TAB-1",
-                                "organization_id": 1,
-                            }
-                        ]
-                    },
-                )
+                    "items": [
+                        {
+                            "_id": "u1",
+                            "_ouid": 11,
+                            "firstName": "A",
+                            "lastName": "B",
+                            "middleName": "C",
+                            "personnelNumber": "1",
+                            "mail": "u1@example.com",
+                            "userName": "user1",
+                            "usrOrgTabNum": "TAB-1",
+                            "organization_id": 1,
+                        }
+                    ]
+                },
+            )
         return httpx.Response(404)
 
     transport = make_transport(responder)
@@ -458,8 +469,8 @@ def test_password_not_in_logs_or_report(monkeypatch, tmp_path: Path):
     )
 
     assert result.exit_code == 0
-    report_path = report_dir / "report_cache-refresh_no-secret.json"
-    log_path = log_dir / "cache-refresh_no-secret.log"
+    report_path = latest_report_path(report_dir, "cache-refresh")
+    log_path = active_log_path(log_dir, "cache-refresh")
     assert report_path.exists()
     assert log_path.exists()
     assert secret not in report_path.read_text(encoding="utf-8")

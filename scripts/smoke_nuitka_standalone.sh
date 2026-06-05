@@ -40,9 +40,9 @@ main() {
   require_path "$DIST_DIR/var/logs"
 
   local report_path
-  report_path="$(find "$DIST_DIR/reports" -maxdepth 1 -type f -name 'report_mapping_*.json' | sort | tail -n 1)"
+  report_path="$(find "$DIST_DIR/reports/mapper" -maxdepth 1 -type f -name '*_mapper.json' | sort | tail -n 1)"
   if [[ -z "$report_path" ]]; then
-    echo "mapping smoke did not produce a report under $DIST_DIR/reports" >&2
+    echo "mapping smoke did not produce a report under $DIST_DIR/reports/mapper" >&2
     exit 1
   fi
 

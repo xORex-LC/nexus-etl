@@ -12,6 +12,7 @@ from connector.infra.cache.repository.cache_repository import SqliteCacheReposit
 
 from connector.main import app
 from tests.runtime_test_support import (
+    latest_report_path,
     prepare_tracked_employees_source_file,
     tracked_employees_runtime_roots,
     write_runtime_config,
@@ -90,7 +91,7 @@ def run_enrich(
         env=env,
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
-    report_path = report_dir / f"report_enrich_{run_id}.json"
+    report_path = latest_report_path(report_dir, "enrich")
     return result, report_path
 
 
@@ -250,8 +251,7 @@ def test_enrich_missing_required_returns_0(tmp_path: Path):
     assert report["summary"]["rows_blocked"] == 0
     diagnostics = report["items"][0]["diagnostics"]
     no_candidate_warnings = [
-        item for item in diagnostics
-        if item["code"] == "ENRICH_NO_CANDIDATES"
+        item for item in diagnostics if item["code"] == "ENRICH_NO_CANDIDATES"
     ]
     warned_rules = {item["rule"] for item in no_candidate_warnings}
     assert "email_from_cache" not in warned_rules
@@ -415,8 +415,7 @@ def test_enrich_respects_report_items_limit(tmp_path: Path):
             role="Engineer",
             org_id="10",
             tab="5001",
-        )
-        ,
+        ),
         make_row(
             raw_id="1002",
             full_name="Doe John M",
@@ -433,7 +432,7 @@ def test_enrich_respects_report_items_limit(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    env = {"ANKEY_OBSERVABILITY__REPORT_ITEMS_LIMIT": "1"}
+    env = {"ANKEY_OBSERVABILITY__REPORTING__ITEMS_LIMIT": "1"}
     result, report_path = run_enrich(tmp_path, csv_path, run_id="limit", env=env)
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
