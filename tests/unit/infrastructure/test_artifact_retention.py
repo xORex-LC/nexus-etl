@@ -13,6 +13,7 @@ from connector.common.observability import (
     ServiceComponent,
 )
 from connector.common.runtime_paths import RuntimePathOverrides, detect_runtime_paths
+from connector.infra.observability.ledger import JsonlRunLedger
 from connector.infra.observability.retention import ObservabilityRetentionSweeper
 
 pytestmark = pytest.mark.unit
@@ -71,3 +72,41 @@ def test_sweeper_removes_old_plans(tmp_path: Path) -> None:
     assert old_plan in result.deleted_files
     assert not old_plan.exists()
     assert fresh_plan.exists()
+
+
+def test_sweeper_prunes_ledger_entries_with_marker(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    ledger_path = tmp_path / "var" / "logs" / "planner" / "index.jsonl"
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text(
+        "\n".join(
+            [
+                '{"run_id":"old","pipeline_run_id":"old","component":"planner","started_at":"2026-05-01T01:00:00+00:00","finished_at":"2026-05-01T01:01:00+00:00","status":"SUCCESS","row_counters":{},"log_path":null,"report_path":null,"plan_path":null}',
+                '{"run_id":"fresh","pipeline_run_id":"fresh","component":"planner","started_at":"2026-06-05T01:00:00+00:00","finished_at":"2026-06-05T01:01:00+00:00","status":"SUCCESS","row_counters":{},"log_path":null,"report_path":null,"plan_path":null}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    sweeper = ObservabilityRetentionSweeper(
+        layout=layout,
+        ledger_backend=JsonlRunLedger(layout=layout),
+    )
+    now = datetime(2026, 6, 5, 1, 0, 0, tzinfo=timezone.utc)
+    first = sweeper.sweep_ledger(
+        component=ServiceComponent.PLANNER,
+        retention_days=7,
+        now=now,
+    )
+    second = sweeper.sweep_ledger(
+        component=ServiceComponent.PLANNER,
+        retention_days=7,
+        now=now,
+    )
+
+    assert ledger_path in first.deleted_files
+    assert second.skipped_by_marker is True
+    payload = ledger_path.read_text(encoding="utf-8")
+    assert '"run_id":"old"' not in payload
+    assert '"run_id":"fresh"' in payload

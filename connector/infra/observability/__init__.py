@@ -1,11 +1,29 @@
-"""Observability infrastructure — retention и будущие runtime adapters
+"""Observability infrastructure — retention, ledger и runtime adapters
 
 Пакет собирает infra-компоненты observability, которые работают поверх
 value-object layout/policy из `common/observability.py`. На текущем этапе здесь
-живёт безопасная ретенция логов; последующие этапы добавят остальные runtime
-артефактные adapters.
+живут безопасная ретенция observability-артефактов и append-only run ledger.
 """
 
+from .ledger import (
+    JsonlRunLedger,
+    RunLedgerBackend,
+    RunLedgerRecord,
+    RunLedgerRowCounters,
+    SqliteRunLedger,
+    build_run_ledger_backend,
+    build_run_ledger_record,
+)
 from .retention import ObservabilityRetentionSweeper, RetentionSweepResult
 
-__all__ = ["ObservabilityRetentionSweeper", "RetentionSweepResult"]
+__all__ = [
+    "JsonlRunLedger",
+    "ObservabilityRetentionSweeper",
+    "RetentionSweepResult",
+    "RunLedgerBackend",
+    "RunLedgerRecord",
+    "RunLedgerRowCounters",
+    "SqliteRunLedger",
+    "build_run_ledger_backend",
+    "build_run_ledger_record",
+]

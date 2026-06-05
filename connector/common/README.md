@@ -8,7 +8,7 @@
 
 | Файл | Что делает |
 |---|---|
-| `observability.py` | `ServiceComponent`, `ComponentIdentity`, `ObservabilityLayout` и policy/value-objects для observability-раскладки |
+| `observability.py` | `ServiceComponent`, `ComponentIdentity`, `ObservabilityLayout` и policy/value-objects для observability-раскладки; layout владеет именованием log/report/plan/ledger артефактов |
 | `run_id.py` | `generate_run_id()` и `generate_pipeline_run_id()` — идентификаторы command-run и pipeline-run |
 | `runtime_paths.py` | `RuntimePaths`, `RuntimePathOverrides` — typed resolver корневых runtime-путей (datasets, cache, logs, reports, plans и т.д.); `@lru_cache` для синглтон-инстанса |
 | `sanitize.py` | `mask_secret(value)` → `"***"` и `is_masked_secret()` — безопасный вывод секретов в логах |

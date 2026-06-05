@@ -146,6 +146,7 @@ from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
 from connector.infra.logging.redaction import LogRedactionEngine
+from connector.infra.observability.ledger import build_run_ledger_backend
 from connector.infra.observability.retention import ObservabilityRetentionSweeper
 from connector.infra.logging.runtime import (
     StructuredLoggingRuntime,
@@ -231,6 +232,11 @@ def structured_logging_runtime_resource(
     )
     yield runtime
     runtime.close()
+
+
+def _observability_ledger_backend_name(app_config: AppConfig) -> str:
+    """Вытащить имя ledger backend из app-config без логики внутри infra-слоя."""
+    return app_config.observability.ledger.backend
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1180,9 +1186,19 @@ class ObservabilityContainer(containers.DeclarativeContainer):
         LogRedactionEngine,
         policy=redaction_policy,
     )
+    ledger_backend = providers.Singleton(
+        build_run_ledger_backend,
+        backend=providers.Callable(
+            _observability_ledger_backend_name,
+            app_config=app_config,
+        ),
+        layout=observability_layout,
+        sqlite_config=providers.Callable(to_cache_db_config, app_config),
+    )
     sweeper = providers.Factory(
         ObservabilityRetentionSweeper,
         layout=observability_layout,
+        ledger_backend=ledger_backend,
     )
     component_mapper = providers.Object(component_for_command)
 
@@ -1198,7 +1214,6 @@ class ObservabilityContainer(containers.DeclarativeContainer):
         lambda runtime: runtime.handler_stack,
         runtime=logging_runtime,
     )
-    ledger_backend = providers.Object(None)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

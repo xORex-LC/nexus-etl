@@ -204,6 +204,18 @@ def active_log_path(root: Path, command_name: str) -> Path:
     return candidates[-1]
 
 
+def ledger_index_path(
+    root: Path,
+    command_name: str,
+    *,
+    backend: str = "jsonl",
+) -> Path:
+    """Вернуть canonical ledger path для component partition команды."""
+    component_dir = component_partition_dir(root, command_name)
+    suffix = ".jsonl" if backend == "jsonl" else ".sqlite3"
+    return component_dir / f"index{suffix}"
+
+
 def _active_test_runtime_root() -> Path:
     runtime_root = os.environ.get(TEST_RUNTIME_ROOT_ENV)
     if runtime_root:
