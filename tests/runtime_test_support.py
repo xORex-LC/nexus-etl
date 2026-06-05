@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from connector.delivery.cli.component_mapping import component_for_command
+
 
 TEST_RUNTIME_ROOT_ENV = "ANKEY_TEST_RUNTIME_ROOT"
 TRACKED_EMPLOYEES_SOURCE_FILENAME = "source_employees_example_1.csv"
@@ -66,7 +68,9 @@ def build_isolated_test_runtime_root(runtime_root: Path) -> dict[str, Path]:
         encoding="utf-8",
     )
 
-    _patch_employees_source_alias(datasets_root / "employees" / "source" / "source.yaml")
+    _patch_employees_source_alias(
+        datasets_root / "employees" / "source" / "source.yaml"
+    )
 
     return {
         "runtime_root": runtime_root,
@@ -101,8 +105,13 @@ def write_runtime_config(
     cache_dir: Path | None = None,
     log_dir: Path | None = None,
     report_dir: Path | None = None,
+    plans_dir: Path | None = None,
 ) -> Path:
-    """Write a minimal config.yaml for runtime path driven CLI tests."""
+    """Write a minimal config.yaml for runtime path driven CLI tests.
+
+    Если runtime-path overrides не переданы явно, helper фиксирует их внутри
+    `tmp_path`, чтобы CLI-артефакты не утекали в рабочее дерево репозитория.
+    """
     payload: dict[str, Any] = {}
 
     if registry_path is not None:
@@ -124,15 +133,16 @@ def write_runtime_config(
     if runtime_payload:
         payload["runtime"] = runtime_payload
 
-    paths_payload: dict[str, str] = {}
-    if cache_dir is not None:
-        paths_payload["cache_dir"] = str(cache_dir)
-    if log_dir is not None:
-        paths_payload["log_dir"] = str(log_dir)
-    if report_dir is not None:
-        paths_payload["report_dir"] = str(report_dir)
-    if paths_payload:
-        payload["paths"] = paths_payload
+    resolved_cache_dir = cache_dir or (tmp_path / "var" / "cache")
+    resolved_log_dir = log_dir or (tmp_path / "var" / "logs")
+    resolved_report_dir = report_dir or (tmp_path / "reports")
+    resolved_plans_dir = plans_dir or (tmp_path / "var" / "plans")
+    payload["paths"] = {
+        "cache_dir": str(resolved_cache_dir),
+        "log_dir": str(resolved_log_dir),
+        "report_dir": str(resolved_report_dir),
+        "plans_dir": str(resolved_plans_dir),
+    }
 
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
@@ -140,6 +150,58 @@ def write_runtime_config(
         encoding="utf-8",
     )
     return config_path
+
+
+def component_partition_dir(root: Path, command_name: str) -> Path:
+    """Вернуть component partition directory для CLI-команды."""
+    return root / component_for_command(command_name).value
+
+
+def latest_report_path(root: Path, command_name: str) -> Path:
+    """Найти layout-aware report artifact для одной команды в изолированном тесте."""
+    component_dir = component_partition_dir(root, command_name)
+    component = component_for_command(command_name).value
+    candidates = sorted(component_dir.glob(f"*_{component}.json"))
+    if not candidates:
+        raise AssertionError(f"report artifact not found under {component_dir}")
+    return candidates[-1]
+
+
+def latest_plan_path(
+    root: Path,
+    command_name: str = "import-plan",
+    *,
+    required: bool = True,
+) -> Path | None:
+    """Найти layout-aware plan artifact для planner component.
+
+    Args:
+        root: Корень `plans_dir`.
+        command_name: CLI-команда, чей component partition нужно искать.
+        required: Когда `False`, helper возвращает `None` вместо исключения.
+    """
+    component_dir = component_partition_dir(root, command_name)
+    component = component_for_command(command_name).value
+    candidates = sorted(component_dir.glob(f"*_{component}.json"))
+    if not candidates:
+        if not required:
+            return None
+        raise AssertionError(f"plan artifact not found under {component_dir}")
+    return candidates[-1]
+
+
+def active_log_path(root: Path, command_name: str) -> Path:
+    """Найти активный дневной лог для команды без size-roll backup suffix."""
+    component_dir = component_partition_dir(root, command_name)
+    component = component_for_command(command_name).value
+    candidates = sorted(
+        path
+        for path in component_dir.glob(f"*_{component}*.log")
+        if path.name.endswith(f"_{component}.log")
+    )
+    if not candidates:
+        raise AssertionError(f"log artifact not found under {component_dir}")
+    return candidates[-1]
 
 
 def _active_test_runtime_root() -> Path:
@@ -150,7 +212,9 @@ def _active_test_runtime_root() -> Path:
 
 
 def _normalized_registry_payload(repo_datasets_root: Path) -> dict[str, Any]:
-    payload = yaml.safe_load((repo_datasets_root / _CANONICAL_REGISTRY_FILENAME).read_text(encoding="utf-8"))
+    payload = yaml.safe_load(
+        (repo_datasets_root / _CANONICAL_REGISTRY_FILENAME).read_text(encoding="utf-8")
+    )
     if not isinstance(payload, dict):
         raise ValueError("tests registry payload must be a mapping")
 
@@ -188,7 +252,9 @@ def _normalized_registry_payload(repo_datasets_root: Path) -> dict[str, Any]:
     dictionaries = payload.get("dictionaries") or {}
     manifest_ref = dictionaries.get("manifest")
     if isinstance(manifest_ref, str):
-        dictionaries["manifest"] = _normalize_dataset_ref(repo_datasets_root, manifest_ref)
+        dictionaries["manifest"] = _normalize_dataset_ref(
+            repo_datasets_root, manifest_ref
+        )
     for entry in (dictionaries.get("items") or {}).values():
         if not isinstance(entry, dict):
             continue
@@ -252,7 +318,11 @@ def _copy_registry_artifacts(
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
 
-    manifest_payload = yaml.safe_load((datasets_root / str(manifest_ref)).read_text(encoding="utf-8")) if isinstance(manifest_ref, str) else {}
+    manifest_payload = (
+        yaml.safe_load((datasets_root / str(manifest_ref)).read_text(encoding="utf-8"))
+        if isinstance(manifest_ref, str)
+        else {}
+    )
     manifest_items = (manifest_payload or {}).get("items") or {}
     for item in manifest_items.values():
         if not isinstance(item, dict):
@@ -269,7 +339,9 @@ def _copy_registry_artifacts(
 
     source_alias_src = source_data_root / "source_employees.csv"
     if source_alias_src.exists():
-        shutil.copy2(source_alias_src, source_data_root / TRACKED_EMPLOYEES_SOURCE_FILENAME)
+        shutil.copy2(
+            source_alias_src, source_data_root / TRACKED_EMPLOYEES_SOURCE_FILENAME
+        )
 
 
 def _patch_employees_source_alias(source_spec_path: Path) -> None:

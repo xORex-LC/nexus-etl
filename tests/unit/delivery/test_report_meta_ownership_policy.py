@@ -17,6 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from connector.common.observability import ServiceComponent
 from connector.config.models import AppConfig
 from connector.delivery.cli.context import CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
@@ -43,23 +44,61 @@ class _FakeContainer:
         return None
 
 
+def _patch_fake_observability(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Подменить observability session для ownership-policy тестов."""
+    session = SimpleNamespace(
+        component=ServiceComponent.MAPPER,
+        layout=object(),
+        runtime=SimpleNamespace(
+            redaction_engine=SimpleNamespace(redact_text=lambda value: value)
+        ),
+        logger=logging.getLogger("report-meta-fake-observability"),
+        log_file_path=str(tmp_path / "logs" / "mapping.log"),
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_initialize_observability_session",
+        lambda **_: session,
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_run_observability_sweeper",
+        lambda **_: None,
+    )
+
+
 def _app_config(tmp_path: Path) -> AppConfig:
-    return AppConfig.model_validate({
-        "api": {"host": "http://localhost", "port": 443, "username": "u", "password": "p",
-                "retries": 1, "retry_backoff_seconds": 0.1, "resource_exists_retries": 1},
-        "paths": {"cache_dir": str(tmp_path / "cache"), "log_dir": str(tmp_path / "logs"),
-                  "report_dir": str(tmp_path / "reports")},
-        "observability": {
-            "logging": {"level": "INFO"},
-            "reporting": {"items_limit": 100},
-            "diagnostics": {"strict": True},
-        },
-        "dataset": {"dataset_name": "employees"},
-        "execution": {"dry_run": True},
-        "refresh": {"page_size": 100, "max_pages": 1},
-        "matching_runtime": {"match_batch_size": 100, "match_flush_interval_ms": 100},
-        "resolver": {"resolve_batch_size": 100, "resolve_flush_interval_ms": 100},
-    })
+    return AppConfig.model_validate(
+        {
+            "api": {
+                "host": "http://localhost",
+                "port": 443,
+                "username": "u",
+                "password": "p",
+                "retries": 1,
+                "retry_backoff_seconds": 0.1,
+                "resource_exists_retries": 1,
+            },
+            "paths": {
+                "cache_dir": str(tmp_path / "cache"),
+                "log_dir": str(tmp_path / "logs"),
+                "report_dir": str(tmp_path / "reports"),
+            },
+            "observability": {
+                "logging": {"level": "INFO"},
+                "reporting": {"items_limit": 100},
+                "diagnostics": {"strict": True},
+            },
+            "dataset": {"dataset_name": "employees"},
+            "execution": {"dry_run": True},
+            "refresh": {"page_size": 100, "max_pages": 1},
+            "matching_runtime": {
+                "match_batch_size": 100,
+                "match_flush_interval_ms": 100,
+            },
+            "resolver": {"resolve_batch_size": 100, "resolve_flush_interval_ms": 100},
+        }
+    )
 
 
 def _ctx(tmp_path: Path) -> UnboundCommandContext:
@@ -87,9 +126,14 @@ def _run_and_build_report(
         captured["report_assembler"] = kwargs["report_assembler"]
         return None
 
+    _patch_fake_observability(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: _FakeContainer())
-    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
-    monkeypatch.setattr(runtime_module, "_shutdown_container_resources", lambda **_: None)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(
+        runtime_module, "_shutdown_container_resources", lambda **_: None
+    )
     monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", _capture_finalize)
 
     runtime_module.run_with_report(
@@ -105,7 +149,9 @@ def _run_and_build_report(
     return assembler.assemble()
 
 
-def test_runtime_is_owner_of_items_limit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_runtime_is_owner_of_items_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     built = _run_and_build_report(
         monkeypatch,
         tmp_path=tmp_path,
@@ -155,7 +201,9 @@ def test_architecture_guards_report_meta_ownership() -> None:
     project_root = Path(__file__).resolve().parents[3]
     usecases_root = project_root / "connector" / "usecases"
     commands_root = project_root / "connector" / "delivery" / "commands"
-    runtime_file = project_root / "connector" / "delivery" / "cli" / "runtime" / "orchestrator.py"
+    runtime_file = (
+        project_root / "connector" / "delivery" / "cli" / "runtime" / "orchestrator.py"
+    )
 
     usecase_violations: list[str] = []
     command_items_limit_violations: list[str] = []
@@ -168,7 +216,9 @@ def test_architecture_guards_report_meta_ownership() -> None:
     for path in commands_root.rglob("*.py"):
         for call in _iter_set_meta_event_calls(path):
             if _call_has_kw(call, "items_limit"):
-                command_items_limit_violations.append(str(path.relative_to(project_root)))
+                command_items_limit_violations.append(
+                    str(path.relative_to(project_root))
+                )
                 break
 
     for call in _iter_set_meta_event_calls(runtime_file):

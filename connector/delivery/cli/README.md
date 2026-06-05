@@ -8,8 +8,8 @@
 
 | Файл | Назначение |
 |---|---|
-| `app.py` | Typer-приложение с корневым callback (опции конфига, run-id, логирование, dataset, vault) и sub-app'ами: `cache_app`, `import_app`, `user_app`, `vault_management_app` |
-| `containers.py` | DI-контейнеры (`dependency-injector`): `SqliteContainer`, `CacheContainer`, `TargetContainer`, `VaultContainer`, `ObservabilityContainer`, `PipelineContainer` и др. |
+| `app.py` | Typer-приложение с корневым callback (опции конфига, run-id, pipeline-run-id, dataset, vault) и sub-app'ами: `cache_app`, `import_app`, `user_app`, `vault_management_app` |
+| `containers.py` | DI-контейнеры (`dependency-injector`): `SqliteContainer`, `CacheContainer`, `TargetContainer`, `VaultContainer`, `ObservabilityContainer`, `PipelineContainer` и др.; observability runtime теперь инициализируется здесь как `Resource` |
 | `dictionaries_container.py` | Отдельный DI-контейнер для справочников (выделен из-за объёма и независимости) |
 | `context.py` | `BoundCommandContext` — typed runtime context, передаваемый в каждый handler |
 | `component_mapping.py` | `component_for_command()` — разрешение CLI-команды в `ServiceComponent` (delivery-знание о вокабуляре команд; `ServiceComponent` живёт в `common/observability.py`) |
@@ -30,3 +30,7 @@
 ## Важно
 
 `containers.py` (~43 КБ) — единственное место, где создаётся граф объектов. Добавление новой зависимости → только здесь. Никакого ручного `new` / прямых импортов инфра-классов в командах.
+
+CLI vocabulary (`mapping`, `import-plan`, `cache-refresh`, `vault-management-*`) теперь
+нормализуется в `ServiceComponent` через `component_mapping.py`. Это знание
+остаётся в delivery-слое, а не в `common/`.

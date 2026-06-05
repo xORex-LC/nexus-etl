@@ -4,9 +4,9 @@
 
 Инфраструктурные adapters observability-подсистемы поверх value-object layout/policy из `common/observability.py`.
 
-На текущем этапе здесь живёт безопасная ретенция observability-артефактов:
-логов, отчётов и планов. Sweeper работает только внутри component-partition
-каталогов и не переключает orchestration call-sites сам по себе.
+Здесь живёт безопасная ретенция observability-артефактов: логов, отчётов и
+планов. Sweeper запускается из CLI orchestration на старте команды и работает
+только внутри component-partition каталогов.
 
 ## Файлы
 
@@ -17,4 +17,4 @@
 ## Зависимости
 
 **Зависит от:** `common/observability.py`.  
-**Используется:** `delivery/cli/containers.py` (DI seams), последующие runtime-фазы observability.
+**Используется:** `delivery/cli/containers.py`, `delivery/cli/runtime/orchestrator.py`.
