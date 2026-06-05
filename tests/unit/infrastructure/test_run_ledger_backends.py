@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from connector.common.observability import (
+    ObservabilityArtifactKind,
     ObservabilityLayout,
     ObservabilityLayoutPolicy,
     ServiceComponent,
@@ -22,6 +23,7 @@ from connector.infra.observability.ledger import (
     SqliteRunLedger,
     build_run_ledger_record,
 )
+from connector.infra.observability.viewer import ObservabilityArtifactViewer
 
 pytestmark = pytest.mark.unit
 
@@ -91,6 +93,10 @@ def test_jsonl_ledger_appends_one_line_per_run(tmp_path: Path) -> None:
     assert payload["run_id"] == "run-2"
     assert payload["component"] == "planner"
     assert payload["row_counters"]["rows_total"] == 0
+
+    latest = ledger.latest_record(component=ServiceComponent.PLANNER)
+    assert latest is not None
+    assert latest.run_id == "run-2"
 
 
 def test_jsonl_ledger_prune_keeps_recent_entries(tmp_path: Path) -> None:
@@ -167,6 +173,9 @@ def test_sqlite_ledger_persists_record(tmp_path: Path) -> None:
         ).fetchone()
 
     assert row == ("run-1", "run-1-pipeline", "applier", "SUCCESS")
+    latest = ledger.latest_record(component=ServiceComponent.APPLIER)
+    assert latest is not None
+    assert latest.run_id == "run-1"
 
 
 def test_sqlite_ledger_prune_removes_old_rows(tmp_path: Path) -> None:
@@ -211,3 +220,35 @@ def test_sqlite_ledger_prune_removes_old_rows(tmp_path: Path) -> None:
         rows = conn.execute("SELECT run_id FROM run_ledger ORDER BY id").fetchall()
 
     assert rows == [("fresh",)]
+
+
+def test_artifact_viewer_reads_latest_artifact_from_ledger(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    ledger = JsonlRunLedger(layout=layout)
+    report_path = tmp_path / "reports" / "planner" / "2026-06-05T10-01-00_planner.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text('{"status":"SUCCESS"}', encoding="utf-8")
+
+    ledger.append(
+        component=ServiceComponent.PLANNER,
+        record=build_run_ledger_record(
+            run_id="run-1",
+            pipeline_run_id="run-1",
+            component=ServiceComponent.PLANNER,
+            started_at="2026-06-05T10:00:00+00:00",
+            finished_at="2026-06-05T10:01:00+00:00",
+            status="SUCCESS",
+            log_path=None,
+            report_path=str(report_path),
+            plan_path=None,
+        ),
+    )
+
+    viewer = ObservabilityArtifactViewer(ledger_backend=ledger)
+    latest_path = viewer.resolve_latest_artifact_path(
+        component=ServiceComponent.PLANNER,
+        artifact_kind=ObservabilityArtifactKind.REPORT,
+    )
+
+    assert latest_path == report_path
+    assert viewer.read_text(path=latest_path) == '{"status":"SUCCESS"}'

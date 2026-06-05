@@ -39,7 +39,11 @@ from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.reporting.sink import NullReportSink, ReportSink
 from connector.domain.secrets.errors import VaultDomainError
 from connector.infra.artifacts.report_renderer import JsonReportRenderer
-from connector.common.observability import ObservabilityLayout, ServiceComponent
+from connector.common.observability import (
+    ObservabilityArtifactKind,
+    ObservabilityLayout,
+    ServiceComponent,
+)
 from connector.delivery.cli.stream_capture import StdStreamToLogger, TeeStream
 from connector.delivery.cli.component_mapping import component_for_command
 from connector.infra.logging.runtime import (
@@ -501,6 +505,20 @@ def run_with_report(
                 )
             if exit_result is None and finalize_result is not None:
                 exit_result = finalize_result
+            _publish_latest_artifact_pointers_for_report(
+                container=container,
+                component=observability_session.component
+                if observability_session is not None
+                else None,
+                layout=observability_session.layout
+                if observability_session is not None
+                else None,
+                report_assembler=report_assembler,
+                logger=logger,
+                run_id=run_id,
+                log_file_path=log_file_path,
+                plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
+            )
             if observability_session is not None:
                 _record_run_ledger_for_report(
                     container=container,
@@ -707,6 +725,14 @@ def run_without_report(
             _ = get_duration_ms(start_monotonic, time.monotonic())
             log_event(
                 logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}"
+            )
+            _publish_latest_artifact_pointers(
+                container=container,
+                logger=logger,
+                run_id=run_id,
+                log_file_path=log_file_path,
+                report_path=None,
+                plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
             )
             if observability_session is not None:
                 _record_run_ledger_without_report(
@@ -1025,6 +1051,84 @@ def _persist_run_ledger_record(
             run_id,
             "observability",
             f"Ledger append failed: {exc}",
+        )
+
+
+def _publish_latest_artifact_pointers_for_report(
+    *,
+    container: AppContainer | None,
+    component: ServiceComponent | None,
+    layout: ObservabilityLayout | None,
+    report_assembler: ReportAssembler,
+    logger: Any,
+    run_id: str,
+    log_file_path: str | None,
+    plan_path: str | None,
+) -> None:
+    """Опубликовать stable pointers для log/report/plan у report-aware команд."""
+    if component is None or layout is None:
+        return
+    try:
+        envelope = report_assembler.assemble()
+        report_path = None
+        if envelope.meta.finished_at is not None:
+            candidate = layout.report_file(
+                component,
+                now=_resolve_report_artifact_timestamp(envelope),
+            )
+            if candidate.exists() and candidate.is_file():
+                report_path = str(candidate)
+        _publish_latest_artifact_pointers(
+            container=container,
+            logger=logger,
+            run_id=run_id,
+            log_file_path=log_file_path,
+            report_path=report_path,
+            plan_path=plan_path,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            run_id,
+            "observability",
+            f"Latest pointer update failed: {exc}",
+        )
+
+
+def _publish_latest_artifact_pointers(
+    *,
+    container: AppContainer | None,
+    logger: Any,
+    run_id: str,
+    log_file_path: str | None,
+    report_path: str | None,
+    plan_path: str | None,
+) -> None:
+    """Best-effort обновить `current.log` и `latest.json` pointers."""
+    if container is None:
+        return
+    try:
+        publisher = container.observability.pointer_publisher()
+        publisher.publish(
+            artifact_kind=ObservabilityArtifactKind.LOG,
+            artifact_path=log_file_path,
+        )
+        publisher.publish(
+            artifact_kind=ObservabilityArtifactKind.REPORT,
+            artifact_path=report_path,
+        )
+        publisher.publish(
+            artifact_kind=ObservabilityArtifactKind.PLAN,
+            artifact_path=plan_path,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            run_id,
+            "observability",
+            f"Latest pointer update failed: {exc}",
         )
 
 

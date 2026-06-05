@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from connector.delivery.cli.component_mapping import component_for_command
+from connector.common.observability import ObservabilityArtifactKind
 
 
 TEST_RUNTIME_ROOT_ENV = "ANKEY_TEST_RUNTIME_ROOT"
@@ -214,6 +215,19 @@ def ledger_index_path(
     component_dir = component_partition_dir(root, command_name)
     suffix = ".jsonl" if backend == "jsonl" else ".sqlite3"
     return component_dir / f"index{suffix}"
+
+
+def latest_pointer_path(
+    root: Path,
+    command_name: str,
+    *,
+    artifact: ObservabilityArtifactKind,
+) -> Path:
+    """Вернуть stable-pointer path для указанного artifact kind."""
+    component_dir = component_partition_dir(root, command_name)
+    if artifact == ObservabilityArtifactKind.LOG:
+        return component_dir / "current.log"
+    return component_dir / "latest.json"
 
 
 def _active_test_runtime_root() -> Path:

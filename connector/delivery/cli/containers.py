@@ -147,7 +147,9 @@ from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
 from connector.infra.logging.redaction import LogRedactionEngine
 from connector.infra.observability.ledger import build_run_ledger_backend
+from connector.infra.observability.pointers import LatestArtifactPointerPublisher
 from connector.infra.observability.retention import ObservabilityRetentionSweeper
+from connector.infra.observability.viewer import ObservabilityArtifactViewer
 from connector.infra.logging.runtime import (
     StructuredLoggingRuntime,
     build_structured_logging_runtime,
@@ -1200,6 +1202,11 @@ class ObservabilityContainer(containers.DeclarativeContainer):
         layout=observability_layout,
         ledger_backend=ledger_backend,
     )
+    artifact_viewer = providers.Singleton(
+        ObservabilityArtifactViewer,
+        ledger_backend=ledger_backend,
+    )
+    pointer_publisher = providers.Singleton(LatestArtifactPointerPublisher)
     component_mapper = providers.Object(component_for_command)
 
     logging_runtime = providers.Resource(

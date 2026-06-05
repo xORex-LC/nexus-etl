@@ -9,6 +9,7 @@
 | Файл | Назначение |
 |---|---|
 | `apply_report_presenter.py` | `ApplyReportPresenter.present(result, sink)` — преобразует `ApplyResult` в серию `IReportSink.emit(...)` вызовов: `AddOpEvent`, `AddItemEvent`, `SetRowCountersEvent`, `SetContextEvent` |
+| `observability_presenter.py` | `ObservabilityPresenter` — человекочитаемый stdout-вывод для `maintenance prune` и `obs latest|tail` |
 
 ## Зависимости
 
