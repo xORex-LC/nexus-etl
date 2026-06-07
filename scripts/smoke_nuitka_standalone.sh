@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${DIST_DIR:-$ROOT_DIR/build/nuitka/standalone/nexus.dist}"
-BIN_PATH="$DIST_DIR/nexus"
+BIN_PATH="$DIST_DIR/libs/nexus"
 if [[ -x "$DIST_DIR/bin/nexus" ]]; then
   BIN_PATH="$DIST_DIR/bin/nexus"
 fi
@@ -32,22 +32,37 @@ main() {
     "$BIN_PATH" --help >/dev/null
     "$BIN_PATH" --config "$CONFIG_PATH" --help >/dev/null
     "$BIN_PATH" --config "$CONFIG_PATH" vault-management --help >/dev/null
+    # Run two real pipeline commands: exercises dynamically-bundled command
+    # handlers (lazy importlib targets), per-component report layout and the
+    # observability read path / run ledger.
     "$BIN_PATH" --config "$CONFIG_PATH" mapping >/dev/null
+    "$BIN_PATH" --config "$CONFIG_PATH" normalize >/dev/null
+    "$BIN_PATH" --config "$CONFIG_PATH" obs latest normalizer --artifact report >/dev/null
   )
 
   require_path "$DIST_DIR/reports"
   require_path "$DIST_DIR/var/cache"
   require_path "$DIST_DIR/var/logs"
+  require_path "$DIST_DIR/var/plans"
 
-  local report_path
-  report_path="$(find "$DIST_DIR/reports/mapper" -maxdepth 1 -type f -name '*_mapper.json' | sort | tail -n 1)"
-  if [[ -z "$report_path" ]]; then
-    echo "mapping smoke did not produce a report under $DIST_DIR/reports/mapper" >&2
-    exit 1
-  fi
+  require_component_report() {
+    local component="$1"
+    local found
+    found="$(find "$DIST_DIR/reports/$component" -maxdepth 1 -type f -name "*_${component}.json" | sort | tail -n 1)"
+    if [[ -z "$found" ]]; then
+      echo "smoke did not produce a report under $DIST_DIR/reports/$component" >&2
+      exit 1
+    fi
+    printf '%s\n' "$found"
+  }
+
+  local report_path normalize_report
+  report_path="$(require_component_report mapper)"
+  normalize_report="$(require_component_report normalizer)"
 
   echo "smoke passed"
-  echo "report: $report_path"
+  echo "mapper report:     $report_path"
+  echo "normalizer report: $normalize_report"
 }
 
 main "$@"
