@@ -25,7 +25,7 @@ from connector.common.time import get_duration_ms, get_now_iso
 from connector.config.config import SettingsLoadError
 from connector.config.models import AppConfig
 from connector.config.diagnostics import translate_settings_load_error
-from connector.config.projections import to_operational_paths
+from connector.config.projections import to_observability_layout, to_operational_paths
 from connector.domain.diagnostics.command_result import (
     CommandResult as DomainCommandResult,
 )
@@ -234,6 +234,8 @@ def run_with_report(
     report_policy = ReportPolicy.from_profile(
         app_config.observability.reporting.policy_profile
     )
+    fallback_component = component_for_command(command_name)
+    fallback_layout = to_observability_layout(app_config)
     report_started_at = report_context.meta_snapshot().started_at
     cli_include_skipped_raw = get_opt(opts, ("report_include_skipped",))
     cli_include_skipped = (
@@ -459,6 +461,65 @@ def run_with_report(
         try:
             sys.stdout = original_stdout
             sys.stderr = original_stderr
+            active_layout = (
+                observability_session.layout
+                if observability_session is not None
+                else fallback_layout
+            )
+            active_component = (
+                observability_session.component
+                if observability_session is not None
+                else fallback_component
+            )
+            finalize_result = finalize_report_artifacts(
+                report_sink=report_sink,
+                report_assembler=report_assembler,
+                start_monotonic=start_monotonic,
+                paths=paths,
+                log_file_path=log_file_path,
+                command_name=command_name,
+                run_id=run_id,
+                logger=logger,
+                layout=active_layout,
+                component=active_component,
+                emit_user_error=exit_result is None,
+            )
+            if finalize_result is not None:
+                apply_result_to_report(
+                    report_sink,
+                    report_context,
+                    finalize_result,
+                    command_name=command_name,
+                    source="runtime_finalize",
+                    secondary=exit_result is not None,
+                )
+            if exit_result is None and finalize_result is not None:
+                exit_result = finalize_result
+            _publish_latest_artifact_pointers_for_report(
+                container=container,
+                component=active_component,
+                layout=active_layout,
+                report_assembler=report_assembler,
+                logger=logger,
+                run_id=run_id,
+                log_file_path=log_file_path,
+                plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
+            )
+            _record_run_ledger_for_report(
+                container=container,
+                enabled=app_config.observability.ledger.enabled,
+                component=active_component,
+                layout=active_layout,
+                report_assembler=report_assembler,
+                logger=logger,
+                run_id=run_id,
+                pipeline_run_id=pipeline_run_id,
+                started_at=report_started_at,
+                log_file_path=log_file_path,
+                plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
+                final_result=exit_result,
+                exit_code_from_result=exit_code_from_result,
+            )
             shutdown_result = shutdown_container_resources(
                 container=container,
                 logger=logger,
@@ -476,65 +537,6 @@ def run_with_report(
                 )
             if exit_result is None and shutdown_result is not None:
                 exit_result = shutdown_result
-
-            finalize_result = finalize_report_artifacts(
-                report_sink=report_sink,
-                report_assembler=report_assembler,
-                start_monotonic=start_monotonic,
-                paths=paths,
-                log_file_path=log_file_path,
-                command_name=command_name,
-                run_id=run_id,
-                logger=logger,
-                layout=observability_session.layout
-                if observability_session is not None
-                else None,
-                component=observability_session.component
-                if observability_session is not None
-                else None,
-                emit_user_error=exit_result is None,
-            )
-            if finalize_result is not None:
-                apply_result_to_report(
-                    report_sink,
-                    report_context,
-                    finalize_result,
-                    command_name=command_name,
-                    source="runtime_finalize",
-                    secondary=exit_result is not None,
-                )
-            if exit_result is None and finalize_result is not None:
-                exit_result = finalize_result
-            _publish_latest_artifact_pointers_for_report(
-                container=container,
-                component=observability_session.component
-                if observability_session is not None
-                else None,
-                layout=observability_session.layout
-                if observability_session is not None
-                else None,
-                report_assembler=report_assembler,
-                logger=logger,
-                run_id=run_id,
-                log_file_path=log_file_path,
-                plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
-            )
-            if observability_session is not None:
-                _record_run_ledger_for_report(
-                    container=container,
-                    enabled=app_config.observability.ledger.enabled,
-                    component=observability_session.component,
-                    layout=observability_session.layout,
-                    report_assembler=report_assembler,
-                    logger=logger,
-                    run_id=run_id,
-                    pipeline_run_id=pipeline_run_id,
-                    started_at=report_started_at,
-                    log_file_path=log_file_path,
-                    plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
-                    final_result=exit_result,
-                    exit_code_from_result=exit_code_from_result,
-                )
         finally:
             clear_observability_context()
 
@@ -570,6 +572,7 @@ def run_without_report(
         opts=opts,
         app_config=app_config,
     )
+    fallback_component = component_for_command(command_name)
     run_topology_bootstrap = run_topology_bootstrap or _run_topology_bootstrap_if_needed
 
     start_monotonic = time.monotonic()
@@ -713,15 +716,6 @@ def run_without_report(
         try:
             sys.stdout = original_stdout
             sys.stderr = original_stderr
-            shutdown_result = shutdown_container_resources(
-                container=container,
-                logger=logger,
-                run_id=run_id,
-                emit_user_error=exit_result is None,
-            )
-            if exit_result is None and shutdown_result is not None:
-                exit_result = shutdown_result
-
             _ = get_duration_ms(start_monotonic, time.monotonic())
             log_event(
                 logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}"
@@ -735,19 +729,30 @@ def run_without_report(
                 plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
             )
             if observability_session is not None:
-                _record_run_ledger_without_report(
-                    container=container,
-                    enabled=app_config.observability.ledger.enabled,
-                    component=observability_session.component,
-                    logger=logger,
-                    run_id=run_id,
-                    pipeline_run_id=pipeline_run_id,
-                    started_at=started_at,
-                    log_file_path=log_file_path,
-                    plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
-                    final_result=exit_result,
-                    exit_code_from_result=exit_code_from_result,
-                )
+                active_component = observability_session.component
+            else:
+                active_component = fallback_component
+            _record_run_ledger_without_report(
+                container=container,
+                enabled=app_config.observability.ledger.enabled,
+                component=active_component,
+                logger=logger,
+                run_id=run_id,
+                pipeline_run_id=pipeline_run_id,
+                started_at=started_at,
+                log_file_path=log_file_path,
+                plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
+                final_result=exit_result,
+                exit_code_from_result=exit_code_from_result,
+            )
+            shutdown_result = shutdown_container_resources(
+                container=container,
+                logger=logger,
+                run_id=run_id,
+                emit_user_error=exit_result is None,
+            )
+            if exit_result is None and shutdown_result is not None:
+                exit_result = shutdown_result
         finally:
             clear_observability_context()
 

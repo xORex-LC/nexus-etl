@@ -58,6 +58,7 @@ class ObservabilityRetentionSweeper:
         component: ServiceComponent,
         retention_days: int,
         retention_backups: int,
+        ignore_marker: bool = False,
         now: datetime | None = None,
     ) -> RetentionSweepResult:
         """Выполнить safe sweep для log-root выбранного компонента."""
@@ -67,6 +68,7 @@ class ObservabilityRetentionSweeper:
             component=component,
             retention_days=retention_days,
             retention_backups=retention_backups,
+            ignore_marker=ignore_marker,
             now=resolved_now,
             marker_name=".retention.marker",
         )
@@ -76,6 +78,7 @@ class ObservabilityRetentionSweeper:
         *,
         component: ServiceComponent,
         retention_days: int,
+        ignore_marker: bool = False,
         now: datetime | None = None,
     ) -> RetentionSweepResult:
         """Выполнить safe sweep для report-root выбранного компонента."""
@@ -85,6 +88,7 @@ class ObservabilityRetentionSweeper:
             component=component,
             retention_days=retention_days,
             retention_backups=0,
+            ignore_marker=ignore_marker,
             now=resolved_now,
             marker_name=".report-retention.marker",
         )
@@ -94,6 +98,7 @@ class ObservabilityRetentionSweeper:
         *,
         component: ServiceComponent,
         retention_days: int,
+        ignore_marker: bool = False,
         now: datetime | None = None,
     ) -> RetentionSweepResult:
         """Выполнить safe sweep для plan-root выбранного компонента."""
@@ -103,6 +108,7 @@ class ObservabilityRetentionSweeper:
             component=component,
             retention_days=retention_days,
             retention_backups=0,
+            ignore_marker=ignore_marker,
             now=resolved_now,
             marker_name=".plan-retention.marker",
         )
@@ -112,6 +118,7 @@ class ObservabilityRetentionSweeper:
         *,
         component: ServiceComponent,
         retention_days: int,
+        ignore_marker: bool = False,
         now: datetime | None = None,
     ) -> RetentionSweepResult:
         """Выполнить best-effort retention для run ledger компонента."""
@@ -122,7 +129,7 @@ class ObservabilityRetentionSweeper:
         root_dir = self._layout.log_file(component, now=resolved_now).parent
         marker_path = root_dir / ".ledger-retention.marker"
         marker_day = resolved_now.astimezone(timezone.utc).date().isoformat()
-        if marker_path.exists() and marker_path.is_file():
+        if not ignore_marker and marker_path.exists() and marker_path.is_file():
             marker_value = marker_path.read_text(encoding="utf-8").strip()
             if marker_value == marker_day:
                 return RetentionSweepResult(deleted_files=(), skipped_by_marker=True)
@@ -146,13 +153,14 @@ class ObservabilityRetentionSweeper:
         component: ServiceComponent,
         retention_days: int,
         retention_backups: int,
+        ignore_marker: bool,
         now: datetime,
         marker_name: str,
     ) -> RetentionSweepResult:
         marker_path = root_dir / marker_name
         marker_day = now.astimezone(timezone.utc).date().isoformat()
 
-        if marker_path.exists() and marker_path.is_file():
+        if not ignore_marker and marker_path.exists() and marker_path.is_file():
             marker_value = marker_path.read_text(encoding="utf-8").strip()
             if marker_value == marker_day:
                 return RetentionSweepResult(deleted_files=(), skipped_by_marker=True)

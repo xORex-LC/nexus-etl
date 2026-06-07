@@ -55,7 +55,8 @@ class _FakeContainer:
         self.app_config = _OverrideProbe()
         self.target = SimpleNamespace(transport=_OverrideProbe())
         self.observability = SimpleNamespace(
-            ledger_backend=lambda: SimpleNamespace(append=self._append_ledger)
+            ledger_backend=lambda: SimpleNamespace(append=self._append_ledger),
+            pointer_publisher=lambda: SimpleNamespace(publish=lambda **_: None),
         )
 
     def shutdown_resources(self) -> None:
@@ -169,11 +170,11 @@ def test_run_with_report_restores_streams_when_shutdown_fails(
             ctx=_ctx(tmp_path),
             command_name="mapping",
             opts=SimpleNamespace(),
-            handler=lambda _ctx, _opts, _report: None,
+            handler=lambda _ctx, _opts, _report: _result_with(SystemErrorCode.OK),
             requirements=Requirements(),
         )
 
-    assert exc_info.value.exit_code == 2
+    assert exc_info.value.exit_code == 0
     assert sys.stdout is original_stdout
     assert sys.stderr is original_stderr
 
@@ -259,6 +260,101 @@ def test_run_with_report_keeps_success_when_ledger_append_fails(
         )
 
     assert exc_info.value.exit_code == 0
+
+
+def test_run_with_report_finalizes_before_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake = _FakeContainer()
+    _patch_fake_observability(monkeypatch, tmp_path)
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    events: list[str] = []
+
+    def _finalize(**_kwargs):
+        events.append("finalize")
+        return None
+
+    def _shutdown(**_kwargs):
+        events.append("shutdown")
+        return None
+
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", _finalize)
+    monkeypatch.setattr(runtime_module, "_shutdown_container_resources", _shutdown)
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_publish_latest_artifact_pointers_for_report",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_record_run_ledger_for_report",
+        lambda **_: None,
+    )
+
+    runtime_module.run_with_report(
+        ctx=_ctx(tmp_path),
+        command_name="mapping",
+        opts=SimpleNamespace(),
+        handler=lambda _ctx, _opts, _report: None,
+        requirements=Requirements(),
+    )
+
+    assert events == ["finalize", "shutdown"]
+
+
+def test_run_with_report_uses_fallback_observability_layout_when_session_init_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake = _FakeContainer()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_initialize_observability_session",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("log-dir unavailable")),
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_publish_latest_artifact_pointers_for_report",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_record_run_ledger_for_report",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(
+        runtime_module, "_shutdown_container_resources", lambda **_: None
+    )
+
+    def _finalize(**kwargs):
+        captured["layout"] = kwargs["layout"]
+        captured["component"] = kwargs["component"]
+        return None
+
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", _finalize)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_with_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: None,
+            requirements=Requirements(),
+        )
+
+    assert exc_info.value.exit_code == 2
+    assert captured["component"] == ServiceComponent.MAPPER
+    assert captured["layout"] is not None
 
 
 def test_run_without_report_sets_internal_error_on_teardown_only_failure(

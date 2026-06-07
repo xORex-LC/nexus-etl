@@ -86,3 +86,33 @@ def test_sweeper_skips_second_run_same_day_and_ignores_symlinks(tmp_path: Path) 
     assert target in first.deleted_files
     assert symlink.is_symlink()
     assert second.skipped_by_marker is True
+
+
+def test_sweeper_force_run_ignores_same_day_marker(tmp_path: Path) -> None:
+    component_dir = tmp_path / "var" / "logs" / "planner"
+    component_dir.mkdir(parents=True)
+    old_file = component_dir / "2026-05-01_planner.log"
+    old_file.write_text("old", encoding="utf-8")
+
+    sweeper = ObservabilityRetentionSweeper(layout=_layout(tmp_path))
+    now = datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc)
+    sweeper.sweep_logs(
+        component=ServiceComponent.PLANNER,
+        retention_days=7,
+        retention_backups=0,
+        now=now,
+    )
+
+    refreshed = component_dir / "2026-05-02_planner.log"
+    refreshed.write_text("old-again", encoding="utf-8")
+    forced = sweeper.sweep_logs(
+        component=ServiceComponent.PLANNER,
+        retention_days=7,
+        retention_backups=0,
+        ignore_marker=True,
+        now=now,
+    )
+
+    assert forced.skipped_by_marker is False
+    assert refreshed in forced.deleted_files
+    assert not refreshed.exists()
