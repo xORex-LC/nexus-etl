@@ -1,3 +1,5 @@
+"""Delivery-команда normalize — запуск normalize checkpoint с runtime reporting."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -32,17 +34,17 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     report_items_limit_value = (
         opts.report_items_limit
         if opts.report_items_limit is not None
-        else app_config.observability.report_items_limit
+        else app_config.observability.reporting.items_limit
     )
     include_normalized_items_value = opts.include_normalized_items if opts.include_normalized_items is not None else True
 
     dataset_name, dataset_spec = build_dataset_spec(opts.dataset, app_config.dataset)
     catalog = ctx.catalog or build_diagnostics_catalog(
         dataset_name,
-        strict=app_config.observability.diagnostics_strict,
+        strict=app_config.observability.diagnostics.strict,
     )
     report_sink.emit(SetMetaEvent(dataset=dataset_name))
-    report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
+    report_policy = ReportPolicy.from_profile(app_config.observability.reporting.policy_profile)
 
     try:
         pipeline = ctx.container.pipeline

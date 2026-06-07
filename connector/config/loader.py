@@ -48,6 +48,7 @@ _ENV_OVERRIDE_DENIED_FIELDS = frozenset(
         "paths.cache_dir",
         "paths.log_dir",
         "paths.report_dir",
+        "paths.plans_dir",
         "dataset.registry_path",
         "sqlite.vault_db_path",
         "sqlite.cache_db_path",
@@ -171,13 +172,22 @@ def _collect_env_overrides() -> dict[str, Any]:
             # In particular, vault-management admin gate settings must not be
             # disabled or redirected by process environment variables.
             continue
-        field_key = field_raw.lower()
-        dotted_key = f"{section}.{field_key}"
+        field_parts = [part.lower() for part in field_raw.split(_LEVEL_SEP) if part]
+        if not field_parts:
+            continue
+        dotted_key = ".".join([section, *field_parts])
         if dotted_key in _ENV_OVERRIDE_DENIED_FIELDS:
             continue
         if section not in result:
             result[section] = {}
-        result[section][field_key] = stripped
+        cursor = result[section]
+        for part in field_parts[:-1]:
+            current = cursor.get(part)
+            if not isinstance(current, dict):
+                current = {}
+                cursor[part] = current
+            cursor = current
+        cursor[field_parts[-1]] = stripped
     return result
 
 
@@ -191,14 +201,15 @@ def _dotted_to_nested(overrides: dict[str, object]) -> dict[str, Any]:
     for key, value in overrides.items():
         if value is None:
             continue
-        parts = key.split(".", maxsplit=1)
-        if len(parts) == 1:
-            result[key] = value
-        else:
-            section, subkey = parts
-            if section not in result:
-                result[section] = {}
-            result[section][subkey] = value
+        parts = key.split(".")
+        cursor = result
+        for part in parts[:-1]:
+            current = cursor.get(part)
+            if not isinstance(current, dict):
+                current = {}
+                cursor[part] = current
+            cursor = current
+        cursor[parts[-1]] = value
     return result
 
 
@@ -230,18 +241,18 @@ def _deep_merge(
 
 def _fill_default_trace(app_config: AppConfig, trace: dict[str, str]) -> None:
     """Добавляет 'default' для всех leaf-полей AppConfig, не найденных в trace."""
-    for section_name, section_value in app_config:
-        section_cls = type(section_value)
-        if hasattr(section_cls, "model_fields"):
-            # Nested *Config model — walk leaf fields via class (not instance)
-            for field_name in section_cls.model_fields:
-                key = f"{section_name}.{field_name}"
-                if key not in trace:
-                    trace[key] = "default"
-        else:
-            # Top-level scalar (на случай, если появятся простые поля)
-            if section_name not in trace:
-                trace[section_name] = "default"
+    _fill_model_default_trace(app_config, trace, prefix="")
+
+
+def _fill_model_default_trace(model: Any, trace: dict[str, str], *, prefix: str) -> None:
+    for field_name in type(model).model_fields:
+        value = getattr(model, field_name)
+        full_key = f"{prefix}.{field_name}" if prefix else field_name
+        if hasattr(type(value), "model_fields"):
+            _fill_model_default_trace(value, trace, prefix=full_key)
+            continue
+        if full_key not in trace:
+            trace[full_key] = "default"
 
 
 def _pydantic_error_to_issues(exc: ValidationError) -> list[SettingsIssue]:

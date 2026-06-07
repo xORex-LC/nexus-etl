@@ -206,6 +206,8 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [OBSERVABILITY-PROBLEM-001](./observability/OBSERVABILITY-PROBLEM-001-inconsistent-logging.md) | Problem | Непоследовательное использование logging и structlog | ❌ Открыто | 2026-02-19 |
 | [OBSERVABILITY-DEC-001](./observability/OBSERVABILITY-DEC-001-structlog-as-standard.md) | Decision | structlog как единственный стандарт логирования | ❌ Открыто (миграция постепенная) | 2026-02-19 |
+| [OBSERVABILITY-PROBLEM-002](./observability/OBSERVABILITY-PROBLEM-002-flat-non-partitioned-artifacts.md) | Problem | Плоская непартиционированная раскладка логов/отчётов/планов без прод-модели | ✅ Закрыто | 2026-06-04 |
+| [OBSERVABILITY-DEC-002](./observability/OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md) | Decision | Per-component прод-раскладка наблюдаемости на structlog | ✅ Принято | 2026-06-04 |
 
 _(Список поддерживается как актуальный реестр ADR по слоям.)_
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 import typer
 
 from connector.domain.diagnostics.command_result import CommandResult
@@ -9,7 +7,6 @@ from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.events import SetContextEvent
 from connector.domain.secrets.errors import VaultDomainError
-from connector.infra.logging.setup import log_event
 
 
 def result_with(code: SystemErrorCode) -> CommandResult:
@@ -22,12 +19,20 @@ def result_with(code: SystemErrorCode) -> CommandResult:
     return result
 
 
-def sqlite_cache_error_result(*, logger, run_id: str, scope: str, exc: Exception) -> CommandResult:
+def sqlite_cache_error_result(
+    *, logger, run_id: str, scope: str, exc: Exception
+) -> CommandResult:
     """
     Назначение:
         Единый fallback для ошибок открытия/чтения cache DB.
     """
-    log_event(logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
+    logger.error(
+        "Failed to open cache DB",
+        scope="cache",
+        command_scope=scope,
+        error=str(exc),
+        error_type=exc.__class__.__name__,
+    )
     typer.echo("ERROR: failed to open cache DB (see logs/report)", err=True)
     return result_with(SystemErrorCode.CACHE_ERROR)
 
@@ -37,20 +42,35 @@ def log_sqlite_cache_error(*, logger, run_id: str, exc: Exception) -> None:
     Назначение:
         Единый логгер cache sqlite-ошибки для best-effort сценариев.
     """
-    log_event(logger, logging.ERROR, run_id, "cache", f"Failed to open cache DB: {exc}")
+    logger.error(
+        "Failed to open cache DB",
+        scope="cache",
+        error=str(exc),
+        error_type=exc.__class__.__name__,
+    )
 
 
-def vault_startup_error_result(*, logger, run_id: str, exc: VaultDomainError) -> CommandResult:
+def vault_startup_error_result(
+    *, logger, run_id: str, exc: VaultDomainError
+) -> CommandResult:
     """
     Назначение:
         Единый fail-fast результат для startup guard ошибок (`VAULT_STARTUP_*`).
     """
-    log_event(logger, logging.ERROR, run_id, "vault", f"{exc.code}: {exc}")
+    logger.error(
+        "Vault startup error",
+        scope="vault",
+        diag_code=exc.code,
+        error=str(exc),
+        error_type=exc.__class__.__name__,
+    )
     typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
     return result_with(SystemErrorCode.INTERNAL_ERROR)
 
 
-def ensure_supported_cache_dataset(cache_admin, dataset: str | None) -> CommandResult | None:
+def ensure_supported_cache_dataset(
+    cache_admin, dataset: str | None
+) -> CommandResult | None:
     """
     Назначение:
         Проверить, что dataset поддерживается cache admin портом.
@@ -94,4 +114,6 @@ def attach_dictionary_report_snapshot_if_available(*, ctx, report_sink) -> None:
 
     snapshot = telemetry.snapshot()
     if isinstance(snapshot, dict):
-        report_sink.emit(SetContextEvent(name=ReportContextKey.DICTIONARY, value=snapshot))
+        report_sink.emit(
+            SetContextEvent(name=ReportContextKey.DICTIONARY, value=snapshot)
+        )

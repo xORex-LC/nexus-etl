@@ -91,13 +91,7 @@ forbidden_modules = [
     "connector.infra",
     "connector.delivery",
 ]
-# Известный технический долг: logging — cross-cutting concern, два use case-сервиса
-# напрямую зовут infra.logging.log_event. Целевое состояние — logging seam
-# (см. OBSERVABILITY-DEC-001). До миграции импорты явно whitelisted, а не молча
-# ослабляют контракт.
 ignore_imports = [
-    "connector.usecases.cache_command_service -> connector.infra.logging.setup",
-    "connector.usecases.cache_refresh_service -> connector.infra.logging.setup",
     # Тот же datasets-мост, что и у domain (см. контракт выше): enrich_usecase ->
     # datasets.registry -> datasets.yaml_spec -> infra.sources.csv_reader.
     "connector.datasets.yaml_spec -> connector.infra.sources.csv_reader",

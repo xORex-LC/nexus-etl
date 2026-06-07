@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,7 +11,10 @@ import typer
 from connector.config.models import AppConfig
 from connector.delivery.cli import containers as containers_module
 from connector.delivery.cli import runtime as runtime_module
-from connector.delivery.cli.containers import _init_container_for_requirements, build_dataset_spec
+from connector.delivery.cli.containers import (
+    _init_container_for_requirements,
+    build_dataset_spec,
+)
 from connector.delivery.cli.context import CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
 from connector.delivery.cli.runtime.topology_bootstrap import (
@@ -23,7 +25,10 @@ from connector.delivery.cli.runtime.topology_bootstrap import (
 from connector.delivery.commands.topology_runtime import pipeline_topology_scope
 from connector.domain.diagnostics import build_catalog, build_error, build_warning
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.domain.ports.topology import TopologyProviderPort, TopologyRuntimeRequirements
+from connector.domain.ports.topology import (
+    TopologyProviderPort,
+    TopologyRuntimeRequirements,
+)
 from connector.domain.models import DiagnosticStage
 from connector.domain.reporting.assembler import ReportAssembler
 from connector.domain.reporting.context import InMemoryReportContext
@@ -36,6 +41,23 @@ from connector.usecases.topology_bootstrap import (
 )
 
 pytestmark = pytest.mark.integration
+
+
+class _NoopLogger:
+    def debug(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def info(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def warning(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def error(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def critical(self, _event: str, **_fields: object) -> None:
+        return None
 
 
 def _app_config(tmp_path: Path, *, dataset_name: str = "employees") -> AppConfig:
@@ -56,9 +78,9 @@ def _app_config(tmp_path: Path, *, dataset_name: str = "employees") -> AppConfig
                 "report_dir": str(tmp_path / "reports"),
             },
             "observability": {
-                "log_level": "INFO",
-                "report_items_limit": 100,
-                "diagnostics_strict": True,
+                "logging": {"level": "INFO"},
+                "reporting": {"items_limit": 100},
+                "diagnostics": {"strict": True},
             },
             "dataset": {"dataset_name": dataset_name},
             "execution": {"dry_run": True},
@@ -77,7 +99,7 @@ def _app_config(tmp_path: Path, *, dataset_name: str = "employees") -> AppConfig
 
 def _ctx(tmp_path: Path, *, dataset_name: str = "employees") -> UnboundCommandContext:
     return CommandContext(
-        logger=logging.getLogger(f"topology-runtime-{dataset_name}"),
+        logger=_NoopLogger(),
         run_id="integration-run",
         catalog=build_catalog(None, strict=True),
         strict=True,
@@ -215,7 +237,7 @@ def test_topology_provider_is_injected_into_planning_context(
         ),
         container=container,
         report_sink=ReportSink(report_context),
-        logger=logging.getLogger("topology-bootstrap-step"),
+        logger=_NoopLogger(),
         run_id="integration-run",
     )
 
@@ -227,10 +249,12 @@ def test_topology_provider_is_injected_into_planning_context(
     catalog = containers_module.build_diagnostics_catalog(dataset_name, strict=True)
     pipeline = container.pipeline
 
-    with pipeline_topology_scope(ctx=ctx, pipeline=pipeline), \
-         pipeline.dataset_spec.override(dataset_spec), \
-         pipeline.run_id.override("integration-run"), \
-         pipeline.catalog.override(catalog):
+    with (
+        pipeline_topology_scope(ctx=ctx, pipeline=pipeline),
+        pipeline.dataset_spec.override(dataset_spec),
+        pipeline.run_id.override("integration-run"),
+        pipeline.catalog.override(catalog),
+    ):
         planning_context = pipeline.planning_context()
 
     provider = step_result.runtime_binding.provider
@@ -239,7 +263,10 @@ def test_topology_provider_is_injected_into_planning_context(
     assert planning_context.has(TopologyProviderPort) is True
     assert planning_context.require(TopologyProviderPort) is provider
     assert planning_context.has(TopologyRuntimeRequirements) is True
-    assert planning_context.require(TopologyRuntimeRequirements).requires_target_topology is True
+    assert (
+        planning_context.require(TopologyRuntimeRequirements).requires_target_topology
+        is True
+    )
     assert hasattr(provider, "metadata") is False
 
 
@@ -271,7 +298,9 @@ def test_topology_step_short_circuit_keeps_warnings(
     )
 
     class _AlwaysActiveResolver:
-        def resolve(self, *, command_name: str, dataset_name: str) -> TopologyActivationDecision:
+        def resolve(
+            self, *, command_name: str, dataset_name: str
+        ) -> TopologyActivationDecision:
             return TopologyActivationDecision(
                 request=TopologyBootstrapRequest(
                     pipeline_dataset=dataset_name,
@@ -316,7 +345,7 @@ def test_topology_step_short_circuit_keeps_warnings(
         ),
         container=object(),
         report_sink=sink,
-        logger=logging.getLogger("topology-short-circuit"),
+        logger=_NoopLogger(),
         run_id="integration-run",
     )
 
@@ -363,7 +392,7 @@ def test_topology_step_converts_missing_cache_spec_into_topology_diagnostic(
         ),
         container=object(),
         report_sink=sink,
-        logger=logging.getLogger("topology-missing-cache-spec"),
+        logger=_NoopLogger(),
         run_id="integration-run",
     )
 

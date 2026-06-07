@@ -251,6 +251,18 @@ def list_specs(secrets: SecretProviderProtocol | None = None) -> list[DatasetSpe
     return [factory(secrets=secrets) for factory in registry.values()]
 
 
+def list_dataset_names() -> list[str]:
+    """Вернуть имена датасетов из registry.yaml без инстанцирования spec'ов.
+
+    Дешёвый side-effect-free аксессор: читает только секцию `datasets` реестра
+    (один YAML parse) и не вызывает factory/не грузит артефакты. Предназначен
+    для CLI shell-completion, где коллбек обязан быть быстрым и без сайд-эффектов.
+    """
+    registry_data = load_registry()
+    datasets = registry_data.get("datasets") or {}
+    return sorted(datasets.keys())
+
+
 def validate_registry() -> None:
     """
     Назначение:

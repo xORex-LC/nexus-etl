@@ -127,7 +127,8 @@ def test_zero_and_false_values_are_not_lost(tmp_path, monkeypatch):
         "\n".join(
             [
                 "observability:",
-                "  report_items_limit: 123",
+                "  reporting:",
+                "    items_limit: 123",
                 "dataset:",
                 "  include_deleted: true",
             ]
@@ -135,7 +136,7 @@ def test_zero_and_false_values_are_not_lost(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("ANKEY_OBSERVABILITY__REPORT_ITEMS_LIMIT", "201")
+    monkeypatch.setenv("ANKEY_OBSERVABILITY__REPORTING__ITEMS_LIMIT", "201")
     monkeypatch.setenv("ANKEY_DATASET__INCLUDE_DELETED", "false")
 
     loaded = load_app_config(
@@ -143,7 +144,7 @@ def test_zero_and_false_values_are_not_lost(tmp_path, monkeypatch):
         cli_overrides={},
     )
 
-    assert loaded.app_config.observability.report_items_limit == 201
+    assert loaded.app_config.observability.reporting.items_limit == 201
     assert loaded.app_config.dataset.include_deleted is False
 
 

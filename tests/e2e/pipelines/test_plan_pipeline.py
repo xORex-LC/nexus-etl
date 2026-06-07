@@ -14,6 +14,8 @@ from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.domain.transform.matcher.identity_keys import format_identity_key
 from connector.main import app
 from tests.runtime_test_support import (
+    latest_plan_path,
+    latest_report_path,
     prepare_tracked_employees_source_file,
     tracked_employees_runtime_roots,
     write_runtime_config,
@@ -39,6 +41,7 @@ CSV_HEADER = (
     "ДатаРожд",
     "Пол",
 )
+
 
 def _write_csv(path: Path, rows: list[list[str | None]]) -> None:
     with path.open("w", encoding="utf-8") as f:
@@ -166,6 +169,7 @@ def make_row(
         "",
     ]
 
+
 def _build_repo(db_path: str) -> SqliteCacheRepository:
     engine = open_sqlite(to_cache_db_config(load_app_config().app_config), db_path)
     cache_specs = list(load_cache_dsl_runtime().cache_specs)
@@ -175,7 +179,9 @@ def _build_repo(db_path: str) -> SqliteCacheRepository:
 
 def _open_identity_engine(cache_db_path: str) -> SqliteEngine:
     identity_db_path = str(Path(cache_db_path).parent / "identity.sqlite3")
-    engine = open_sqlite(to_identity_db_config(load_app_config().app_config), identity_db_path)
+    engine = open_sqlite(
+        to_identity_db_config(load_app_config().app_config), identity_db_path
+    )
     ensure_identity_schema(engine)
     return engine
 
@@ -198,9 +204,15 @@ def _seed_org(repo: SqliteCacheRepository, ouid: int) -> None:
                 },
             )
         with identity_engine.transaction():
-            identity_repo.upsert_identity("organizations", format_identity_key("_ouid", str(ouid)), str(ouid))
-            identity_repo.upsert_identity("organizations", format_identity_key("name", f"Org {ouid}"), str(ouid))
-            identity_repo.upsert_identity("organizations", format_identity_key("code", str(ouid)), str(ouid))
+            identity_repo.upsert_identity(
+                "organizations", format_identity_key("_ouid", str(ouid)), str(ouid)
+            )
+            identity_repo.upsert_identity(
+                "organizations", format_identity_key("name", f"Org {ouid}"), str(ouid)
+            )
+            identity_repo.upsert_identity(
+                "organizations", format_identity_key("code", str(ouid)), str(ouid)
+            )
     finally:
         identity_engine.close()
 
@@ -255,7 +267,15 @@ def _seed_org_row(
     finally:
         identity_engine.close()
 
-def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: str, organization_id: int) -> None:
+
+def _seed_user(
+    repo: SqliteCacheRepository,
+    *,
+    _id: str,
+    match_key: str,
+    phone: str,
+    organization_id: int,
+) -> None:
     identity_engine = _open_identity_engine(repo.engine.db_path)
     try:
         identity_repo = SqliteIdentityRepository(identity_engine)
@@ -286,10 +306,17 @@ def _seed_user(repo: SqliteCacheRepository, *, _id: str, match_key: str, phone: 
                 },
             )
         with identity_engine.transaction():
-            identity_repo.upsert_identity("employees", format_identity_key("match_key", match_key), str(ouid))
-            identity_repo.upsert_identity("employees", format_identity_key("organization_id", str(organization_id)), str(ouid))
+            identity_repo.upsert_identity(
+                "employees", format_identity_key("match_key", match_key), str(ouid)
+            )
+            identity_repo.upsert_identity(
+                "employees",
+                format_identity_key("organization_id", str(organization_id)),
+                str(ouid),
+            )
     finally:
         identity_engine.close()
+
 
 def _run_plan(
     tmp_path: Path,
@@ -340,8 +367,11 @@ def _run_plan(
     if dataset is not None:
         args.extend(["--dataset", dataset])
     result = runner.invoke(app, args, input=f"{TEST_UNSEAL_PASSPHRASE}\n")
-    plan_path = report_dir / f"plan_import_{run_id}.json"
+    plan_path = latest_plan_path(tmp_path / "var" / "plans", required=False)
+    if plan_path is None:
+        plan_path = tmp_path / "var" / "plans" / "planner" / "__missing__.json"
     return result.exit_code, plan_path
+
 
 def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -377,6 +407,7 @@ def test_plan_error_when_match_key_cannot_be_built(tmp_path: Path):
     assert plan["summary"]["skipped"] == 0
     assert plan["items"] == []
 
+
 def test_plan_create_when_not_found(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
@@ -410,12 +441,15 @@ def test_plan_create_when_not_found(tmp_path: Path):
     assert len(plan["items"]) == 1
     assert plan["items"][0]["op"] == "create"
 
+
 def test_plan_update_when_found_and_diff(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
     repo = _build_repo(db_path)
     _seed_org(repo, ouid=30)
-    _seed_user(repo, _id="u1", match_key="Doe|John|M|100", phone="+111111", organization_id=30)
+    _seed_user(
+        repo, _id="u1", match_key="Doe|John|M|100", phone="+111111", organization_id=30
+    )
 
     csv_path = tmp_path / "update.csv"
     _write_csv(
@@ -444,12 +478,17 @@ def test_plan_update_when_found_and_diff(tmp_path: Path):
     assert plan["items"][0]["op"] == "update"
     assert "phone" in plan["items"][0]["changes"]
 
-def test_plan_update_when_existing_mail_conflicts_with_source2_null_email(tmp_path: Path):
+
+def test_plan_update_when_existing_mail_conflicts_with_source2_null_email(
+    tmp_path: Path,
+):
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
     repo = _build_repo(db_path)
     _seed_org(repo, ouid=40)
-    _seed_user(repo, _id="u2", match_key="Doe|John|M|100", phone="+111111", organization_id=40)
+    _seed_user(
+        repo, _id="u2", match_key="Doe|John|M|100", phone="+111111", organization_id=40
+    )
 
     csv_path = tmp_path / "skip.csv"
     _write_csv(
@@ -477,6 +516,7 @@ def test_plan_update_when_existing_mail_conflicts_with_source2_null_email(tmp_pa
     assert plan["summary"]["skipped"] == 1
     assert plan["items"] == []
 
+
 def test_plan_conflict_when_multiple_same_match_key(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
@@ -498,7 +538,8 @@ def test_plan_conflict_when_multiple_same_match_key(tmp_path: Path):
                 org_id="50",
                 tab="TAB-100",
             )
-        ] + [
+        ]
+        + [
             make_row(
                 raw_id="100",
                 full_name="Doe John M",
@@ -519,6 +560,7 @@ def test_plan_conflict_when_multiple_same_match_key(tmp_path: Path):
     assert exit_code == 0
     assert plan["summary"]["planned_create"] == 1
     assert len(plan["items"]) == 1
+
 
 def test_plan_error_when_org_missing(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -665,7 +707,7 @@ def test_plan_filters_unanchored_organization_subtree(tmp_path: Path):
     )
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     report = json.loads(
-        (tmp_path / "reports" / "report_import-plan_plan-org-anchoring.json").read_text(
+        latest_report_path(tmp_path / "reports", "import-plan").read_text(
             encoding="utf-8"
         )
     )

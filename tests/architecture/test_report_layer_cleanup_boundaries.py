@@ -17,18 +17,15 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONNECTOR_ROOT = REPO_ROOT / "connector"
 USECASES_ROOT = CONNECTOR_ROOT / "usecases"
-RUNTIME_RESULT_MAPPER = CONNECTOR_ROOT / "delivery" / "cli" / "runtime" / "result_mapper.py"
-RUNTIME_CONTRACTS = CONNECTOR_ROOT / "delivery" / "cli" / "runtime" / "contracts.py"
-RUNTIME_ORCHESTRATOR = CONNECTOR_ROOT / "delivery" / "cli" / "runtime" / "orchestrator.py"
-
-# Usecase-файлы, которым временно разрешён infra-импорт (RPT-011, P2 OPEN).
-# Когда RPT-011 закроется — убрать исключения и сократить список до пустого.
-_RPT011_KNOWN_VIOLATIONS: frozenset[str] = frozenset(
-    {
-        "connector/usecases/cache_command_service.py",
-        "connector/usecases/cache_refresh_service.py",
-    }
+RUNTIME_RESULT_MAPPER = (
+    CONNECTOR_ROOT / "delivery" / "cli" / "runtime" / "result_mapper.py"
 )
+RUNTIME_CONTRACTS = CONNECTOR_ROOT / "delivery" / "cli" / "runtime" / "contracts.py"
+RUNTIME_ORCHESTRATOR = (
+    CONNECTOR_ROOT / "delivery" / "cli" / "runtime" / "orchestrator.py"
+)
+
+_RPT011_KNOWN_VIOLATIONS: frozenset[str] = frozenset()
 
 REMOVED_LEGACY_PATHS = (
     "connector/domain/transform/core/result_processor.py",
@@ -78,7 +75,9 @@ def _rel(path: Path) -> str:
 
 def test_report_legacy_cleanup_files_are_removed() -> None:
     existing = [path for path in REMOVED_LEGACY_PATHS if (REPO_ROOT / path).exists()]
-    assert existing == [], "Legacy report-файлы должны быть удалены:\n" + "\n".join(existing)
+    assert existing == [], "Legacy report-файлы должны быть удалены:\n" + "\n".join(
+        existing
+    )
 
 
 def test_connector_code_does_not_import_removed_report_legacy_modules() -> None:
@@ -86,9 +85,14 @@ def test_connector_code_does_not_import_removed_report_legacy_modules() -> None:
     for path in _py_files(CONNECTOR_ROOT):
         rel = _rel(path)
         for module in _imports(path):
-            if any(_is_forbidden_import(module, forbidden) for forbidden in FORBIDDEN_IMPORT_PREFIXES):
+            if any(
+                _is_forbidden_import(module, forbidden)
+                for forbidden in FORBIDDEN_IMPORT_PREFIXES
+            ):
                 violations.append(f"{rel}: {module}")
-    assert violations == [], "Найдены запрещённые legacy-импорты:\n" + "\n".join(violations)
+    assert violations == [], "Найдены запрещённые legacy-импорты:\n" + "\n".join(
+        violations
+    )
 
 
 def test_runtime_boundary_has_no_legacy_result_markers() -> None:
@@ -99,7 +103,9 @@ def test_runtime_boundary_has_no_legacy_result_markers() -> None:
         for marker in FORBIDDEN_RUNTIME_MARKERS:
             if marker in source:
                 violations.append(f"{_rel(path)}: {marker}")
-    assert violations == [], "Runtime boundary содержит legacy-маркеры:\n" + "\n".join(violations)
+    assert violations == [], "Runtime boundary содержит legacy-маркеры:\n" + "\n".join(
+        violations
+    )
 
 
 def _is_forbidden_import(module: str, forbidden: str) -> bool:
@@ -109,6 +115,7 @@ def _is_forbidden_import(module: str, forbidden: str) -> bool:
 # ---------------------------------------------------------------------------
 # RPT-011: Use-case → infra boundary
 # ---------------------------------------------------------------------------
+
 
 def test_usecases_do_not_import_infra() -> None:
     """Use-case слой не должен импортировать из connector.infra.*
@@ -140,9 +147,7 @@ def test_rpt011_known_violations_are_still_tracked() -> None:
         path = REPO_ROOT / rel
         if not path.exists():
             continue
-        if any(
-            _is_forbidden_import(m, "connector.infra") for m in _imports(path)
-        ):
+        if any(_is_forbidden_import(m, "connector.infra") for m in _imports(path)):
             still_violating.append(rel)
     assert set(still_violating) == _RPT011_KNOWN_VIOLATIONS, (
         "Список RPT011_KNOWN_VIOLATIONS устарел. "
