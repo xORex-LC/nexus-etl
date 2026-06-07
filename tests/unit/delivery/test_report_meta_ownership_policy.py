@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import ast
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -44,6 +43,23 @@ class _FakeContainer:
         return None
 
 
+class _NoopLogger:
+    def debug(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def info(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def warning(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def error(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def critical(self, _event: str, **_fields: object) -> None:
+        return None
+
+
 def _patch_fake_observability(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Подменить observability session для ownership-policy тестов."""
     session = SimpleNamespace(
@@ -52,7 +68,7 @@ def _patch_fake_observability(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
         runtime=SimpleNamespace(
             redaction_engine=SimpleNamespace(redact_text=lambda value: value)
         ),
-        logger=logging.getLogger("report-meta-fake-observability"),
+        logger=_NoopLogger(),
         log_file_path=str(tmp_path / "logs" / "mapping.log"),
     )
     monkeypatch.setattr(
@@ -103,7 +119,7 @@ def _app_config(tmp_path: Path) -> AppConfig:
 
 def _ctx(tmp_path: Path) -> UnboundCommandContext:
     return CommandContext(
-        logger=logging.getLogger("report-meta-ownership-policy-test"),
+        logger=_NoopLogger(),
         run_id="ownership-run",
         catalog=build_catalog(None, strict=True),
         strict=True,

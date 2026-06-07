@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -12,7 +10,6 @@ from connector.domain.reporting.events import AddOpEvent, SetContextEvent
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.cache_status_usecase import CacheStatusUseCase
 from connector.usecases.cache_clear_usecase import CacheClearUseCase
-from connector.infra.logging.setup import log_event
 
 
 class CacheCommandService:
@@ -82,13 +79,25 @@ class CacheCommandService:
             result.add_code(SystemErrorCode.DATA_INVALID)
         return result
 
-    def status(self, logger, report_sink, run_id: str, dataset: str | None = None) -> CommandResult:
+    def status(
+        self, logger, report_sink, run_id: str, dataset: str | None = None
+    ) -> CommandResult:
         try:
             status = self.cache_status.status(dataset=dataset)
-            report_sink.emit(SetContextEvent(name=ReportContextKey.CACHE_STATUS, value={"status": status}))
+            report_sink.emit(
+                SetContextEvent(
+                    name=ReportContextKey.CACHE_STATUS, value={"status": status}
+                )
+            )
             return CommandResult(summary=status)
         except Exception as exc:
-            log_event(logger, logging.ERROR, run_id, "cache", f"Cache status failed: {exc}")
+            logger.error(
+                "Cache status failed",
+                scope="cache",
+                dataset=dataset,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+            )
             result = CommandResult(summary={})
             result.add_code(SystemErrorCode.CACHE_ERROR)
             return result
@@ -105,18 +114,31 @@ class CacheCommandService:
         try:
             if self.cache_clear is None:
                 raise ValueError("Cache clear usecase is not configured")
-            cleared = self.cache_clear.clear_with_options(dataset=dataset, cascade=cascade)
-            log_event(
-                logger,
-                logging.INFO,
-                run_id,
-                "cache",
-                f"cache clear: {cleared}",
+            cleared = self.cache_clear.clear_with_options(
+                dataset=dataset, cascade=cascade
             )
-            report_sink.emit(SetContextEvent(name=ReportContextKey.CACHE_CLEAR, value={"cleared": cleared}))
+            logger.info(
+                "Cache clear completed",
+                scope="cache",
+                dataset=dataset,
+                cascade=cascade,
+                cleared=cleared,
+            )
+            report_sink.emit(
+                SetContextEvent(
+                    name=ReportContextKey.CACHE_CLEAR, value={"cleared": cleared}
+                )
+            )
             return CommandResult(summary=cleared)
         except Exception as exc:
-            log_event(logger, logging.ERROR, run_id, "cache", f"Cache clear failed: {exc}")
+            logger.error(
+                "Cache clear failed",
+                scope="cache",
+                dataset=dataset,
+                cascade=cascade,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+            )
             result = CommandResult(summary={})
             result.add_code(SystemErrorCode.CACHE_ERROR)
             return result

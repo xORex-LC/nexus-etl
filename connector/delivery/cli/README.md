@@ -13,7 +13,7 @@
 | `dictionaries_container.py` | Отдельный DI-контейнер для справочников (выделен из-за объёма и независимости) |
 | `context.py` | `BoundCommandContext` — typed runtime context, передаваемый в каждый handler |
 | `component_mapping.py` | `component_for_command()` — разрешение CLI-команды в `ServiceComponent`, включая observability-команды `maintenance-prune` / `obs-*` |
-| `stream_capture.py` | `StdStreamToLogger`, `TeeStream`, `DropCapturedStdStreamsFilter` — CLI-специфичный перехват stdout/stderr с redaction |
+| `stream_capture.py` | `StdStreamToLogger`, `TeeStream` — CLI-специфичный перехват stdout/stderr с redaction и native structlog emission |
 
 ## Подпапки
 

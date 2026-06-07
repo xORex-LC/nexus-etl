@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar
-import logging
 
 from connector.config.models import AppConfig
 from connector.domain.diagnostics.catalog import ErrorCatalog
@@ -51,7 +50,7 @@ class CommandContext(Generic[TContainer]):
         - `CommandContext[AppContainer]`: bound-контекст после wiring в runtime.
     """
 
-    logger: logging.Logger
+    logger: Any
     run_id: str
     catalog: ErrorCatalog
     strict: bool

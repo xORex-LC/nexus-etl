@@ -5,20 +5,21 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 
 import typer
 
 from connector.delivery.cli.context import BoundCommandContext
-from connector.delivery.commands.common import ensure_supported_cache_dataset, result_with
+from connector.delivery.commands.common import (
+    ensure_supported_cache_dataset,
+    result_with,
+)
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
 from connector.domain.reporting.contracts import ReportContextKey
 from connector.domain.reporting.events import SetContextEvent, SetMetaEvent
 from connector.datasets.registry import build_identity_index_plan
 from connector.infra.cache.dsl_runtime import build_sync_adapters
-from connector.infra.logging.setup import log_event
 from connector.usecases.cache_command_service import CacheCommandService
 from connector.usecases.cache_refresh_service import CacheRefreshUseCase
 from connector.usecases.common.identity_sync import IdentityIndexSyncer
@@ -55,7 +56,9 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     try:
         cache_roles = ctx.container.cache.roles()
         cache_dsl_bundle = ctx.container.cache_dsl()
-        unsupported_result = ensure_supported_cache_dataset(cache_roles.cache_admin, opts.dataset)
+        unsupported_result = ensure_supported_cache_dataset(
+            cache_roles.cache_admin, opts.dataset
+        )
         if unsupported_result is not None:
             return unsupported_result
         if opts.dataset is not None:
@@ -66,7 +69,12 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         target_meta = runtime.meta()
         endpoint = target_meta.endpoint
         reader = runtime.reader
-        report_sink.emit(SetContextEvent(name=ReportContextKey.TARGET_RUNTIME, value=_runtime_context(build_result)))
+        report_sink.emit(
+            SetContextEvent(
+                name=ReportContextKey.TARGET_RUNTIME,
+                value=_runtime_context(build_result),
+            )
+        )
 
         adapters = build_sync_adapters(cache_dsl_bundle)
         identity_keys, identity_id_fields = build_identity_index_plan()
@@ -101,11 +109,13 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
                 else runtime_policy.refresh_with_deps_default
             ),
             report_items_limit=(
-                opts.report_items_limit or app_config.observability.reporting.items_limit
+                opts.report_items_limit
+                or app_config.observability.reporting.items_limit
             ),
             api_base_url=endpoint,
             retries=opts.retries or app_config.api.retries,
-            retry_backoff_seconds=opts.retry_backoff_seconds or app_config.api.retry_backoff_seconds,
+            retry_backoff_seconds=opts.retry_backoff_seconds
+            or app_config.api.retry_backoff_seconds,
             dataset=opts.dataset,
             catalog=ctx.catalog,
         )
@@ -113,7 +123,12 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         typer.echo(f"ERROR: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     except Exception as exc:
-        log_event(ctx.logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
+        ctx.logger.error(
+            "Cache refresh failed",
+            scope="cache",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo("ERROR: cache refresh failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
 

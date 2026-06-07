@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import replace
 from unittest.mock import MagicMock
 
@@ -22,28 +21,60 @@ class _DummyReport:
         _ = event
 
 
+class _NoopLogger:
+    def debug(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def info(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def warning(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def error(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def critical(self, _event: str, **_fields: object) -> None:
+        return None
+
+
 def _app_config(tmp_path) -> AppConfig:
-    return AppConfig.model_validate({
-        "api": {"host": "http://localhost", "port": 443, "username": "u", "password": "p",
-                "retries": 1, "retry_backoff_seconds": 0.1, "resource_exists_retries": 1},
-        "paths": {"cache_dir": str(tmp_path / "cache"), "log_dir": str(tmp_path / "logs"),
-                  "report_dir": str(tmp_path / "reports")},
-        "observability": {
-            "logging": {"level": "INFO"},
-            "reporting": {"items_limit": 100},
-            "diagnostics": {"strict": True},
-        },
-        "dataset": {"dataset_name": "employees"},
-        "execution": {"dry_run": True},
-        "refresh": {"page_size": 100, "max_pages": 1},
-        "matching_runtime": {"match_batch_size": 100, "match_flush_interval_ms": 100},
-        "resolver": {"resolve_batch_size": 100, "resolve_flush_interval_ms": 100},
-    })
+    return AppConfig.model_validate(
+        {
+            "api": {
+                "host": "http://localhost",
+                "port": 443,
+                "username": "u",
+                "password": "p",
+                "retries": 1,
+                "retry_backoff_seconds": 0.1,
+                "resource_exists_retries": 1,
+            },
+            "paths": {
+                "cache_dir": str(tmp_path / "cache"),
+                "log_dir": str(tmp_path / "logs"),
+                "report_dir": str(tmp_path / "reports"),
+            },
+            "observability": {
+                "logging": {"level": "INFO"},
+                "reporting": {"items_limit": 100},
+                "diagnostics": {"strict": True},
+            },
+            "dataset": {"dataset_name": "employees"},
+            "execution": {"dry_run": True},
+            "refresh": {"page_size": 100, "max_pages": 1},
+            "matching_runtime": {
+                "match_batch_size": 100,
+                "match_flush_interval_ms": 100,
+            },
+            "resolver": {"resolve_batch_size": 100, "resolve_flush_interval_ms": 100},
+        }
+    )
 
 
 def _ctx(tmp_path) -> CommandContext:
     return CommandContext(
-        logger=logging.getLogger("vault-startup-wiring-test"),
+        logger=_NoopLogger(),
         run_id="test-run",
         catalog=build_catalog(None, strict=True),
         strict=True,
@@ -90,8 +121,12 @@ def _plan() -> Plan:
     )
 
 
-def test_enrich_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.MonkeyPatch, tmp_path, capsys):
-    monkeypatch.setattr(enrich_command, "provide_runtime_unseal_passphrase", lambda _ctx: None)
+def test_enrich_handler_runs_startup_guard_in_vault_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys
+):
+    monkeypatch.setattr(
+        enrich_command, "provide_runtime_unseal_passphrase", lambda _ctx: None
+    )
     container = MagicMock()
     container.sqlite.vault_ready.init.side_effect = VaultStartupKeyValidationError(
         details={"reason": "probe_decrypt_failed"},
@@ -108,8 +143,12 @@ def test_enrich_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.Mon
     assert "VAULT_STARTUP_KEY_VALIDATION_ERROR" in capsys.readouterr().err
 
 
-def test_import_plan_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.MonkeyPatch, tmp_path, capsys):
-    monkeypatch.setattr(import_plan_command, "provide_runtime_unseal_passphrase", lambda _ctx: None)
+def test_import_plan_handler_runs_startup_guard_in_vault_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys
+):
+    monkeypatch.setattr(
+        import_plan_command, "provide_runtime_unseal_passphrase", lambda _ctx: None
+    )
     container = MagicMock()
     container.sqlite.vault_ready.init.side_effect = VaultStartupKeyValidationError(
         details={"reason": "probe_decrypt_failed"},
@@ -125,8 +164,12 @@ def test_import_plan_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytes
     assert "VAULT_STARTUP_KEY_VALIDATION_ERROR" in capsys.readouterr().err
 
 
-def test_import_apply_handler_runs_startup_guard_in_vault_mode(monkeypatch: pytest.MonkeyPatch, tmp_path, capsys):
-    monkeypatch.setattr(import_apply_command, "provide_runtime_unseal_passphrase", lambda _ctx: None)
+def test_import_apply_handler_runs_startup_guard_in_vault_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys
+):
+    monkeypatch.setattr(
+        import_apply_command, "provide_runtime_unseal_passphrase", lambda _ctx: None
+    )
     monkeypatch.setattr(import_apply_command, "readPlanFile", lambda _path: _plan())
     container = MagicMock()
     container.sqlite.vault_ready.init.side_effect = VaultStartupKeyValidationError(

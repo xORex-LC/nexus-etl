@@ -15,7 +15,6 @@ backend-деталях ledger: эти обязанности остаются в
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 
 import typer
@@ -32,7 +31,6 @@ from connector.delivery.presenters.observability_presenter import (
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.infra.logging.setup import log_event
 
 
 @dataclass(frozen=True)
@@ -55,7 +53,6 @@ def latest_handler(
 ) -> CommandResult:
     """Показать содержимое последнего артефакта выбранного компонента."""
     _ = report_sink
-    run_id = ctx.run_id
     viewer = ctx.container.observability.artifact_viewer()
 
     try:
@@ -87,21 +84,22 @@ def latest_handler(
                 )
             )
         )
-        log_event(
-            ctx.logger,
-            logging.INFO,
-            run_id,
-            "observability",
-            f"Displayed latest {opts.artifact.value}: {artifact_path}",
+        ctx.logger.info(
+            "Displayed latest artifact",
+            scope="observability",
+            component=opts.component.value,
+            artifact_kind=opts.artifact.value,
+            artifact_path=str(artifact_path),
         )
         return result_with(SystemErrorCode.OK)
     except Exception as exc:
-        log_event(
-            ctx.logger,
-            logging.ERROR,
-            run_id,
-            "observability",
-            f"obs latest failed: {exc}",
+        ctx.logger.error(
+            "Observability latest failed",
+            scope="observability",
+            component=opts.component.value,
+            artifact_kind=opts.artifact.value,
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         typer.echo("ERROR: obs latest failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.IO_ERROR)
@@ -114,7 +112,6 @@ def tail_handler(
 ) -> CommandResult:
     """Показать хвост последнего артефакта выбранного компонента."""
     _ = report_sink
-    run_id = ctx.run_id
     viewer = ctx.container.observability.artifact_viewer()
 
     try:
@@ -147,21 +144,23 @@ def tail_handler(
                 )
             )
         )
-        log_event(
-            ctx.logger,
-            logging.INFO,
-            run_id,
-            "observability",
-            f"Displayed tail for {opts.artifact.value}: {artifact_path}",
+        ctx.logger.info(
+            "Displayed artifact tail",
+            scope="observability",
+            component=opts.component.value,
+            artifact_kind=opts.artifact.value,
+            artifact_path=str(artifact_path),
+            tail_lines=opts.lines,
         )
         return result_with(SystemErrorCode.OK)
     except Exception as exc:
-        log_event(
-            ctx.logger,
-            logging.ERROR,
-            run_id,
-            "observability",
-            f"obs tail failed: {exc}",
+        ctx.logger.error(
+            "Observability tail failed",
+            scope="observability",
+            component=opts.component.value,
+            artifact_kind=opts.artifact.value,
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         typer.echo("ERROR: obs tail failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.IO_ERROR)

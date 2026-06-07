@@ -90,8 +90,25 @@ class _FakeObservabilitySession:
     component: ServiceComponent
     layout: object
     runtime: object
-    logger: logging.Logger
+    logger: object
     log_file_path: str | None
+
+
+class _NoopLogger:
+    def debug(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def info(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def warning(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def error(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def critical(self, _event: str, **_fields: object) -> None:
+        return None
 
 
 def _patch_fake_observability(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -102,7 +119,7 @@ def _patch_fake_observability(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
         runtime=SimpleNamespace(
             redaction_engine=SimpleNamespace(redact_text=lambda value: value)
         ),
-        logger=logging.getLogger("runtime-di-fake-observability"),
+        logger=_NoopLogger(),
         log_file_path=str(tmp_path / "logs" / "mapping.log"),
     )
     monkeypatch.setattr(
@@ -222,13 +239,11 @@ def test_run_with_report_keeps_primary_result_when_shutdown_fails(
 
 
 def test_shutdown_container_resources_continues_after_first_failure() -> None:
-    fake = _FakeContainer(
-        shutdown_failures={"target": RuntimeError("target failed")}
-    )
+    fake = _FakeContainer(shutdown_failures={"target": RuntimeError("target failed")})
 
     result = runtime_module._shutdown_container_resources(
         container=fake,  # type: ignore[arg-type]
-        logger=logging.getLogger("runtime-shutdown-continue-test"),
+        logger=_NoopLogger(),
         run_id="r-shutdown-continue",
         emit_user_error=False,
     )
@@ -479,7 +494,7 @@ def test_initialize_container_resources_maps_sqlite_error(
     result = runtime_module._initialize_container_resources(
         container=object(),  # type: ignore[arg-type]
         requirements=Requirements(requires_cache=True),
-        logger=logging.getLogger("runtime-init-mapping-test"),
+        logger=_NoopLogger(),
         run_id="r1",
     )
 
@@ -499,7 +514,7 @@ def test_initialize_container_resources_maps_vault_domain_error(
     result = runtime_module._initialize_container_resources(
         container=object(),  # type: ignore[arg-type]
         requirements=Requirements(),
-        logger=logging.getLogger("runtime-init-mapping-test"),
+        logger=_NoopLogger(),
         run_id="r2",
     )
 
@@ -519,7 +534,7 @@ def test_initialize_container_resources_maps_unknown_error(
     result = runtime_module._initialize_container_resources(
         container=object(),  # type: ignore[arg-type]
         requirements=Requirements(),
-        logger=logging.getLogger("runtime-init-mapping-test"),
+        logger=_NoopLogger(),
         run_id="r3",
     )
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 from dataclasses import dataclass
 
@@ -50,7 +49,6 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
     resolve_vault_runtime_mode,
 )
 from connector.infra.artifacts.plan_writer import write_plan_file_with_layout
-from connector.infra.logging.setup import log_event
 
 
 @dataclass(frozen=True)
@@ -222,9 +220,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
             )
             if ctx.extra is not None:
                 ctx.extra["plan_path"] = plan_path
-            log_event(
-                ctx.logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}"
-            )
+            ctx.logger.info("Plan written", scope="plan", plan_path=plan_path)
             result = CommandResult()
             result.add_code(SystemErrorCode.OK)
             attach_dictionary_report_snapshot_if_available(
@@ -241,8 +237,11 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
             logger=ctx.logger, run_id=run_id, scope="plan", exc=exc
         )
     except Exception as exc:
-        log_event(
-            ctx.logger, logging.ERROR, run_id, "plan", f"Import plan failed: {exc}"
+        ctx.logger.error(
+            "Import plan failed",
+            scope="plan",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         typer.echo("ERROR: import plan failed (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)

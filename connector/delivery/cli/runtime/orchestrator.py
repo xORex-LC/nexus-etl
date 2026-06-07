@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import typer
+import structlog
 
 from connector.common.time import get_duration_ms, get_now_iso
 from connector.config.config import SettingsLoadError
@@ -51,7 +52,6 @@ from connector.infra.logging.runtime import (
     bind_observability_context,
     clear_observability_context,
 )
-from connector.infra.logging.setup import log_event
 from connector.infra.observability.ledger import (
     RunLedgerRowCounters,
     build_run_ledger_record,
@@ -151,7 +151,10 @@ def _initialize_observability_session(
     container.observability.logging_runtime.init()
     runtime = container.observability.logging_runtime()
     layout = container.observability.observability_layout()
-    logger = runtime.get_command_logger(command_name=command_name, component=component)
+    logger = runtime.get_logger(
+        component,
+        logger_name=f"nexus.{component.value}.{command_name}",
+    )
     return RuntimeObservabilitySession(
         component=component,
         layout=layout,
@@ -167,7 +170,6 @@ def _run_observability_sweeper(
     app_config: AppConfig,
     session: RuntimeObservabilitySession,
     logger: Any,
-    run_id: str,
 ) -> None:
     """Выполнить best-effort sweep observability-артефактов на старте команды."""
     sweeper = container.observability.sweeper()
@@ -192,12 +194,11 @@ def _run_observability_sweeper(
                 retention_days=app_config.observability.logging.sinks.file.retention_days,
             )
     except Exception as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            run_id,
-            "observability",
-            f"Observability sweep failed: {exc}",
+        logger.warning(
+            "Observability sweep failed",
+            scope="observability",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
 
 
@@ -288,7 +289,7 @@ def run_with_report(
     exit_result: RuntimeExecutionResult = None
     container: AppContainer | None = None
     observability_session: RuntimeObservabilitySession | None = None
-    logger: Any = logging.getLogger("nexus.runtime.bootstrap")
+    logger: Any = structlog.get_logger("nexus.runtime.bootstrap")
     log_file_path: str | None = None
 
     try:
@@ -317,27 +318,24 @@ def run_with_report(
             app_config=app_config,
             session=observability_session,
             logger=logger,
-            run_id=run_id,
         )
 
         stdout_logger_stream = StdStreamToLogger(
             logger,
             logging.INFO,
-            run_id,
             "stdout",
             redaction_engine=observability_session.runtime.redaction_engine,
         )
         stderr_logger_stream = StdStreamToLogger(
             logger,
             logging.ERROR,
-            run_id,
             "stderr",
             redaction_engine=observability_session.runtime.redaction_engine,
         )
         sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
         sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
 
-        log_event(logger, logging.INFO, run_id, "core", "Command started")
+        logger.info("Command started", scope="core")
 
         validate_requirements(ctx, opts, requirements)
 
@@ -402,7 +400,12 @@ def run_with_report(
             error=exc,
             record_ref=None,
         )
-        log_event(logger, logging.ERROR, run_id, "config", f"Settings error: {exc}")
+        logger.error(
+            "Settings error",
+            scope="config",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         echo_command_diagnostics("ERROR: invalid settings configuration", diags)
         result = DomainCommandResult()
         result.add_diagnostics(diags, ctx.catalog)
@@ -423,7 +426,13 @@ def run_with_report(
             error=exc,
             record_ref=None,
         )
-        log_event(logger, logging.ERROR, run_id, "dsl", f"{exc.code}: {exc}")
+        logger.error(
+            "DSL load error",
+            scope="dsl",
+            diag_code=exc.code,
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
         result = DomainCommandResult()
         result.add_diagnostics([diag], ctx.catalog)
@@ -437,7 +446,12 @@ def run_with_report(
             secondary=False,
         )
     except RuntimeErrorWithCode as exc:
-        log_event(logger, logging.ERROR, run_id, "config", str(exc))
+        logger.error(
+            "Runtime validation error",
+            scope="config",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo(f"ERROR: {exc}", err=True)
         exit_result = build_runtime_error_result(
             catalog=ctx.catalog,
@@ -457,7 +471,12 @@ def run_with_report(
             secondary=False,
         )
     except Exception as exc:
-        log_event(logger, logging.ERROR, run_id, "core", f"Command failed: {exc}")
+        logger.error(
+            "Command failed",
+            scope="core",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo("ERROR: command failed (see logs/report)", err=True)
         exit_result = build_runtime_error_result(
             catalog=ctx.catalog,
@@ -600,7 +619,7 @@ def run_without_report(
     exit_result: RuntimeExecutionResult = None
     container: AppContainer | None = None
     observability_session: RuntimeObservabilitySession | None = None
-    logger: Any = logging.getLogger("nexus.runtime.bootstrap")
+    logger: Any = structlog.get_logger("nexus.runtime.bootstrap")
     log_file_path: str | None = None
 
     try:
@@ -629,27 +648,24 @@ def run_without_report(
             app_config=app_config,
             session=observability_session,
             logger=logger,
-            run_id=run_id,
         )
 
         stdout_logger_stream = StdStreamToLogger(
             logger,
             logging.INFO,
-            run_id,
             "stdout",
             redaction_engine=observability_session.runtime.redaction_engine,
         )
         stderr_logger_stream = StdStreamToLogger(
             logger,
             logging.ERROR,
-            run_id,
             "stderr",
             redaction_engine=observability_session.runtime.redaction_engine,
         )
         sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
         sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
 
-        log_event(logger, logging.INFO, run_id, "core", "Command started")
+        logger.info("Command started", scope="core")
 
         validate_requirements(ctx, opts, requirements)
 
@@ -690,7 +706,12 @@ def run_without_report(
             error=exc,
             record_ref=None,
         )
-        log_event(logger, logging.ERROR, run_id, "config", f"Settings error: {exc}")
+        logger.error(
+            "Settings error",
+            scope="config",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         echo_command_diagnostics("ERROR: invalid settings configuration", diags)
         result = DomainCommandResult()
         result.add_diagnostics(diags, ctx.catalog)
@@ -703,13 +724,24 @@ def run_without_report(
             error=exc,
             record_ref=None,
         )
-        log_event(logger, logging.ERROR, run_id, "dsl", f"{exc.code}: {exc}")
+        logger.error(
+            "DSL load error",
+            scope="dsl",
+            diag_code=exc.code,
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
         result = DomainCommandResult()
         result.add_diagnostics([diag], ctx.catalog)
         exit_result = result
     except RuntimeErrorWithCode as exc:
-        log_event(logger, logging.ERROR, run_id, "config", str(exc))
+        logger.error(
+            "Runtime validation error",
+            scope="config",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo(f"ERROR: {exc}", err=True)
         exit_result = build_runtime_error_result(
             catalog=ctx.catalog,
@@ -721,7 +753,12 @@ def run_without_report(
             },
         )
     except Exception as exc:
-        log_event(logger, logging.ERROR, run_id, "core", f"Command failed: {exc}")
+        logger.error(
+            "Command failed",
+            scope="core",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo("ERROR: command failed (see logs)", err=True)
         exit_result = build_runtime_error_result(
             catalog=ctx.catalog,
@@ -742,9 +779,7 @@ def run_without_report(
             if exit_result is None and shutdown_result is not None:
                 exit_result = shutdown_result
             _ = get_duration_ms(start_monotonic, time.monotonic())
-            log_event(
-                logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}"
-            )
+            logger.info("Log written", scope="log", log_file_path=log_file_path)
             _publish_latest_artifact_pointers(
                 container=container,
                 logger=logger,
@@ -802,7 +837,7 @@ def initialize_container_resources(
     *,
     container: AppContainer,
     requirements: Requirements,
-    logger: logging.Logger,
+    logger: Any,
     run_id: str,
     init_container_for_requirements: Callable[[AppContainer, Requirements], None],
 ) -> RuntimeExecutionResult:
@@ -816,28 +851,32 @@ def initialize_container_resources(
         # Dictionary/DSL init failures must reach outer DSL error handling path unchanged.
         raise
     except sqlite3.Error as exc:
-        log_event(
-            logger,
-            logging.ERROR,
-            run_id,
-            "cache",
-            f"Container cache init failed: {exc}",
+        logger.error(
+            "Container cache init failed",
+            scope="cache",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         typer.echo(
             "ERROR: failed to initialize cache resources (see logs/report)", err=True
         )
         return result_with(SystemErrorCode.CACHE_ERROR)
     except VaultDomainError as exc:
-        log_event(logger, logging.ERROR, run_id, "vault", f"{exc.code}: {exc}")
+        logger.error(
+            "Vault startup error",
+            scope="vault",
+            diag_code=exc.code,
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     except Exception as exc:
-        log_event(
-            logger,
-            logging.ERROR,
-            run_id,
-            "core",
-            f"Container resource init failed: {exc}",
+        logger.error(
+            "Container resource init failed",
+            scope="core",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         typer.echo(
             "ERROR: failed to initialize runtime resources (see logs/report)", err=True
@@ -849,7 +888,7 @@ def initialize_container_resources(
 def shutdown_container_resources(
     *,
     container: AppContainer | None,
-    logger: logging.Logger,
+    logger: Any,
     run_id: str,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
@@ -866,21 +905,19 @@ def shutdown_container_resources(
             subcontainer.shutdown_resources()
         except Exception as exc:
             failures.append((subcontainer_name, exc))
-            log_event(
-                logger,
-                logging.ERROR,
-                run_id,
-                "core",
-                f"Container shutdown failed for {subcontainer_name}: {exc}",
+            logger.error(
+                "Container shutdown failed",
+                scope="core",
+                subcontainer=subcontainer_name,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
             )
 
     if failures:
-        log_event(
-            logger,
-            logging.ERROR,
-            run_id,
-            "core",
+        logger.error(
             "Container shutdown completed with errors",
+            scope="core",
+            failed_subcontainers=[name for name, _ in failures],
         )
         if emit_user_error:
             typer.echo("ERROR: runtime teardown failed (see logs/report)", err=True)
@@ -941,16 +978,13 @@ def finalize_report_artifacts(
             component=component,
             now=report_timestamp,
         )
-        log_event(
-            logger, logging.INFO, run_id, "report", f"Report written: {report_path}"
-        )
+        logger.info("Report written", scope="report", report_path=report_path)
     except Exception as exc:
-        log_event(
-            logger,
-            logging.ERROR,
-            run_id,
-            "report",
-            f"Report finalization failed: {exc}",
+        logger.error(
+            "Report finalization failed",
+            scope="report",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         if emit_user_error:
             typer.echo("ERROR: failed to finalize report (see logs)", err=True)
@@ -1021,12 +1055,11 @@ def _record_run_ledger_for_report(
             record=record,
         )
     except Exception as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            run_id,
-            "observability",
-            f"Ledger record assembly failed: {exc}",
+        logger.warning(
+            "Ledger record assembly failed",
+            scope="observability",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
 
 
@@ -1071,12 +1104,11 @@ def _record_run_ledger_without_report(
             record=record,
         )
     except Exception as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            run_id,
-            "observability",
-            f"Ledger record assembly failed: {exc}",
+        logger.warning(
+            "Ledger record assembly failed",
+            scope="observability",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
 
 
@@ -1096,12 +1128,11 @@ def _persist_run_ledger_record(
         backend = container.observability.ledger_backend()
         backend.append(component=component, record=record)
     except Exception as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            run_id,
-            "observability",
-            f"Ledger append failed: {exc}",
+        logger.warning(
+            "Ledger append failed",
+            scope="observability",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
 
 
@@ -1138,12 +1169,11 @@ def _publish_latest_artifact_pointers_for_report(
             plan_path=plan_path,
         )
     except Exception as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            run_id,
-            "observability",
-            f"Latest pointer update failed: {exc}",
+        logger.warning(
+            "Latest pointer update failed",
+            scope="observability",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
 
 
@@ -1174,12 +1204,11 @@ def _publish_latest_artifact_pointers(
             artifact_path=plan_path,
         )
     except Exception as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            run_id,
-            "observability",
-            f"Latest pointer update failed: {exc}",
+        logger.warning(
+            "Latest pointer update failed",
+            scope="observability",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
 
 
@@ -1369,7 +1398,7 @@ def _run_topology_bootstrap_if_needed(
     requirements: Requirements,
     container: AppContainer,
     report_sink,
-    logger: logging.Logger,
+    logger: Any,
     run_id: str,
 ):
     if command_name not in TOPOLOGY_PIPELINE_COMMANDS:
