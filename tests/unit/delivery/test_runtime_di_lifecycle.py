@@ -407,6 +407,63 @@ def test_run_with_report_uses_fallback_observability_layout_when_session_init_fa
     assert captured["layout"] is not None
 
 
+def test_run_with_report_bootstrap_logger_uses_stderr_before_observability_init(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        runtime_module,
+        "AppContainer",
+        lambda: (_ for _ in ()).throw(RuntimeError("container unavailable")),
+    )
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", lambda **_: None)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_with_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: None,
+            requirements=Requirements(),
+        )
+
+    captured = capsys.readouterr()
+    assert exc_info.value.exit_code == 2
+    assert "Command failed" not in captured.out
+    assert "container unavailable" not in captured.out
+    assert '"event": "Command failed"' in captured.err
+    assert '"error": "container unavailable"' in captured.err
+
+
+def test_run_without_report_bootstrap_logger_uses_stderr_before_observability_init(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        runtime_module,
+        "AppContainer",
+        lambda: (_ for _ in ()).throw(RuntimeError("container unavailable")),
+    )
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_without_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: None,
+            requirements=Requirements(),
+        )
+
+    captured = capsys.readouterr()
+    assert exc_info.value.exit_code == 2
+    assert "Command failed" not in captured.out
+    assert "container unavailable" not in captured.out
+    assert '"event": "Command failed"' in captured.err
+    assert '"error": "container unavailable"' in captured.err
+
+
 def test_run_without_report_sets_internal_error_on_teardown_only_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

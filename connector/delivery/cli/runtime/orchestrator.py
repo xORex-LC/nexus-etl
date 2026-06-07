@@ -104,6 +104,43 @@ Why these four:
 """
 
 
+def _add_bootstrap_schema_version(
+    _logger: Any, _method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    event_dict.setdefault("schema_version", "1.0")
+    return event_dict
+
+
+def _build_bootstrap_logger(
+    *,
+    command_name: str,
+    run_id: str,
+    pipeline_run_id: str,
+    component: ServiceComponent,
+    dataset: str | None,
+    stderr_stream,
+) -> Any:
+    """Создать stderr-bound logger для ошибок до инициализации logging runtime."""
+    fields: dict[str, Any] = {
+        "run_id": run_id,
+        "pipeline_run_id": pipeline_run_id,
+        "component": component.value,
+    }
+    if dataset is not None:
+        fields["dataset"] = dataset
+    return structlog.wrap_logger(
+        structlog.PrintLogger(stderr_stream),
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        processors=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            _add_bootstrap_schema_version,
+            structlog.processors.JSONRenderer(),
+        ],
+        cache_logger_on_first_use=False,
+    ).bind(**fields)
+
+
 @dataclass(frozen=True)
 class RuntimeObservabilitySession:
     """Собрать observability-зависимости одного command execution lifecycle.
@@ -289,7 +326,14 @@ def run_with_report(
     exit_result: RuntimeExecutionResult = None
     container: AppContainer | None = None
     observability_session: RuntimeObservabilitySession | None = None
-    logger: Any = structlog.get_logger("nexus.runtime.bootstrap")
+    logger: Any = _build_bootstrap_logger(
+        command_name=command_name,
+        run_id=run_id,
+        pipeline_run_id=pipeline_run_id,
+        component=fallback_component,
+        dataset=dataset_name,
+        stderr_stream=original_stderr,
+    )
     log_file_path: str | None = None
 
     try:
@@ -619,7 +663,14 @@ def run_without_report(
     exit_result: RuntimeExecutionResult = None
     container: AppContainer | None = None
     observability_session: RuntimeObservabilitySession | None = None
-    logger: Any = structlog.get_logger("nexus.runtime.bootstrap")
+    logger: Any = _build_bootstrap_logger(
+        command_name=command_name,
+        run_id=run_id,
+        pipeline_run_id=pipeline_run_id,
+        component=fallback_component,
+        dataset=dataset_name,
+        stderr_stream=original_stderr,
+    )
     log_file_path: str | None = None
 
     try:
