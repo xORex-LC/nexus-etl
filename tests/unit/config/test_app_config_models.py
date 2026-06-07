@@ -14,6 +14,7 @@ from connector.config.models import (
     AppConfig,
     DatasetConfig,
     MatchingRuntimeConfig,
+    ObservabilityConfig,
     ResolverConfig,
     RuntimeConfig,
     VaultRolloutConfig,
@@ -107,6 +108,24 @@ def test_runtime_config_defaults_follow_standalone_layout() -> None:
     assert cfg.target_projection_root == "./etc/target-projection"
 
 
+def test_observability_config_defaults_follow_nested_contract() -> None:
+    cfg = ObservabilityConfig()
+
+    assert cfg.partition_by_component is True
+    assert cfg.clock == "utc"
+    assert cfg.logging.level == "INFO"
+    assert cfg.logging.sinks.console.stream == "stderr"
+    assert cfg.reporting.items_limit == 200
+    assert cfg.reporting.include_skipped is True
+    assert cfg.diagnostics.strict is False
+    assert cfg.ledger.backend == "jsonl"
+
+
+def test_observability_config_rejects_removed_flat_fields() -> None:
+    with pytest.raises(ValidationError):
+        ObservabilityConfig.model_validate({"log_level": "DEBUG"})
+
+
 def test_app_config_extra_forbid_unknown_section() -> None:
     """AppConfig.model_validate({'unknown_section': 1}) → ValidationError."""
     with pytest.raises(ValidationError):
@@ -165,3 +184,6 @@ def test_app_config_defaults_regression() -> None:
     assert cfg.paths.cache_dir == "var/cache"
     assert cfg.paths.log_dir == "var/logs"
     assert cfg.paths.report_dir == "reports"
+    assert cfg.paths.plans_dir == "var/plans"
+    assert cfg.observability.logging.sinks.console.stream == "stderr"
+    assert cfg.observability.reporting.policy_profile == "standard"

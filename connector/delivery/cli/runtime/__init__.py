@@ -14,11 +14,17 @@
 
 from __future__ import annotations
 
-import logging
-from typing import Any
+from typing import Any, TypeAlias
 
-from connector.delivery.cli.containers import AppContainer, _init_container_for_requirements
-from connector.delivery.cli.context import BoundCommandContext, CommandContext, UnboundCommandContext
+from connector.delivery.cli.containers import (
+    AppContainer,
+    _init_container_for_requirements,
+)
+from connector.delivery.cli.context import (
+    BoundCommandContext,
+    CommandContext,
+    UnboundCommandContext,
+)
 from connector.delivery.cli.requirements import Requirements
 from .contracts import (
     CommandHandler,
@@ -35,7 +41,7 @@ from .result_mapper import (
 from connector.domain.reporting.context import IReportContext
 
 
-ReportHandler = CommandHandler
+ReportHandler: TypeAlias = CommandHandler
 
 
 def run_with_report(
@@ -104,7 +110,9 @@ def _run_topology_bootstrap_if_needed(**kwargs):
     return runtime_orchestrator._run_topology_bootstrap_if_needed(**kwargs)
 
 
-def _bind_context_with_container(ctx: UnboundCommandContext, *, container: AppContainer) -> BoundCommandContext:
+def _bind_context_with_container(
+    ctx: UnboundCommandContext, *, container: AppContainer
+) -> BoundCommandContext:
     """
     Назначение:
         Compatibility facade для lifecycle tests.
@@ -116,7 +124,7 @@ def _initialize_container_resources(
     *,
     container: AppContainer,
     requirements: Requirements,
-    logger: logging.Logger,
+    logger: Any,
     run_id: str,
 ) -> RuntimeExecutionResult:
     """
@@ -135,7 +143,7 @@ def _initialize_container_resources(
 def _shutdown_container_resources(
     *,
     container: AppContainer | None,
-    logger: logging.Logger,
+    logger: Any,
     run_id: str,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
@@ -157,10 +165,12 @@ def _finalize_report_artifacts(
     report_assembler,
     start_monotonic: float,
     paths,
-    log_file_path: str,
+    log_file_path: str | None,
     command_name: str,
     run_id: str,
-    logger: logging.Logger,
+    logger,
+    layout=None,
+    component=None,
     emit_user_error: bool,
 ) -> RuntimeExecutionResult:
     """
@@ -176,11 +186,15 @@ def _finalize_report_artifacts(
         command_name=command_name,
         run_id=run_id,
         logger=logger,
+        layout=layout,
+        component=component,
         emit_user_error=emit_user_error,
     )
 
 
-def _validate_requirements(ctx: CommandContext[Any], opts: Any, requirements: Requirements) -> None:
+def _validate_requirements(
+    ctx: CommandContext[Any], opts: Any, requirements: Requirements
+) -> None:
     """
     Назначение:
         Compatibility facade для runtime requirements gate.
@@ -233,7 +247,7 @@ def _apply_cli_result_to_report(
     secondary: bool,
 ) -> None:
     """Purpose:
-        Compatibility facade: runtime result -> report mapping.
+    Compatibility facade: runtime result -> report mapping.
     """
     apply_runtime_result_to_report(
         report_sink,

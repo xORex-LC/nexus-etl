@@ -1,14 +1,19 @@
+"""Delivery-команда import plan — оркестрация planning pipeline до построения plan.json."""
+
 from __future__ import annotations
 
-import logging
 import sqlite3
 from dataclasses import dataclass
 
 import typer
 
 from connector.common.time import get_now_iso
-from connector.config.projections import to_operational_paths, to_vault_rollout_policy_settings
-from connector.delivery.cli.containers import build_dataset_spec, build_diagnostics_catalog
+from connector.config.projections import to_vault_rollout_policy_settings
+from connector.delivery.cli.component_mapping import component_for_command
+from connector.delivery.cli.containers import (
+    build_dataset_spec,
+    build_diagnostics_catalog,
+)
 from connector.delivery.cli.context import BoundCommandContext
 from connector.delivery.commands.topology_runtime import pipeline_topology_scope
 from connector.delivery.commands.common import (
@@ -24,7 +29,11 @@ from connector.domain.models import RowRef
 from connector.domain.planning.plan_builder import PlanBuilder
 from connector.domain.reporting.contracts import ReportItemStatus
 from connector.domain.reporting.diagnostics import split_report_diagnostics
-from connector.domain.reporting.events import AddItemEvent, SetMetaEvent, SetRowCountersEvent
+from connector.domain.reporting.events import (
+    AddItemEvent,
+    SetMetaEvent,
+    SetRowCountersEvent,
+)
 from connector.domain.reporting.policy import ReportPolicy
 from connector.domain.secrets.errors import (
     SecretKeyConfigError,
@@ -39,8 +48,7 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
     VAULT_RUNTIME_MODE_OFF,
     resolve_vault_runtime_mode,
 )
-from connector.infra.artifacts.plan_writer import write_plan_file
-from connector.infra.logging.setup import log_event
+from connector.infra.artifacts.plan_writer import write_plan_file_with_layout
 
 
 @dataclass(frozen=True)
@@ -78,9 +86,15 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
             requires_vault=_dataset_requires_vault(_spec),
         )
         if runtime_mode_decision.reason == RUNTIME_REASON_INVALID_MODE:
-            typer.echo("ERROR: unsupported --vault-mode, expected one of: auto|on|off", err=True)
+            typer.echo(
+                "ERROR: unsupported --vault-mode, expected one of: auto|on|off",
+                err=True,
+            )
             return result_with(SystemErrorCode.INTERNAL_ERROR)
-        if runtime_mode_decision.mode == VAULT_RUNTIME_MODE_OFF and runtime_mode_decision.requires_vault:
+        if (
+            runtime_mode_decision.mode == VAULT_RUNTIME_MODE_OFF
+            and runtime_mode_decision.requires_vault
+        ):
             typer.echo(
                 "ERROR: vault-mode=off cannot be used because dataset declares secret fields",
                 err=True,
@@ -111,29 +125,34 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
             secret_store = ctx.container.vault.write_service()
 
         include_deleted_value = (
-            opts.include_deleted if opts.include_deleted is not None else app_config.dataset.include_deleted
+            opts.include_deleted
+            if opts.include_deleted is not None
+            else app_config.dataset.include_deleted
         )
         report_items_limit_value = (
             opts.report_items_limit
             if opts.report_items_limit is not None
-            else app_config.observability.report_items_limit
+            else app_config.observability.reporting.items_limit
         )
         catalog = build_diagnostics_catalog(
             dataset_name,
-            strict=app_config.observability.diagnostics_strict,
+            strict=app_config.observability.diagnostics.strict,
         )
-        report_policy = ReportPolicy.from_profile(app_config.observability.report_policy_profile)
+        report_policy = ReportPolicy.from_profile(
+            app_config.observability.reporting.policy_profile
+        )
         if report_sink is not None:
             report_sink.emit(SetMetaEvent(dataset=dataset_name))
 
         pipeline = ctx.container.pipeline
-        with pipeline_topology_scope(ctx=ctx, pipeline=pipeline), \
-             pipeline.dataset_spec.override(_spec), \
-             pipeline.run_id.override(run_id), \
-             pipeline.catalog.override(catalog), \
-             pipeline.include_deleted.override(include_deleted_value), \
-             pipeline.secret_store.override(secret_store):
-
+        with (
+            pipeline_topology_scope(ctx=ctx, pipeline=pipeline),
+            pipeline.dataset_spec.override(_spec),
+            pipeline.run_id.override(run_id),
+            pipeline.catalog.override(catalog),
+            pipeline.include_deleted.override(include_deleted_value),
+            pipeline.secret_store.override(secret_store),
+        ):
             generated_at = get_now_iso()
             plan_pipeline = pipeline.planning_pipeline()
             planning_runtime = ctx.container.cache.roles().planning_runtime
@@ -149,20 +168,24 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
                 )
                 on_skipped_row = None
                 if report_sink is not None:
+
                     def _on_skipped_row(resolved_row) -> None:
                         _emit_skipped_report_item(
                             report_sink=report_sink,
                             row_ref=resolved_row.row_ref,
                             store=effective_include_skipped,
                         )
+
                     on_skipped_row = _on_skipped_row
                 on_failed_row = None
                 if report_sink is not None:
+
                     def _on_failed_row(result) -> None:
                         _emit_failed_report_item(
                             report_sink=report_sink,
                             result=result,
                         )
+
                     on_failed_row = _on_failed_row
                 plan_result = PlanBuilder().build_from_stream(
                     resolved_rows,
@@ -173,7 +196,8 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
                     report_sink.emit(
                         SetRowCountersEvent(
                             rows_total=plan_result.summary.rows_total,
-                            rows_passed=plan_result.summary.planned_create + plan_result.summary.planned_update,
+                            rows_passed=plan_result.summary.planned_create
+                            + plan_result.summary.planned_update,
                             rows_blocked=plan_result.summary.failed_rows,
                             rows_with_warnings=0,
                             rows_skipped=plan_result.summary.skipped,
@@ -185,18 +209,23 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
                 "include_deleted": include_deleted_value,
                 "dataset": dataset_name,
             }
-            plan_path = write_plan_file(
+            plan_path = write_plan_file_with_layout(
                 plan_items=plan_result.items,
                 summary=plan_result.summary_as_dict(),
                 meta=plan_meta,
-                report_dir=to_operational_paths(app_config).report_dir,
+                layout=ctx.container.observability.observability_layout(),
+                component=component_for_command("import-plan"),
                 run_id=run_id,
                 generated_at=generated_at,
             )
-            log_event(ctx.logger, logging.INFO, run_id, "plan", f"Plan written: {plan_path}")
+            if ctx.extra is not None:
+                ctx.extra["plan_path"] = plan_path
+            ctx.logger.info("Plan written", scope="plan", plan_path=plan_path)
             result = CommandResult()
             result.add_code(SystemErrorCode.OK)
-            attach_dictionary_report_snapshot_if_available(ctx=ctx, report_sink=report_sink)
+            attach_dictionary_report_snapshot_if_available(
+                ctx=ctx, report_sink=report_sink
+            )
             return result
     except ValueError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
@@ -204,16 +233,23 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink=None) -> Comman
     except _STARTUP_ERRORS as exc:
         return vault_startup_error_result(logger=ctx.logger, run_id=run_id, exc=exc)
     except sqlite3.Error as exc:
-        return sqlite_cache_error_result(logger=ctx.logger, run_id=run_id, scope="plan", exc=exc)
+        return sqlite_cache_error_result(
+            logger=ctx.logger, run_id=run_id, scope="plan", exc=exc
+        )
     except Exception as exc:
-        log_event(ctx.logger, logging.ERROR, run_id, "plan", f"Import plan failed: {exc}")
+        ctx.logger.error(
+            "Import plan failed",
+            scope="plan",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo("ERROR: import plan failed (see logs)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
 
 
 def _dataset_requires_vault(dataset_spec) -> bool:
     """Назначение:
-        Проверить, нужны ли secret-store операции в transform/enrich перед планированием.
+    Проверить, нужны ли secret-store операции в transform/enrich перед планированием.
     """
     enrich_spec = dataset_spec.build_spec_for("enrich")
     secrets = enrich_spec.enrich.secrets
@@ -274,7 +310,7 @@ def _resolve_effective_include_skipped_items(
     report_policy: ReportPolicy,
 ) -> bool:
     cli_include_skipped = (
-        app_config.observability.report_include_skipped
+        app_config.observability.reporting.include_skipped
         if opts.report_include_skipped is None
         else bool(opts.report_include_skipped)
     )

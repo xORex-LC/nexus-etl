@@ -13,7 +13,11 @@ from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.sqlite.engine import open_sqlite
 from connector.main import app
-from tests.runtime_test_support import tracked_employees_runtime_roots, write_runtime_config
+from tests.runtime_test_support import (
+    latest_report_path,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 
 pytestmark = pytest.mark.e2e
 
@@ -33,9 +37,7 @@ def _write_organizations_csv(path: Path, rows: list[dict[str, str]]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         handle.write(";".join(_HEADER) + "\n")
         for row in rows:
-            handle.write(
-                ";".join(row.get(column, "") for column in _HEADER) + "\n"
-            )
+            handle.write(";".join(row.get(column, "") for column in _HEADER) + "\n")
 
 
 def _app_config(tmp_path: Path) -> AppConfig:
@@ -56,9 +58,9 @@ def _app_config(tmp_path: Path) -> AppConfig:
                 "report_dir": str(tmp_path / "reports"),
             },
             "observability": {
-                "log_level": "INFO",
-                "report_items_limit": 100,
-                "diagnostics_strict": True,
+                "logging": {"level": "INFO"},
+                "reporting": {"items_limit": 100},
+                "diagnostics": {"strict": True},
             },
             "dataset": {"dataset_name": "organizations"},
             "execution": {"dry_run": True},
@@ -212,22 +214,22 @@ def test_match_command_disambiguates_duplicate_leaf_by_topology(tmp_path: Path) 
     _write_organizations_csv(
         source_dir / "source_departments.csv",
         [
-                {
-                    "id": "SRC-001",
-                    "name": "Shared team",
-                    "parent_id": "20",
-                    "level_1_name": "Head Office",
-                    "level_2_name": "Branch A",
-                    "level_3_name": "Shared Team",
-                },
-                {
-                    "id": "SRC-002",
-                    "name": "Shared team",
-                    "parent_id": "30",
-                    "level_1_name": "Head Office",
-                    "level_2_name": "Branch B",
-                    "level_3_name": "Shared Team",
-                },
+            {
+                "id": "SRC-001",
+                "name": "Shared team",
+                "parent_id": "20",
+                "level_1_name": "Head Office",
+                "level_2_name": "Branch A",
+                "level_3_name": "Shared Team",
+            },
+            {
+                "id": "SRC-002",
+                "name": "Shared team",
+                "parent_id": "30",
+                "level_1_name": "Head Office",
+                "level_2_name": "Branch B",
+                "level_3_name": "Shared Team",
+            },
         ],
     )
 
@@ -248,7 +250,7 @@ def test_match_command_disambiguates_duplicate_leaf_by_topology(tmp_path: Path) 
 
     assert result.exit_code == 0
     report = json.loads(
-        (tmp_path / "reports" / "report_match_org-match.json").read_text(encoding="utf-8")
+        latest_report_path(tmp_path / "reports", "match").read_text(encoding="utf-8")
     )
     assert report["context"]["topology"]["status"] == "ok"
     assert report["context"]["match"]["topology"]["enabled"] is True
@@ -305,7 +307,7 @@ def test_match_command_reports_missing_topology_locator_as_row_failure(
 
     assert result.exit_code != 0
     report = json.loads(
-        (tmp_path / "reports" / "report_match_org-plan.json").read_text(encoding="utf-8")
+        latest_report_path(tmp_path / "reports", "match").read_text(encoding="utf-8")
     )
 
     assert report["context"]["topology"]["status"] == "ok"

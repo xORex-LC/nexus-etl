@@ -149,6 +149,7 @@ logging.basicConfig(handlers=[structlog.stdlib.ProcessorFormatter.wrap_for_forma
 ## 🔗 Связанные документы
 
 - [OBSERVABILITY-PROBLEM-001](./OBSERVABILITY-PROBLEM-001-inconsistent-logging.md) — решаемая проблема
+- [OBSERVABILITY-DEC-002](./OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md) — развивает это решение: реализует structlog в новой подсистеме наблюдаемости
 - `connector/infra/logging/setup.py` — удаляется после миграции
 - `connector/delivery/cli/stream_capture.py` — целевое место для `StdStreamToLogger`/`TeeStream`
 
@@ -159,3 +160,4 @@ logging.basicConfig(handlers=[structlog.stdlib.ProcessorFormatter.wrap_for_forma
 | Дата | Событие |
 |------|---------|
 | 2026-02-19 | Решение принято; structlog уже в проекте, зафиксирован как стандарт |
+| 2026-06-04 | Развито в [OBSERVABILITY-DEC-002](./OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md): structlog реализуется в новой подсистеме наблюдаемости |

@@ -26,9 +26,10 @@
     connector.infra.secrets.*, connector.infra.cache.*, connector.infra.sqlite.*
     для сборки DI-графа.
 """
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Iterator, cast
+from typing import TYPE_CHECKING, Any, Iterator, TextIO, cast
 
 from dependency_injector import containers, providers
 
@@ -36,14 +37,21 @@ from connector.config.models import ApiConfig, AppConfig, DatasetConfig
 from connector.config.projections import (
     to_cache_db_config,
     to_dataset_registry_path,
+    to_observability_layout,
+    to_observability_redaction_policy,
     to_identity_db_config,
     to_resolver_settings,
     to_runtime_path_overrides,
     to_vault_management_settings,
     to_vault_db_config,
 )
+from connector.delivery.cli.component_mapping import component_for_command
+from connector.common.observability import ObservabilityLayout, ServiceComponent
 from connector.common.runtime_paths import detect_runtime_paths
-from connector.domain.transform.matcher.match_deps import MatchBatchSettings, MatchScopeService
+from connector.domain.transform.matcher.match_deps import (
+    MatchBatchSettings,
+    MatchScopeService,
+)
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
 from connector.domain.diagnostics import build_catalog
 from connector.domain.ports.cache.roles import (
@@ -56,7 +64,10 @@ from connector.domain.ports.topology import (
     TopologyProviderPort,
     TopologyRuntimeRequirements,
 )
-from connector.domain.ports.secrets.provider import SecretProviderProtocol, SecretStoreProtocol
+from connector.domain.ports.secrets.provider import (
+    SecretProviderProtocol,
+    SecretStoreProtocol,
+)
 from connector.domain.ports.transform.dictionaries import DictionaryProviderPort
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.vault_retention_service import VaultRetentionService
@@ -73,15 +84,27 @@ from connector.domain.transform_dsl.specs.topology import TopologySourcePathColu
 from connector.domain.transform.pipeline_run_context import PipelineRunContext
 from connector.domain.transform.matcher.dedup_store import LocalSourceDedupStore
 from connector.domain.transform.matcher.match_engine import MatchEngine
-from connector.domain.transform.resolver.batch_index_service import InMemoryBatchIndexService
+from connector.domain.transform.resolver.batch_index_service import (
+    InMemoryBatchIndexService,
+)
 from connector.domain.transform.resolver.pending_codec import PendingCodecAdapter
-from connector.domain.transform.resolver.pending_expiry_service import PendingExpiryService
+from connector.domain.transform.resolver.pending_expiry_service import (
+    PendingExpiryService,
+)
 from connector.domain.transform.resolver.resolve_engine import ResolveEngine
 from connector.domain.transform.stages.source_topology_filter import (
     SourceTopologyFilterStage,
 )
-from connector.domain.transform.stages.stages import MatchStage, ResolveContextStage, ResolveStage
-from connector.datasets.registry import get_spec, resolve_dataset_name, validate_registry
+from connector.domain.transform.stages.stages import (
+    MatchStage,
+    ResolveContextStage,
+    ResolveStage,
+)
+from connector.datasets.registry import (
+    get_spec,
+    resolve_dataset_name,
+    validate_registry,
+)
 from connector.datasets.spec import DatasetSpec, UnsupportedStageError
 from connector.delivery.cli.stages import PIPELINE_CHECKPOINTS, StageName
 from connector.delivery.cli.stages import PipelineComposer
@@ -107,7 +130,10 @@ from connector.domain.transform_dsl.specs import (
 )
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
-from connector.infra.cache.roles import SqliteCacheRolePorts, build_sqlite_cache_role_ports
+from connector.infra.cache.roles import (
+    SqliteCacheRolePorts,
+    build_sqlite_cache_role_ports,
+)
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.infra.secrets import (
@@ -119,6 +145,15 @@ from connector.infra.secrets import (
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
+from connector.infra.logging.redaction import LogRedactionEngine
+from connector.infra.observability.ledger import build_run_ledger_backend
+from connector.infra.observability.pointers import LatestArtifactPointerPublisher
+from connector.infra.observability.retention import ObservabilityRetentionSweeper
+from connector.infra.observability.viewer import ObservabilityArtifactViewer
+from connector.infra.logging.runtime import (
+    StructuredLoggingRuntime,
+    build_structured_logging_runtime,
+)
 from connector.infra.target.core.factory import (
     TargetRuntimeBuildResult,
     build_target_runtime_with_info,
@@ -179,6 +214,31 @@ def _identity_db_path(app_config: AppConfig) -> str:
         override=app_config.sqlite.identity_db_path,
         default_name="identity.sqlite3",
     )
+
+
+def structured_logging_runtime_resource(
+    config: AppConfig,
+    layout: ObservabilityLayout,
+    redaction_engine: LogRedactionEngine,
+    component: ServiceComponent,
+    stderr_stream: TextIO,
+) -> Iterator[StructuredLoggingRuntime]:
+    """Создать и корректно закрыть structlog runtime для одного CLI-компонента."""
+    runtime = build_structured_logging_runtime(
+        config=config.observability.logging,
+        layout=layout,
+        redaction_engine=redaction_engine,
+        component=component,
+        stderr_stream=stderr_stream,
+        root_logger_name="",
+    )
+    yield runtime
+    runtime.close()
+
+
+def _observability_ledger_backend_name(app_config: AppConfig) -> str:
+    """Вытащить имя ledger backend из app-config без логики внутри infra-слоя."""
+    return app_config.observability.ledger.backend
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -700,7 +760,9 @@ def _build_resolve_topology_dependencies(
             "resolve topology policy is enabled but target topology snapshot is unavailable"
         )
 
-    topology_spec = load_topology_spec_for_dataset(topology_requirements.topology_dataset)
+    topology_spec = load_topology_spec_for_dataset(
+        topology_requirements.topology_dataset
+    )
     compiled_topology = TopologyDsl().compile(topology_spec)
     path_fields = _resolve_topology_path_fields(dataset_spec, topology_policy.field)
     locator_builder = build_source_locator_builder(
@@ -731,7 +793,9 @@ def _resolve_topology_path_fields(
 
     mapping_spec = cast(MappingSpec, dataset_spec.build_spec_for("map"))
     for rule in mapping_spec.mapping.rules:
-        targets = tuple(rule.targets or ([rule.target] if rule.target is not None else []))
+        targets = tuple(
+            rule.targets or ([rule.target] if rule.target is not None else [])
+        )
         if field_name not in targets:
             continue
         if rule.sources:
@@ -882,7 +946,9 @@ class PipelineContainer(containers.DeclarativeContainer):
     pending_codec = providers.Singleton(PendingCodecAdapter)
     pending_expiry = providers.Singleton(
         PendingExpiryService,
-        cache_gateway=providers.Factory(lambda roles: roles.planning_runtime, roles=cache_roles),
+        cache_gateway=providers.Factory(
+            lambda roles: roles.planning_runtime, roles=cache_roles
+        ),
         settings=resolver_settings,
     )
     match_batch_settings = providers.Singleton(
@@ -962,7 +1028,9 @@ class PipelineContainer(containers.DeclarativeContainer):
     source_topology_filter_stage = providers.Factory(
         SourceTopologyFilterStage,
         validation=providers.Callable(
-            lambda state: state if isinstance(state, SourceTopologyValidationState) else None,
+            lambda state: state
+            if isinstance(state, SourceTopologyValidationState)
+            else None,
             state=source_topology_validation,
         ),
         catalog=catalog,
@@ -1093,6 +1161,68 @@ class PipelineContainer(containers.DeclarativeContainer):
     )
 
 
+class ObservabilityContainer(containers.DeclarativeContainer):
+    """
+    Назначение:
+        Провайдеры observability-подсистемы с корректной классификацией lifecycle.
+
+    Контракт:
+        - `logging_runtime` — `Resource`, потому что владеет handler stack и teardown.
+        - `observability_layout`, `redaction_engine` и mapper/policy providers остаются value/stateless.
+        - Container не содержит naming-логики артефактов: она принадлежит `ObservabilityLayout`.
+    """
+
+    app_config = providers.Dependency(instance_of=AppConfig)
+    component = providers.Dependency(instance_of=ServiceComponent)
+    stderr_stream = providers.Dependency()
+
+    observability_layout = providers.Singleton(
+        to_observability_layout,
+        config=app_config,
+    )
+    redaction_policy = providers.Singleton(
+        to_observability_redaction_policy,
+        config=app_config,
+    )
+    redaction_engine = providers.Singleton(
+        LogRedactionEngine,
+        policy=redaction_policy,
+    )
+    ledger_backend = providers.Singleton(
+        build_run_ledger_backend,
+        backend=providers.Callable(
+            _observability_ledger_backend_name,
+            app_config=app_config,
+        ),
+        layout=observability_layout,
+        sqlite_config=providers.Callable(to_cache_db_config, app_config),
+    )
+    sweeper = providers.Factory(
+        ObservabilityRetentionSweeper,
+        layout=observability_layout,
+        ledger_backend=ledger_backend,
+    )
+    artifact_viewer = providers.Singleton(
+        ObservabilityArtifactViewer,
+        ledger_backend=ledger_backend,
+    )
+    pointer_publisher = providers.Singleton(LatestArtifactPointerPublisher)
+    component_mapper = providers.Object(component_for_command)
+
+    logging_runtime = providers.Resource(
+        structured_logging_runtime_resource,
+        config=app_config,
+        layout=observability_layout,
+        redaction_engine=redaction_engine,
+        component=component,
+        stderr_stream=stderr_stream,
+    )
+    logging_handler_stack = providers.Callable(
+        lambda runtime: runtime.handler_stack,
+        runtime=logging_runtime,
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # DI-контейнер: AppContainer — единый Composition Root
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1122,7 +1252,9 @@ class AppContainer(containers.DeclarativeContainer):
     _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_config)
     _api_settings = providers.Callable(lambda s: s.api, s=app_config)
     _dictionary_cfg = providers.Callable(lambda s: s.dictionary, s=app_config)
-    _dataset_registry_path = providers.Callable(to_dataset_registry_path, config=app_config)
+    _dataset_registry_path = providers.Callable(
+        to_dataset_registry_path, config=app_config
+    )
     _dictionary_specs_root = providers.Callable(
         lambda s: str(_runtime_paths_for(s).dictionary_specs_root),
         s=app_config,
@@ -1131,7 +1263,9 @@ class AppContainer(containers.DeclarativeContainer):
         lambda s: str(_runtime_paths_for(s).dictionary_data_root),
         s=app_config,
     )
-    _vault_management_settings = providers.Callable(to_vault_management_settings, config=app_config)
+    _vault_management_settings = providers.Callable(
+        to_vault_management_settings, config=app_config
+    )
 
     cache_dsl = providers.Singleton(load_cache_dsl_runtime)
     _cache_specs = providers.Callable(lambda b: list(b.cache_specs), b=cache_dsl)
@@ -1204,6 +1338,11 @@ class AppContainer(containers.DeclarativeContainer):
         registry_path=_dataset_registry_path,
         dictionary_specs_root=_dictionary_specs_root,
         dictionary_data_root=_dictionary_data_root,
+    )
+
+    observability = providers.Container(
+        ObservabilityContainer,
+        app_config=app_config,
     )
 
     pipeline = providers.Container(
@@ -1280,7 +1419,6 @@ def build_dataset_spec(
     validate_registry()
     dataset_name = resolve_dataset_name(dataset, dataset_settings.dataset_name)
     return dataset_name, get_spec(dataset_name, secrets=secrets)
-
 
 
 __all__ = [

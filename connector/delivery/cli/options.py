@@ -2,13 +2,23 @@ from __future__ import annotations
 
 import typer
 
+from connector.delivery.cli.completions import (
+    complete_dataset,
+    complete_dir,
+    complete_vault_mode,
+)
+
 
 # Common dataset options
-DATASET = typer.Option(None, "--dataset", help="Dataset name")
+DATASET = typer.Option(
+    None, "--dataset", help="Dataset name", autocompletion=complete_dataset
+)
 
 # Report options
 REPORT_ITEMS_LIMIT = typer.Option(None, "--report-items-limit", help="Max items stored in report")
-REPORT_DIR = typer.Option(None, "--report-dir", help="Report output directory")
+REPORT_DIR = typer.Option(
+    None, "--report-dir", help="Report output directory", autocompletion=complete_dir
+)
 
 # API options
 TIMEOUT_SECONDS = typer.Option(None, "--timeout-seconds", help="API timeout in seconds")
@@ -16,7 +26,9 @@ RETRIES = typer.Option(None, "--retries", help="API retries")
 RETRY_BACKOFF_SECONDS = typer.Option(None, "--retry-backoff-seconds", help="API retry backoff")
 
 # Cache options
-CACHE_DIR = typer.Option(None, "--cache-dir", help="Cache directory")
+CACHE_DIR = typer.Option(
+    None, "--cache-dir", help="Cache directory", autocompletion=complete_dir
+)
 INCLUDE_DELETED = typer.Option(None, "--include-deleted", help="Include soft-deleted records")
 
 # Secrets options
@@ -24,6 +36,7 @@ VAULT_MODE = typer.Option(
     None,
     "--vault-mode",
     help="Vault runtime mode (auto|on|off). Default: auto",
+    autocompletion=complete_vault_mode,
 )
 
 # Plan/apply options

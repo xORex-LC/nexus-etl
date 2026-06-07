@@ -19,7 +19,11 @@ from connector.delivery.presenters.apply_report_presenter import ApplyReportPres
 from connector.datasets.registry import get_spec
 from connector.main import app
 from connector.domain.diagnostics.catalog import build_catalog
-from tests.runtime_test_support import tracked_employees_runtime_roots, write_runtime_config
+from tests.runtime_test_support import (
+    latest_report_path,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 
 CATALOG = build_catalog("employees", strict=True)
 
@@ -38,6 +42,7 @@ def _tracked_runtime_config(tmp_path: Path) -> Path:
         dictionary_specs_root=roots["dictionary_specs_root"],
         dictionary_data_root=roots["dictionary_data_root"],
     )
+
 
 class DummyExecutor:
     def __init__(self, responses):
@@ -73,12 +78,18 @@ def _make_plan(items: list[PlanItem]) -> Plan:
         items=items,
     )
 
+
 def test_plan_reader_reads_items(tmp_path: Path):
     plan_path = tmp_path / "plan.json"
     plan_path.write_text(
         json.dumps(
             {
-                "meta": {"run_id": "r1", "generated_at": "now", "csv_path": "a.csv", "dataset": "employees"},
+                "meta": {
+                    "run_id": "r1",
+                    "generated_at": "now",
+                    "csv_path": "a.csv",
+                    "dataset": "employees",
+                },
                 "summary": {
                     "rows_total": 1,
                     "valid_rows": 1,
@@ -91,9 +102,9 @@ def test_plan_reader_reads_items(tmp_path: Path):
                     {
                         "row_id": "line:1",
                         "line_no": 1,
-                            "dataset": "employees",
-                            "op": "create",
-                            "target_id": "id-1",
+                        "dataset": "employees",
+                        "op": "create",
+                        "target_id": "id-1",
                         "desired_state": {"email": "a@b.c"},
                         "changes": {"mail": "a@b.c"},
                         "source_ref": {"match_key": "A|B|C|1"},
@@ -107,6 +118,7 @@ def test_plan_reader_reads_items(tmp_path: Path):
     plan = readPlanFile(str(plan_path))
     assert plan.items[0].op == "create"
     assert plan.items[0].target_id == "id-1"
+
 
 def test_payload_builder_contains_exact_keys():
     sink_spec = load_sink_spec_for_dataset("employees")
@@ -149,6 +161,7 @@ def test_payload_builder_contains_exact_keys():
         "usrOrgTabNum",
     }
 
+
 def test_apply_adapter_builds_request():
     adapter = get_spec("employees").get_apply_adapter()
     item = PlanItem(
@@ -177,6 +190,7 @@ def test_apply_adapter_builds_request():
     spec = adapter.to_request(item)
     assert spec.operation_alias == "users.upsert"
     assert spec.operation_params == {"target_id": "abc"}
+
 
 def test_import_apply_stop_on_first_error():
     items = [
@@ -230,7 +244,12 @@ def test_import_apply_stop_on_first_error():
     plan = _make_plan(items)
     executor = DummyExecutor(
         [
-            ExecutionResult(ok=False, answer_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
+            ExecutionResult(
+                ok=False,
+                answer_code=500,
+                error_code=SystemErrorCode.INFRA_UNAVAILABLE,
+                error_message="boom",
+            ),
         ]
     )
     adapter = get_spec("employees").get_apply_adapter()
@@ -251,6 +270,7 @@ def test_import_apply_stop_on_first_error():
     assembler = ReportAssembler(context=context)
     ApplyReportPresenter.present(apply_result, sink, plan)
     assert assembler.assemble().summary.ops.get("apply_failed", {}).get("failed") == 1
+
 
 def test_import_apply_max_actions_limits_requests():
     items = [
@@ -320,6 +340,7 @@ def test_import_apply_max_actions_limits_requests():
     )
     assert len(executor.calls) == 1
 
+
 def test_import_apply_does_not_retry_resource_exists_in_usecase():
     items = [
         PlanItem(
@@ -350,7 +371,11 @@ def test_import_apply_does_not_retry_resource_exists_in_usecase():
     executor = DummyExecutor(
         [
             ExecutionResult(
-                ok=False, answer_code=409, error_code=SystemErrorCode.CONFLICT, error_message="conflict", error_reason="resourceexists"
+                ok=False,
+                answer_code=409,
+                error_code=SystemErrorCode.CONFLICT,
+                error_message="conflict",
+                error_reason="resourceexists",
             ),
         ]
     )
@@ -367,6 +392,7 @@ def test_import_apply_does_not_retry_resource_exists_in_usecase():
     assert apply_result.primary_code == SystemErrorCode.CONFLICT
     assert apply_result.summary.failed == 1
     assert len(executor.calls) == 1
+
 
 def test_import_apply_requires_plan(tmp_path: Path):
     result = runner.invoke(
@@ -394,6 +420,7 @@ def test_import_apply_requires_plan(tmp_path: Path):
     )
     assert result.exit_code == 2
 
+
 def test_import_apply_plan_happy_path(tmp_path: Path):
     plan_path = tmp_path / "plan.json"
     plan_path.write_text(
@@ -412,8 +439,8 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
                     {
                         "row_id": "line:1",
                         "line_no": 1,
-                            "dataset": "employees",
-                            "op": "create",
+                        "dataset": "employees",
+                        "op": "create",
                         "target_id": "id-1",
                         "desired_state": {
                             "email": "u1@example.com",
@@ -436,8 +463,8 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
                     {
                         "row_id": "line:2",
                         "line_no": 2,
-                            "dataset": "employees",
-                            "op": "update",
+                        "dataset": "employees",
+                        "op": "update",
                         "target_id": "id-2",
                         "desired_state": {
                             "email": "u2@example.com",
@@ -494,7 +521,7 @@ def test_import_apply_plan_happy_path(tmp_path: Path):
         ],
     )
     assert result.exit_code == 0
-    report_path = tmp_path / "reports" / f"report_import-apply_{run_id}.json"
+    report_path = latest_report_path(tmp_path / "reports", "import-apply")
     assert report_path.exists()
 
 
@@ -504,7 +531,12 @@ def test_plan_builder_does_not_emit_dataset_in_items():
 
     builder = PlanBuilder()
     resolved = ResolvedRow(
-        row_ref=RowRef(line_no=1, row_id="r1", identity_primary="match_key", identity_value="A|B|C|1"),
+        row_ref=RowRef(
+            line_no=1,
+            row_id="r1",
+            identity_primary="match_key",
+            identity_value="A|B|C|1",
+        ),
         identity=Identity(primary="match_key", values={"match_key": "A|B|C|1"}),
         op=ResolveOp.CREATE,
         desired_state={"email": "a@b.c"},
@@ -546,7 +578,12 @@ def test_apply_report_items_include_dataset():
     )
     executor = DummyExecutor(
         [
-            ExecutionResult(ok=False, answer_code=500, error_code=SystemErrorCode.INFRA_UNAVAILABLE, error_message="boom"),
+            ExecutionResult(
+                ok=False,
+                answer_code=500,
+                error_code=SystemErrorCode.INFRA_UNAVAILABLE,
+                error_message="boom",
+            ),
         ]
     )
     adapter = get_spec("employees").get_apply_adapter()

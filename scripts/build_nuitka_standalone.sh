@@ -8,6 +8,11 @@ NUITKA_ARGS=(
   --assume-yes-for-downloads
   --follow-imports
   --include-package=unidecode
+  # Whole application package: command handlers, registry spec_class targets and
+  # enrich ops are imported dynamically (importlib.import_module / PEP 562 lazy
+  # CLI init), which --follow-imports cannot discover statically. Force-include
+  # connector so the lazy/dynamic targets are bundled.
+  --include-package=connector
   --output-dir="$ROOT_DIR/build/nuitka/standalone"
   --output-filename=nexus
   --remove-output
@@ -17,6 +22,9 @@ NUITKA_ARGS=(
 
 BUILD_ROOT="$ROOT_DIR/build/nuitka/standalone"
 DIST_DIR="$BUILD_ROOT/nexus.dist"
+# Nuitka payload (binary + .so + Nuitka data) is isolated here; the binary and its
+# shared objects must stay co-located ($ORIGIN rpath), so the binary lives in libs/.
+PAYLOAD_DIR="$DIST_DIR/libs"
 CONFIG_TEMPLATE="$ROOT_DIR/examples/configs/config_example_ankey.yml"
 CONFIG_OUTPUT="$DIST_DIR/etc/config.yaml"
 
@@ -46,7 +54,8 @@ assemble_runtime_tree() {
     "$dist_dir/environment" \
     "$dist_dir/reports" \
     "$dist_dir/var/cache" \
-    "$dist_dir/var/logs"
+    "$dist_dir/var/logs" \
+    "$dist_dir/var/plans"
 
   cp -a "$ROOT_DIR/datasets/." "$dist_dir/datasets/"
   cp -a "$ROOT_DIR/dictionaries/." "$dist_dir/dictionaries/"
@@ -113,7 +122,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-exec "$DIST_DIR/nexus" "$@"
+exec "$DIST_DIR/libs/nexus" "$@"
 SH
   chmod +x "$dist_dir/bin/nexus"
 }
@@ -145,12 +154,14 @@ main() {
 
   local nuitka_dist_dir
   nuitka_dist_dir="$(resolve_nuitka_dist_dir)"
-  if [[ "$nuitka_dist_dir" != "$DIST_DIR" ]]; then
-    rm -rf "$DIST_DIR"
-    mv "$nuitka_dist_dir" "$DIST_DIR"
-  fi
+  # Move the whole Nuitka payload into libs/ so the dist top level stays clean
+  # (bin/, etc/, datasets/, dictionaries/, reports/, var/). Binary + .so move
+  # together, so $ORIGIN rpath and Nuitka module resolution remain intact.
+  rm -rf "$DIST_DIR"
+  mkdir -p "$DIST_DIR"
+  mv "$nuitka_dist_dir" "$PAYLOAD_DIR"
 
-  require_path "$DIST_DIR/nexus"
+  require_path "$PAYLOAD_DIR/nexus"
   setup_bin_launcher_layout "$DIST_DIR"
   require_path "$DIST_DIR/bin/nexus"
   assemble_runtime_tree "$DIST_DIR"

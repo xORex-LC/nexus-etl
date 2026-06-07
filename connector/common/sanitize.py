@@ -1,3 +1,32 @@
+"""Sanitization helpers — masking and truncation for logs, reports and plans
+
+Модуль хранит transport-neutral утилиты маскировки секретов и усечения текста.
+Они используются в reporting, target-safe logging и plan/report artifact paths,
+чтобы все слои опирались на один базовый набор правил redaction.
+
+Границы ответственности:
+    - Давать общий default-набор чувствительных ключей.
+    - Маскировать секреты в scalar/dict/list структурах.
+    - Усекать длинные текстовые фрагменты для безопасного вывода.
+
+Вне ответственности:
+    - Config-driven observability policy и regex-based log redaction.
+    - Выбор, когда именно применять маскирование в orchestration.
+"""
+
+from __future__ import annotations
+
+from typing import Final
+
+DEFAULT_SENSITIVE_FIELD_KEYS: Final[tuple[str, ...]] = (
+    "password",
+    "token",
+    "authorization",
+    "api_key",
+    "secret",
+)
+
+
 def mask_secret(value: str | None) -> str | None:
     """
     Назначение:
@@ -55,13 +84,7 @@ def truncate_text(value: str | None, limit: int = 500) -> str | None:
 
 def mask_secrets_in_object(
     obj: object,
-    sensitive_keys: tuple[str, ...] = (
-        "password",
-        "token",
-        "authorization",
-        "api_key",
-        "secret",
-    ),
+    sensitive_keys: tuple[str, ...] = DEFAULT_SENSITIVE_FIELD_KEYS,
 ) -> object:
     """
     Назначение:

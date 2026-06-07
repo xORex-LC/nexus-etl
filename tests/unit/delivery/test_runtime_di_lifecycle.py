@@ -19,6 +19,7 @@ from types import SimpleNamespace
 import pytest
 import typer
 
+from connector.common.observability import ServiceComponent
 from connector.config.models import AppConfig
 from connector.delivery.cli.context import CommandContext, UnboundCommandContext
 from connector.delivery.cli.requirements import Requirements
@@ -43,29 +44,128 @@ class _OverrideProbe:
 
 
 class _FakeContainer:
-    def __init__(self, *, shutdown_exc: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        shutdown_exc: Exception | None = None,
+        shutdown_failures: dict[str, Exception] | None = None,
+        ledger_exc: Exception | None = None,
+    ) -> None:
         self._shutdown_exc = shutdown_exc
+        self._shutdown_failures = shutdown_failures or {}
+        self._ledger_exc = ledger_exc
+        self.shutdown_calls: list[str] = []
         self.app_config = _OverrideProbe()
         self.target = SimpleNamespace(transport=_OverrideProbe())
+        self.target.shutdown_resources = lambda: self._shutdown_resources("target")
+        self.dictionary = SimpleNamespace(
+            shutdown_resources=lambda: self._shutdown_resources("dictionary")
+        )
+        self.cache = SimpleNamespace(
+            shutdown_resources=lambda: self._shutdown_resources("cache")
+        )
+        self.sqlite = SimpleNamespace(
+            shutdown_resources=lambda: self._shutdown_resources("sqlite")
+        )
+        self.observability = SimpleNamespace(
+            ledger_backend=lambda: SimpleNamespace(append=self._append_ledger),
+            pointer_publisher=lambda: SimpleNamespace(publish=lambda **_: None),
+        )
 
-    def shutdown_resources(self) -> None:
+    def _shutdown_resources(self, name: str) -> None:
+        self.shutdown_calls.append(name)
+        specific_exc = self._shutdown_failures.get(name)
+        if specific_exc is not None:
+            raise specific_exc
         if self._shutdown_exc is not None:
             raise self._shutdown_exc
 
+    def _append_ledger(self, **_: object) -> None:
+        if self._ledger_exc is not None:
+            raise self._ledger_exc
+
+
+@dataclass(frozen=True)
+class _FakeObservabilitySession:
+    component: ServiceComponent
+    layout: object
+    runtime: object
+    logger: object
+    log_file_path: str | None
+
+
+class _NoopLogger:
+    def debug(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def info(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def warning(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def error(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def critical(self, _event: str, **_fields: object) -> None:
+        return None
+
+
+def _patch_fake_observability(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Подменить observability session без реального DI/runtime wiring."""
+    session = _FakeObservabilitySession(
+        component=ServiceComponent.MAPPER,
+        layout=object(),
+        runtime=SimpleNamespace(
+            redaction_engine=SimpleNamespace(redact_text=lambda value: value)
+        ),
+        logger=_NoopLogger(),
+        log_file_path=str(tmp_path / "logs" / "mapping.log"),
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_initialize_observability_session",
+        lambda **_: session,
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_run_observability_sweeper",
+        lambda **_: None,
+    )
+
 
 def _app_config(tmp_path: Path) -> AppConfig:
-    return AppConfig.model_validate({
-        "api": {"host": "http://localhost", "port": 443, "username": "u", "password": "p",
-                "retries": 1, "retry_backoff_seconds": 0.1, "resource_exists_retries": 1},
-        "paths": {"cache_dir": str(tmp_path / "cache"), "log_dir": str(tmp_path / "logs"),
-                  "report_dir": str(tmp_path / "reports")},
-        "observability": {"log_level": "INFO", "report_items_limit": 100, "diagnostics_strict": True},
-        "dataset": {"dataset_name": "employees"},
-        "execution": {"dry_run": True},
-        "refresh": {"page_size": 100, "max_pages": 1},
-        "matching_runtime": {"match_batch_size": 100, "match_flush_interval_ms": 100},
-        "resolver": {"resolve_batch_size": 100, "resolve_flush_interval_ms": 100},
-    })
+    return AppConfig.model_validate(
+        {
+            "api": {
+                "host": "http://localhost",
+                "port": 443,
+                "username": "u",
+                "password": "p",
+                "retries": 1,
+                "retry_backoff_seconds": 0.1,
+                "resource_exists_retries": 1,
+            },
+            "paths": {
+                "cache_dir": str(tmp_path / "cache"),
+                "log_dir": str(tmp_path / "logs"),
+                "report_dir": str(tmp_path / "reports"),
+            },
+            "observability": {
+                "logging": {"level": "INFO"},
+                "reporting": {"items_limit": 100},
+                "diagnostics": {"strict": True},
+            },
+            "dataset": {"dataset_name": "employees"},
+            "execution": {"dry_run": True},
+            "refresh": {"page_size": 100, "max_pages": 1},
+            "matching_runtime": {
+                "match_batch_size": 100,
+                "match_flush_interval_ms": 100,
+            },
+            "resolver": {"resolve_batch_size": 100, "resolve_flush_interval_ms": 100},
+        }
+    )
 
 
 def _ctx(tmp_path: Path) -> UnboundCommandContext:
@@ -85,10 +185,15 @@ def _result_with(code: SystemErrorCode) -> CommandResult:
     return result
 
 
-def test_run_with_report_restores_streams_when_shutdown_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_with_report_restores_streams_when_shutdown_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     fake = _FakeContainer(shutdown_exc=RuntimeError("shutdown failed"))
+    _patch_fake_observability(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
-    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
     monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", lambda **_: None)
 
     original_stdout = sys.stdout
@@ -113,8 +218,11 @@ def test_run_with_report_keeps_primary_result_when_shutdown_fails(
     tmp_path: Path,
 ):
     fake = _FakeContainer(shutdown_exc=RuntimeError("shutdown failed"))
+    _patch_fake_observability(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
-    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
     monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", lambda **_: None)
 
     with pytest.raises(typer.Exit) as exc_info:
@@ -130,14 +238,35 @@ def test_run_with_report_keeps_primary_result_when_shutdown_fails(
     assert exc_info.value.exit_code == 0
 
 
+def test_shutdown_container_resources_continues_after_first_failure() -> None:
+    fake = _FakeContainer(shutdown_failures={"target": RuntimeError("target failed")})
+
+    result = runtime_module._shutdown_container_resources(
+        container=fake,  # type: ignore[arg-type]
+        logger=_NoopLogger(),
+        run_id="r-shutdown-continue",
+        emit_user_error=False,
+    )
+
+    assert result is not None
+    assert isinstance(result, CommandResult)
+    assert result.system_codes == {SystemErrorCode.INTERNAL_ERROR}
+    assert fake.shutdown_calls == ["target", "dictionary", "cache", "sqlite"]
+
+
 def test_run_with_report_sets_internal_error_on_finalize_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
     fake = _FakeContainer()
+    _patch_fake_observability(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
-    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
-    monkeypatch.setattr(runtime_module, "_shutdown_container_resources", lambda **_: None)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(
+        runtime_module, "_shutdown_container_resources", lambda **_: None
+    )
     monkeypatch.setattr(
         runtime_module,
         "_finalize_report_artifacts",
@@ -156,13 +285,195 @@ def test_run_with_report_sets_internal_error_on_finalize_failure(
     assert exc_info.value.exit_code == 2
 
 
+def test_run_with_report_keeps_success_when_ledger_append_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    fake = _FakeContainer(ledger_exc=RuntimeError("ledger failed"))
+    _patch_fake_observability(monkeypatch, tmp_path)
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(
+        runtime_module, "_shutdown_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", lambda **_: None)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_with_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: _result_with(SystemErrorCode.OK),
+            requirements=Requirements(),
+        )
+
+    assert exc_info.value.exit_code == 0
+
+
+def test_run_with_report_finalizes_before_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake = _FakeContainer()
+    _patch_fake_observability(monkeypatch, tmp_path)
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    events: list[str] = []
+
+    def _finalize(**_kwargs):
+        events.append("finalize")
+        return None
+
+    def _shutdown(**_kwargs):
+        events.append("shutdown")
+        return None
+
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", _finalize)
+    monkeypatch.setattr(runtime_module, "_shutdown_container_resources", _shutdown)
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_publish_latest_artifact_pointers_for_report",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_record_run_ledger_for_report",
+        lambda **_: None,
+    )
+
+    runtime_module.run_with_report(
+        ctx=_ctx(tmp_path),
+        command_name="mapping",
+        opts=SimpleNamespace(),
+        handler=lambda _ctx, _opts, _report: None,
+        requirements=Requirements(),
+    )
+
+    assert events == ["shutdown", "finalize"]
+
+
+def test_run_with_report_uses_fallback_observability_layout_when_session_init_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake = _FakeContainer()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_initialize_observability_session",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("log-dir unavailable")),
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_publish_latest_artifact_pointers_for_report",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_record_run_ledger_for_report",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(
+        runtime_module, "_shutdown_container_resources", lambda **_: None
+    )
+
+    def _finalize(**kwargs):
+        captured["layout"] = kwargs["layout"]
+        captured["component"] = kwargs["component"]
+        return None
+
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", _finalize)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_with_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: None,
+            requirements=Requirements(),
+        )
+
+    assert exc_info.value.exit_code == 2
+    assert captured["component"] == ServiceComponent.MAPPER
+    assert captured["layout"] is not None
+
+
+def test_run_with_report_bootstrap_logger_uses_stderr_before_observability_init(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        runtime_module,
+        "AppContainer",
+        lambda: (_ for _ in ()).throw(RuntimeError("container unavailable")),
+    )
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", lambda **_: None)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_with_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: None,
+            requirements=Requirements(),
+        )
+
+    captured = capsys.readouterr()
+    assert exc_info.value.exit_code == 2
+    assert "Command failed" not in captured.out
+    assert "container unavailable" not in captured.out
+    assert '"event": "Command failed"' in captured.err
+    assert '"error": "container unavailable"' in captured.err
+
+
+def test_run_without_report_bootstrap_logger_uses_stderr_before_observability_init(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        runtime_module,
+        "AppContainer",
+        lambda: (_ for _ in ()).throw(RuntimeError("container unavailable")),
+    )
+
+    with pytest.raises(typer.Exit) as exc_info:
+        runtime_module.run_without_report(
+            ctx=_ctx(tmp_path),
+            command_name="mapping",
+            opts=SimpleNamespace(),
+            handler=lambda _ctx, _opts, _report: None,
+            requirements=Requirements(),
+        )
+
+    captured = capsys.readouterr()
+    assert exc_info.value.exit_code == 2
+    assert "Command failed" not in captured.out
+    assert "container unavailable" not in captured.out
+    assert '"event": "Command failed"' in captured.err
+    assert '"error": "container unavailable"' in captured.err
+
+
 def test_run_without_report_sets_internal_error_on_teardown_only_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
     fake = _FakeContainer(shutdown_exc=RuntimeError("shutdown failed"))
+    _patch_fake_observability(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
-    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
 
     with pytest.raises(typer.Exit) as exc_info:
         runtime_module.run_without_report(
@@ -183,8 +494,11 @@ def test_run_without_report_passes_null_report_sink_to_handler(
     fake = _FakeContainer()
     observed: dict[str, object] = {}
 
+    _patch_fake_observability(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
-    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
 
     def _handler(_ctx, _opts, report_sink):
         observed["report_sink"] = report_sink
@@ -206,8 +520,11 @@ def test_run_without_report_enforces_three_arg_handler_contract(
     tmp_path: Path,
 ) -> None:
     fake = _FakeContainer()
+    _patch_fake_observability(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
-    monkeypatch.setattr(runtime_module, "_initialize_container_resources", lambda **_: None)
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
 
     with pytest.raises(typer.Exit) as exc_info:
         runtime_module.run_without_report(
@@ -227,12 +544,14 @@ def test_initialize_container_resources_maps_sqlite_error(
     monkeypatch.setattr(
         runtime_module,
         "_init_container_for_requirements",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("db is locked")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            sqlite3.OperationalError("db is locked")
+        ),
     )
     result = runtime_module._initialize_container_resources(
         container=object(),  # type: ignore[arg-type]
         requirements=Requirements(requires_cache=True),
-        logger=logging.getLogger("runtime-init-mapping-test"),
+        logger=_NoopLogger(),
         run_id="r1",
     )
 
@@ -252,7 +571,7 @@ def test_initialize_container_resources_maps_vault_domain_error(
     result = runtime_module._initialize_container_resources(
         container=object(),  # type: ignore[arg-type]
         requirements=Requirements(),
-        logger=logging.getLogger("runtime-init-mapping-test"),
+        logger=_NoopLogger(),
         run_id="r2",
     )
 
@@ -272,7 +591,7 @@ def test_initialize_container_resources_maps_unknown_error(
     result = runtime_module._initialize_container_resources(
         container=object(),  # type: ignore[arg-type]
         requirements=Requirements(),
-        logger=logging.getLogger("runtime-init-mapping-test"),
+        logger=_NoopLogger(),
         run_id="r3",
     )
 
@@ -288,7 +607,9 @@ def test_initialize_container_resources_reraises_dsl_load_error_from_init_path(
         runtime_module,
         "_init_container_for_requirements",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            DslLoadError(code="DICT_RUNTIME_INIT_FAILED", message="dictionary init failed")
+            DslLoadError(
+                code="DICT_RUNTIME_INIT_FAILED", message="dictionary init failed"
+            )
         ),
     )
 
@@ -326,7 +647,9 @@ def test_apply_result_to_report_materializes_domain_error_without_diagnostics() 
     assert built.items[0].diagnostics[0].code == "INTERNAL_ERROR"
 
 
-def test_apply_result_to_report_skips_synthetic_when_failures_already_materialized() -> None:
+def test_apply_result_to_report_skips_synthetic_when_failures_already_materialized() -> (
+    None
+):
     context = InMemoryReportContext(run_id="r-no-dup", command="mapping")
     sink = ReportSink(context)
     assembler = ReportAssembler(context=context)
@@ -421,6 +744,7 @@ def test_run_with_report_materializes_init_failure_into_report(
         return None
 
     fake = _FakeContainer()
+    _patch_fake_observability(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
     monkeypatch.setattr(
         runtime_module,
