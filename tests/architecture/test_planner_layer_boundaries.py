@@ -48,6 +48,7 @@ def _class_names(path: Path) -> list[str]:
 # Guards: удалённые модули
 # ---------------------------------------------------------------------------
 
+
 def test_import_plan_service_module_removed() -> None:
     path = USECASES_ROOT / "import_plan_service.py"
     assert not path.exists(), (
@@ -57,9 +58,7 @@ def test_import_plan_service_module_removed() -> None:
 
 def test_plan_usecase_module_removed() -> None:
     path = USECASES_ROOT / "plan_usecase.py"
-    assert not path.exists(), (
-        "plan_usecase.py должен быть удалён (PLANNER-DEC-002)"
-    )
+    assert not path.exists(), "plan_usecase.py должен быть удалён (PLANNER-DEC-002)"
 
 
 def test_planning_match_runtime_moved_to_delivery() -> None:
@@ -88,6 +87,7 @@ def test_import_plan_does_not_import_orchestrator_symbols() -> None:
 # Guard: PendingReplayPort удалён из roles.py
 # ---------------------------------------------------------------------------
 
+
 def test_pending_replay_port_removed_from_roles() -> None:
     roles_path = REPO_ROOT / "connector" / "domain" / "ports" / "cache" / "roles.py"
     assert roles_path.exists(), f"roles.py не найден: {roles_path}"
@@ -101,9 +101,15 @@ def test_pending_replay_port_removed_from_roles() -> None:
 # Guard: pending_codec не тянет infra
 # ---------------------------------------------------------------------------
 
+
 def test_pending_codec_has_no_infra_imports() -> None:
     codec_path = (
-        REPO_ROOT / "connector" / "domain" / "transform" / "resolver" / "pending_codec.py"
+        REPO_ROOT
+        / "connector"
+        / "domain"
+        / "transform"
+        / "resolver"
+        / "pending_codec.py"
     )
     assert codec_path.exists(), f"pending_codec.py не найден: {codec_path}"
     violations = [m for m in _imports(codec_path) if m.startswith("connector.infra")]
@@ -116,6 +122,7 @@ def test_pending_codec_has_no_infra_imports() -> None:
 # ---------------------------------------------------------------------------
 # Guard: plan_writer не маскирует через maskSecretsInObject
 # ---------------------------------------------------------------------------
+
 
 def test_plan_writer_does_not_mask_secrets() -> None:
     writer_path = REPO_ROOT / "connector" / "infra" / "artifacts" / "plan_writer.py"
@@ -132,12 +139,7 @@ def test_plan_writer_does_not_mask_secrets() -> None:
 # Guard: usecases не импортируют infra
 # ---------------------------------------------------------------------------
 
-# Известные pre-existing нарушения (логирование в cache-сервисах) — техдолг,
-# не связанный с PLANNER-DEC-002. Новые нарушения запрещены.
-_KNOWN_INFRA_VIOLATIONS: frozenset[str] = frozenset({
-    "connector/usecases/cache_command_service.py: connector.infra.logging.setup",
-    "connector/usecases/cache_refresh_service.py: connector.infra.logging.setup",
-})
+_KNOWN_INFRA_VIOLATIONS: frozenset[str] = frozenset()
 
 
 def test_usecases_do_not_import_infra() -> None:

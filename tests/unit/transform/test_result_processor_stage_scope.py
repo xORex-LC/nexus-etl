@@ -138,3 +138,39 @@ def test_include_upstream_diagnostics_keeps_full_chain() -> None:
     assert envelope.summary.by_stage["MAP"]["errors_total"] == 1
     assert envelope.summary.by_stage["NORMALIZE"]["errors_total"] == 1
     assert envelope.items[0].meta["upstream_errors_count"] == 0
+
+
+def test_stage_scoped_report_can_include_topology_validate_as_local_stage() -> None:
+    sink, assembler = _make_runtime()
+    reporter = StageResultReporter(
+        sink=sink,
+        report_policy=ReportPolicy.standard(),
+        include_items=True,
+        context_key="normalize",
+        ok_label="normalized_ok",
+        failed_label="normalize_failed",
+        strategy=TransformStageReportStrategy(),
+        report_stage=DiagnosticStage.NORMALIZE,
+        report_stages=(
+            DiagnosticStage.NORMALIZE,
+            DiagnosticStage.TOPOLOGY_VALIDATE,
+        ),
+        include_upstream_diagnostics=False,
+    )
+    map_error = _diag(DiagnosticStage.MAP, "MAP_ERR", DiagnosticSeverity.ERROR)
+    topology_error = _diag(
+        DiagnosticStage.TOPOLOGY_VALIDATE,
+        "TOPOLOGY_SOURCE_UNANCHORED",
+        DiagnosticSeverity.ERROR,
+    )
+
+    reporter.process(_make_result(errors=(map_error, topology_error)))
+    reporter.publish_context()
+
+    envelope = assembler.assemble()
+    assert envelope.summary.errors_total == 1
+    assert envelope.summary.by_stage == {
+        "TOPOLOGY_VALIDATE": {"errors_total": 1, "warnings_total": 0}
+    }
+    assert envelope.items[0].meta["upstream_errors_count"] == 1
+    assert envelope.items[0].diagnostics[0].code == "TOPOLOGY_SOURCE_UNANCHORED"

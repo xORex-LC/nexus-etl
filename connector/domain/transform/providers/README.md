@@ -8,7 +8,7 @@ Runtime-реестр провайдеров для стадии enrich. Пров
 
 | Файл | Назначение |
 |---|---|
-| `registry.py` | `ProviderGateway` — реестр lookup и exists провайдеров по имени; `with_defaults()` регистрирует: `cache.by_field`, `cache.exists_by_field`, `dictionary.by_key`, `dictionary.canonicalize`, `dictionary.exists_by_key` |
+| `registry.py` | `ProviderGateway` — реестр lookup и exists провайдеров по имени; `with_defaults()` регистрирует: `cache.by_field`, `cache.exists_by_field`, `dictionary.by_key`, `dictionary.canonicalize`, `dictionary.exists_by_key`; здесь же живут helper-ы для canonicalized cache lookup/exists |
 
 ## Зарегистрированные провайдеры
 

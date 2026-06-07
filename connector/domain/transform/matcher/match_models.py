@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from connector.domain.dependency_tree import TopologyMatchMode
 from connector.domain.models import Identity, RowRef
 
 
@@ -41,6 +42,11 @@ class MatchDecisionReason:
     FUZZY_ACCEPT = "fuzzy_accept"
     FUZZY_REVIEW = "fuzzy_review"
     FUZZY_REJECT = "fuzzy_reject"
+    TOPOLOGY_EXACT_CANONICAL_PATH = "topology_exact_canonical_path"
+    TOPOLOGY_EXACT_LEAF_PARENT_CHAIN = "topology_exact_leaf_parent_chain"
+    TOPOLOGY_EXACT_LEAF_ROOT_DEPTH = "topology_exact_leaf_root_depth"
+    TOPOLOGY_AMBIGUOUS = "topology_ambiguous"
+    TOPOLOGY_NO_MATCH = "topology_no_match"
 
 
 class MatchDecisionStatus(str, Enum):
@@ -82,6 +88,9 @@ class MatchDecision:
     selected: MatchCandidate | None = None
     candidates: tuple[MatchCandidate, ...] = ()
     score: float | None = None
+    topology_match_mode: TopologyMatchMode | None = None
+    topology_reason: str | None = None
+    topology_evidence: dict[str, Any] = field(default_factory=dict)
     meta: dict[str, Any] = field(default_factory=dict)
 
 

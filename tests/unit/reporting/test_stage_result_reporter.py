@@ -154,3 +154,37 @@ def test_stage_result_reporter_stores_failed_items_even_when_ok_items_disabled()
     assert built.summary.rows_blocked == 1
     assert len(built.items) == 1
     assert result.ok is False
+
+
+def test_stage_result_reporter_accepts_multiple_report_stages() -> None:
+    _context, sink, assembler = _make_runtime()
+    reporter = StageResultReporter(
+        sink=sink,
+        report_policy=ReportPolicy.standard(),
+        include_items=True,
+        context_key="normalize",
+        ok_label="normalized_ok",
+        failed_label="normalize_failed",
+        strategy=TransformStageReportStrategy(),
+        report_stage=DiagnosticStage.NORMALIZE,
+        report_stages=(
+            DiagnosticStage.NORMALIZE,
+            DiagnosticStage.TOPOLOGY_VALIDATE,
+        ),
+    )
+    topology_error = _diag(
+        DiagnosticStage.TOPOLOGY_VALIDATE,
+        "TOPOLOGY_SOURCE_UNANCHORED",
+        DiagnosticSeverity.ERROR,
+    )
+    reporter.process(_make_result(errors=(topology_error,)))
+    reporter.publish_context()
+
+    built = assembler.assemble()
+    assert built.summary.rows_blocked == 1
+    assert built.summary.by_stage == {
+        "TOPOLOGY_VALIDATE": {"errors_total": 1, "warnings_total": 0}
+    }
+    assert built.items[0].status == "FAILED"
+    assert built.items[0].meta["upstream_errors_count"] == 0
+    assert built.items[0].diagnostics[0].stage == "TOPOLOGY_VALIDATE"

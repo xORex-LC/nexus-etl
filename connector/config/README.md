@@ -8,10 +8,10 @@
 
 | Файл | Назначение |
 |---|---|
-| `models.py` | Pydantic-модели всех секций конфига (`ApiConfig`, `RuntimeConfig`, `ExecutionConfig`, `SqliteConfig`, `VaultConfig`, `DictionaryConfig`, и др.) |
+| `models.py` | Pydantic-модели всех секций конфига, включая nested `ObservabilityConfig` (`logging/reporting/plans/diagnostics/ledger`) |
 | `config.py` | `AppConfig` — корневая модель; `SettingsLoadError` — ошибка загрузки |
 | `loader.py` | `load_app_config(path, overrides)` — читает YAML + ENV через `pydantic-settings` |
-| `projections.py` | `to_operational_paths(config)` — проекция `AppConfig` → `RuntimePaths`; связывает конфиг с runtime-ресурсами |
+| `projections.py` | `to_operational_paths(config)` и observability-проекции (`layout policy`, `redaction policy`, `layout resolver`) — связывает `AppConfig` с runtime/value-объектами |
 | `diagnostics.py` | `translate_settings_load_error()` — конвертирует pydantic ValidationError → `DiagnosticItem` |
 
 ## Зависимости
@@ -21,4 +21,4 @@
 
 ## Правило
 
-Модели конфига — только `pydantic`. Конфиг не знает о бизнес-логике: `AppConfig` описывает _как запустить_, не _что делать_. Все пути разрешаются через `projections.py`, а не через прямое обращение к строкам в конфиге.
+Модели конфига — только `pydantic`. Конфиг не знает о бизнес-логике: `AppConfig` описывает _как запустить_, не _что делать_. Все пути и observability policy-object'ы разрешаются через `projections.py`, а не через прямое обращение к строкам в конфиге.

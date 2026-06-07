@@ -9,7 +9,7 @@
 | Файл | Назначение |
 |---|---|
 | `plan_models.py` | `Plan`, `PlanItem`, `PlanMeta`, `PlanSummary` — иммутабельные dataclass-модели |
-| `plan_builder.py` | `PlanBuilder` — собирает `Plan` из потока `TransformResult[ResolvedRow]`; счётчики create/update/skip/failed |
+| `plan_builder.py` | `PlanBuilder` — собирает `Plan` из потока `TransformResult[ResolvedRow]`; счётчики create/update/skip/failed и callback для failed row diagnostics |
 | `record_ref.py` | `RecordRef` — ссылка на запись источника (row_id, line_no) для трейсинга |
 
 ## Модель PlanItem

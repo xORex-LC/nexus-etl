@@ -20,6 +20,11 @@ from connector.domain.transform_dsl.specs import (
     NormalizeSpec,
     ResolveSpec,
     SinkSpec,
+    TopologySpec,
+)
+from tests.runtime_test_support import (
+    build_isolated_test_runtime_root,
+    tracked_employees_runtime_roots,
 )
 
 
@@ -66,6 +71,32 @@ class TestYamlDatasetSpecBuildSpecFor:
         result = spec.build_spec_for("sink")
         assert isinstance(result, SinkSpec)
         assert result.dataset == "employees"
+
+    def test_topology_for_enabled_dataset(self, employees_registry_path):
+        build_isolated_test_runtime_root(
+            tracked_employees_runtime_roots()["runtime_root"]
+        )
+        spec = get_spec("organizations")
+
+        result = spec.build_spec_for("topology")
+
+        assert isinstance(result, TopologySpec)
+        assert result.dataset == "organizations"
+
+    def test_organizations_normalize_uses_upper_first_preserve_rest(
+        self,
+        employees_registry_path,
+    ):
+        build_isolated_test_runtime_root(
+            tracked_employees_runtime_roots()["runtime_root"]
+        )
+        spec = get_spec("organizations")
+
+        result = spec.build_spec_for("normalize")
+
+        assert isinstance(result, NormalizeSpec)
+        name_rule = next(rule for rule in result.normalize.rules if rule.field == "name")
+        assert [op.op for op in name_rule.ops] == ["trim", "upper_first_preserve_rest"]
 
     def test_unsupported_stage(self, spec):
         with pytest.raises(UnsupportedStageError) as exc_info:
@@ -120,15 +151,38 @@ class TestYamlDatasetSpecAdapters:
         spec = YamlDatasetSpec(artifacts)
 
         def _unexpected(*args, **kwargs):
-            raise AssertionError("runtime accessor must not call YAML loaders after construction")
+            raise AssertionError(
+                "runtime accessor must not call YAML loaders after construction"
+            )
 
-        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_mapping_spec_for_dataset", _unexpected)
-        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_normalize_spec_for_dataset", _unexpected)
-        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_enrich_spec_for_dataset", _unexpected)
-        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_match_spec_for_dataset", _unexpected)
-        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_resolve_spec_for_dataset", _unexpected)
-        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_sink_spec_for_dataset", _unexpected)
-        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_source_spec_for_dataset", _unexpected)
+        monkeypatch.setattr(
+            "connector.datasets.yaml_spec_loader.load_mapping_spec_for_dataset",
+            _unexpected,
+        )
+        monkeypatch.setattr(
+            "connector.datasets.yaml_spec_loader.load_normalize_spec_for_dataset",
+            _unexpected,
+        )
+        monkeypatch.setattr(
+            "connector.datasets.yaml_spec_loader.load_enrich_spec_for_dataset",
+            _unexpected,
+        )
+        monkeypatch.setattr(
+            "connector.datasets.yaml_spec_loader.load_match_spec_for_dataset",
+            _unexpected,
+        )
+        monkeypatch.setattr(
+            "connector.datasets.yaml_spec_loader.load_resolve_spec_for_dataset",
+            _unexpected,
+        )
+        monkeypatch.setattr(
+            "connector.datasets.yaml_spec_loader.load_sink_spec_for_dataset",
+            _unexpected,
+        )
+        monkeypatch.setattr(
+            "connector.datasets.yaml_spec_loader.load_source_spec_for_dataset",
+            _unexpected,
+        )
         configure_runtime_paths(
             RuntimePathOverrides(
                 source_data_root=tmp_path / "sources",
@@ -143,9 +197,26 @@ class TestYamlDatasetSpecAdapters:
             assert source.has_header is True
             assert source.delimiter == csv_options.delimiter
             assert source.encoding == csv_options.encoding
-            assert Path(source.path) == (tmp_path / "sources" / "source_employees_example_1.csv").resolve()
+            assert (
+                Path(source.path)
+                == (tmp_path / "sources" / "source_employees_example_1.csv").resolve()
+            )
         finally:
             configure_runtime_paths(None)
+
+    def test_enabled_topology_is_preloaded_into_yaml_dataset_artifacts(
+        self,
+        employees_registry_path,
+    ) -> None:
+        build_isolated_test_runtime_root(
+            tracked_employees_runtime_roots()["runtime_root"]
+        )
+        artifacts = load_yaml_dataset_artifacts("organizations")
+
+        assert artifacts.dataset_dsl.topology is not None
+        assert artifacts.dataset_dsl.topology.enabled is True
+        assert artifacts.topology_spec is not None
+        assert artifacts.stage_specs["topology"] is artifacts.topology_spec
 
 
 class TestRegistryValidation:
@@ -160,7 +231,9 @@ class TestRegistryValidation:
             raise ValueError(f"invalid dataset snapshot: {dataset_name}")
 
         monkeypatch.setattr(registry_module, "_registry", None)
-        monkeypatch.setattr("connector.datasets.yaml_spec_loader.load_yaml_dataset_artifacts", _boom)
+        monkeypatch.setattr(
+            "connector.datasets.yaml_spec_loader.load_yaml_dataset_artifacts", _boom
+        )
 
         with pytest.raises(ValueError, match="invalid dataset snapshot: employees"):
             validate_registry()

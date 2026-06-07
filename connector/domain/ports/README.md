@@ -12,6 +12,7 @@
 | `target/` | Интерфейсы целевой системы: `RequestExecutorProtocol`, `TargetPagedReaderProtocol`, `ApplyAdapterProtocol` |
 | `secrets/` | Интерфейсы vault: `SecretProviderProtocol`, `SecretStoreProtocol`, `SecretCipherPort`, `VaultRepositoryPort` |
 | `transform/` | Интерфейсы для источника и справочников: `SourceMapper`, `DictionaryProviderPort` |
+| `topology/` | Runtime topology контракты: provider, builder ports, target read seam, source/target/readiness DTO |
 
 ## Правило
 

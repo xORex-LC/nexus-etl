@@ -25,8 +25,9 @@ from connector.domain.transform_dsl import (
     load_resolve_spec_for_dataset,
     load_sink_spec_for_dataset,
     load_source_spec_for_dataset,
+    load_topology_spec_for_dataset,
 )
-from connector.domain.transform_dsl.specs import SinkSpec, SourceSpec
+from connector.domain.transform_dsl.specs import SinkSpec, SourceSpec, TopologySpec
 
 SUPPORTED_YAML_STAGE_LOADERS = {
     "map": load_mapping_spec_for_dataset,
@@ -53,6 +54,7 @@ class LoadedYamlDatasetArtifacts:
     dataset_dsl: DatasetDslSpec
     source_spec: SourceSpec
     sink_spec: SinkSpec
+    topology_spec: TopologySpec | None
     stage_specs: Mapping[str, DslBaseModel]
 
 
@@ -74,11 +76,16 @@ def load_yaml_dataset_artifacts(dataset_name: str) -> LoadedYamlDatasetArtifacts
         for stage_type, loader in SUPPORTED_YAML_STAGE_LOADERS.items()
     }
     sink_spec = stage_specs["sink"]
+    topology_spec = None
+    if dataset_dsl.topology is not None and dataset_dsl.topology.enabled:
+        topology_spec = load_topology_spec_for_dataset(dataset_name)
+        stage_specs["topology"] = topology_spec
     return LoadedYamlDatasetArtifacts(
         dataset_name=dataset_name,
         dataset_dsl=dataset_dsl,
         source_spec=source_spec,
         sink_spec=sink_spec,
+        topology_spec=topology_spec,
         stage_specs=MappingProxyType(dict(stage_specs)),
     )
 

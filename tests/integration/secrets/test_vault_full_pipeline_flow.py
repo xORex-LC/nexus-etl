@@ -24,6 +24,8 @@ from connector.infra.identity.sqlite.identity_repository import SqliteIdentityRe
 from connector.infra.identity.sqlite.schema import ensure_identity_schema
 from connector.main import app
 from tests.runtime_test_support import (
+    latest_plan_path,
+    latest_report_path,
     prepare_tracked_employees_source_file,
     tracked_employees_runtime_roots,
     write_runtime_config,
@@ -64,12 +66,12 @@ def _write_minimal_employees_csv(
     row = [
         "1001",
         "Doe John M",
-        "",
-        "",
-        "",
-        "",
-        "",
         "Org 10",
+        "",
+        "",
+        "",
+        "",
+        "",
         "Engineer",
         "",
         phone,
@@ -121,7 +123,7 @@ def _run_import_plan(
         ],
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
-    return result, report_dir / f"plan_import_{run_id}.json"
+    return result, latest_plan_path(tmp_path / "var" / "plans")
 
 
 def _run_import_apply(
@@ -175,7 +177,7 @@ def _run_import_apply(
         ],
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
-    return result, report_dir / f"report_import-apply_{run_id}.json"
+    return result, latest_report_path(report_dir, "import-apply")
 
 
 def _read_json(path: Path) -> dict:
@@ -256,10 +258,44 @@ def _seed_organization_identities(
         ensure_identity_schema(engine)
         identity_repo = SqliteIdentityRepository(engine)
         with engine.transaction():
-            identity_repo.upsert_identity("organizations", format_identity_key("_ouid", value), value)
-            identity_repo.upsert_identity("organizations", format_identity_key("name", organization_name), value)
+            identity_repo.upsert_identity(
+                "organizations", format_identity_key("_ouid", value), value
+            )
+            identity_repo.upsert_identity(
+                "organizations", format_identity_key("name", organization_name), value
+            )
     finally:
         engine.close()
+
+    # Stage F: import-plan активирует topology-bootstrap (employees.resolve.topology_link),
+    # который строит target topology из org cache-таблицы. Без хотя бы одной org-строки
+    # snapshot пуст → TOPOLOGY_TARGET_EMPTY и команда падает на bootstrap. Сеем одну
+    # org-строку, чтобы target был непустым; FK по-прежнему резолвится по identity-index
+    # (1 кандидат → topology refinement не срабатывает).
+    cache_db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
+    cache_engine = open_sqlite(to_cache_db_config(AppConfig()), cache_db_path)
+    try:
+        cache_specs = list(load_cache_dsl_runtime().cache_specs)
+        ensure_cache_ready(cache_engine, cache_specs)
+        cache_repo = SqliteCacheRepository(cache_engine, cache_specs)
+        with cache_engine.transaction():
+            cache_repo.upsert(
+                "organizations",
+                {
+                    "_id": f"org-{value}",
+                    "_ouid": resolved_org_id,
+                    "code": value,
+                    "name": organization_name,
+                    "match_key": value,
+                    "parent_id": None,
+                    "updated_at": "2026-02-18T10:00:00Z",
+                },
+            )
+            cache_repo.set_meta(
+                "organizations", "cache_snapshot_revision", "vault-flow-rev"
+            )
+    finally:
+        cache_engine.close()
 
 
 def test_vault_full_pipeline_create_flow(tmp_path: Path):
@@ -277,7 +313,10 @@ def test_vault_full_pipeline_create_flow(tmp_path: Path):
 
     plan_payload = _read_json(plan_path)
     assert int(plan_payload["summary"]["planned_create"]) >= 1
-    assert any("password" in (item.get("secret_fields") or []) for item in plan_payload["items"])
+    assert any(
+        "password" in (item.get("secret_fields") or [])
+        for item in plan_payload["items"]
+    )
 
     apply_result, apply_report_path = _run_import_apply(
         tmp_path=tmp_path,
@@ -306,7 +345,9 @@ def test_vault_full_pipeline_update_flow(tmp_path: Path):
     probe_plan = _read_json(probe_plan_path)
     match_key = _extract_first_match_key(probe_plan)
 
-    _seed_existing_user_for_update(cache_dir=tmp_path / "cache", match_key=match_key, phone="+000000")
+    _seed_existing_user_for_update(
+        cache_dir=tmp_path / "cache", match_key=match_key, phone="+000000"
+    )
 
     plan_result, plan_path = _run_import_plan(
         tmp_path=tmp_path,

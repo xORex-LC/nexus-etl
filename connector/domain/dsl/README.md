@@ -10,7 +10,7 @@
 |---|---|
 | `engine.py` | `TransformationEngine` — применяет `ops: list[OperationCall]` к значению последовательно; при исключении создаёт `DslIssue(code="DSL_OP_FAILED")` и прерывает цепочку |
 | `registry.py` | `OperationRegistry` — реестр операций `name → callable`; `register_core_ops()` регистрирует ~44 встроенных операции |
-| `ops.py` | Реализации всех встроенных операций: `trim`, `lower`, `concat`, `split_name`, `to_int`, `parse_bool`, `uuid`, `default_password`, `coalesce`, `map_each`, `format_mask` и др. |
+| `ops.py` | Реализации всех встроенных операций: `trim`, `lower`, `upper_first_preserve_rest`, `concat`, `split_name`, `to_int`, `parse_bool`, `uuid`, `default_password`, `coalesce`, `map_each`, `format_mask` и др. |
 | `diagnostics.py` | `DslIssue`, `translate_dsl_load_error()` — ошибки DSL-загрузки и выполнения |
 | `issues.py` | `DslLoadError` — исключение при невалидной DSL-конфигурации |
 | `build_options.py` | `BuildOptions` — настройки поведения движка (strict mode и др.) |

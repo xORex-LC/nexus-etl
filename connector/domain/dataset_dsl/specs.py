@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 
 from connector.domain.dsl.specs._base import DslBaseModel
 
@@ -79,6 +79,34 @@ class DiagnosticEntrySpec(DslBaseModel):
     message: str = ""
 
 
+class TopologyCapabilitySpec(DslBaseModel):
+    """
+    Назначение:
+        Декларативный binding topology capability в dataset registry.
+    """
+
+    enabled: bool = False
+    spec: str | None = None
+
+    @field_validator("spec", mode="after")
+    @classmethod
+    def _validate_spec_path(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("dataset.topology.spec must not be blank")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_enabled_spec(self) -> "TopologyCapabilitySpec":
+        if self.enabled and self.spec is None:
+            raise ValueError(
+                "dataset.topology.spec is required when capability is enabled"
+            )
+        return self
+
+
 class DatasetDslSpec(DslBaseModel):
     """
     Назначение:
@@ -88,3 +116,4 @@ class DatasetDslSpec(DslBaseModel):
     report: ReportAdapterSpec
     apply: ApplyAdapterSpec
     diagnostics: list[DiagnosticEntrySpec] = Field(default_factory=list)
+    topology: TopologyCapabilitySpec | None = None

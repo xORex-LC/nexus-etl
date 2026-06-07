@@ -1,0 +1,136 @@
+api:
+  host: "10.27.38.187"
+  port: 8443
+  username: "ankey"
+  password: "Gazprom12345^789"
+  tls_skip_verify: true
+  ca_file: null
+  timeout_seconds: 20.0
+  retries: 3
+  retry_backoff_seconds: 0.5
+  resource_exists_retries: 3
+
+runtime:
+  runtime_root: "."
+  config_root: "./examples/configs"
+  datasets_root: "./datasets"
+  dictionary_specs_root: "./datasets"
+  dictionary_data_root: "./dictionaries"
+  source_data_root: "./examples/sources"
+  source_projection_root: "./datasets"
+  target_projection_root: "./datasets/targets"
+
+paths:
+  cache_dir: "var/cache"
+  log_dir: "var/logs"
+  report_dir: "reports"
+  plans_dir: "var/plans"
+
+observability:
+  partition_by_component: true
+  clock: "utc"
+  logging:
+    level: "DEBUG"
+    components: {}
+    redaction:
+      enabled: true
+      keys: ["password", "token", "secret"]
+    sinks:
+      file:
+        enabled: true
+        format: "text"
+        rotation: "hybrid"
+        max_bytes: 104857600
+        retention_days: 30
+        retention_backups: 10
+      console:
+        enabled: true
+        stream: "stderr"
+        format: "json"
+  reporting:
+    format: "json"
+    policy_profile: "standard"
+    items_limit: 200
+    include_skipped: true
+    retention_days: 30
+  plans:
+    retention_days: 30
+  diagnostics:
+    strict: false
+  ledger:
+    enabled: true
+    backend: "jsonl"
+
+dataset:
+  dataset_name: organizations
+  # Optional explicit dataset registry YAML override. If omitted, runtime resolves
+  # runtime.datasets_root/registry.yaml.
+  registry_path: "./datasets/registry.yaml"
+  include_deleted: false
+
+execution:
+  stop_on_first_error: false
+  max_actions: null
+  dry_run: false
+
+refresh:
+  page_size: 500
+  max_pages: 10
+
+matching_runtime:
+  match_batch_size: 500
+  match_flush_interval_ms: 500
+
+resolver:
+  pending_ttl_seconds: 120
+  pending_max_attempts: 5
+  pending_sweep_interval_seconds: 60
+  pending_on_expire: error
+  pending_allow_partial: false
+  pending_retention_days: 14
+  resolve_batch_size: 500
+  resolve_flush_interval_ms: 500
+
+sqlite:
+  journal_mode: "WAL"
+  synchronous: "NORMAL"
+  busy_timeout_ms: 5000
+  wal_autocheckpoint: 1000
+  # vault_db_path: null        # default: cache_dir/ankey_vault.sqlite3
+  vault_transaction_mode: "immediate"
+  # vault_journal_mode: null   # default: journal_mode
+  # vault_busy_timeout_ms: null  # default: busy_timeout_ms
+  vault_schema_retry_count: 2
+  # cache_db_path: null        # default: cache_dir/ankey_cache.sqlite3
+  cache_transaction_mode: "deferred"
+  # cache_journal_mode: null   # default: journal_mode
+  # cache_busy_timeout_ms: null  # default: busy_timeout_ms
+  # identity_db_path: null     # default: cache_dir/identity.sqlite3
+
+dictionary:
+  load_strategy: "eager"
+  fingerprint_salt: "dictionary-runtime-v1"
+  fingerprint_salt_version: "v1"
+  lookup_hit_sample_percent: 1
+  lookup_miss_sample_percent: 10
+
+vault_rollout:
+  mode: "full"
+  canary_percent: 100
+  canary_datasets: []
+  canary_seed: "vault-rollout-v1"
+  row_failure_rate_threshold_pct: 5.0
+  error_rate_threshold_pct: 5.0
+  latency_regression_threshold_pct: 15.0
+  busy_timeout_rate_threshold_pct: 0.0
+  schema_changed_rate_threshold_pct: 0.0
+
+vault_management:
+  require_admin_password_for_manual_ops: true
+  admin_password_hash_file: "./environment/vault-admin.env"
+  admin_password_env_var: "ANKEY_VAULT_ADMIN_PASSWORD"
+  # Master key больше не хранится в ENV/файле.
+  # Runtime vault-команды запрашивают unseal passphrase через prompt.
+  # ENV overrides:
+  # ANKEY_VAULT_MANAGEMENT__ADMIN_PASSWORD_HASH_FILE=./environment/vault-admin.env
+  # ANKEY_VAULT_MANAGEMENT__ADMIN_PASSWORD_ENV_VAR=ANKEY_VAULT_ADMIN_PASSWORD

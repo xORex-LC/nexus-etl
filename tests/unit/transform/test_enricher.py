@@ -140,8 +140,9 @@ def test_enricher_builds_match_key_and_generates_values():
     assert result.errors == ()
     assert result.match_key is not None
     assert result.match_key.value == "Иванов|Иван|Иванович|100"
-    assert result.row["user_name"] == "IVANII"
-    assert result.row["organization_id"] == 20
+    assert result.row["user_name"] == "IVANOVII"
+    # organization_id остаётся именем после enrich; резолв в id переехал в topology/resolve (Stage E/F)
+    assert result.row["organization_id"] == "Org 20"
     assert result.row["target_id"] is not None
     assert result.row["usr_org_tab_num"] is not None
     assert len(str(result.row["usr_org_tab_num"])) == 8
@@ -339,7 +340,7 @@ def test_enricher_uses_cache_row_for_update_and_does_not_generate_password():
                 "_id": "existing-user-100",
                 "match_key": "Иванов|Иван|Иванович|100",
                 "mail": "ivan@example.com",
-                "user_name": "IVANII",
+                "user_name": "IVANOVII",
                 "phone": "+79990000000",
                 "usr_org_tab_num": "87654321",
                 "is_logon_disabled": True,
@@ -360,9 +361,10 @@ def test_enricher_uses_cache_row_for_update_and_does_not_generate_password():
     assert result.match_key is not None
     assert result.row["target_id"] == "existing-user-100"
     assert result.row["email"] == "ivan@example.com"
-    assert result.row["user_name"] == "IVANII"
+    assert result.row["user_name"] == "IVANOVII"
     assert result.row["usr_org_tab_num"] == "87654321"
-    assert result.row["organization_id"] == 30
+    # organization_id резолвится в topology/resolve, не в enrich → остаётся именем
+    assert result.row["organization_id"] == "Org 30"
     assert result.meta.get("secret_fields") is None
     assert secret_store.calls == []
 
