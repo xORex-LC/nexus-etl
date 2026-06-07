@@ -48,18 +48,35 @@ class _FakeContainer:
         self,
         *,
         shutdown_exc: Exception | None = None,
+        shutdown_failures: dict[str, Exception] | None = None,
         ledger_exc: Exception | None = None,
     ) -> None:
         self._shutdown_exc = shutdown_exc
+        self._shutdown_failures = shutdown_failures or {}
         self._ledger_exc = ledger_exc
+        self.shutdown_calls: list[str] = []
         self.app_config = _OverrideProbe()
         self.target = SimpleNamespace(transport=_OverrideProbe())
+        self.target.shutdown_resources = lambda: self._shutdown_resources("target")
+        self.dictionary = SimpleNamespace(
+            shutdown_resources=lambda: self._shutdown_resources("dictionary")
+        )
+        self.cache = SimpleNamespace(
+            shutdown_resources=lambda: self._shutdown_resources("cache")
+        )
+        self.sqlite = SimpleNamespace(
+            shutdown_resources=lambda: self._shutdown_resources("sqlite")
+        )
         self.observability = SimpleNamespace(
             ledger_backend=lambda: SimpleNamespace(append=self._append_ledger),
             pointer_publisher=lambda: SimpleNamespace(publish=lambda **_: None),
         )
 
-    def shutdown_resources(self) -> None:
+    def _shutdown_resources(self, name: str) -> None:
+        self.shutdown_calls.append(name)
+        specific_exc = self._shutdown_failures.get(name)
+        if specific_exc is not None:
+            raise specific_exc
         if self._shutdown_exc is not None:
             raise self._shutdown_exc
 
@@ -170,11 +187,11 @@ def test_run_with_report_restores_streams_when_shutdown_fails(
             ctx=_ctx(tmp_path),
             command_name="mapping",
             opts=SimpleNamespace(),
-            handler=lambda _ctx, _opts, _report: _result_with(SystemErrorCode.OK),
+            handler=lambda _ctx, _opts, _report: None,
             requirements=Requirements(),
         )
 
-    assert exc_info.value.exit_code == 0
+    assert exc_info.value.exit_code == 2
     assert sys.stdout is original_stdout
     assert sys.stderr is original_stderr
 
@@ -202,6 +219,24 @@ def test_run_with_report_keeps_primary_result_when_shutdown_fails(
 
     # Первичный результат остаётся OK (ошибка shutdown считается вторичной).
     assert exc_info.value.exit_code == 0
+
+
+def test_shutdown_container_resources_continues_after_first_failure() -> None:
+    fake = _FakeContainer(
+        shutdown_failures={"target": RuntimeError("target failed")}
+    )
+
+    result = runtime_module._shutdown_container_resources(
+        container=fake,  # type: ignore[arg-type]
+        logger=logging.getLogger("runtime-shutdown-continue-test"),
+        run_id="r-shutdown-continue",
+        emit_user_error=False,
+    )
+
+    assert result is not None
+    assert isinstance(result, CommandResult)
+    assert result.system_codes == {SystemErrorCode.INTERNAL_ERROR}
+    assert fake.shutdown_calls == ["target", "dictionary", "cache", "sqlite"]
 
 
 def test_run_with_report_sets_internal_error_on_finalize_failure(
@@ -303,7 +338,7 @@ def test_run_with_report_finalizes_before_shutdown(
         requirements=Requirements(),
     )
 
-    assert events == ["finalize", "shutdown"]
+    assert events == ["shutdown", "finalize"]
 
 
 def test_run_with_report_uses_fallback_observability_layout_when_session_init_fails(

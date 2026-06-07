@@ -87,6 +87,22 @@ from .topology_bootstrap import (
     attach_topology_runtime,
 )
 
+_RESOURCE_SHUTDOWN_CONTAINERS = (
+    "target",
+    "dictionary",
+    "cache",
+    "sqlite",
+)
+"""Subcontainers, owning Resource providers that must be closed before report finalization.
+
+Why these four:
+    - `target`, `dictionary`, `cache`, `sqlite` currently own runtime `Resource` providers.
+    - `vault` and `pipeline` do not declare `Resource` providers; they depend on upstream
+      sqlite/cache resources and therefore do not participate in explicit shutdown here.
+    - `observability` is intentionally excluded and closed separately as the final step via
+      `close_observability_runtime()`, so finalization/ledger/pointer logs remain observable.
+"""
+
 
 @dataclass(frozen=True)
 class RuntimeObservabilitySession:
@@ -461,6 +477,23 @@ def run_with_report(
         try:
             sys.stdout = original_stdout
             sys.stderr = original_stderr
+            shutdown_result = shutdown_container_resources(
+                container=container,
+                logger=logger,
+                run_id=run_id,
+                emit_user_error=exit_result is None,
+            )
+            if shutdown_result is not None:
+                apply_result_to_report(
+                    report_sink,
+                    report_context,
+                    shutdown_result,
+                    command_name=command_name,
+                    source="runtime_shutdown",
+                    secondary=exit_result is not None,
+                )
+            if exit_result is None and shutdown_result is not None:
+                exit_result = shutdown_result
             active_layout = (
                 observability_session.layout
                 if observability_session is not None
@@ -520,24 +553,8 @@ def run_with_report(
                 final_result=exit_result,
                 exit_code_from_result=exit_code_from_result,
             )
-            shutdown_result = shutdown_container_resources(
-                container=container,
-                logger=logger,
-                run_id=run_id,
-                emit_user_error=exit_result is None,
-            )
-            if shutdown_result is not None:
-                apply_result_to_report(
-                    report_sink,
-                    report_context,
-                    shutdown_result,
-                    command_name=command_name,
-                    source="runtime_shutdown",
-                    secondary=exit_result is not None,
-                )
-            if exit_result is None and shutdown_result is not None:
-                exit_result = shutdown_result
         finally:
+            close_observability_runtime(container)
             clear_observability_context()
 
         if exit_result is not None:
@@ -716,6 +733,14 @@ def run_without_report(
         try:
             sys.stdout = original_stdout
             sys.stderr = original_stderr
+            shutdown_result = shutdown_container_resources(
+                container=container,
+                logger=logger,
+                run_id=run_id,
+                emit_user_error=exit_result is None,
+            )
+            if exit_result is None and shutdown_result is not None:
+                exit_result = shutdown_result
             _ = get_duration_ms(start_monotonic, time.monotonic())
             log_event(
                 logger, logging.INFO, run_id, "log", f"Log written: {log_file_path}"
@@ -745,15 +770,8 @@ def run_without_report(
                 final_result=exit_result,
                 exit_code_from_result=exit_code_from_result,
             )
-            shutdown_result = shutdown_container_resources(
-                container=container,
-                logger=logger,
-                run_id=run_id,
-                emit_user_error=exit_result is None,
-            )
-            if exit_result is None and shutdown_result is not None:
-                exit_result = shutdown_result
         finally:
+            close_observability_runtime(container)
             clear_observability_context()
 
         if exit_result is not None:
@@ -841,16 +859,44 @@ def shutdown_container_resources(
     """
     if container is None:
         return None
-    try:
-        container.shutdown_resources()
-    except Exception as exc:
+    failures: list[tuple[str, Exception]] = []
+    for subcontainer_name in _RESOURCE_SHUTDOWN_CONTAINERS:
+        subcontainer = getattr(container, subcontainer_name)
+        try:
+            subcontainer.shutdown_resources()
+        except Exception as exc:
+            failures.append((subcontainer_name, exc))
+            log_event(
+                logger,
+                logging.ERROR,
+                run_id,
+                "core",
+                f"Container shutdown failed for {subcontainer_name}: {exc}",
+            )
+
+    if failures:
         log_event(
-            logger, logging.ERROR, run_id, "core", f"Container shutdown failed: {exc}"
+            logger,
+            logging.ERROR,
+            run_id,
+            "core",
+            "Container shutdown completed with errors",
         )
         if emit_user_error:
             typer.echo("ERROR: runtime teardown failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.INTERNAL_ERROR)
     return None
+
+
+def close_observability_runtime(container: AppContainer | None) -> None:
+    """Закрыть observability runtime последним, после finalize/ledger/pointers."""
+    if container is None:
+        return
+    try:
+        container.observability.logging_runtime.shutdown()
+    except Exception:
+        # Последняя линия shutdown: runtime уже уходит, вторичную ошибку логировать некуда.
+        return
 
 
 def finalize_report_artifacts(
