@@ -18,6 +18,8 @@ call-sites. Он остаётся infra-слоем: orchestrator только и
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import logging
 import os
@@ -279,6 +281,7 @@ class DailySizeRotatingFileHandler(logging.Handler):
         self._encoding = encoding
         self._stream: TextIO | None = None
         self._current_path: Path | None = None
+        self._lock_stream: TextIO | None = None
         self._lock = threading.RLock()
 
     @property
@@ -291,11 +294,12 @@ class DailySizeRotatingFileHandler(logging.Handler):
             message = self.format(record)
             with self._lock:
                 active_path = self._layout.log_file(self._component, now=self._clock())
-                self._ensure_stream(active_path)
-                self._maybe_roll_by_size(active_path, message)
-                assert self._stream is not None
-                self._stream.write(message + self.terminator)
-                self._stream.flush()
+                with self._acquire_process_lock(active_path):
+                    self._ensure_stream(active_path)
+                    self._maybe_roll_by_size(active_path, message)
+                    assert self._stream is not None
+                    self._stream.write(message + self.terminator)
+                    self._stream.flush()
         except Exception:
             self.handleError(record)
 
@@ -304,6 +308,9 @@ class DailySizeRotatingFileHandler(logging.Handler):
             if self._stream is not None:
                 self._stream.close()
                 self._stream = None
+            if self._lock_stream is not None:
+                self._lock_stream.close()
+                self._lock_stream = None
             self._current_path = None
         super().close()
 
@@ -353,6 +360,21 @@ class DailySizeRotatingFileHandler(logging.Handler):
 
     def _backup_path(self, active_path: Path, index: int) -> Path:
         return active_path.with_name(f"{active_path.stem}.{index}{active_path.suffix}")
+
+    @contextlib.contextmanager
+    def _acquire_process_lock(self, active_path: Path):
+        lock_path = active_path.with_name(f"{active_path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        if self._lock_stream is None or Path(self._lock_stream.name) != lock_path:
+            if self._lock_stream is not None:
+                self._lock_stream.close()
+            self._lock_stream = lock_path.open("a+", encoding="utf-8")
+        assert self._lock_stream is not None
+        fcntl.flock(self._lock_stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(self._lock_stream.fileno(), fcntl.LOCK_UN)
 
 
 @dataclass(frozen=True)

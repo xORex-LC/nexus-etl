@@ -744,8 +744,13 @@ def maintenancePrune(
         "--component",
         help="Optional component filter (e.g. planner, applier, cache).",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Ignore same-day retention markers and run prune immediately.",
+    ),
 ):
-    opts = maintenance_prune_command.Options(component=component)
+    opts = maintenance_prune_command.Options(component=component, force=force)
     command_ctx = _build_ctx(ctx, command_key="maintenance-prune")
     run_with_report(
         ctx=command_ctx,

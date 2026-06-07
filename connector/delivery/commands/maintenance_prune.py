@@ -35,6 +35,7 @@ from connector.infra.logging.setup import log_event
 @dataclass(frozen=True)
 class Options:
     component: ServiceComponent | None = None
+    force: bool = False
 
 
 def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResult:
@@ -63,19 +64,23 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
                     component=component,
                     retention_days=app_config.observability.logging.sinks.file.retention_days,
                     retention_backups=app_config.observability.logging.sinks.file.retention_backups,
+                    ignore_marker=opts.force,
                 )
             report_result = sweeper.sweep_reports(
                 component=component,
                 retention_days=app_config.observability.reporting.retention_days,
+                ignore_marker=opts.force,
             )
             plan_result = sweeper.sweep_plans(
                 component=component,
                 retention_days=app_config.observability.plans.retention_days,
+                ignore_marker=opts.force,
             )
             if app_config.observability.ledger.enabled:
                 ledger_result = sweeper.sweep_ledger(
                     component=component,
                     retention_days=app_config.observability.logging.sinks.file.retention_days,
+                    ignore_marker=opts.force,
                 )
 
             summaries.append(

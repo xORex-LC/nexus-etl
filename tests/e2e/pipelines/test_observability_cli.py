@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -326,6 +327,14 @@ def test_maintenance_prune_matches_runtime_retention_rules(tmp_path: Path) -> No
         + "\n",
         encoding="utf-8",
     )
+    marker_day = datetime.now(timezone.utc).date().isoformat()
+    for marker_path in (
+        planner_logs / ".retention.marker",
+        planner_reports / ".report-retention.marker",
+        planner_plans / ".plan-retention.marker",
+        planner_logs / ".ledger-retention.marker",
+    ):
+        marker_path.write_text(marker_day, encoding="utf-8")
 
     prune_result = runner.invoke(
         app,
@@ -338,6 +347,7 @@ def test_maintenance_prune_matches_runtime_retention_rules(tmp_path: Path) -> No
             "prune",
             "--component",
             "planner",
+            "--force",
         ],
     )
 
