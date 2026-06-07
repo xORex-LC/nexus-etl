@@ -269,7 +269,10 @@ def test_obs_commands_use_ledger_and_latest_pointers(tmp_path: Path) -> None:
     )
     assert tail_log.exit_code == 0
     assert str(log_path) in tail_log.stdout
-    assert "Plan written:" in tail_log.stdout or "Command started" in tail_log.stdout
+    assert (
+        'event="Plan written"' in tail_log.stdout
+        or 'event="Command started"' in tail_log.stdout
+    )
 
 
 def test_maintenance_prune_matches_runtime_retention_rules(tmp_path: Path) -> None:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,6 +36,23 @@ class _FakeContainer:
         return None
 
 
+class _NoopLogger:
+    def debug(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def info(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def warning(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def error(self, _event: str, **_fields: object) -> None:
+        return None
+
+    def critical(self, _event: str, **_fields: object) -> None:
+        return None
+
+
 def _patch_fake_observability(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Подменить observability session, чтобы policy-тест не зависел от structlog wiring."""
     session = SimpleNamespace(
@@ -45,7 +61,7 @@ def _patch_fake_observability(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
         runtime=SimpleNamespace(
             redaction_engine=SimpleNamespace(redact_text=lambda value: value)
         ),
-        logger=logging.getLogger("runtime-report-policy-fake-observability"),
+        logger=_NoopLogger(),
         log_file_path=str(tmp_path / "logs" / "import-plan.log"),
     )
     monkeypatch.setattr(
@@ -100,7 +116,7 @@ def _app_config(tmp_path: Path, *, profile: str) -> AppConfig:
 
 def _ctx(tmp_path: Path, *, profile: str) -> UnboundCommandContext:
     return CommandContext(
-        logger=logging.getLogger("runtime-report-policy-test"),
+        logger=_NoopLogger(),
         run_id="policy-run",
         catalog=build_catalog(None, strict=True),
         strict=True,

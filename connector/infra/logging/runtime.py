@@ -1,15 +1,14 @@
-"""Structlog runtime — процессорная конфигурация, stderr/file sinks и legacy bridge
+"""Structlog runtime — процессорная конфигурация, stderr/file sinks.
 
 Модуль реализует новую prod-модель логирования для observability. Здесь
 собираются structlog processors, stdlib bridge для foreign-логов и файловый
-daily+size sink, а также compatibility adapter для legacy command logger
-call-sites. Он остаётся infra-слоем: orchestrator только инициализирует runtime
-и получает готовый logger/session, не зная деталей handler stack.
+daily+size sink. Он остаётся infra-слоем: orchestrator только инициализирует
+runtime и получает готовый logger/session, не зная деталей handler stack.
 
 Границы ответственности:
     - Конфигурировать structlog и stdlib bridge один раз на runtime-экземпляр.
     - Создавать stderr/file handler stack с единым JSON/text renderer.
-    - Выдавать component-aware логгер и legacy-compatible adapter для команд.
+    - Выдавать component-aware structlog logger для команд.
 
 Вне ответственности:
     - Привязка bind/clear contextvars в CLI orchestrator.
@@ -29,7 +28,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Mapping, TextIO
+from typing import TYPE_CHECKING, Any, Callable, TextIO
 
 import structlog
 from structlog.contextvars import bind_contextvars, clear_contextvars
@@ -57,121 +56,7 @@ class LoggingRuntimeMeta:
     git_rev: str | None = None
 
 
-class LegacyCompatibleStructlogLogger:
-    """Адаптировать structlog logger к legacy command-logger контракту.
-
-    Адаптер нужен на фазе switch-over, когда orchestration уже работает через
-    `StructuredLoggingRuntime`, но большая часть delivery/usecase call-sites всё
-    ещё ожидает методы stdlib-подобного логгера: `log(level, message, extra=...)`
-    и привычные `info()/warning()/error()`.
-
-    Boundaries:
-        - Преобразует legacy `extra={"runId": ..., "component": ...}` в
-          observability-friendly поля (`run_id`, `scope`, `captured_stream`).
-        - Не владеет handlers, lifecycle или contextvars.
-    """
-
-    def __init__(self, logger: structlog.stdlib.BoundLogger) -> None:
-        self._logger = logger
-        wrapped_logger = getattr(logger, "_logger", logger)
-        self.name = getattr(wrapped_logger, "name", wrapped_logger.__class__.__name__)
-
-    def bind(self, **kwargs: Any) -> structlog.stdlib.BoundLogger:
-        """Вернуть подлежащий bound logger с дополнительным контекстом."""
-        return self._logger.bind(**kwargs)
-
-    def log(
-        self,
-        level: int,
-        message: str,
-        *args: Any,
-        extra: Mapping[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Записать событие в стиле stdlib `logger.log()`."""
-        rendered = message % args if args else message
-        payload = self._coerce_legacy_payload(extra=extra, kwargs=kwargs)
-        return self._dispatch(level, rendered, **payload)
-
-    def debug(
-        self,
-        message: str,
-        *args: Any,
-        extra: Mapping[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        return self.log(logging.DEBUG, message, *args, extra=extra, **kwargs)
-
-    def info(
-        self,
-        message: str,
-        *args: Any,
-        extra: Mapping[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        return self.log(logging.INFO, message, *args, extra=extra, **kwargs)
-
-    def warning(
-        self,
-        message: str,
-        *args: Any,
-        extra: Mapping[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        return self.log(logging.WARNING, message, *args, extra=extra, **kwargs)
-
-    def error(
-        self,
-        message: str,
-        *args: Any,
-        extra: Mapping[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        return self.log(logging.ERROR, message, *args, extra=extra, **kwargs)
-
-    def exception(
-        self,
-        message: str,
-        *args: Any,
-        extra: Mapping[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        rendered = message % args if args else message
-        payload = self._coerce_legacy_payload(extra=extra, kwargs=kwargs)
-        return self._logger.exception(rendered, **payload)
-
-    def isEnabledFor(self, level: int) -> bool:  # noqa: N802 - stdlib compatibility
-        """Проверить, пропустит ли runtime запись на данном уровне."""
-        wrapped_logger = getattr(self._logger, "_logger", None)
-        if wrapped_logger is None or not hasattr(wrapped_logger, "isEnabledFor"):
-            return True
-        return bool(wrapped_logger.isEnabledFor(level))
-
-    def _dispatch(self, level: int, message: str, **payload: Any) -> Any:
-        method_name = _method_name_for_level(level)
-        return getattr(self._logger, method_name)(message, **payload)
-
-    def _coerce_legacy_payload(
-        self,
-        *,
-        extra: Mapping[str, Any] | None,
-        kwargs: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        payload = dict(kwargs)
-        if extra is None:
-            return payload
-        component = extra.get("component")
-        if component in {"stdout", "stderr"}:
-            payload.setdefault("captured_stream", component)
-        elif component is not None:
-            payload.setdefault("scope", component)
-        run_id = extra.get("runId")
-        if run_id is not None:
-            payload.setdefault("run_id", run_id)
-        return payload
-
-
-def _map_log_level(level_name: str) -> int:
+def _coerce_log_level(level_name: str) -> int:
     normalized = level_name.strip().upper()
     mapping = {
         "DEBUG": logging.DEBUG,
@@ -184,18 +69,6 @@ def _map_log_level(level_name: str) -> int:
         return mapping[normalized]
     except KeyError as exc:
         raise ValueError(f"Unsupported log level: {level_name}") from exc
-
-
-def _method_name_for_level(level: int) -> str:
-    if level >= logging.CRITICAL:
-        return "critical"
-    if level >= logging.ERROR:
-        return "error"
-    if level >= logging.WARNING:
-        return "warning"
-    if level >= logging.INFO:
-        return "info"
-    return "debug"
 
 
 def _add_schema_version(
@@ -432,19 +305,6 @@ class StructuredLoggingRuntime:
             cache_logger_on_first_use=False,
         ).bind(component=component.value)
 
-    def get_command_logger(
-        self,
-        *,
-        command_name: str,
-        component: ServiceComponent | None = None,
-    ) -> LegacyCompatibleStructlogLogger:
-        """Вернуть legacy-compatible logger для delivery/usecase call-sites."""
-        effective_component = component or self.component
-        logger_name = f"nexus.{effective_component.value}.{command_name}"
-        return LegacyCompatibleStructlogLogger(
-            self.get_logger(effective_component, logger_name=logger_name)
-        )
-
     def current_log_file_path(self) -> str | None:
         """Вернуть активный log file path либо ожидаемый путь текущего дня."""
         if self.handler_stack.file_handler is None:
@@ -464,7 +324,7 @@ class StructuredLoggingRuntime:
         level_name: LogLevelName = (
             override.level if override is not None else self.config.level
         )
-        return _map_log_level(level_name)
+        return _coerce_log_level(level_name)
 
 
 def bind_observability_context(
@@ -522,7 +382,7 @@ def build_structured_logging_runtime(
     structlog.configure(
         processors=_build_structlog_processors(runtime_meta),
         wrapper_class=structlog.make_filtering_bound_logger(
-            _map_log_level(config.level)
+            _coerce_log_level(config.level)
         ),
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=False,
@@ -635,7 +495,6 @@ def _resolve_console_stream(stream_name: str) -> TextIO:
 
 __all__ = [
     "DailySizeRotatingFileHandler",
-    "LegacyCompatibleStructlogLogger",
     "StructuredLoggingRuntime",
     "StructlogHandlerStack",
     "bind_observability_context",

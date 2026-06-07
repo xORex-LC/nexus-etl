@@ -1,4 +1,4 @@
-"""CLI stream capture — перехват stdout/stderr с зеркалированием и redaction
+"""CLI stream capture — перехват stdout/stderr с redaction.
 
 Модуль хранит CLI-специфичную механику перехвата stdout/stderr. Он дублирует
 строки в исходный stream и в logger, но сам не конфигурирует logging backend:
@@ -17,31 +17,29 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 from typing import TextIO
 
 from connector.infra.logging.redaction import LogRedactionEngine
-from connector.infra.logging.setup import DropCapturedStdStreamsFilter
 
 
 class StdStreamToLogger:
     """Писать в logger построчно при перехвате stdout/stderr.
 
-    Класс остаётся совместимым с legacy stdlib logger call-sites: он вызывает
-    `logger.log(..., extra={...})`, но добавляет redaction перед эмиссией.
+    Класс эмитит перехваченные строки через native structlog API. Correlation
+    fields (`run_id`, `pipeline_run_id`, `component`) приходят из contextvars.
     """
 
     def __init__(
         self,
-        logger: logging.Logger,
+        logger: Any,
         level: int,
-        run_id: str,
         component: str,
         *,
         redaction_engine: LogRedactionEngine | None = None,
     ) -> None:
         self.logger = logger
         self.level = level
-        self.run_id = run_id
         self.component = component
         self.redaction_engine = redaction_engine
         self.buffer = ""
@@ -65,10 +63,11 @@ class StdStreamToLogger:
         if not line.strip():
             return
         sanitized = self._redact(line.rstrip())
-        self.logger.log(
+        _dispatch_log(
+            self.logger,
             self.level,
             sanitized,
-            extra={"runId": self.run_id, "component": self.component},
+            captured_stream=self.component,
         )
 
     def _redact(self, line: str) -> str:
@@ -95,7 +94,20 @@ class TeeStream:
 
 
 __all__ = [
-    "DropCapturedStdStreamsFilter",
     "StdStreamToLogger",
     "TeeStream",
 ]
+
+
+def _dispatch_log(logger: Any, level: int, event: str, **fields: Any) -> None:
+    """Эмитить событие в structlog-compatible logger по числовому уровню."""
+    if level >= logging.CRITICAL:
+        logger.critical(event, **fields)
+    elif level >= logging.ERROR:
+        logger.error(event, **fields)
+    elif level >= logging.WARNING:
+        logger.warning(event, **fields)
+    elif level >= logging.INFO:
+        logger.info(event, **fields)
+    else:
+        logger.debug(event, **fields)

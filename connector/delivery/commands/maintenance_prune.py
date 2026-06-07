@@ -15,7 +15,6 @@ infra-retention adapter и форматирует summary через presenter.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 
 import typer
@@ -29,7 +28,6 @@ from connector.delivery.presenters.observability_presenter import (
 )
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
-from connector.infra.logging.setup import log_event
 
 
 @dataclass(frozen=True)
@@ -45,7 +43,6 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     if app_config is None:
         raise ValueError("App config is not initialized")
 
-    run_id = ctx.run_id
     sweeper = ctx.container.observability.sweeper()
     components = (
         (opts.component,) if opts.component is not None else tuple(ServiceComponent)
@@ -98,21 +95,19 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
             )
 
         typer.echo(ObservabilityPresenter.render_prune(tuple(summaries)))
-        log_event(
-            ctx.logger,
-            logging.INFO,
-            run_id,
-            "observability",
-            f"Manual prune completed for components={len(summaries)}",
+        ctx.logger.info(
+            "Manual prune completed",
+            scope="observability",
+            components_count=len(summaries),
+            force=opts.force,
         )
         return result_with(SystemErrorCode.OK)
     except Exception as exc:
-        log_event(
-            ctx.logger,
-            logging.ERROR,
-            run_id,
-            "observability",
-            f"Manual prune failed: {exc}",
+        ctx.logger.error(
+            "Manual prune failed",
+            scope="observability",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         typer.echo("ERROR: maintenance prune failed (see logs/report)", err=True)
         return result_with(SystemErrorCode.IO_ERROR)

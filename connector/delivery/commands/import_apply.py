@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 
 import typer
@@ -28,7 +27,9 @@ from connector.domain.secrets.errors import (
     VaultStartupStorageReadonlyError,
     VaultStartupUninitializedReadonlyError,
 )
-from connector.domain.secrets.policy.rollout_metrics import build_vault_operational_metrics
+from connector.domain.secrets.policy.rollout_metrics import (
+    build_vault_operational_metrics,
+)
 from connector.config.projections import (
     to_vault_rollout_policy_settings,
     to_vault_rollout_thresholds,
@@ -41,7 +42,6 @@ from connector.domain.secrets.policy.runtime_mode_policy import (
 )
 from connector.datasets.registry import build_identity_index_plan, get_spec
 from connector.infra.artifacts.plan_reader import readPlanFile
-from connector.infra.logging.setup import log_event
 from connector.usecases.import_apply_service import ImportApplyService
 from connector.usecases.common.identity_sync import IdentityIndexSyncer
 
@@ -80,7 +80,9 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     run_id = ctx.run_id
 
     if not opts.plan_path:
-        typer.echo("ERROR: --plan is required (apply no longer builds plan from CSV)", err=True)
+        typer.echo(
+            "ERROR: --plan is required (apply no longer builds plan from CSV)", err=True
+        )
         return result_with(SystemErrorCode.IO_ERROR)
 
     report_items_limit = (
@@ -93,13 +95,25 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         if opts.stop_on_first_error is not None
         else app_config.execution.stop_on_first_error
     )
-    max_actions = opts.max_actions if opts.max_actions is not None else app_config.execution.max_actions
-    configured_dry_run = opts.dry_run if opts.dry_run is not None else app_config.execution.dry_run
+    max_actions = (
+        opts.max_actions
+        if opts.max_actions is not None
+        else app_config.execution.max_actions
+    )
+    configured_dry_run = (
+        opts.dry_run if opts.dry_run is not None else app_config.execution.dry_run
+    )
 
     try:
         plan = readPlanFile(opts.plan_path or "")
     except (OSError, ValueError) as exc:
-        log_event(ctx.logger, logging.ERROR, run_id, "plan", f"Import apply failed: {exc}")
+        ctx.logger.error(
+            "Import apply failed",
+            scope="plan",
+            plan_path=opts.plan_path,
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
         typer.echo(f"ERROR: import apply failed: {exc}", err=True)
         return result_with(SystemErrorCode.IO_ERROR)
 
@@ -108,9 +122,14 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         requires_vault=_plan_requires_vault(plan),
     )
     if runtime_mode_decision.reason == RUNTIME_REASON_INVALID_MODE:
-        typer.echo("ERROR: unsupported --vault-mode, expected one of: auto|on|off", err=True)
+        typer.echo(
+            "ERROR: unsupported --vault-mode, expected one of: auto|on|off", err=True
+        )
         return result_with(SystemErrorCode.INTERNAL_ERROR)
-    if runtime_mode_decision.mode == VAULT_RUNTIME_MODE_OFF and runtime_mode_decision.requires_vault:
+    if (
+        runtime_mode_decision.mode == VAULT_RUNTIME_MODE_OFF
+        and runtime_mode_decision.requires_vault
+    ):
         typer.echo(
             "ERROR: vault-mode=off cannot be used because plan contains secret_fields",
             err=True,
@@ -158,7 +177,12 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
     try:
         identity_keys, identity_id_fields = build_identity_index_plan()
     except Exception as exc:
-        log_event(ctx.logger, logging.ERROR, run_id, "cache", f"Failed to init identity index: {exc}")
+        ctx.logger.error(
+            "Failed to init identity index",
+            scope="cache",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
 
     build_result = ctx.container.target.runtime()
     runtime = build_result.runtime
@@ -204,7 +228,10 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
         else ctx.container.vault.retention_service()
     )
     if rollout_decision.vault_enabled:
-        dataset_spec = get_spec(dataset_name, secrets=ctx.container.vault.read_service(default_run_id=plan.meta.run_id))
+        dataset_spec = get_spec(
+            dataset_name,
+            secrets=ctx.container.vault.read_service(default_run_id=plan.meta.run_id),
+        )
     else:
         dataset_spec = get_spec(dataset_name)
     apply_adapter = dataset_spec.get_apply_adapter()
@@ -221,7 +248,6 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
 
     telemetry_sink = LoggingApplyTelemetrySink(
         logger=ctx.logger,
-        run_id=run_id,
         dataset=dataset_name,
     )
 
@@ -279,7 +305,7 @@ def handler(ctx: BoundCommandContext, opts: Options, report_sink) -> CommandResu
 
 def _plan_requires_vault(plan) -> bool:
     """Назначение:
-        Определить необходимость vault-path для apply по содержимому import plan.
+    Определить необходимость vault-path для apply по содержимому import plan.
     """
     for item in plan.items:
         if item.secret_fields:

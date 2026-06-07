@@ -1,4 +1,4 @@
-"""Logging infrastructure exports — legacy façade и новый structlog runtime."""
+"""Logging infrastructure exports — native structlog runtime."""
 
 from .redaction import LogRedactionEngine
 from .runtime import (

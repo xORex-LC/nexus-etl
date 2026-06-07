@@ -267,11 +267,13 @@ def test_redaction_covers_kwargs_regex_traceback_foreign_and_capture(
         "foreign token=foreign-secret"
     )
 
-    capture_logger = logging.getLogger("tests.runtime.redaction.capture")
+    capture_logger = runtime.get_logger(
+        ServiceComponent.APPLIER,
+        logger_name="tests.runtime.redaction.capture",
+    )
     capture_stream = StdStreamToLogger(
         capture_logger,
         logging.INFO,
-        "run-2",
         "stdout",
         redaction_engine=redaction_engine,
     )

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
+from typing import Any
 
 from connector.delivery.cli.containers import build_diagnostics_catalog
 from connector.delivery.cli.context import CommandContext, UnboundCommandContext
@@ -32,7 +33,7 @@ from connector.domain.transform_dsl import (
     load_source_spec_for_dataset,
     resolve_source_location,
 )
-from connector.infra.logging.topology import LegacyLogEventSink
+from connector.infra.logging.topology import StructlogTopologyEventSink
 from connector.infra.topology import (
     PolarsSourceAdjacencyReader,
     SqliteTopologyTargetMembershipReader,
@@ -45,7 +46,9 @@ from connector.usecases.topology_bootstrap import (
     TopologyRuntimeBinding,
     TraceToSink,
 )
-from connector.usecases.topology_source_validation import SourceTopologyValidationUseCase
+from connector.usecases.topology_source_validation import (
+    SourceTopologyValidationUseCase,
+)
 from connector.usecases.topology_target_build import TargetTopologyBuildUseCase
 
 
@@ -70,8 +73,12 @@ class TopologyBootstrapStepResult:
 class TopologyBootstrapStep:
     """Запустить topology bootstrap до handler logic и подготовить runtime binding."""
 
-    def __init__(self, *, requirement_resolver: TopologyRequirementResolver | None = None) -> None:
-        self._requirement_resolver = requirement_resolver or TopologyRequirementResolver()
+    def __init__(
+        self, *, requirement_resolver: TopologyRequirementResolver | None = None
+    ) -> None:
+        self._requirement_resolver = (
+            requirement_resolver or TopologyRequirementResolver()
+        )
 
     def run(
         self,
@@ -82,7 +89,7 @@ class TopologyBootstrapStep:
         requirements: Requirements,
         container,
         report_sink,
-        logger: logging.Logger,
+        logger: Any,
         run_id: str,
     ) -> TopologyBootstrapStepResult:
         catalog = build_diagnostics_catalog(
@@ -104,7 +111,7 @@ class TopologyBootstrapStep:
             # Конфликт конфигурации: consumer policy включена, но topology capability
             # выключена. Ловим рано, единой catalog-диагностикой, вместо сырого ValueError
             # на поздней сборке resolve/match-стадии.
-            event_sink = LegacyLogEventSink(logger=logger, run_id=run_id)
+            event_sink = StructlogTopologyEventSink(logger=logger)
             diagnostic = build_error(
                 catalog=catalog,
                 stage=DiagnosticStage.TOPOLOGY_BOOTSTRAP,
@@ -148,7 +155,7 @@ class TopologyBootstrapStep:
                 activation_sources=decision.activation_sources,
                 skipped_reason=decision.skipped_reason or "not_required",
             )
-            event_sink = LegacyLogEventSink(logger=logger, run_id=run_id)
+            event_sink = StructlogTopologyEventSink(logger=logger)
             event_sink.emit(
                 level=logging.DEBUG,
                 event="bootstrap.skipped",
@@ -169,9 +176,10 @@ class TopologyBootstrapStep:
                 command_result=None,
             )
 
-        event_sink = LegacyLogEventSink(logger=logger, run_id=run_id)
+        event_sink = StructlogTopologyEventSink(logger=logger)
         usecase = TopologyBootstrapUseCase(
-            target_usecase_factory=lambda topology_spec, compiled: _build_target_usecase(
+            target_usecase_factory=lambda topology_spec,
+            compiled: _build_target_usecase(
                 container=container,
                 catalog=catalog,
                 event_sink=event_sink,
