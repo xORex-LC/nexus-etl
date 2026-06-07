@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from connector.domain.dsl.specs._base import DslBaseModel
+from connector.domain.transform_dsl.specs.topology import MatchTopologyPolicySpec
 
 
 class MatchRule(DslBaseModel):
@@ -50,7 +51,9 @@ class FuzzySpec(DslBaseModel):
 
     enabled: bool = False
     blocking_keys: list[str] = Field(default_factory=list)
-    comparators: dict[str, Literal["exact", "casefold", "similarity"]] = Field(default_factory=dict)
+    comparators: dict[str, Literal["exact", "casefold", "similarity"]] = Field(
+        default_factory=dict
+    )
     weights: dict[str, float] = Field(default_factory=dict)
     accept_threshold: float = 0.90
     review_threshold: float = 0.70
@@ -66,7 +69,9 @@ class FuzzySpec(DslBaseModel):
         if not 0.0 <= float(self.review_threshold) <= 1.0:
             raise ValueError("match.fuzzy.review_threshold must be within [0.0, 1.0]")
         if float(self.review_threshold) > float(self.accept_threshold):
-            raise ValueError("match.fuzzy.review_threshold must be <= match.fuzzy.accept_threshold")
+            raise ValueError(
+                "match.fuzzy.review_threshold must be <= match.fuzzy.accept_threshold"
+            )
         if float(self.tie_delta) < 0.0:
             raise ValueError("match.fuzzy.tie_delta must be >= 0.0")
         if int(self.max_candidates) < 1:
@@ -97,6 +102,7 @@ class MatchBlock(DslBaseModel):
     ignored_fields: list[str] = Field(default_factory=list)
     source_dedup: SourceDedupSpec = Field(default_factory=SourceDedupSpec)
     fuzzy: FuzzySpec = Field(default_factory=FuzzySpec)
+    topology: MatchTopologyPolicySpec | None = None
 
     @model_validator(mode="after")
     def _validate_identity_rules(self) -> "MatchBlock":

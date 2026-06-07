@@ -2,14 +2,16 @@
 
 ## Назначение
 
-Стадия разрешения конфликтов сопоставления. Обрабатывает `AMBIGUOUS`-записи и записи с незавершёнными `pending`-состояниями из предыдущих прогонов.
+Стадия разрешения конфликтов сопоставления и materialization write-path. Обрабатывает
+`AMBIGUOUS`-записи, topology-backed FK propagation и записи с незавершёнными `pending`
+состояниями из предыдущих прогонов.
 
 ## Ключевые файлы
 
 | Файл | Назначение |
 |---|---|
 | `resolve_engine.py` | `ResolveEngine` — итерирует поток через `ResolveCore` |
-| `resolve_core.py` | `ResolveCore` — основная логика: читает `batch_index`, проверяет pending, формирует `ResolvedRow` |
+| `resolve_core.py` | `ResolveCore` — основная логика: читает `batch_index`, применяет topology-aware link resolution, проверяет pending, формирует `ResolvedRow` |
 | `pending_codec.py` | Сериализация/десериализация pending-записей для хранения в SQLite |
 | `pending_expiry_service.py` | `PendingExpiryService` — TTL-проверка и пометка просроченных pending |
 | `batch_index_service.py` | `IBatchIndexService` — интерфейс Singleton-сервиса батч-индекса для пары `ResolveContext`/`Resolve` стадий |

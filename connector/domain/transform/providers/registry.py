@@ -6,11 +6,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Protocol
+
+from connector.domain.transform.common import CompiledCanonicalizer
+
+class LookupProvider(Protocol):
+    """Контракт lookup-provider callable для enrich runtime registry."""
+
+    def __call__(
+        self,
+        deps: Any,
+        value: Any,
+        *,
+        args: dict[str, Any],
+    ) -> list[dict[str, Any]]: ...
 
 
-LookupProvider = Callable[[Any, Any], list[dict[str, Any]]]
-ExistsProvider = Callable[[Any, Any], Any | None]
+class ExistsProvider(Protocol):
+    """Контракт exists-provider callable для enrich runtime registry."""
+
+    def __call__(
+        self,
+        deps: Any,
+        value: Any,
+        *,
+        args: dict[str, Any],
+    ) -> Any | None: ...
 
 
 @dataclass
@@ -86,6 +107,51 @@ def _cache_exists_by_field(deps: Any, value: Any, *, args: dict[str, Any]) -> An
         include_deleted=include_deleted,
         mode=mode,
     )
+
+
+def lookup_cache_by_field_canonicalized(
+    deps: Any,
+    value: Any,
+    *,
+    args: dict[str, Any],
+    canonicalizer: CompiledCanonicalizer,
+) -> list[dict[str, Any]]:
+    """Выполнить cache lookup по canonicalized значению без изменения stored rows."""
+
+    cache_gateway = getattr(deps, "cache_gateway", None)
+    if cache_gateway is None:
+        raise AttributeError("deps.cache_gateway is required for canonicalized cache lookup")
+    dataset = str(args["dataset"])
+    field = str(args["field"])
+    include_deleted = bool(args.get("include_deleted", False))
+    mode = str(args.get("mode", "exact"))
+    if mode != "exact":
+        raise ValueError("canonicalized cache.by_field supports only mode='exact'")
+    lookup_key = canonicalizer.canonicalize_scalar(str(value))
+    rows = cache_gateway.read_all(dataset, include_deleted=include_deleted)
+    return [
+        row
+        for row in rows
+        if canonicalizer.canonicalize_scalar(str(row.get(field) or "")) == lookup_key
+    ]
+
+
+def exists_cache_by_field_canonicalized(
+    deps: Any,
+    value: Any,
+    *,
+    args: dict[str, Any],
+    canonicalizer: CompiledCanonicalizer,
+) -> dict[str, Any] | None:
+    """Выполнить exists-check по canonicalized cache field без SQL schema changes."""
+
+    rows = lookup_cache_by_field_canonicalized(
+        deps,
+        value,
+        args=args,
+        canonicalizer=canonicalizer,
+    )
+    return rows[0] if rows else None
 
 
 def _dictionary_by_key(deps: Any, value: Any, *, args: dict[str, Any]) -> list[dict[str, Any]]:

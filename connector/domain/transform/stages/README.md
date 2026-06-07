@@ -2,12 +2,13 @@
 
 ## Назначение
 
-Контракты стадий пайплайна и их конкретные реализации. Содержит `StageContract`, `PipelineOrchestrator` и все 6 stage-классов.
+Контракты стадий пайплайна и их конкретные реализации. Содержит `StageContract`, `PipelineOrchestrator`, основные stage-классы и дополнительные pipeline filters.
 
 ## Файлы
 
 | Файл | Назначение |
 |---|---|
+| `source_topology_filter.py` | `SourceTopologyFilterStage` — post-map фильтр source rows, которые topology bootstrap признал unanchored |
 | `stages.py` | `StageContract[T_in, T_out]` (Protocol); `PipelineOrchestrator`; `MapStage`, `NormalizeStage`, `EnrichStage`, `MatchStage`, `ResolveContextStage`, `ResolveStage` |
 
 ## Парная модель Resolve (TRANSFORM-DEC-004)

@@ -123,6 +123,10 @@ class ResolveUseCase:
                 should_skip=lambda r: _resolve_status(r) is None and r.row is None,
             ),
             report_stage=DiagnosticStage.RESOLVE,
+            report_stages=(
+                DiagnosticStage.RESOLVE,
+                DiagnosticStage.TOPOLOGY_VALIDATE,
+            ),
             include_upstream_diagnostics=False,
         )
 

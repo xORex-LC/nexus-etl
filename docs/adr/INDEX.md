@@ -114,6 +114,8 @@ docs/adr/
 | [TRANSFORM-PROBLEM-009](./transform/TRANSFORM-PROBLEM-009-sink-validation-cross-cutting-in-stage-cores.md) | Problem | Sink schema validation — cross-cutting concern внутри всех 4 stage cores | ❌ Открыто (наблюдение, accepted pattern) | 2026-02-24 |
 | [TRANSFORM-PROBLEM-010](./transform/TRANSFORM-PROBLEM-010-hardcoded-dataset-spec-blocks-extensibility.md) | Problem | Хардкодированный DatasetSpec блокирует расширяемость датасетов | ✅ Закрыто | 2026-03-09 |
 | [TRANSFORM-DEC-009](./transform/TRANSFORM-DEC-009-declarative-dataset-spec-yaml-driven-plugins.md) | Decision | Декларативный DatasetSpec — YAML-driven dataset plugins | ✅ Закрыто | 2026-03-09 |
+| [TRANSFORM-PROBLEM-011](./transform/TRANSFORM-PROBLEM-011-dependency-tree-topology-runtime-integration.md) | Problem | Runtime integration dependency tree и момент построения topology snapshot | ✅ Закрыто | 2026-05-28 |
+| [TRANSFORM-DEC-010](./transform/TRANSFORM-DEC-010-topology-bootstrap-before-main-pipeline.md) | Decision | Topology bootstrap до основного planning pipeline | ✅ Принято | 2026-05-28 |
 
 ### Delivery
 
@@ -204,6 +206,8 @@ docs/adr/
 |----|-----|----------|--------|------|
 | [OBSERVABILITY-PROBLEM-001](./observability/OBSERVABILITY-PROBLEM-001-inconsistent-logging.md) | Problem | Непоследовательное использование logging и structlog | ❌ Открыто | 2026-02-19 |
 | [OBSERVABILITY-DEC-001](./observability/OBSERVABILITY-DEC-001-structlog-as-standard.md) | Decision | structlog как единственный стандарт логирования | ❌ Открыто (миграция постепенная) | 2026-02-19 |
+| [OBSERVABILITY-PROBLEM-002](./observability/OBSERVABILITY-PROBLEM-002-flat-non-partitioned-artifacts.md) | Problem | Плоская непартиционированная раскладка логов/отчётов/планов без прод-модели | ✅ Закрыто | 2026-06-04 |
+| [OBSERVABILITY-DEC-002](./observability/OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md) | Decision | Per-component прод-раскладка наблюдаемости на structlog | ✅ Принято | 2026-06-04 |
 
 _(Список поддерживается как актуальный реестр ADR по слоям.)_
 

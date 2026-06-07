@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from connector.domain.dependency_tree import TopologyMatchMode
 from connector.domain.models import Identity
 from connector.domain.transform_dsl import load_resolve_spec_for_dataset
 from connector.domain.transform_dsl import load_sink_spec_for_dataset
@@ -42,7 +43,10 @@ def test_resolve_dsl_compile_matches_employees_contract():
     assert organization_rule.field == "organization_id"
     assert organization_rule.target_dataset == "organizations"
     assert organization_rule.on_unresolved == "hard_error"
-    assert tuple(key.name for key in organization_rule.resolve_keys) == ("name", "_ouid")
+    assert tuple(key.name for key in organization_rule.resolve_keys) == (
+        "name",
+        "_ouid",
+    )
     assert organization_rule.dedup_rules == (("code",),)
     assert organization_rule.target_id_field == "_ouid"
     assert organization_rule.coerce == "int"
@@ -53,6 +57,16 @@ def test_resolve_dsl_compile_matches_employees_contract():
     assert compiled.resolve_rules.secret_lifecycle is not None
     assert compiled.resolve_rules.secret_lifecycle.mode == "persistent"
     assert compiled.resolve_rules.secret_lifecycle.delete_on_success is False
+    assert compiled.topology_link is not None
+    assert compiled.topology_link.enabled is True
+    assert compiled.topology_link.field == "organization_id"
+    assert compiled.topology_link.on_missing_topology == "hard_error"
+    assert compiled.topology_link.on_ambiguous_topology == "hard_error"
+    assert compiled.topology_link.comparison_ladder == (
+        TopologyMatchMode.EXACT_CANONICAL_PATH,
+        TopologyMatchMode.EXACT_LEAF_PARENT_CHAIN,
+        TopologyMatchMode.EXACT_LEAF_ROOT_DEPTH,
+    )
 
 
 def test_resolve_dsl_requires_sink_when_from_sink_enabled():
@@ -93,10 +107,30 @@ def test_resolve_spec_rejects_invalid_on_unresolved():
                         {
                             "field": "manager_id",
                             "target_dataset": "employees",
-                            "resolve_keys": [{"name": "match_key", "field": "manager_id"}],
+                            "resolve_keys": [
+                                {"name": "match_key", "field": "manager_id"}
+                            ],
                             "on_unresolved": "skip",
                         }
                     ],
+                },
+            }
+        )
+
+
+def test_resolve_spec_rejects_enabled_topology_link_without_ladder() -> None:
+    with pytest.raises(Exception):
+        ResolveSpec.model_validate(
+            {
+                "dataset": "employees",
+                "resolve": {
+                    "desired_state": {"mode": "project_fields", "fields": ["email"]},
+                    "diff": {"mode": "compare_fields", "fields": [{"field": "email"}]},
+                    "topology_link": {
+                        "enabled": True,
+                        "field": "organization_id",
+                        "comparison_ladder": [],
+                    },
                 },
             }
         )
@@ -143,8 +177,12 @@ def test_resolve_dsl_compiled_rules_behavior():
         "manager_id": "777",
         "is_logon_disable": None,
     }
-    assert compiled.resolve_rules.secret_fields_for_op("create", desired, existing) == ["password"]
-    assert compiled.resolve_rules.secret_fields_for_op("update", desired, existing) == ["password"]
+    assert compiled.resolve_rules.secret_fields_for_op("create", desired, existing) == [
+        "password"
+    ]
+    assert compiled.resolve_rules.secret_fields_for_op("update", desired, existing) == [
+        "password"
+    ]
     assert compiled.resolve_rules.secret_lifecycle is not None
     assert compiled.resolve_rules.secret_lifecycle.mode == "persistent"
 
@@ -170,7 +208,9 @@ def test_resolve_dsl_compiles_ephemeral_secret_lifecycle():
         }
     )
 
-    compiled = ResolveDsl().compile(spec, sink_spec=load_sink_spec_for_dataset("employees"))
+    compiled = ResolveDsl().compile(
+        spec, sink_spec=load_sink_spec_for_dataset("employees")
+    )
     lifecycle = compiled.resolve_rules.secret_lifecycle
     assert lifecycle is not None
     assert lifecycle.mode == "ephemeral"

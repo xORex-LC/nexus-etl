@@ -150,6 +150,14 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
     registry_payload["cache"]["datasets"]["employees"]["cache_spec"] = "employees/employees.cache.yaml"
     registry_payload["cache"]["datasets"]["organizations"]["cache_spec"] = "organizations/organizations.cache.yaml"
 
+    # Не-topology фикстуры (vault/cache/enrich) не провизионят org topology cache/spec
+    # и не должны тянуть topology-bootstrap/resolve-wiring. Отключаем topology на уровне
+    # capability (validate_registry перестаёт eagerly грузить org topology spec) и снимаем
+    # resolve-side topology_link (иначе _build_resolve_topology_dependencies упадёт на
+    # неактивированных requirements).
+    registry_payload["datasets"]["organizations"]["topology"] = {"enabled": False}
+    _disable_resolve_topology_link(datasets_root / "employees" / "employees.resolve.yaml")
+
     (datasets_root / "registry.yaml").write_text(
         yaml.safe_dump(registry_payload, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
@@ -160,3 +168,20 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
     )
 
     return datasets_root / "registry.yaml", (departments_name, job_title_name)
+
+
+def _disable_resolve_topology_link(resolve_path: Path) -> None:
+    """Снять resolve-side topology_link в скопированном resolve.yaml.
+
+    Нужно для не-topology фикстур: иначе включённая policy при неактивированных
+    topology requirements ломает сборку resolve_stage.
+    """
+    if not resolve_path.exists():
+        return
+    payload = yaml.safe_load(resolve_path.read_text(encoding="utf-8")) or {}
+    resolve_block = payload.get("resolve")
+    if isinstance(resolve_block, dict) and resolve_block.pop("topology_link", None) is not None:
+        resolve_path.write_text(
+            yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )

@@ -78,28 +78,31 @@ def _result_with_errors(line_no: int = 1) -> TransformResult[ResolvedRow]:
 # ---------------------------------------------------------------------------
 
 def test_build_from_stream_excludes_none_row():
+    # Провальные строки исключаются из items, но считаются (отчётность не теряет провалы).
     result = PlanBuilder().build_from_stream([_result_none_row()])
 
     assert result.items == []
-    assert result.summary.rows_total == 0
+    assert result.summary.rows_total == 1
     assert result.summary.valid_rows == 0
+    assert result.summary.failed_rows == 1
 
 
 def test_build_from_stream_excludes_errors():
     result = PlanBuilder().build_from_stream([_result_with_errors()])
 
     assert result.items == []
-    assert result.summary.rows_total == 0
+    assert result.summary.rows_total == 1
+    assert result.summary.failed_rows == 1
 
 
 def test_build_from_stream_excludes_conflict_op():
-    # CONFLICT пропускается до вызова add_resolved() — счётчики не инкрементируются
+    # CONFLICT исключается из items, но учитывается как failed (виден в summary/отчёте).
     result = PlanBuilder().build_from_stream([_result_ok(op=ResolveOp.CONFLICT)])
 
     assert result.items == []
-    assert result.summary.rows_total == 0
+    assert result.summary.rows_total == 1
     assert result.summary.valid_rows == 0
-    assert result.summary.failed_rows == 0
+    assert result.summary.failed_rows == 1
 
 
 def test_build_from_stream_includes_create_and_update_ops():

@@ -20,11 +20,15 @@
     - CONFIG-DEC-002: migration to Pydantic BaseModel + unified loader
     - CONFIG-DEC-003: settings taxonomy and boundary adapters
 """
+
 from __future__ import annotations
 
 from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from connector.common.observability import ClockMode, ServiceComponent
+from connector.common.sanitize import DEFAULT_SENSITIVE_FIELD_KEYS
 
 
 def _require_non_blank_path(value: str, *, field_name: str) -> str:
@@ -59,8 +63,9 @@ class PathsConfig(BaseModel):
     cache_dir: str = "var/cache"
     log_dir: str = "var/logs"
     report_dir: str = "reports"
+    plans_dir: str = "var/plans"
 
-    @field_validator("cache_dir", "log_dir", "report_dir", mode="after")
+    @field_validator("cache_dir", "log_dir", "report_dir", "plans_dir", mode="after")
     @classmethod
     def _validate_non_blank(cls, value: str, info) -> str:
         return _require_non_blank_path(value, field_name=str(info.field_name))
@@ -96,18 +101,127 @@ class RuntimeConfig(BaseModel):
         return _require_non_blank_path(value, field_name=str(info.field_name))
 
 
-class ObservabilityConfig(BaseModel):
-    """Параметры логирования, отчётности и диагностики."""
+LogLevelName = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+
+class ComponentLoggingConfig(BaseModel):
+    """Переопределения уровня логирования для конкретного компонента."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
-    log_json: bool = False
-    report_format: Literal["json", "text"] = "json"
-    report_policy_profile: Literal["minimal", "standard", "debug"] = "standard"
-    report_items_limit: int = Field(default=200, gt=0)
-    report_include_skipped: bool = True
-    diagnostics_strict: bool = False
+    level: LogLevelName = "INFO"
+
+
+class LoggingRedactionConfig(BaseModel):
+    """Defense-in-depth маскирование чувствительных ключей в логах."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = True
+    keys: tuple[str, ...] = DEFAULT_SENSITIVE_FIELD_KEYS
+
+    @field_validator("keys", mode="before")
+    @classmethod
+    def _coerce_keys(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(item.strip() for item in value.split(",") if item.strip())
+        return value
+
+
+class FileLoggingSinkConfig(BaseModel):
+    """Параметры файлового sink логирования."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = True
+    format: Literal["text", "json"] = "text"
+    rotation: Literal["daily", "size", "hybrid"] = "hybrid"
+    max_bytes: int = Field(default=104857600, gt=0)
+    retention_days: int = Field(default=30, ge=0)
+    retention_backups: int = Field(default=10, ge=0)
+
+
+class ConsoleLoggingSinkConfig(BaseModel):
+    """Параметры console sink логирования."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = True
+    stream: Literal["stderr", "stdout"] = "stderr"
+    format: Literal["json", "text"] = "json"
+
+
+class LoggingSinksConfig(BaseModel):
+    """Набор sink-моделей для logging-подсистемы."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    file: FileLoggingSinkConfig = FileLoggingSinkConfig()
+    console: ConsoleLoggingSinkConfig = ConsoleLoggingSinkConfig()
+
+
+class LoggingConfig(BaseModel):
+    """Параметры logging-подсистемы observability."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    level: LogLevelName = "INFO"
+    components: dict[ServiceComponent, ComponentLoggingConfig] = Field(
+        default_factory=dict
+    )
+    redaction: LoggingRedactionConfig = LoggingRedactionConfig()
+    sinks: LoggingSinksConfig = LoggingSinksConfig()
+
+
+class ReportingConfig(BaseModel):
+    """Параметры runtime-reporting."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    format: Literal["json", "text"] = "json"
+    policy_profile: Literal["minimal", "standard", "debug"] = "standard"
+    items_limit: int = Field(default=200, gt=0)
+    include_skipped: bool = True
+    retention_days: int = Field(default=30, ge=0)
+
+
+class PlansConfig(BaseModel):
+    """Параметры хранения планов."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    retention_days: int = Field(default=30, ge=0)
+
+
+class DiagnosticsConfig(BaseModel):
+    """Параметры strictness для диагностического слоя."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    strict: bool = False
+
+
+class LedgerConfig(BaseModel):
+    """Параметры ledger-индекса запусков."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = True
+    backend: Literal["jsonl", "sqlite"] = "jsonl"
+
+
+class ObservabilityConfig(BaseModel):
+    """Параметры логирования, отчётности, планов и диагностики."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    partition_by_component: bool = True
+    clock: ClockMode = "utc"
+    logging: LoggingConfig = LoggingConfig()
+    reporting: ReportingConfig = ReportingConfig()
+    plans: PlansConfig = PlansConfig()
+    diagnostics: DiagnosticsConfig = DiagnosticsConfig()
+    ledger: LedgerConfig = LedgerConfig()
 
 
 class DatasetConfig(BaseModel):
@@ -206,6 +320,7 @@ class VaultRolloutConfig(BaseModel):
         if isinstance(v, str):
             return tuple(s.strip() for s in v.split(",") if s.strip())
         return v
+
     # дефолт совпадает с доменным VaultRolloutPolicySettings.canary_seed
     canary_seed: str = "vault-rollout-v1"
     # дефолты выровнены по текущим VaultRolloutThresholds (regression guard)
@@ -228,7 +343,9 @@ class SqliteConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     # Глобальные дефолты (применяются ко всем DB при отсутствии per-DB override)
-    journal_mode: Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] = "WAL"
+    journal_mode: Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] = (
+        "WAL"
+    )
     synchronous: Literal["OFF", "NORMAL", "FULL", "EXTRA"] = "NORMAL"
     busy_timeout_ms: int = Field(default=5000, ge=0)
     wal_autocheckpoint: int = Field(default=1000, ge=0)
@@ -236,14 +353,18 @@ class SqliteConfig(BaseModel):
     # Vault overrides (None = использовать global)
     vault_db_path: str | None = None
     vault_transaction_mode: Literal["deferred", "immediate", "exclusive"] = "immediate"
-    vault_journal_mode: Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] | None = None
+    vault_journal_mode: (
+        Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] | None
+    ) = None
     vault_busy_timeout_ms: int | None = Field(default=None, ge=0)
     vault_schema_retry_count: int = Field(default=2, ge=0, le=10)
 
     # Cache overrides (None = использовать global)
     cache_db_path: str | None = None
     cache_transaction_mode: Literal["deferred", "immediate", "exclusive"] = "deferred"
-    cache_journal_mode: Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] | None = None
+    cache_journal_mode: (
+        Literal["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"] | None
+    ) = None
     cache_busy_timeout_ms: int | None = Field(default=None, ge=0)
 
     # Identity (только global дефолты; нет per-DB override полей)
@@ -305,7 +426,17 @@ __all__ = [
     "ApiConfig",
     "PathsConfig",
     "RuntimeConfig",
+    "ComponentLoggingConfig",
+    "ConsoleLoggingSinkConfig",
+    "DiagnosticsConfig",
+    "FileLoggingSinkConfig",
+    "LedgerConfig",
+    "LoggingConfig",
+    "LoggingRedactionConfig",
+    "LoggingSinksConfig",
+    "PlansConfig",
     "ObservabilityConfig",
+    "ReportingConfig",
     "DatasetConfig",
     "ExecutionConfig",
     "RefreshConfig",

@@ -17,14 +17,23 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import logging
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
+from connector.domain.ports.cache.roles import ResolveRuntimePort
+from connector.domain.ports.topology import (
+    SourceTopologyCanonicalPath,
+    SourceTopologyLocatorBuilderPort,
+    TopologyLinkResolutionResult,
+    TopologyLinkResolutionServicePort,
+)
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.diagnostics.context import error as diag_error, warning as diag_warning
 from connector.domain.transform.common.sink_schema import validate_sink_fields
+from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.dsl.diagnostics import append_dsl_issues
 from connector.domain.transform_dsl.specs import SinkSpec
 from connector.domain.transform.resolver.resolve_deps import ResolverSettings
@@ -41,12 +50,31 @@ from connector.domain.transform.matcher.match_models import (
 from connector.domain.transform_dsl.compilers.resolve import (
     LinkFieldRule,
     LinkRules,
+    ResolveTopologyLinkPolicy,
     ResolveRules,
     SecretLifecyclePolicy,
 )
-from connector.domain.ports.cache.roles import ResolveRuntimePort
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _LinkLookupOutcome:
+    """Результат обычного lookup/dedup path до topology-aware disambiguation."""
+
+    resolved_id: str | None
+    reason: str | None
+    used_lookup: str | None
+    candidate_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _TopologyLinkDecision:
+    """Локальный результат применения topology policy внутри resolve path."""
+
+    resolved_id: str | None
+    reason: str | None
+    action: str = "legacy"
 
 
 class ResolveCore:
@@ -71,6 +99,9 @@ class ResolveCore:
         catalog: ErrorCatalog,
         sink_spec: SinkSpec | None = None,
         codec: IPendingCodec,
+        topology_link_policy: ResolveTopologyLinkPolicy | None = None,
+        topology_link_service: TopologyLinkResolutionServicePort | None = None,
+        source_topology_locator_builder: SourceTopologyLocatorBuilderPort | None = None,
     ) -> None:
         self.resolve_rules = resolve_rules
         self.link_rules = link_rules or LinkRules()
@@ -79,6 +110,9 @@ class ResolveCore:
         self.catalog = catalog
         self.sink_spec = sink_spec
         self._codec = codec
+        self._topology_link_policy = topology_link_policy
+        self._topology_link_service = topology_link_service
+        self._source_topology_locator_builder = source_topology_locator_builder
 
     def build_batch_index(
         self,
@@ -115,6 +149,7 @@ class ResolveCore:
         self,
         matched: MatchedRow,
         *,
+        source_record: SourceRecord,
         target_id_map: dict[str, str],
         meta: dict[str, Any] | None = None,
         batch_index: dict[str, list[str]] | None = None,
@@ -174,6 +209,7 @@ class ResolveCore:
 
         pending_created, should_stop, link_mutations = self._resolve_links(
             matched,
+            source_record,
             desired_state,
             warnings,
             errors,
@@ -238,6 +274,7 @@ class ResolveCore:
     def _resolve_links(
         self,
         matched: MatchedRow,
+        source_record: SourceRecord,
         desired_state: dict[str, Any],
         warnings: list[DiagnosticItem],
         errors: list[DiagnosticItem],
@@ -280,13 +317,56 @@ class ResolveCore:
 
             overrides = _extract_link_key_overrides(meta, rule.field)
             key_values = _extract_key_values(desired_state, rule.resolve_keys, overrides)
-            resolved_id, reason, used_lookup = _resolve_with_rules(
+            lookup_outcome = _resolve_with_rules(
                 rule,
                 key_values,
                 desired_state,
                 self.cache_gateway,
                 batch_index,
             )
+            resolved_id = lookup_outcome.resolved_id
+            reason = lookup_outcome.reason
+            used_lookup = lookup_outcome.used_lookup
+            if (
+                resolved_id is None
+                and len(lookup_outcome.candidate_ids) > 1
+                and self._is_topology_link_enabled(rule)
+            ):
+                topology_decision = self._resolve_with_topology(
+                    rule=rule,
+                    source_record=source_record,
+                    candidate_ids=lookup_outcome.candidate_ids,
+                )
+                if topology_decision is not None:
+                    resolved_id = topology_decision.resolved_id
+                    reason = topology_decision.reason
+                    if topology_decision.action == "pending":
+                        pending_created, should_stop = self._create_pending_link(
+                            matched=matched,
+                            rule=rule,
+                            desired_state=desired_state,
+                            warnings=warnings,
+                            errors=errors,
+                            meta=meta,
+                            lookup_key=used_lookup or "",
+                            reason=reason,
+                            pending_created=pending_created,
+                        )
+                        if should_stop:
+                            return pending_created, should_stop, changed_fields
+                        continue
+                    if topology_decision.action == "hard_error":
+                        errors.append(
+                            diag_error(
+                                catalog=self.catalog,
+                                stage=DiagnosticStage.RESOLVE,
+                                code="RESOLVE_CONFLICT",
+                                field=rule.field,
+                                message=reason or "link is unresolved",
+                                record_ref=matched.row_ref,
+                            )
+                        )
+                        return pending_created, True, changed_fields
             if resolved_id is None:
                 if rule.on_unresolved == "hard_error":
                     errors.append(
@@ -300,46 +380,17 @@ class ResolveCore:
                         )
                     )
                     return pending_created, True, changed_fields
-                pending_created = True
-                row_id = matched.row_ref.row_id
-                expires_at = _build_expires_at(self.settings)
-                lookup_key = used_lookup or ""
-                payload = self._codec.serialize(matched, desired_state, meta)
-                pending_id = self.cache_gateway.add_pending(
-                    dataset=rule.target_dataset,
-                    source_row_id=row_id,
-                    field=rule.field,
-                    lookup_key=lookup_key,
-                    expires_at=expires_at,
-                    payload=payload,
+                pending_created, should_stop = self._create_pending_link(
+                    matched=matched,
+                    rule=rule,
+                    desired_state=desired_state,
+                    warnings=warnings,
+                    errors=errors,
+                    meta=meta,
+                    lookup_key=used_lookup or "",
+                    reason=reason,
+                    pending_created=pending_created,
                 )
-                attempts = self.cache_gateway.touch_attempt(pending_id)
-                max_attempts = _max_attempts(self.settings)
-                if max_attempts > 0 and attempts >= max_attempts:
-                    self.cache_gateway.mark_conflict(pending_id, reason="max attempts reached")
-                    errors.append(
-                        diag_error(
-                            catalog=self.catalog,
-                            stage=DiagnosticStage.RESOLVE,
-                            code="RESOLVE_MAX_ATTEMPTS",
-                            field=rule.field,
-                            message="pending max attempts reached",
-                            record_ref=matched.row_ref,
-                        )
-                    )
-                    return pending_created, True, changed_fields
-                warnings.append(
-                    diag_warning(
-                        catalog=self.catalog,
-                        stage=DiagnosticStage.RESOLVE,
-                        code="RESOLVE_PENDING",
-                        field=rule.field,
-                        message=reason or "link is pending",
-                        record_ref=matched.row_ref,
-                    )
-                )
-                if not _allow_partial(self.settings):
-                    should_stop = True
                 continue
 
             resolved_value = _coerce_resolved(resolved_id, rule)
@@ -348,6 +399,159 @@ class ResolveCore:
                 changed_fields.add(rule.field)
 
         return pending_created, should_stop, changed_fields
+
+    def _create_pending_link(
+        self,
+        *,
+        matched: MatchedRow,
+        rule: LinkFieldRule,
+        desired_state: dict[str, Any],
+        warnings: list[DiagnosticItem],
+        errors: list[DiagnosticItem],
+        meta: dict[str, Any] | None,
+        lookup_key: str,
+        reason: str | None,
+        pending_created: bool,
+    ) -> tuple[bool, bool]:
+        pending_created = True
+        row_id = matched.row_ref.row_id
+        expires_at = _build_expires_at(self.settings)
+        payload = self._codec.serialize(matched, desired_state, meta)
+        pending_id = self.cache_gateway.add_pending(
+            dataset=rule.target_dataset,
+            source_row_id=row_id,
+            field=rule.field,
+            lookup_key=lookup_key,
+            expires_at=expires_at,
+            payload=payload,
+        )
+        attempts = self.cache_gateway.touch_attempt(pending_id)
+        max_attempts = _max_attempts(self.settings)
+        if max_attempts > 0 and attempts >= max_attempts:
+            self.cache_gateway.mark_conflict(pending_id, reason="max attempts reached")
+            errors.append(
+                diag_error(
+                    catalog=self.catalog,
+                    stage=DiagnosticStage.RESOLVE,
+                    code="RESOLVE_MAX_ATTEMPTS",
+                    field=rule.field,
+                    message="pending max attempts reached",
+                    record_ref=matched.row_ref,
+                )
+            )
+            return pending_created, True
+        warnings.append(
+            diag_warning(
+                catalog=self.catalog,
+                stage=DiagnosticStage.RESOLVE,
+                code="RESOLVE_PENDING",
+                field=rule.field,
+                message=reason or "link is pending",
+                record_ref=matched.row_ref,
+            )
+        )
+        return pending_created, not _allow_partial(self.settings)
+
+    def _is_topology_link_enabled(self, rule: LinkFieldRule) -> bool:
+        if self._topology_link_policy is None or not self._topology_link_policy.enabled:
+            return False
+        return self._topology_link_policy.field == rule.field
+
+    def _resolve_with_topology(
+        self,
+        *,
+        rule: LinkFieldRule,
+        source_record: SourceRecord,
+        candidate_ids: tuple[str, ...],
+    ) -> _TopologyLinkDecision | None:
+        if (
+            self._topology_link_service is None
+            or self._source_topology_locator_builder is None
+        ):
+            return None
+        locator = self._source_topology_locator_builder.build(source_record)
+        if locator is None:
+            return self._apply_topology_policy(
+                candidate_ids=candidate_ids,
+                policy_kind="missing",
+                fallback_reason="topology source locator is empty",
+                source_locator=None,
+            )
+
+        result = self._topology_link_service.resolve_link(
+            field=rule.field,
+            source_locator=locator,
+            target_candidate_ids=candidate_ids,
+        )
+        if result.resolved_target_id is not None:
+            return _TopologyLinkDecision(
+                resolved_id=str(result.resolved_target_id),
+                reason=None,
+            )
+        if result.is_ambiguous:
+            return self._apply_topology_policy(
+                candidate_ids=candidate_ids,
+                policy_kind="ambiguous",
+                fallback_reason=result.reason or "topology link is ambiguous",
+                source_locator=locator,
+                result=result,
+            )
+        return self._apply_topology_policy(
+            candidate_ids=candidate_ids,
+            policy_kind="missing",
+            fallback_reason=result.reason or "topology link confirmation is missing",
+            source_locator=locator,
+            result=result,
+        )
+
+    def _apply_topology_policy(
+        self,
+        *,
+        candidate_ids: tuple[str, ...],
+        policy_kind: str,
+        fallback_reason: str,
+        source_locator: SourceTopologyCanonicalPath | None,
+        result: TopologyLinkResolutionResult | None = None,
+    ) -> _TopologyLinkDecision:
+        if self._topology_link_policy is None:
+            return _TopologyLinkDecision(
+                resolved_id=None,
+                reason=fallback_reason,
+                action="legacy",
+            )
+        action = (
+            self._topology_link_policy.on_ambiguous_topology
+            if policy_kind == "ambiguous"
+            else self._topology_link_policy.on_missing_topology
+        )
+        if action == "skip":
+            return _TopologyLinkDecision(
+                resolved_id=None,
+                reason="multiple candidates found for link",
+                action="legacy",
+            )
+        if action == "pending":
+            return _TopologyLinkDecision(
+                resolved_id=None,
+                reason=fallback_reason,
+                action="pending",
+            )
+        details = {
+            "source_segments": (
+                list(source_locator.canonical_segments)
+                if source_locator is not None
+                else []
+            ),
+            "candidate_ids": list(candidate_ids),
+        }
+        if result is not None:
+            details["topology_reason"] = result.reason
+            details["topology_mode"] = result.mode.value
+        return _TopologyLinkDecision(
+            resolved_id=None,
+            reason=f"{fallback_reason}; details={details}",
+            action="hard_error",
+        )
 
     def _validate_sink_mutations(
         self,
@@ -491,7 +695,7 @@ def _resolve_with_rules(
     desired_state: dict[str, Any],
     cache_gateway: ResolveRuntimePort,
     batch_index: dict[str, list[str]] | None,
-) -> tuple[str | None, str | None, str | None]:
+) -> _LinkLookupOutcome:
     """
     Назначение:
         Попытаться найти целевую запись по ключам связи.
@@ -507,7 +711,12 @@ def _resolve_with_rules(
         if not candidates:
             continue
         if len(candidates) == 1:
-            return candidates[0], None, used_lookup
+            return _LinkLookupOutcome(
+                resolved_id=candidates[0],
+                reason=None,
+                used_lookup=used_lookup,
+                candidate_ids=(candidates[0],),
+            )
 
         narrowed = _apply_dedup_rules(
             candidates,
@@ -518,10 +727,25 @@ def _resolve_with_rules(
             batch_index,
         )
         if len(narrowed) == 1:
-            return narrowed[0], None, used_lookup
-        return None, "multiple candidates found for link", used_lookup
+            return _LinkLookupOutcome(
+                resolved_id=narrowed[0],
+                reason=None,
+                used_lookup=used_lookup,
+                candidate_ids=(narrowed[0],),
+            )
+        return _LinkLookupOutcome(
+            resolved_id=None,
+            reason="multiple candidates found for link",
+            used_lookup=used_lookup,
+            candidate_ids=tuple(narrowed),
+        )
 
-    return None, "no candidates found for link", used_lookup
+    return _LinkLookupOutcome(
+        resolved_id=None,
+        reason="no candidates found for link",
+        used_lookup=used_lookup,
+        candidate_ids=(),
+    )
 
 
 def _apply_dedup_rules(

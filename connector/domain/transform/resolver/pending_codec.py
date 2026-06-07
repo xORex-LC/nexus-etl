@@ -123,7 +123,11 @@ def load_pending_rows(pending_rows: list[PendingRow]) -> PendingLoadResult:
             continue
         matched_row, meta = parsed
         row_ref = matched_row.row_ref
-        record = SourceRecord(line_no=row_ref.line_no, record_id=row_ref.row_id, values={})
+        record = SourceRecord(
+            line_no=row_ref.line_no or 0,
+            record_id=row_ref.row_id,
+            values={},
+        )
         results.append(
             TransformResult(
                 record=record,
@@ -132,8 +136,8 @@ def load_pending_rows(pending_rows: list[PendingRow]) -> PendingLoadResult:
                 match_key=None,
                 meta=meta,
                 secret_candidates={},
-                errors=[],
-                warnings=[],
+                errors=(),
+                warnings=(),
             )
         )
     return PendingLoadResult(rows=results, skipped=skipped)
@@ -160,6 +164,13 @@ def _serialize_match_decision(matched: MatchedRow) -> dict[str, Any]:
         "reason_code": decision.reason_code,
         "message": decision.message,
         "score": decision.score,
+        "topology_match_mode": (
+            decision.topology_match_mode.value
+            if decision.topology_match_mode is not None
+            else None
+        ),
+        "topology_reason": decision.topology_reason,
+        "topology_evidence": decision.topology_evidence,
         "meta": decision.meta,
         "selected": _serialize_candidate(decision.selected),
         "candidates": [_serialize_candidate(candidate) for candidate in decision.candidates],
@@ -218,12 +229,14 @@ def _deserialize_pending_matched_row(
         return None
 
     row_id = row_ref_data.get("row_id")
-    line_no_raw = row_ref_data.get("line_no")
+    line_no_raw: object = row_ref_data.get("line_no")
     if not isinstance(row_id, str) or not row_id:
+        return None
+    if not isinstance(line_no_raw, (str, int)):
         return None
     try:
         line_no = int(line_no_raw)
-    except (TypeError, ValueError):
+    except ValueError:
         return None
     row_ref = RowRef(
         line_no=line_no,
@@ -244,7 +257,12 @@ def _deserialize_pending_matched_row(
     target_id = payload.get("target_id")
     if target_id is not None:
         target_id = str(target_id)
-    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    raw_meta = payload.get("meta")
+    meta: dict[str, object]
+    if isinstance(raw_meta, dict):
+        meta = {str(key): value for key, value in raw_meta.items()}
+    else:
+        meta = {}
 
     matched_row = MatchedRow(
         row_ref=row_ref,
@@ -290,12 +308,30 @@ def _deserialize_match_decision(payload: dict) -> MatchDecision | None:
     score = payload.get("score")
     if score is not None and not isinstance(score, (int, float)):
         return None
+    topology_mode_raw = payload.get("topology_match_mode")
+    topology_reason = payload.get("topology_reason")
+    topology_evidence = payload.get("topology_evidence")
+    if topology_mode_raw is not None and not isinstance(topology_mode_raw, str):
+        return None
+    if topology_reason is not None and not isinstance(topology_reason, str):
+        return None
+    if not isinstance(topology_evidence, dict):
+        topology_evidence = {}
     meta = payload.get("meta")
     if not isinstance(meta, dict):
         meta = {}
     message = payload.get("message")
     if message is not None and not isinstance(message, str):
         return None
+
+    topology_mode = None
+    if topology_mode_raw is not None:
+        from connector.domain.dependency_tree import TopologyMatchMode
+
+        try:
+            topology_mode = TopologyMatchMode(topology_mode_raw)
+        except ValueError:
+            return None
 
     return MatchDecision(
         status=status,
@@ -304,6 +340,9 @@ def _deserialize_match_decision(payload: dict) -> MatchDecision | None:
         selected=selected,
         candidates=tuple(candidates),
         score=float(score) if isinstance(score, (int, float)) else None,
+        topology_match_mode=topology_mode,
+        topology_reason=topology_reason,
+        topology_evidence=topology_evidence,
         meta=meta,
     )
 

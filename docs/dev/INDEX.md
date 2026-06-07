@@ -56,12 +56,20 @@
 
 **Недавние решения**:
 - [CACHE-DEC-001](../adr/cache/CACHE-DEC-001-topological-sort-for-dependencies.md) — Топологическая сортировка для зависимостей
+- [TRANSFORM-DEC-010](../adr/transform/TRANSFORM-DEC-010-topology-bootstrap-before-main-pipeline.md) — Topology bootstrap до основного planning pipeline
 - _(Другие ADR появятся по мере возникновения проблем и принятия решений)_
 
 **Зачем ADR?**
 - 💡 Сохраняет контекст: "Почему мы сделали именно так?"
 - 🚫 Предотвращает повторение ошибок
 - 📖 Помогает новым разработчикам понять историю проекта
+
+## 🗒️ Working Notes
+
+> Рабочие заметки для исследований и обсуждений до фиксации проблемы или решения в ADR
+
+- [Working Notes Index](../notes/INDEX.md)
+- [Dependency Tree Worknote](../notes/dependency-tree/DEPENDENCY_TREE_WORKNOTE.md)
 
 ## 🎯 С чего начать?
 

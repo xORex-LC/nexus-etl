@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, TypeVar
 
-from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.models import DiagnosticItem
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.enrich.models import (
@@ -22,16 +21,30 @@ from connector.domain.transform.enrich.models import (
     StrictnessPolicy,
 )
 from connector.domain.transform.enrich.providers import CandidateProvider
+from connector.domain.transform.common import CompiledCanonicalizer
 from connector.domain.transform.providers import ProviderGateway
+from connector.domain.transform.providers.registry import (
+    exists_cache_by_field_canonicalized,
+    lookup_cache_by_field_canonicalized,
+)
 from connector.domain.dsl.engine import TransformationEngine
 from connector.domain.dsl.helpers import apply_ops
 from connector.domain.dsl.issues import DslLoadError, DslSeverity
 from connector.domain.dsl.registry import OperationRegistry, register_core_ops
 from connector.domain.dsl.specs import OperationCall, SourceOpsBlock
 from connector.domain.transform_dsl.build_options import EnrichDslBuildOptions
-from connector.domain.transform_dsl.specs import EnrichRule, EnrichSpec, MatchKeySpec, SecretsSpec
+from connector.domain.transform_dsl.compilers.canonicalization import CanonicalizationDsl
+from connector.domain.transform_dsl.specs import (
+    EnrichRule,
+    EnrichSpec,
+    MatchKeySpec,
+    SecretsSpec,
+)
 from connector.domain.transform.common.values import read_value_path
-from connector.domain.transform.ids.match_key import MatchKeyError, build_delimited_match_key
+from connector.domain.transform.ids.match_key import (
+    MatchKeyError,
+    build_delimited_match_key,
+)
 
 T = TypeVar("T")
 D = TypeVar("D")
@@ -218,6 +231,8 @@ def build_enricher_spec_from_dsl(
             providers = ProviderGateway.with_defaults()
         engine = TransformationEngine(registry)
         operations: list[EnrichmentOperation] = []
+        for rule in (*enrich_spec.enrich.lookup, *enrich_spec.enrich.generate):
+            _validate_rule_provider_contract(rule)
 
         match_key_spec = enrich_spec.enrich.match_key
         if match_key_spec is not None:
@@ -326,7 +341,9 @@ def _build_rule_generator(rule: EnrichRule, engine: TransformationEngine):
     return _generator
 
 
-def _build_base_generator(rule: EnrichRule, engine: TransformationEngine) -> ValueBuilder:
+def _build_base_generator(
+    rule: EnrichRule, engine: TransformationEngine
+) -> ValueBuilder:
     block = rule.build
 
     def _generator(result, deps):
@@ -340,7 +357,9 @@ def _build_base_generator(rule: EnrichRule, engine: TransformationEngine) -> Val
     return _generator
 
 
-def _build_condition(rule: EnrichRule, engine: TransformationEngine) -> PredicateBuilder | None:
+def _build_condition(
+    rule: EnrichRule, engine: TransformationEngine
+) -> PredicateBuilder | None:
     block = rule.when
     if block is None:
         return None
@@ -355,7 +374,9 @@ def _build_condition(rule: EnrichRule, engine: TransformationEngine) -> Predicat
     return _condition
 
 
-def _build_append_generator(rule: EnrichRule, engine: TransformationEngine) -> ValueBuilder | None:
+def _build_append_generator(
+    rule: EnrichRule, engine: TransformationEngine
+) -> ValueBuilder | None:
     block = rule.then
     if block is None:
         return None
@@ -388,10 +409,17 @@ class _DslLookupProvider:
         Провайдер lookup-кандидатов, построенный из DSL-правила.
     """
 
-    def __init__(self, rule: EnrichRule, engine: TransformationEngine, providers: ProviderGateway) -> None:
+    def __init__(
+        self,
+        rule: EnrichRule,
+        engine: TransformationEngine,
+        providers: ProviderGateway,
+        canonicalizer: CompiledCanonicalizer | None = None,
+    ) -> None:
         self.rule = rule
         self.engine = engine
         self.providers = providers
+        self.canonicalizer = canonicalizer
         self.name = rule.provider.name if rule.provider else "dsl_lookup"
 
     def fetch(self, ctx, result, deps, key_values):  # noqa: ANN001
@@ -425,16 +453,13 @@ class _DslLookupProvider:
         if value is None or value == "":
             return []
 
-        candidates = self.providers.lookup(
-            self.rule.provider.name,
-            deps,
-            value,
-            args=self.rule.provider.args,
-        )
+        candidates = self._lookup_candidates(deps, value)
 
         result_values = []
         for candidate in candidates:
-            resolved = read_value_path(candidate, self.rule.value_path or self.rule.target)
+            resolved = read_value_path(
+                candidate, self.rule.value_path or self.rule.target
+            )
             result_values.append(
                 {
                     "field": self.rule.target,
@@ -451,6 +476,24 @@ class _DslLookupProvider:
             for item in result_values
             if item["value"] is not None
         ]
+
+    def _lookup_candidates(self, deps, value):  # noqa: ANN001
+        provider = self.rule.provider
+        if provider is None:
+            return []
+        if self.canonicalizer is not None and provider.name == "cache.by_field":
+            return lookup_cache_by_field_canonicalized(
+                deps,
+                value,
+                args=provider.args,
+                canonicalizer=self.canonicalizer,
+            )
+        return self.providers.lookup(
+            provider.name,
+            deps,
+            value,
+            args=provider.args,
+        )
 
 
 def _resolve_rule_value(
@@ -477,7 +520,9 @@ def _resolve_rule_value(
     return resolved
 
 
-def _resolve_block_value(result: TransformResult[Any], block: SourceOpsBlock, engine: TransformationEngine) -> Any:
+def _resolve_block_value(
+    result: TransformResult[Any], block: SourceOpsBlock, engine: TransformationEngine
+) -> Any:
     return _resolve_rule_value(result, block.source, block.sources, block.ops, engine)
 
 
@@ -514,7 +559,17 @@ def _build_exists(rule: EnrichRule, providers: ProviderGateway):
     if not rule.exists:
         return None
 
+    canonicalizer = _compile_provider_canonicalizer(rule.exists.provider)
+
     def _exists(deps, value):
+        if canonicalizer is not None and rule.exists is not None:
+            if rule.exists.provider.name == "cache.exists_by_field":
+                return exists_cache_by_field_canonicalized(
+                    deps,
+                    value,
+                    args=rule.exists.provider.args,
+                    canonicalizer=canonicalizer,
+                )
         return providers.exists(
             rule.exists.provider.name,
             deps,
@@ -565,7 +620,12 @@ def _build_lookup_operation(
     merge_policy = _merge_policy_for(rule)
     strictness = _strictness_for(rule)
     run_when_errors = _run_when_errors_for(rule)
-    provider = _DslLookupProvider(rule, engine, providers)
+    provider = _DslLookupProvider(
+        rule,
+        engine,
+        providers,
+        _compile_provider_canonicalizer(rule.provider),
+    )
     return EnrichmentOperation(
         name=rule.name,
         op_type=EnrichOperationType.LOOKUP,
@@ -578,6 +638,67 @@ def _build_lookup_operation(
         conflict_error_code=rule.conflict_error_code,
         error_field=rule.error_field or rule.target,
     )
+
+
+def _validate_rule_provider_contract(rule: EnrichRule) -> None:
+    _validate_provider_canonicalization(rule)
+    _validate_exists_canonicalization(rule)
+
+
+def _compile_provider_canonicalizer(
+    provider,  # noqa: ANN001
+) -> CompiledCanonicalizer | None:
+    if provider is None or provider.canonicalization is None:
+        return None
+    return CanonicalizationDsl().compile(provider.canonicalization).python
+
+
+def _validate_provider_canonicalization(rule: EnrichRule) -> None:
+    provider = rule.provider
+    if provider is None or provider.canonicalization is None:
+        return
+    if provider.name != "cache.by_field":
+        raise DslLoadError(
+            code="ENRICH_DSL_COMPILE_INVALID",
+            message=(
+                f"lookup rule '{rule.name}' declares canonicalization for unsupported "
+                f"provider '{provider.name}'"
+            ),
+            details={"rule": rule.name, "provider": provider.name},
+        )
+    if str(provider.args.get("mode", "exact")) != "exact":
+        raise DslLoadError(
+            code="ENRICH_DSL_COMPILE_INVALID",
+            message=(
+                f"lookup rule '{rule.name}' canonicalized cache lookup supports only "
+                "mode='exact'"
+            ),
+            details={"rule": rule.name, "provider": provider.name},
+        )
+
+
+def _validate_exists_canonicalization(rule: EnrichRule) -> None:
+    exists_ref = rule.exists
+    if exists_ref is None or exists_ref.provider.canonicalization is None:
+        return
+    if exists_ref.provider.name != "cache.exists_by_field":
+        raise DslLoadError(
+            code="ENRICH_DSL_COMPILE_INVALID",
+            message=(
+                f"generate rule '{rule.name}' declares canonicalization for unsupported "
+                f"exists provider '{exists_ref.provider.name}'"
+            ),
+            details={"rule": rule.name, "provider": exists_ref.provider.name},
+        )
+    if str(exists_ref.provider.args.get("mode", "exact")) != "exact":
+        raise DslLoadError(
+            code="ENRICH_DSL_COMPILE_INVALID",
+            message=(
+                f"generate rule '{rule.name}' canonicalized cache exists supports only "
+                "mode='exact'"
+            ),
+            details={"rule": rule.name, "provider": exists_ref.provider.name},
+        )
 
 
 def _merge_policy_for(rule: EnrichRule) -> MergePolicy | None:

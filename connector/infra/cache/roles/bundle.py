@@ -8,6 +8,7 @@ from connector.domain.ports.cache.roles import (
     CacheRefreshPort,
     EnrichLookupPort,
     PlanningRuntimePort,
+    TopologyCacheReadPort,
 )
 from connector.infra.cache.cache_gateway import SqliteCacheGateway
 from connector.infra.cache.roles.admin import SqliteCacheAdminAdapter
@@ -15,6 +16,7 @@ from connector.infra.cache.roles.apply_runtime import SqliteApplyRuntimeAdapter
 from connector.infra.cache.roles.cache_refresh import SqliteCacheRefreshAdapter
 from connector.infra.cache.roles.enrich_lookup import SqliteEnrichLookupAdapter
 from connector.infra.cache.roles.planning_runtime import SqlitePlanningRuntimeAdapter
+from connector.infra.cache.roles.topology_read import SqliteTopologyCacheReadAdapter
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,7 @@ class SqliteCacheRolePorts:
     enrich_lookup: EnrichLookupPort
     planning_runtime: PlanningRuntimePort
     apply_runtime: ApplyRuntimePort
+    topology_read: TopologyCacheReadPort
 
 
 def build_sqlite_cache_role_ports(gateway: SqliteCacheGateway) -> SqliteCacheRolePorts:
@@ -39,6 +42,7 @@ def build_sqlite_cache_role_ports(gateway: SqliteCacheGateway) -> SqliteCacheRol
     enrich_lookup = SqliteEnrichLookupAdapter(gateway)
     planning_runtime = SqlitePlanningRuntimeAdapter(gateway)
     cache_refresh = SqliteCacheRefreshAdapter(cache_admin, apply_runtime)
+    topology_read = SqliteTopologyCacheReadAdapter(gateway)
 
     return SqliteCacheRolePorts(
         cache_admin=cache_admin,
@@ -46,5 +50,6 @@ def build_sqlite_cache_role_ports(gateway: SqliteCacheGateway) -> SqliteCacheRol
         enrich_lookup=enrich_lookup,
         planning_runtime=planning_runtime,
         apply_runtime=apply_runtime,
+        topology_read=topology_read,
     )
 

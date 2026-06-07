@@ -92,3 +92,16 @@ resolve:
       coerce: int
       # Behavior when link is unresolved. Supported: pending, hard_error.
       on_unresolved: pending
+  # Optional topology-backed FK resolution policy.
+  topology_link:
+    # Whether topology-backed link resolution is enabled for this dataset.
+    enabled: false
+    # Desired-state field that receives resolved target FK, e.g. organization_id.
+    field: linked_field
+    # Behavior when topology signal is missing. Supported: pending, hard_error, skip.
+    on_missing_topology: pending
+    # Behavior when topology comparison remains ambiguous. Supported: pending, hard_error, skip.
+    on_ambiguous_topology: pending
+    # Ordered comparison ladder used by topology link resolver.
+    comparison_ladder:
+      - exact_canonical_path
