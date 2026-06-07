@@ -48,6 +48,7 @@ from connector.common.observability import (
 from connector.delivery.cli.stream_capture import StdStreamToLogger, TeeStream
 from connector.delivery.cli.component_mapping import component_for_command
 from connector.infra.logging.runtime import (
+    _LOG_SCHEMA_VERSION,
     StructuredLoggingRuntime,
     bind_observability_context,
     clear_observability_context,
@@ -107,7 +108,7 @@ Why these four:
 def _add_bootstrap_schema_version(
     _logger: Any, _method_name: str, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
-    event_dict.setdefault("schema_version", "1.0")
+    event_dict.setdefault("schema_version", _LOG_SCHEMA_VERSION)
     return event_dict
 
 
