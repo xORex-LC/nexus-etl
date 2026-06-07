@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,11 @@ import pytest
 from connector.common.runtime_paths import RuntimePathOverrides
 from connector.datasets import registry as dataset_registry_module
 from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
-from tests.runtime_test_support import tracked_employees_runtime_roots
+from tests.runtime_test_support import (
+    TEST_RUNTIME_ROOT_ENV,
+    build_isolated_test_runtime_root,
+    tracked_employees_runtime_roots,
+)
 
 
 # NOTE:
@@ -16,17 +21,22 @@ from tests.runtime_test_support import tracked_employees_runtime_roots
 # очень медленно для каждого нового файла БД. Для тестового контура достаточно
 # режима DELETE, он существенно быстрее на cold-start.
 os.environ.setdefault("ANKEY_SQLITE__CACHE_JOURNAL_MODE", "DELETE")
+os.environ.setdefault(
+    TEST_RUNTIME_ROOT_ENV,
+    str(Path(tempfile.mkdtemp(prefix="ankey-test-runtime-")).resolve()),
+)
+build_isolated_test_runtime_root(Path(os.environ[TEST_RUNTIME_ROOT_ENV]))
 
 
 def _activate_employees_test_registry() -> Path:
     """
     Назначение:
-        Включить `datasets/employees.registry.yaml` как дефолтный registry для тестового рантайма.
+        Включить изолированный `datasets/registry.yaml` как default registry для тестового рантайма.
 
     Почему это здесь:
-        Часть тестов строит `build_catalog()/get_spec()/load_*_for_dataset()`
-        на уровне импорта модуля, то есть раньше обычных function-fixtures.
-        Поэтому тестовый registry нужно активировать уже при загрузке `conftest.py`.
+        Часть тестов строит `build_catalog()/get_spec()/load_*_for_dataset()` на уровне
+        импорта модуля, то есть раньше обычных function-fixtures. Поэтому test runtime
+        нужно подготовить и активировать уже при загрузке `conftest.py`.
     """
     roots = tracked_employees_runtime_roots()
     registry_path = roots["registry_path"]
@@ -69,9 +79,9 @@ def employees_registry_path():
         Переключить тестовый runtime на актуальный employees registry.
 
     Контракт:
-        - использует tracked `datasets/employees.registry.yaml`;
-        - сбрасывает dataset factory registry между тестами, чтобы не залипали
-          результаты старого discovery-кеша;
+        - использует изолированный `datasets/registry.yaml`;
+        - сбрасывает dataset factory registry между тестами, чтобы не залипали результаты
+          старого discovery-кеша;
         - не влияет на тесты, которые явно настраивают другой registry path.
     """
     try:

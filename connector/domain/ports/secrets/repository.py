@@ -43,13 +43,19 @@ class SecretVaultRepositoryPort(Protocol):
         *,
         dataset: str,
         field: str,
+        match_key: str | None,
         locator_hash: str,
         locator_version: str,
         run_id: str | None,
     ) -> VaultSecretRecord | None:
         """
         Контракт:
-            Вернуть секрет по locator scope с учётом run_id политики.
+            Вернуть секрет по locator scope.
+
+            Быстрый runtime-контракт:
+                - если `match_key` передан, backend может использовать его как
+                  cross-run lookup key и игнорировать run-scope;
+                - иначе допускается legacy lookup по `run_id`.
         """
         ...
 

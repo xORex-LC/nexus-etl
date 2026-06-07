@@ -12,6 +12,7 @@ from connector.infra.cache.repository.cache_repository import SqliteCacheReposit
 
 from connector.main import app
 from tests.runtime_test_support import (
+    latest_report_path,
     prepare_tracked_employees_source_file,
     tracked_employees_runtime_roots,
     write_runtime_config,
@@ -90,7 +91,7 @@ def run_enrich(
         env=env,
         input=f"{TEST_UNSEAL_PASSPHRASE}\n",
     )
-    report_path = report_dir / f"report_enrich_{run_id}.json"
+    report_path = latest_report_path(report_dir, "enrich")
     return result, report_path
 
 
@@ -101,14 +102,22 @@ def _build_repo(db_path: str) -> SqliteCacheRepository:
     return SqliteCacheRepository(engine, cache_specs)
 
 
-def _seed_org(tmp_path: Path, org_ouid: int) -> None:
+def _seed_org(tmp_path: Path, org_ouid: int, *, name: str | None = None) -> None:
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
     repo = _build_repo(db_path)
     with repo.engine.transaction():
         repo.upsert(
             "organizations",
-            {"_ouid": org_ouid, "code": f"ORG-{org_ouid}", "name": f"Org {org_ouid}", "parent_id": None, "updated_at": None},
+            {
+                "_id": str(org_ouid),
+                "_ouid": org_ouid,
+                "code": str(org_ouid),
+                "name": name or f"Org {org_ouid}",
+                "match_key": str(org_ouid),
+                "parent_id": None,
+                "updated_at": None,
+            },
         )
 
 
@@ -126,17 +135,22 @@ def make_row(
     password: str = "SECRET1",
     org: str = "Org=Engineering",
     manager: str = "",
+    organization_name: str | None = None,
+    org_levels: list[str] | None = None,
 ) -> list[str]:
     _ = (login, email_or_phone, flags, password, tab)
-    organization_name = f"Org {org_id}"
+    organization_name = organization_name or f"Org {org_id}"
+    levels = (org_levels or ["", "", "", "", ""])[:5]
+    while len(levels) < 5:
+        levels.append("")
     return [
         raw_id,
         full_name,
-        "",
-        "",
-        "",
-        "",
-        "",
+        levels[0],
+        levels[1],
+        levels[2],
+        levels[3],
+        levels[4],
         organization_name,
         role,
         "",
@@ -181,6 +195,37 @@ def test_enrich_ok_returns_0(tmp_path: Path):
     assert "target_id" not in payload
 
 
+def test_enrich_organization_lookup_is_case_insensitive_with_canonicalization(
+    tmp_path: Path,
+):
+    csv_path = tmp_path / "employees.csv"
+    rows = [
+        make_row(
+            raw_id="1001",
+            full_name="Doe John M",
+            login="jdoe",
+            email_or_phone="john.doe@example.com",
+            contacts="+123456",
+            flags="disabled=false",
+            role="Engineer",
+            org_id="10",
+            tab="5001",
+            organization_name="  it   department  ",
+            org_levels=["  it   department  "],
+        )
+    ]
+    write_csv(csv_path, rows)
+    _seed_org(tmp_path, org_ouid=10, name="IT DEPARTMENT")
+
+    result, report_path = run_enrich(tmp_path, csv_path, run_id="org-canonicalization")
+
+    assert result.exit_code == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["summary"]["rows_blocked"] == 0
+    payload = report["items"][0]["payload"]
+    assert payload["organization_id"] == 10
+
+
 def test_enrich_missing_required_returns_0(tmp_path: Path):
     csv_path = tmp_path / "employees.csv"
     rows = [
@@ -206,8 +251,7 @@ def test_enrich_missing_required_returns_0(tmp_path: Path):
     assert report["summary"]["rows_blocked"] == 0
     diagnostics = report["items"][0]["diagnostics"]
     no_candidate_warnings = [
-        item for item in diagnostics
-        if item["code"] == "ENRICH_NO_CANDIDATES"
+        item for item in diagnostics if item["code"] == "ENRICH_NO_CANDIDATES"
     ]
     warned_rules = {item["rule"] for item in no_candidate_warnings}
     assert "email_from_cache" not in warned_rules
@@ -371,8 +415,7 @@ def test_enrich_respects_report_items_limit(tmp_path: Path):
             role="Engineer",
             org_id="10",
             tab="5001",
-        )
-        ,
+        ),
         make_row(
             raw_id="1002",
             full_name="Doe John M",
@@ -389,7 +432,7 @@ def test_enrich_respects_report_items_limit(tmp_path: Path):
     write_csv(csv_path, rows)
     _seed_org(tmp_path, org_ouid=10)
 
-    env = {"ANKEY_OBSERVABILITY__REPORT_ITEMS_LIMIT": "1"}
+    env = {"ANKEY_OBSERVABILITY__REPORTING__ITEMS_LIMIT": "1"}
     result, report_path = run_enrich(tmp_path, csv_path, run_id="limit", env=env)
     assert result.exit_code == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))

@@ -34,6 +34,7 @@ from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.models import DiagnosticStage
 from connector.domain.ports.transform.sources import SourceMapper
 from connector.domain.transform.core.iterators import iter_micro_batches
+from connector.domain.transform.core.source_record import SourceRecord
 from connector.domain.transform.enrich import EnricherEngine
 from connector.domain.transform.matcher.ports import IMatchBatchSettings
 from connector.domain.transform.normalize import NormalizerEngine
@@ -77,6 +78,7 @@ class ResolveProcessor(Protocol):
         self,
         matched: MatchedRow,
         *,
+        source_record: SourceRecord,
         target_id_map: dict[str, str],
         meta: dict | None = None,
         batch_index: dict[str, list[str]] | None = None,
@@ -692,6 +694,7 @@ class ResolveStage:
             ):
                 resolved_row, errors, warnings = self.resolver.resolve(
                     matched.row,
+                    source_record=matched.record,
                     target_id_map={},
                     meta=matched.meta,
                     batch_index=batch_index,
@@ -708,4 +711,3 @@ class ResolveStage:
                 errors=tuple(errors),
                 warnings=tuple(warnings),
             )
-

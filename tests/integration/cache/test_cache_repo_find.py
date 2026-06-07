@@ -7,16 +7,64 @@ from pathlib import Path
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
-from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
+from connector.infra.cache.cache_spec import CacheSpec, FieldSpec
 
 
 def _build_repo(tmp_path: Path) -> SqliteCacheRepository:
     cache_dir = tmp_path / "cache"
     db_path = str(Path(cache_dir) / "ankey_cache.sqlite3")
     engine = open_sqlite(to_cache_db_config(AppConfig()), db_path)
-    cache_specs = list(load_cache_dsl_runtime().cache_specs)
+    cache_specs = [_employees_cache_spec(), _organizations_cache_spec()]
     ensure_cache_ready(engine, cache_specs)
     return SqliteCacheRepository(engine, cache_specs)
+
+
+def _employees_cache_spec() -> CacheSpec:
+    return CacheSpec(
+        dataset="employees",
+        table="users",
+        primary_key=("_id",),
+        fields=(
+            FieldSpec(name="_id", type="string", nullable=False),
+            FieldSpec(name="_ouid", type="int", nullable=False),
+            FieldSpec(name="personnel_number", type="string", nullable=False),
+            FieldSpec(name="last_name", type="string", nullable=False),
+            FieldSpec(name="first_name", type="string", nullable=False),
+            FieldSpec(name="middle_name", type="string", nullable=False),
+            FieldSpec(name="match_key", type="string", nullable=False),
+            FieldSpec(name="mail", type="string", nullable=True),
+            FieldSpec(name="user_name", type="string", nullable=False),
+            FieldSpec(name="phone", type="string", nullable=True),
+            FieldSpec(name="usr_org_tab_num", type="string", nullable=False),
+            FieldSpec(name="organization_id", type="int", nullable=False),
+            FieldSpec(name="account_status", type="string", nullable=True),
+            FieldSpec(name="deletion_date", type="datetime", nullable=True),
+            FieldSpec(name="_rev", type="string", nullable=True),
+            FieldSpec(name="manager_ouid", type="int", nullable=True),
+            FieldSpec(name="is_logon_disabled", type="bool", nullable=True),
+            FieldSpec(name="position", type="string", nullable=True),
+            FieldSpec(name="updated_at", type="datetime", nullable=True),
+        ),
+        unique_indexes=(("match_key",), ("usr_org_tab_num",)),
+        indexes=(("personnel_number",), ("organization_id",)),
+    )
+
+
+def _organizations_cache_spec() -> CacheSpec:
+    return CacheSpec(
+        dataset="organizations",
+        table="organizations",
+        primary_key=("_ouid",),
+        fields=(
+            FieldSpec(name="_ouid", type="int", nullable=False),
+            FieldSpec(name="code", type="string", nullable=False),
+            FieldSpec(name="name", type="string", nullable=False),
+            FieldSpec(name="parent_id", type="int", nullable=True),
+            FieldSpec(name="updated_at", type="datetime", nullable=True),
+        ),
+        unique_indexes=(("code",),),
+        indexes=(("name",),),
+    )
 
 
 def test_find_exact_and_include_deleted(tmp_path: Path):

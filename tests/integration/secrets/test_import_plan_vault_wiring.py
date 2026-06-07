@@ -7,8 +7,10 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from connector.main import app
-from tests.integration.secrets._temp_registry import build_temp_employees_registry_with_temp_dictionaries
-from tests.runtime_test_support import write_runtime_config
+from tests.integration.secrets._temp_registry import (
+    build_temp_employees_registry_with_temp_dictionaries,
+)
+from tests.runtime_test_support import latest_report_path, write_runtime_config
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
@@ -99,7 +101,7 @@ def test_import_plan_command_auto_mode_writes_secrets_to_sqlite_vault(tmp_path: 
 
     assert result.exit_code == 0
 
-    report_path = report_dir / "report_import-plan_vault-plan.json"
+    report_path = latest_report_path(report_dir, "import-plan")
     assert report_path.exists()
     report = json.loads(report_path.read_text(encoding="utf-8"))
     dictionary_ctx = report.get("context", {}).get("dictionary")

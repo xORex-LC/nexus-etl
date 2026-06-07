@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from connector.infra.sqlite.engine import SqliteEngine
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def ensure_vault_schema(engine: SqliteEngine) -> int:
@@ -32,6 +32,11 @@ def ensure_vault_schema(engine: SqliteEngine) -> int:
 
     if current_version == 0:
         _create_vault_tables(engine)
+        _set_schema_version(engine, SCHEMA_VERSION)
+        return SCHEMA_VERSION
+
+    if current_version == 3:
+        _migrate_v3_to_v4(engine)
         _set_schema_version(engine, SCHEMA_VERSION)
         return SCHEMA_VERSION
 
@@ -109,6 +114,7 @@ def _create_vault_core_tables(engine: SqliteEngine) -> None:
             secret_id INTEGER PRIMARY KEY AUTOINCREMENT,
             dataset TEXT NOT NULL,
             field TEXT NOT NULL,
+            match_key TEXT,
             locator_hash TEXT NOT NULL,
             locator_version TEXT NOT NULL,
             run_id TEXT,
@@ -126,6 +132,12 @@ def _create_vault_core_tables(engine: SqliteEngine) -> None:
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_secret_unique_scope
         ON vault_secrets(dataset, field, locator_version, locator_hash, COALESCE(run_id, ''))
+        """
+    )
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_vault_secret_match_key_lookup
+        ON vault_secrets(dataset, field, match_key, updated_at, secret_id)
         """
     )
     engine.execute(
@@ -197,3 +209,22 @@ def _drop_vault_tables(engine: SqliteEngine) -> None:
     engine.execute("DROP TABLE IF EXISTS vault_dek")
     engine.execute("DROP TABLE IF EXISTS vault_unseal_meta")
     engine.execute("DROP TABLE IF EXISTS vault_management_meta")
+
+
+def _migrate_v3_to_v4(engine: SqliteEngine) -> None:
+    """
+    Добавить `match_key` в vault_secrets без уничтожения existing secrets.
+
+    Legacy rows останутся с NULL в `match_key` и будут читаться через
+    locator-hash fallback в read-path.
+    """
+    columns = engine.fetchall("PRAGMA table_info(vault_secrets)")
+    column_names = {str(row[1]) for row in columns}
+    if "match_key" not in column_names:
+        engine.execute("ALTER TABLE vault_secrets ADD COLUMN match_key TEXT")
+    engine.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_vault_secret_match_key_lookup
+        ON vault_secrets(dataset, field, match_key, updated_at, secret_id)
+        """
+    )

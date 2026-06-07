@@ -374,6 +374,7 @@ ops:
 | `regex_extract` | Извлечь группу regex | str | `str \| None` | ✅ → None | `pattern: str`, `group: int = 0` |
 | `contains_non_ascii` | Проверить, есть ли в строке non-ASCII символы | str | `bool` | ✅ (`None` → `False`) | — |
 | `digits_only` | Оставить только цифры | str | `str \| None` | ✅ → None | — |
+| `strip_non_alnum` | Оставить только ASCII буквы и цифры (санитизация под целевое поле, напр. `user_name`) | str | `str \| None` | ✅ → None; пустой результат → `""` | — |
 | `random_digits` | Сгенерировать строку из случайных цифр | Any (игнорируется) | `str` | — | `length: int` |
 | `format_mask` | Отформатировать строку по маске | str | `str \| None` | ✅ → None | `mask`, `placeholder: str = "#"` |
 | `regex_replace` | Заменить по regex | str | `str \| None` | ✅ → None | `pattern: str`, `repl: str` |
@@ -558,7 +559,8 @@ def register_core_ops(registry: OperationRegistry) -> OperationRegistry:
             first, last, at, compact, unique, count, map_each,
             extract_patterns, split, split_name, regex_extract,
             filter_regex, reject_regex, regex_replace, digits_only,
-            format_mask, parse_kv_pairs, map_dict, build_link_keys, equals_path
+            strip_non_alnum, format_mask, parse_kv_pairs, map_dict,
+            build_link_keys, equals_path
 
 3. Return (line 109)
    RETURN registry (для цепочки вызовов)

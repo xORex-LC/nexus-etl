@@ -37,6 +37,7 @@ from connector.domain.transform_dsl.specs import (
     ResolveSpec,
     SinkSpec,
     SourceSpec,
+    TopologySpec,
     ValidationSpec,
 )
 
@@ -167,6 +168,27 @@ def load_resolve_spec_for_dataset(dataset: str) -> ResolveSpec:
     )
 
 
+def load_topology_spec(path: str | Path) -> TopologySpec:
+    """
+    Назначение:
+        Прочитать YAML и сформировать TopologySpec.
+    """
+    return _load_spec_from_path(path, TopologySpec, code="TOPOLOGY_DSL_SPEC_INVALID")
+
+
+def load_topology_spec_for_dataset(dataset: str) -> TopologySpec:
+    """
+    Назначение:
+        Загрузить topology DSL по имени датасета из runtime registry file.
+    """
+    return _load_dataset_stage_spec(
+        dataset=dataset,
+        stage="topology",
+        spec_cls=TopologySpec,
+        code="TOPOLOGY_DSL_SPEC_INVALID",
+    )
+
+
 def load_sink_spec_for_dataset(dataset: str) -> SinkSpec:
     """
     Назначение:
@@ -215,7 +237,11 @@ def _resolve_dataset_path(registry: dict[str, Any], dataset: str, stage: str) ->
             details={"dataset": dataset, "stage": stage},
         )
     entry = datasets[dataset] or {}
-    filename = entry.get(stage)
+    if stage == "topology":
+        topology_entry = entry.get("topology") or {}
+        filename = topology_entry.get("spec")
+    else:
+        filename = entry.get(stage)
     if not filename:
         raise DslLoadError(
             code="DSL_REGISTRY_INVALID",
@@ -270,7 +296,11 @@ def _expand_enrich_templates(raw: dict[str, Any]) -> dict[str, Any]:
     enrich = raw.get("enrich") or {}
     templates = enrich.get("lookup_templates") or enrich.get("lookup_presets") or {}
     if isinstance(templates, list):
-        templates = {item.get("name"): item for item in templates if isinstance(item, dict) and item.get("name")}
+        templates = {
+            item.get("name"): item
+            for item in templates
+            if isinstance(item, dict) and item.get("name")
+        }
 
     lookup_rules = enrich.get("lookup") or []
     expanded: list[dict[str, Any]] = []

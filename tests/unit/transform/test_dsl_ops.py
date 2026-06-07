@@ -20,8 +20,10 @@ from connector.domain.dsl.ops import (
     op_pick_when_blank,
     op_random_digits,
     op_reject_regex,
+    op_strip_non_alnum,
     op_substring,
     op_title,
+    op_upper_first_preserve_rest,
     op_to_bool,
     op_transliterate,
     op_unique,
@@ -125,6 +127,14 @@ def test_op_title_and_capitalize_transform_case() -> None:
     assert op_capitalize("иванов иван") == "Иванов иван"
 
 
+def test_op_upper_first_preserve_rest_changes_only_first_character() -> None:
+    assert op_upper_first_preserve_rest("иванов ИВАН") == "Иванов ИВАН"
+    assert op_upper_first_preserve_rest("iT DeParTment") == "IT DeParTment"
+    assert op_upper_first_preserve_rest("ИТ ОТДЕЛ") == "ИТ ОТДЕЛ"
+    assert op_upper_first_preserve_rest("") == ""
+    assert op_upper_first_preserve_rest(None) is None
+
+
 def test_op_transliterate_returns_ascii_and_preserves_ascii_input() -> None:
     assert op_transliterate("Ivan") == "Ivan"
     assert op_transliterate("Иван") == "Ivan"
@@ -199,6 +209,32 @@ def test_op_parse_bool_rejects_unknown_value() -> None:
 def test_op_digits_only_extracts_digits() -> None:
     assert op_digits_only("+7 (999) 123-45-67") == "79991234567"
     assert op_digits_only("abc") is None
+
+
+def test_op_strip_non_alnum_keeps_ascii_alnum_only() -> None:
+    # апостроф из transliterate (ь -> ') удаляется, буквы/цифры сохраняются
+    assert op_strip_non_alnum("IGOR'") == "IGOR"
+    assert op_strip_non_alnum("A.B_C-1") == "ABC1"
+    assert op_strip_non_alnum(None) is None
+    # пустой результат -> "", а не None (решение за downstream-политикой)
+    assert op_strip_non_alnum("''") == ""
+    assert op_strip_non_alnum("") == ""
+    # не-ASCII alnum (кириллица) тоже удаляется
+    assert op_strip_non_alnum("Иван123") == "123"
+
+
+def test_op_strip_non_alnum_runs_after_transliterate_in_engine() -> None:
+    engine = TransformationEngine.with_core_ops()
+    result = engine.apply(
+        "Игорь",
+        [
+            OperationCall(op="transliterate", args={}),
+            OperationCall(op="upper", args={}),
+            OperationCall(op="strip_non_alnum", args={}),
+        ],
+    )
+    assert result.value == "IGOR"
+    assert not result.issues
 
 
 def test_op_random_digits_returns_exact_digit_string() -> None:
@@ -294,6 +330,7 @@ def test_register_core_ops_exposes_new_stage_one_operations() -> None:
         "reject_regex",
         "title",
         "capitalize",
+        "upper_first_preserve_rest",
         "parse_bool",
         "digits_only",
         "random_digits",

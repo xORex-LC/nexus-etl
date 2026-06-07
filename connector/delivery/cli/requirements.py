@@ -18,3 +18,5 @@ class Requirements:
     requires_vault_schema: bool = False
     requires_vault_init: bool = False
     requires_dictionaries: bool = False
+    requires_source_topology: bool = False
+    requires_target_topology: bool = False

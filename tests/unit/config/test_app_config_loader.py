@@ -17,12 +17,21 @@ from connector.config.loader import load_app_config
 def test_load_from_nested_yaml(tmp_path: object) -> None:
     """Корректный nested YAML → LoadedAppConfig без ошибок."""
     cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
-    cfg_file.write_text("api:\n  host: myhost\n  port: 8443\n", encoding="utf-8")
+    cfg_file.write_text(
+        "api:\n"
+        "  host: myhost\n"
+        "  port: 8443\n"
+        "observability:\n"
+        "  reporting:\n"
+        "    items_limit: 250\n",
+        encoding="utf-8",
+    )
 
     result = load_app_config(str(cfg_file))
 
     assert result.app_config.api.host == "myhost"
     assert result.app_config.api.port == 8443
+    assert result.app_config.observability.reporting.items_limit == 250
 
 
 def test_load_dataset_registry_path_from_yaml(
@@ -227,6 +236,8 @@ def test_source_trace_contains_all_sections(tmp_path: object) -> None:
     # Все leaf-поля должны быть в trace (с "default" если не задан источник)
     assert "api.host" in trace
     assert "runtime.datasets_root" in trace
+    assert "observability.logging.sinks.console.stream" in trace
+    assert "observability.reporting.items_limit" in trace
     assert "resolver.pending_max_attempts" in trace
     assert "vault_rollout.mode" in trace
     assert "vault_management.admin_password_hash_file" in trace
@@ -287,6 +298,18 @@ def test_vault_management_rejects_removed_auto_rotate_interval(tmp_path: object)
         "    days: 0\n"
         "    months: 0\n"
         "    years: 0\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SettingsLoadError):
+        load_app_config(str(cfg_file))
+
+
+def test_loader_rejects_removed_flat_observability_fields(tmp_path: object) -> None:
+    cfg_file = tmp_path / "config.yml"  # type: ignore[operator]
+    cfg_file.write_text(
+        "observability:\n"
+        "  log_level: DEBUG\n",
         encoding="utf-8",
     )
 

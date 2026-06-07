@@ -133,11 +133,13 @@ def test_enricher_writes_encrypted_secret_to_vault(tmp_path: Path):
         secret_record = repository.get_secret(
             dataset="employees",
             field="password",
+            match_key="Doe|John|M|100",
             locator_hash=locator_hash,
             locator_version="v1",
             run_id="run-1",
         )
         assert secret_record is not None
+        assert secret_record.match_key == "Doe|John|M|100"
         assert secret_record.run_id == "run-1"
         assert secret_record.ciphertext != b"TopSecret123"
 

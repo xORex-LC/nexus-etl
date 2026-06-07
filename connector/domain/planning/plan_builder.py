@@ -108,6 +108,7 @@ class PlanBuilder:
         resolved_rows: Iterable[TransformResult],
         *,
         on_skipped_row: Callable[[ResolvedRow], None] | None = None,
+        on_failed_row: Callable[[TransformResult], None] | None = None,
     ) -> PlanBuildResult:
         """
         Назначение:
@@ -119,17 +120,51 @@ class PlanBuilder:
             - Остальные добавляются через add_resolved().
         """
         for resolved in resolved_rows:
+            self.rows_total += 1
             resolved_row = resolved.row
             if resolved_row is None:
+                self.failed_rows += 1
+                if on_failed_row is not None:
+                    on_failed_row(resolved)
                 continue
             if resolved.errors:
+                self.failed_rows += 1
+                if on_failed_row is not None:
+                    on_failed_row(resolved)
                 continue
             if resolved_row.op == ResolveOp.CONFLICT:
+                self.failed_rows += 1
+                if on_failed_row is not None:
+                    on_failed_row(resolved)
                 continue
             if resolved_row.op == ResolveOp.SKIP and on_skipped_row is not None:
                 on_skipped_row(resolved_row)
-            self.add_resolved(resolved_row)
+            self._add_resolved_without_total(resolved_row)
         return self.build()
+
+    def _add_resolved_without_total(self, resolved: ResolvedRow) -> None:
+        self.valid_rows += 1
+
+        if resolved.op == ResolveOp.SKIP:
+            self.skipped_rows += 1
+            return
+
+        plan_item = PlanItem(
+            row_id=resolved.row_ref.row_id,
+            line_no=resolved.row_ref.line_no,
+            op=Operation.CREATE if resolved.op == ResolveOp.CREATE else Operation.UPDATE,
+            target_id=resolved.target_id or "",
+            desired_state=resolved.desired_state,
+            changes=resolved.changes,
+            source_ref=resolved.source_ref,
+            secret_fields=resolved.secret_fields,
+            secret_lifecycle=resolved.secret_lifecycle,
+        )
+        if plan_item.op == Operation.CREATE:
+            self.planned_create += 1
+        else:
+            self.planned_update += 1
+        self.plan_items.append(self._serialize_plan_item(plan_item))
 
     def _serialize_plan_item(self, plan_item: PlanItem) -> dict[str, Any]:
         """

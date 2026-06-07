@@ -28,6 +28,21 @@ class CacheAdminPort(Protocol):
     def reset_meta(self, dataset: str) -> None: ...
 
 
+class TopologyCacheReadPort(Protocol):
+    """
+    Назначение:
+        Узкий read-only контракт кэша для topology bootstrap.
+
+        Отдаёт ровно то, что нужно target topology read seam: полную выборку
+        adjacency-строк, snapshot-metadata и счётчик — без зависимости от
+        конкретного gateway (hexagonal boundary).
+    """
+
+    def read_all(self, dataset: str, *, include_deleted: bool = False) -> list[dict]: ...
+    def get_meta(self, dataset: str | None = None) -> CacheMeta: ...
+    def count(self, dataset: str) -> int: ...
+
+
 class EnrichLookupPort(Protocol):
     """
     Назначение:
@@ -51,6 +66,8 @@ class EnrichLookupPort(Protocol):
         include_deleted: bool = False,
         mode: str = "exact",
     ) -> dict | None: ...
+
+    def read_all(self, dataset: str, *, include_deleted: bool = False) -> list[dict]: ...
 
 
 class MatchRuntimePort(Protocol):

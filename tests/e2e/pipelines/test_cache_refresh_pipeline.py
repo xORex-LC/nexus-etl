@@ -4,18 +4,26 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import httpx
+import yaml
 from connector.config.loader import load_app_config
-from connector.config.projections import to_cache_db_config, to_identity_db_config
+from connector.config.projections import to_cache_db_config
 from connector.infra.sqlite.engine import open_sqlite
 from connector.infra.cache.dsl_runtime import load_cache_dsl_runtime
 from connector.infra.cache.backends.sqlite.schema import ensure_cache_ready
 from connector.infra.cache.repository.cache_repository import SqliteCacheRepository
 from connector.domain.ports.cache.models import UpsertResult
 from connector.main import app
-from tests.integration.secrets._temp_registry import build_temp_employees_registry_with_temp_dictionaries
-from tests.runtime_test_support import write_runtime_config
+from tests.integration.secrets._temp_registry import (
+    build_temp_employees_registry_with_temp_dictionaries,
+)
+from tests.runtime_test_support import (
+    active_log_path,
+    latest_report_path,
+    write_runtime_config,
+)
 
 runner = CliRunner()
+
 
 def _temp_runtime_config(tmp_path: Path, *, registry_path: Path) -> Path:
     datasets_root = registry_path.parent
@@ -66,6 +74,84 @@ ORG_PAYLOAD = [
 ]
 
 
+def _write_test_organizations_cache_spec(registry_path: Path) -> None:
+    spec_path = registry_path.parent / "organizations" / "organizations.cache.yaml"
+    payload = {
+        "dataset": "organizations",
+        "table": "organizations",
+        "schema": {
+            "primary_key": "_ouid",
+            "columns": [
+                {"name": "_ouid", "type": "int", "required": True},
+                {"name": "code", "type": "string", "required": True},
+                {"name": "name", "type": "string", "required": True},
+                {"name": "parent_id", "type": "int", "required": False},
+                {"name": "updated_at", "type": "datetime", "required": False},
+            ],
+            "indexes": [
+                {"name": "uidx_organizations_code", "fields": ["code"], "unique": True},
+                {"name": "idx_organizations_name", "fields": ["name"], "unique": False},
+            ],
+        },
+        "sync": {
+            "dataset": "organizations",
+            "list_operation_alias": "organizations.list",
+            "report_entity": "org",
+            "include_deleted_default": False,
+            "item_key": {
+                "source": "_ouid",
+                "ops": [{"op": "to_string"}],
+                "required": True,
+                "on_error": "error",
+            },
+            "projection": [
+                {
+                    "target": "_ouid",
+                    "source": "_ouid",
+                    "ops": [{"op": "to_int"}],
+                    "required": True,
+                    "on_error": "error",
+                },
+                {
+                    "target": "code",
+                    "source": "code",
+                    "required": True,
+                    "on_error": "error",
+                },
+                {
+                    "target": "name",
+                    "source": "name",
+                    "required": True,
+                    "on_error": "error",
+                },
+                {
+                    "target": "parent_id",
+                    "sources": ["parent_id", "parentId"],
+                    "ops": [{"op": "coalesce"}, {"op": "to_int"}],
+                    "on_error": "set_null",
+                },
+                {
+                    "target": "updated_at",
+                    "sources": ["updated_at", "updatedAt"],
+                    "ops": [{"op": "coalesce"}, {"op": "trim"}],
+                    "on_error": "set_null",
+                },
+            ],
+        },
+        "flags": {"include_deleted": False},
+    }
+    spec_path.write_text(
+        yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+
+def _build_cache_refresh_runtime_registry(tmp_path: Path) -> Path:
+    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    _write_test_organizations_cache_spec(registry_path)
+    return registry_path
+
+
 def make_transport(responder):
     return httpx.MockTransport(responder)
 
@@ -78,7 +164,9 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
 
     patched_transport = transport
 
-    def factory(api_settings, *, transport=None, include_reader=True, runtime_mode=None):
+    def factory(
+        api_settings, *, transport=None, include_reader=True, runtime_mode=None
+    ):
         _ = transport
         return _build_real_runtime_with_info(
             api_settings,
@@ -89,6 +177,7 @@ def patch_client_with_transport(monkeypatch, transport: httpx.BaseTransport):
 
     monkeypatch.setattr(containers_mod, "build_target_runtime_with_info", factory)
 
+
 def test_cache_schema_created(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     db_path = Path(cache_dir) / "ankey_cache.sqlite3"
@@ -96,7 +185,12 @@ def test_cache_schema_created(tmp_path: Path):
     try:
         cache_specs = list(load_cache_dsl_runtime().cache_specs)
         ensure_cache_ready(engine, cache_specs)
-        tables = {row[0] for row in engine.fetchall("SELECT name FROM sqlite_master WHERE type='table'")}
+        tables = {
+            row[0]
+            for row in engine.fetchall(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
         assert {"meta", "users", "organizations"}.issubset(tables)
         repo = SqliteCacheRepository(engine, cache_specs)
         schema_version = repo.get_meta(None).values.get("schema_version")
@@ -105,6 +199,7 @@ def test_cache_schema_created(tmp_path: Path):
         engine.close()
 
     assert db_path.exists()
+
 
 def test_cache_upsert_user(tmp_path: Path):
     cache_dir = tmp_path / "cache"
@@ -150,6 +245,7 @@ def test_cache_upsert_user(tmp_path: Path):
     assert fetched_row is not None
     assert fetched_row["phone"] == "+222"
 
+
 def run_cache_refresh(
     tmp_path: Path,
     run_id: str = "refresh-1",
@@ -186,6 +282,7 @@ def run_cache_refresh(
         args = ["--config", str(config_path), *args]
 
     if monkeypatch is not None:
+
         def responder(request: httpx.Request) -> httpx.Response:
             params = dict(request.url.params)
             if "organization" in request.url.path:
@@ -202,11 +299,12 @@ def run_cache_refresh(
         patch_client_with_transport(monkeypatch, transport)
 
     result = runner.invoke(app, args)
-    report_path = report_dir / f"report_cache-refresh_{run_id}.json"
+    report_path = latest_report_path(report_dir, "cache-refresh")
     return result, cache_dir, report_path, log_dir
 
+
 def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Path):
-    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    registry_path = _build_cache_refresh_runtime_registry(tmp_path)
     result, cache_dir, report_path, _ = run_cache_refresh(
         tmp_path,
         run_id="refresh-ok",
@@ -237,8 +335,9 @@ def test_cache_refresh_from_api_creates_db_and_counts(monkeypatch, tmp_path: Pat
     assert total["inserted"] == 2  # 1 user + 1 org
     assert report["summary"]["rows_blocked"] == 0
 
+
 def test_cache_status_ok(monkeypatch, tmp_path: Path):
-    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    registry_path = _build_cache_refresh_runtime_registry(tmp_path)
     refresh_result, cache_dir, _, _ = run_cache_refresh(
         tmp_path,
         run_id="refresh-for-status",
@@ -266,7 +365,7 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
             "status",
         ],
     )
-    report_path = report_dir / "report_cache-status_status-1.json"
+    report_path = latest_report_path(report_dir, "cache-status")
 
     assert result.exit_code == 0
     assert "total=2" in result.stdout
@@ -274,8 +373,9 @@ def test_cache_status_ok(monkeypatch, tmp_path: Path):
     assert "organizations: count=1" in result.stdout
     assert report_path.exists()
 
+
 def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
-    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    registry_path = _build_cache_refresh_runtime_registry(tmp_path)
     refresh_result, cache_dir, _, _ = run_cache_refresh(
         tmp_path,
         run_id="refresh-before-clear",
@@ -318,10 +418,11 @@ def test_cache_clear_empties_tables(monkeypatch, tmp_path: Path):
     assert users_count == 0
     assert org_count == 0
 
+
 def test_cache_does_not_store_passwords(monkeypatch, tmp_path: Path):
     secret = "TOP_SECRET"
     run_id = "no-secret"
-    registry_path, _ = build_temp_employees_registry_with_temp_dictionaries(tmp_path)
+    registry_path = _build_cache_refresh_runtime_registry(tmp_path)
     result, cache_dir, report_path, log_dir = run_cache_refresh(
         tmp_path,
         run_id=run_id,
@@ -340,6 +441,6 @@ def test_cache_does_not_store_passwords(monkeypatch, tmp_path: Path):
     assert "password" not in columns
     assert secret not in report_path.read_text(encoding="utf-8")
 
-    log_path = log_dir / f"cache-refresh_{run_id}.log"
+    log_path = active_log_path(log_dir, "cache-refresh")
     assert log_path.exists()
     assert secret not in log_path.read_text(encoding="utf-8")

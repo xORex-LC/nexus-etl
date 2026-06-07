@@ -14,17 +14,24 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
+from connector.domain.dependency_tree import TopologyMatchMode
 from connector.domain.models import Identity
 from connector.domain.transform.common.values import read_field_value
-from connector.domain.transform.matcher.context import MatchContext
 from connector.domain.dsl.issues import DslLoadError
 from connector.domain.transform_dsl.build_options import MatchDslBuildOptions
 from connector.domain.transform_dsl.specs import MatchRule, MatchSpec
 
-BuildIdentity = Callable[[Any, MatchContext], Identity]
-BuildLinks = Callable[[Any, MatchContext], dict[str, Identity]]
+if TYPE_CHECKING:
+    # Type-only: компилятор (DSL-слой) не должен зависеть от stage-слоя в runtime.
+    # MatchContext нужен лишь для аннотаций BuildIdentity/BuildLinks. Импорт под
+    # TYPE_CHECKING + forward-ref разрывает цикл compilers.match <-> transform.matcher
+    # (correct-направление matcher -> compilers сохраняется).
+    from connector.domain.transform.matcher.context import MatchContext
+
+BuildIdentity = Callable[[Any, "MatchContext"], Identity]
+BuildLinks = Callable[[Any, "MatchContext"], dict[str, Identity]]
 
 
 # ========== COMPILED MODELS ==========
@@ -96,6 +103,19 @@ class FuzzyScoringRules:
 
 
 @dataclass(frozen=True)
+class TopologyMatchPolicy:
+    """
+    Назначение:
+        Скомпилированная topology-policy для match/disambiguation.
+    """
+
+    enabled: bool = False
+    apply_on: str = "ambiguous_only"
+    on_missing_topology: str = "skip"
+    comparison_ladder: tuple[TopologyMatchMode, ...] = ()
+
+
+@dataclass(frozen=True)
 class MatchingRules:
     """
     Назначение:
@@ -107,6 +127,7 @@ class MatchingRules:
     build_links: BuildLinks | None = None
     source_dedup: SourceDedupRules = field(default_factory=SourceDedupRules)
     fuzzy: FuzzyScoringRules = field(default_factory=FuzzyScoringRules)
+    topology: TopologyMatchPolicy | None = None
 
 
 # ========== COMPILER ==========
@@ -127,14 +148,18 @@ class MatchDsl:
             Скомпилировать MatchSpec в MatchingRules.
         """
         try:
-            identity_rules = tuple(_build_identity_rule(rule) for rule in spec.match.identity_rules)
+            identity_rules = tuple(
+                _build_identity_rule(rule) for rule in spec.match.identity_rules
+            )
             if not identity_rules:
                 raise DslLoadError(
                     code="MATCH_DSL_COMPILE_INVALID",
                     message="match.identity_rules must not be empty",
                 )
             if self.options.require_primary_identity_rule:
-                missing_primary = [rule.name for rule in spec.match.identity_rules if not rule.primary]
+                missing_primary = [
+                    rule.name for rule in spec.match.identity_rules if not rule.primary
+                ]
                 if missing_primary:
                     raise DslLoadError(
                         code="MATCH_DSL_COMPILE_INVALID",
@@ -160,11 +185,23 @@ class MatchDsl:
                 top_k=spec.match.fuzzy.top_k,
                 score_round=spec.match.fuzzy.score_round,
             )
+            topology = None
+            if spec.match.topology is not None:
+                topology = TopologyMatchPolicy(
+                    enabled=spec.match.topology.enabled,
+                    apply_on=spec.match.topology.apply_on,
+                    on_missing_topology=spec.match.topology.on_missing_topology,
+                    comparison_ladder=tuple(
+                        TopologyMatchMode(item)
+                        for item in spec.match.topology.comparison_ladder
+                    ),
+                )
             return MatchingRules(
                 identity_rules=identity_rules,
                 ignored_fields=set(spec.match.ignored_fields),
                 source_dedup=source_dedup,
                 fuzzy=fuzzy,
+                topology=topology,
             )
         except DslLoadError:
             raise
@@ -182,7 +219,9 @@ def _build_identity_rule(rule: MatchRule) -> IdentityRule:
     def _build_identity(row, match_context) -> Identity:
         values: dict[str, str] = {}
         for field_name in fields:
-            value = _read_identity_value(field_name, row=row, match_context=match_context)
+            value = _read_identity_value(
+                field_name, row=row, match_context=match_context
+            )
             values[field_name] = "" if value is None else str(value)
         return Identity(primary=primary, values=values)
 

@@ -1,31 +1,36 @@
 # Target provider registry. Keys are target type names.
 targets:
-  # Path to target provider spec relative to runtime.target_projection_root.
-  target_type: target_type/target.yaml
+  # Path to target provider spec relative to datasets/.
+  target_type: targets/target_type.target.yaml
 
 # Dataset registry. Keys are dataset names.
 datasets:
   # Dataset entry name.
   dataset_name:
-    # Optional app config field, not part of registry itself:
-    # dataset.registry_path may explicitly point to this file.
-    # If not overridden, runtime uses runtime.datasets_root/registry.yaml.
-    # Source spec path relative to runtime.source_projection_root.
-    source: dataset_name/source.yaml
-    # Mapping spec path relative to runtime.datasets_root.
-    mapping: dataset_name/mapping.yaml
-    # Normalize spec path relative to runtime.datasets_root.
-    normalize: dataset_name/normalize.yaml
-    # Enrich spec path relative to runtime.datasets_root.
-    enrich: dataset_name/enrich.yaml
-    # Validate spec path relative to runtime.datasets_root.
-    validate: dataset_name/validate.yaml
-    # Match spec path relative to runtime.datasets_root.
-    match: dataset_name/match.yaml
-    # Resolve spec path relative to runtime.datasets_root.
-    resolve: dataset_name/resolve.yaml
-    # Sink spec path relative to runtime.datasets_root.
-    sink: dataset_name/sink.yaml
+    # Optional app config field, not part of registry itself: dataset.registry_path points to this file.
+    # Runtime default remains datasets/registry.yml when config does not override it.
+    # Source spec path relative to datasets/.
+    source: dataset_name.source.yaml
+    # Mapping spec path relative to datasets/.
+    mapping: dataset_name.mapping.yaml
+    # Normalize spec path relative to datasets/.
+    normalize: dataset_name.normalize.yaml
+    # Enrich spec path relative to datasets/.
+    enrich: dataset_name.enrich.yaml
+    # Validate spec path relative to datasets/.
+    validate: dataset_name.validate.yaml
+    # Match spec path relative to datasets/.
+    match: dataset_name.match.yaml
+    # Optional topology capability declaration.
+    topology:
+      # Whether topology bootstrap is available for this dataset.
+      enabled: false
+      # Topology spec path relative to datasets/.
+      spec: dataset_name.topology.yaml
+    # Resolve spec path relative to datasets/.
+    resolve: dataset_name.resolve.yaml
+    # Sink spec path relative to datasets/.
+    sink: dataset_name.sink.yaml
     # Dataset-level build option overrides by stage.
     build_options:
       # Mapping compile-policy overrides.
@@ -147,8 +152,8 @@ cache:
   datasets:
     # Cache dataset key.
     dataset_name:
-      # Cache dataset spec path relative to runtime.datasets_root.
-      cache_spec: dataset_name/cache.yaml
+      # Cache dataset spec path relative to datasets/.
+      cache_spec: dataset_name.cache.yaml
       # Cache datasets that must refresh before this one.
       depends_on: []
       # Ordering hint for cache refresh scheduling.
@@ -162,13 +167,13 @@ cache:
 dictionaries:
   # Dictionary registry version.
   version: 1
-  # Dictionary manifest path relative to runtime.dictionary_specs_root.
-  manifest: dataset_name/manifest.yaml
+  # Dictionary manifest path relative to datasets/.
+  manifest: dictionaries/ankey.dictionary.manifest.yaml
   # Dictionary entries.
   items:
     # Dictionary key.
     dictionary_name:
-      # Dictionary spec path relative to runtime.dictionary_specs_root.
-      spec: dataset_name/dictionary_name.dictionary.yaml
+      # Dictionary spec path relative to datasets/.
+      spec: dictionaries/dictionary_name.dictionary.yaml
       # Whether dictionary is enabled.
       enabled: true

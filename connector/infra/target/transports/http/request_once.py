@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any
 
 import httpx
@@ -53,6 +54,13 @@ def _parse_body(response: httpx.Response) -> tuple[Any | None, str | None]:
 
 def request_once(client: httpx.Client, req: HttpRequest) -> HttpOutcome:
     """Выполнить одну HTTP-попытку без retry/backoff."""
+    _emit_target_request_trace(
+        method=req.method,
+        path=req.path,
+        query=req.query,
+        headers=req.headers,
+        body=req.json,
+    )
     try:
         response = client.request(
             req.method,
@@ -71,6 +79,13 @@ def request_once(client: httpx.Client, req: HttpRequest) -> HttpOutcome:
         )
 
     body, body_snippet = _parse_body(response)
+    _emit_target_response_trace(
+        method=req.method,
+        path=req.path,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+        body=body,
+    )
     return HttpOutcome(
         response=HttpResponsePayload(
             status_code=response.status_code,
@@ -78,6 +93,67 @@ def request_once(client: httpx.Client, req: HttpRequest) -> HttpOutcome:
             body=body,
             body_snippet=body_snippet,
         ),
+    )
+
+
+def _emit_target_response_trace(
+    *,
+    method: str,
+    path: str,
+    status_code: int,
+    headers: dict[str, str],
+    body: Any,
+) -> None:
+    """
+    Временный диагностический trace полного ответа target API.
+
+    Почему через print:
+        stdout/stderr в CLI рантайме уже tee'ятся в command log, поэтому это
+        самый короткий и надёжный путь быстро увидеть полный ответ в логе без
+        дополнительного wiring логгеров по target-layer.
+    """
+    try:
+        serialized_body = json.dumps(body, ensure_ascii=False, default=str)
+    except Exception:
+        serialized_body = repr(body)
+    try:
+        serialized_headers = json.dumps(headers, ensure_ascii=False, default=str)
+    except Exception:
+        serialized_headers = repr(headers)
+    print(
+        "TARGET_HTTP_RESPONSE "
+        f"method={method} path={path} status={status_code} "
+        f"headers={serialized_headers} body={serialized_body}"
+    )
+
+
+def _emit_target_request_trace(
+    *,
+    method: str,
+    path: str,
+    query: dict[str, Any] | None,
+    headers: dict[str, str] | None,
+    body: Any,
+) -> None:
+    """
+    Временный диагностический trace полного исходящего HTTP-запроса к target API.
+    """
+    try:
+        serialized_query = json.dumps(query, ensure_ascii=False, default=str)
+    except Exception:
+        serialized_query = repr(query)
+    try:
+        serialized_headers = json.dumps(headers, ensure_ascii=False, default=str)
+    except Exception:
+        serialized_headers = repr(headers)
+    try:
+        serialized_body = json.dumps(body, ensure_ascii=False, default=str)
+    except Exception:
+        serialized_body = repr(body)
+    print(
+        "TARGET_HTTP_REQUEST "
+        f"method={method} path={path} query={serialized_query} "
+        f"headers={serialized_headers} body={serialized_body}"
     )
 
 

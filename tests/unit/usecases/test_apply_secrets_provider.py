@@ -108,13 +108,38 @@ class CountingProvider:
         return None
 
 
-def test_apply_update_does_not_request_secret(employees_registry_path):
+def test_apply_update_fails_when_managed_password_is_missing(employees_registry_path):
     catalog = build_catalog("employees", strict=True)
     provider = CountingProvider()
     adapter = get_spec("employees", secrets=provider).get_apply_adapter()
     executor = DummyExecutor()
     service = ImportApplyService(executor=executor)
-    plan = make_plan("update", base_desired_state(with_password=False), secret_fields=[])
+    plan = make_plan("update", base_desired_state(with_password=False), secret_fields=["password"])
+
+    result = service.apply_plan(
+        plan=plan,
+        catalog=catalog,
+        apply_adapter=adapter,
+        stop_on_first_error=False,
+        max_actions=None,
+        max_item_outcomes=10,
+    )
+
+    assert result.primary_code != SystemErrorCode.OK
+    assert provider.calls == 1
+    assert executor.calls == 0
+    assert result.item_outcomes, "должен быть outcome с ошибкой"
+    diag = result.item_outcomes[0].diagnostics[0]
+    assert diag.code == "SECRET_REQUIRED"
+
+
+def test_apply_update_uses_secret_provider_when_password_is_managed(employees_registry_path):
+    catalog = build_catalog("employees", strict=True)
+    provider = DictSecretProvider({("employees", "password", "row1", 1): "secret123"})
+    adapter = get_spec("employees", secrets=provider).get_apply_adapter()
+    executor = DummyExecutor()
+    service = ImportApplyService(executor=executor)
+    plan = make_plan("update", base_desired_state(with_password=False), secret_fields=["password"])
 
     result = service.apply_plan(
         plan=plan,
@@ -126,7 +151,6 @@ def test_apply_update_does_not_request_secret(employees_registry_path):
     )
 
     assert result.primary_code == SystemErrorCode.OK
-    assert provider.calls == 0
     assert executor.calls == 1
     assert executor.last_spec is not None
-    assert "password" not in executor.last_spec.payload
+    assert executor.last_spec.payload.get("password") == "secret123"

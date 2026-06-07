@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pydantic import Field, model_validator
 
 from connector.domain.dsl.specs import DslBaseModel, OperationCall, SourceOpsBlock
+from connector.domain.transform_dsl.specs.canonicalization import CanonicalizationSpec
 
 
 class MatchKeySpec(DslBaseModel):
@@ -29,6 +30,7 @@ class ProviderRef(DslBaseModel):
 
     name: str
     args: dict[str, Any] = Field(default_factory=dict)
+    canonicalization: CanonicalizationSpec | None = None
 
 
 class ExistsRef(DslBaseModel):
@@ -86,13 +88,16 @@ class EnrichRule(DslBaseModel):
     on_no_candidates: Literal["skip", "warn", "error", "needs_resolve"] | None = None
     on_ambiguous: Literal["skip", "warn", "error", "needs_resolve"] | None = None
     on_provider_error: Literal["warn", "error"] | None = None
-    merge: Literal[
-        "recompute_always",
-        "fill_only_if_empty",
-        "never_override",
-        "override_if_empty",
-        "override_if_authoritative",
-    ] | None = None
+    merge: (
+        Literal[
+            "recompute_always",
+            "fill_only_if_empty",
+            "never_override",
+            "override_if_empty",
+            "override_if_authoritative",
+        ]
+        | None
+    ) = None
     exists: ExistsRef | None = None
     allow_if: OperationCall | str | None = None
     on_conflict: EnrichConflictPolicy | None = None

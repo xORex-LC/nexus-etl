@@ -35,6 +35,7 @@ def load_dataset_dsl_spec(dataset: str) -> DatasetDslSpec:
         "report": entry.get("report"),
         "apply": entry.get("apply"),
         "diagnostics": entry.get("diagnostics", []),
+        "topology": entry.get("topology"),
     }
     if raw["report"] is None:
         raise DslLoadError(

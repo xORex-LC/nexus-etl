@@ -34,6 +34,7 @@ class RuntimePathOverrides:
     cache_root: str | Path | None = None
     logs_root: str | Path | None = None
     reports_root: str | Path | None = None
+    plans_root: str | Path | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,7 @@ class RuntimePaths:
     cache_root: Path
     logs_root: Path
     reports_root: Path
+    plans_root: Path
     default_registry_path: Path
 
     def resolve_dataset_registry(self, ref: str | Path | None = None) -> Path:
@@ -85,6 +87,9 @@ class RuntimePaths:
 
     def resolve_report_file(self, name: str | Path) -> Path:
         return self._resolve_from_root(self.reports_root, name)
+
+    def resolve_plan_file(self, name: str | Path) -> Path:
+        return self._resolve_from_root(self.plans_root, name)
 
     def resolve_cache_db_file(self, name: str | Path = "ankey_cache.sqlite3") -> Path:
         return self._resolve_from_root(self.cache_root, name)
@@ -145,6 +150,7 @@ def detect_runtime_paths(
     cache_root = _resolve_path(root, applied_overrides.cache_root, "var/cache")
     logs_root = _resolve_path(root, applied_overrides.logs_root, "var/logs")
     reports_root = _resolve_path(root, applied_overrides.reports_root, "reports")
+    plans_root = _resolve_path(root, applied_overrides.plans_root, "var/plans")
 
     return RuntimePaths(
         root=root,
@@ -158,6 +164,7 @@ def detect_runtime_paths(
         cache_root=cache_root,
         logs_root=logs_root,
         reports_root=reports_root,
+        plans_root=plans_root,
         default_registry_path=resolve_registry_path_for_datasets_root(datasets_root),
     )
 

@@ -31,7 +31,7 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
     dictionaries_dir = datasets_root / "dictionaries"
     dictionary_sources_dir = tmp_path / "dictionaries"
     targets_dir = datasets_root / "targets"
-    employees_source_dir = datasets_root / "employees" / "source_2"
+    employees_source_dir = datasets_root / "employees" / "source"
 
     dictionaries_dir.mkdir(parents=True, exist_ok=True)
     dictionary_sources_dir.mkdir(parents=True, exist_ok=True)
@@ -39,16 +39,22 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
     employees_source_dir.mkdir(parents=True, exist_ok=True)
 
     files_to_copy = [
-        ("employees/source_2/source.yaml", "employees/source_2/source.yaml"),
-        ("employees/source_2/mapping.yaml", "employees/source_2/mapping.yaml"),
-        ("employees.normalize.yaml", "employees.normalize.yaml"),
-        ("employees.enrich.yaml", "employees.enrich.yaml"),
-        ("employees.validate.yaml", "employees.validate.yaml"),
-        ("employees.match.yaml", "employees.match.yaml"),
-        ("employees.resolve.yaml", "employees.resolve.yaml"),
-        ("employees.sink.yaml", "employees.sink.yaml"),
-        ("employees.cache.yaml", "employees.cache.yaml"),
-        ("organizations.cache.yaml", "organizations.cache.yaml"),
+        ("employees/source/source.yaml", "employees/source/source.yaml"),
+        ("employees/source/mapping.yaml", "employees/source/mapping.yaml"),
+        ("employees/employees.normalize.yaml", "employees/employees.normalize.yaml"),
+        ("employees/employees.enrich.yaml", "employees/employees.enrich.yaml"),
+        ("employees/employees.match.yaml", "employees/employees.match.yaml"),
+        ("employees/employees.resolve.yaml", "employees/employees.resolve.yaml"),
+        ("employees/employees.sink.yaml", "employees/employees.sink.yaml"),
+        ("employees/employees.cache.yaml", "employees/employees.cache.yaml"),
+        ("organizations/source/source.yaml", "organizations/source/source.yaml"),
+        ("organizations/source/mapping.yaml", "organizations/source/mapping.yaml"),
+        ("organizations/organization.normalize.yaml", "organizations/organization.normalize.yaml"),
+        ("organizations/organization.enrich.yaml", "organizations/organization.enrich.yaml"),
+        ("organizations/organization.match.yaml", "organizations/organization.match.yaml"),
+        ("organizations/organization.resolve.yaml", "organizations/organization.resolve.yaml"),
+        ("organizations/organization.sink.yaml", "organizations/organization.sink.yaml"),
+        ("organizations/organizations.cache.yaml", "organizations/organizations.cache.yaml"),
         ("targets/ankey.target.yaml", "targets/ankey.target.yaml"),
     ]
 
@@ -66,7 +72,7 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
         encoding="utf-8",
     )
 
-    registry_payload = yaml.safe_load((repo_datasets / "employees.registry.yaml").read_text(encoding="utf-8"))
+    registry_payload = yaml.safe_load((repo_datasets / "registry.yaml").read_text(encoding="utf-8"))
 
     departments_name = "runtime_units"
     job_title_name = "runtime_titles"
@@ -126,7 +132,33 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
     registry_payload["dictionaries"]["manifest"] = manifest_name
     registry_payload["dictionaries"]["items"] = registry_items
 
-    (datasets_root / "employees.registry.yaml").write_text(
+    registry_payload["targets"]["ankey"] = "targets/ankey.target.yaml"
+    registry_payload["datasets"]["employees"]["source"] = "employees/source/source.yaml"
+    registry_payload["datasets"]["employees"]["mapping"] = "employees/source/mapping.yaml"
+    registry_payload["datasets"]["employees"]["normalize"] = "employees/employees.normalize.yaml"
+    registry_payload["datasets"]["employees"]["enrich"] = "employees/employees.enrich.yaml"
+    registry_payload["datasets"]["employees"]["match"] = "employees/employees.match.yaml"
+    registry_payload["datasets"]["employees"]["resolve"] = "employees/employees.resolve.yaml"
+    registry_payload["datasets"]["employees"]["sink"] = "employees/employees.sink.yaml"
+    registry_payload["datasets"]["organizations"]["source"] = "organizations/source/source.yaml"
+    registry_payload["datasets"]["organizations"]["mapping"] = "organizations/source/mapping.yaml"
+    registry_payload["datasets"]["organizations"]["normalize"] = "organizations/organization.normalize.yaml"
+    registry_payload["datasets"]["organizations"]["enrich"] = "organizations/organization.enrich.yaml"
+    registry_payload["datasets"]["organizations"]["match"] = "organizations/organization.match.yaml"
+    registry_payload["datasets"]["organizations"]["resolve"] = "organizations/organization.resolve.yaml"
+    registry_payload["datasets"]["organizations"]["sink"] = "organizations/organization.sink.yaml"
+    registry_payload["cache"]["datasets"]["employees"]["cache_spec"] = "employees/employees.cache.yaml"
+    registry_payload["cache"]["datasets"]["organizations"]["cache_spec"] = "organizations/organizations.cache.yaml"
+
+    # Не-topology фикстуры (vault/cache/enrich) не провизионят org topology cache/spec
+    # и не должны тянуть topology-bootstrap/resolve-wiring. Отключаем topology на уровне
+    # capability (validate_registry перестаёт eagerly грузить org topology spec) и снимаем
+    # resolve-side topology_link (иначе _build_resolve_topology_dependencies упадёт на
+    # неактивированных requirements).
+    registry_payload["datasets"]["organizations"]["topology"] = {"enabled": False}
+    _disable_resolve_topology_link(datasets_root / "employees" / "employees.resolve.yaml")
+
+    (datasets_root / "registry.yaml").write_text(
         yaml.safe_dump(registry_payload, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
     )
@@ -135,4 +167,21 @@ def build_temp_employees_registry_with_temp_dictionaries(tmp_path: Path) -> tupl
         encoding="utf-8",
     )
 
-    return datasets_root / "employees.registry.yaml", (departments_name, job_title_name)
+    return datasets_root / "registry.yaml", (departments_name, job_title_name)
+
+
+def _disable_resolve_topology_link(resolve_path: Path) -> None:
+    """Снять resolve-side topology_link в скопированном resolve.yaml.
+
+    Нужно для не-topology фикстур: иначе включённая policy при неактивированных
+    topology requirements ломает сборку resolve_stage.
+    """
+    if not resolve_path.exists():
+        return
+    payload = yaml.safe_load(resolve_path.read_text(encoding="utf-8")) or {}
+    resolve_block = payload.get("resolve")
+    if isinstance(resolve_block, dict) and resolve_block.pop("topology_link", None) is not None:
+        resolve_path.write_text(
+            yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )

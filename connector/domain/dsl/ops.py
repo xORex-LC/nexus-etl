@@ -183,6 +183,24 @@ def op_capitalize(value: Any, **_: Any) -> str | None:
     return str(value).capitalize()
 
 
+def op_upper_first_preserve_rest(value: Any, **_: Any) -> str | None:
+    """
+    Назначение:
+        Поднять только первый символ строки, не меняя остальной хвост.
+
+    Контракт:
+        - `None -> None`
+        - пустая строка сохраняется пустой строкой
+        - хвост строки возвращается без нормализации регистра
+    """
+    if value is None:
+        return None
+    text = str(value)
+    if text == "":
+        return ""
+    return text[:1].upper() + text[1:]
+
+
 def op_transliterate(value: Any, **_: Any) -> str | None:
     """
     Назначение:
@@ -709,6 +727,16 @@ def op_digits_only(value: Any, **_: Any) -> str | None:
         return None
     digits = "".join(ch for ch in str(value) if ch.isdigit())
     return digits or None
+
+
+def op_strip_non_alnum(value: Any, **_: Any) -> str | None:
+    """
+    Назначение:
+        Удалить из строкового значения все символы, кроме ASCII-букв и цифр.
+    """
+    if value is None:
+        return None
+    return "".join(ch for ch in str(value) if ch.isascii() and ch.isalnum())
 
 
 def op_random_digits(_: Any, *, length: int) -> str:

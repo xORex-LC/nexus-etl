@@ -130,6 +130,7 @@ def _read_secret_exists(tmp_path: Path) -> bool:
         record = repo.get_secret(
             dataset="employees",
             field="password",
+            match_key="Doe|John|M|100",
             locator_hash=locator_hash,
             locator_version="v1",
             run_id="run-1",

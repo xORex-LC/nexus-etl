@@ -55,7 +55,9 @@ class MapperDsl:
         self.engine = engine
         self.options = options or MapDslBuildOptions()
 
-    def compile(self, spec: MappingSpec, *, sink_spec: SinkSpec | None = None) -> CompiledMapRules:
+    def compile(
+        self, spec: MappingSpec, *, sink_spec: SinkSpec | None = None
+    ) -> CompiledMapRules:
         """
         Назначение:
             Скомпилировать MappingSpec в CompiledMapRules.
@@ -75,7 +77,9 @@ class MapperDsl:
                 rules=tuple(spec.mapping.rules),
                 meta=tuple(spec.mapping.meta),
                 schema_=spec.mapping.schema_,
-                source_columns=tuple(spec.source_columns) if spec.source_columns else None,
+                source_columns=tuple(spec.source_columns)
+                if spec.source_columns
+                else None,
                 options=self.options,
             )
         except DslLoadError:
@@ -87,7 +91,9 @@ class MapperDsl:
             ) from exc
 
     def _validate_targets_in_sink(self, spec: MappingSpec, sink_spec: SinkSpec) -> None:
-        sink_fields = {f.name for f in sink_spec.sink.fields} | {f.name for f in sink_spec.sink.system_fields}
+        sink_fields = {f.name for f in sink_spec.sink.fields} | {
+            f.name for f in sink_spec.sink.system_fields
+        }
         for rule in spec.mapping.rules:
             targets = rule.targets or ([rule.target] if rule.target else [])
             for target in targets:

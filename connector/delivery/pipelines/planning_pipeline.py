@@ -36,7 +36,6 @@ from connector.delivery.cli.stages import PipelineComposer
 from connector.domain.diagnostics.catalog import ErrorCatalog
 from connector.domain.ports.cache.roles import MatchRuntimePort
 from connector.domain.transform.core.extractor import Extractor
-from connector.domain.transform.core.iterators import iter_ok
 from connector.domain.transform.core.result import TransformResult
 from connector.domain.transform.matcher.ports import ISourceDedupStore
 from connector.domain.transform.resolver.ports import IPendingExpiryService
@@ -122,14 +121,12 @@ class PlanningPipeline:
             batch_size=app.resolver.resolve_batch_size,
             flush_interval_ms=app.resolver.resolve_flush_interval_ms,
         )
-        resolved = iter_ok(
-            resolve_usecase.iter_resolved(
-                matched_source=contextualized,
-                resolve_stage=self._resolve_stage,
-                dataset=dataset_name,
-                pending_replay=planning_runtime,  # PLANNER-DEC-001
-                resolve_hooks=self._plan_hooks,
-            )
+        resolved = resolve_usecase.iter_resolved(
+            matched_source=contextualized,
+            resolve_stage=self._resolve_stage,
+            dataset=dataset_name,
+            pending_replay=planning_runtime,  # PLANNER-DEC-001
+            resolve_hooks=self._plan_hooks,
         )
         try:
             yield resolved

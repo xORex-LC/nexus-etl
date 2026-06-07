@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import logging
 import time
 import hashlib
 from typing import Any
@@ -22,7 +21,6 @@ from connector.domain.reporting.diagnostics import split_report_diagnostics
 from connector.domain.ports.cache.models import UpsertResult
 from connector.domain.ports.cache.roles import CacheRefreshPort
 from connector.domain.ports.target.read import TargetPagedReaderProtocol
-from connector.infra.logging.setup import log_event
 from connector.usecases.common.identity_sync import IdentityIndexSyncer
 
 
@@ -57,7 +55,9 @@ class CacheRefreshUseCase:
         if len(self._adapters_by_dataset) != len(adapters):
             raise ValueError("Duplicate cache adapter dataset names are not allowed")
 
-        graph = dependency_graph or CacheDependencyGraph([adapter.dataset for adapter in adapters])
+        graph = dependency_graph or CacheDependencyGraph(
+            [adapter.dataset for adapter in adapters]
+        )
         self._refresh_planner = refresh_planner or CacheRefreshPlanner(graph)
         self._schema_hashes = schema_hashes or {}
         self._drift_mode = drift_mode
@@ -84,12 +84,14 @@ class CacheRefreshUseCase:
         """
         Обновляет кэш из целевой системы с пагинацией.
         """
-        log_event(
-            logger,
-            logging.INFO,
-            run_id,
-            "cache",
-            f"cache-refresh start page_size={page_size} max_pages={max_pages} include_deleted={include_deleted}",
+        logger.info(
+            "Cache refresh started",
+            scope="cache",
+            page_size=page_size,
+            max_pages=max_pages,
+            include_deleted=include_deleted,
+            include_dependencies=include_dependencies,
+            dataset=dataset,
         )
         start_monotonic = time.monotonic()
 
@@ -112,7 +114,9 @@ class CacheRefreshUseCase:
                 _apply_drift_policy_for_scope(
                     cache_refresh=self.cache_refresh,
                     schema_hashes=self._schema_hashes,
-                    scope_datasets=tuple(adapter.dataset for adapter in active_adapters),
+                    scope_datasets=tuple(
+                        adapter.dataset for adapter in active_adapters
+                    ),
                     drift_mode=self._drift_mode,
                     drift_on_hash_mismatch=self._drift_on_hash_mismatch,
                     drift_rebuild_scope=self._drift_rebuild_scope,
@@ -134,19 +138,26 @@ class CacheRefreshUseCase:
                         max_pages,
                     ):
                         if not page_result.ok:
-                            code = page_result.error_code.name if page_result.error_code else "API_ERROR"
+                            code = (
+                                page_result.error_code.name
+                                if page_result.error_code
+                                else "API_ERROR"
+                            )
                             error_stats[code] = error_stats.get(code, 0) + 1
-                            raise RuntimeError(page_result.error_message or "Target read failed")
+                            raise RuntimeError(
+                                page_result.error_message or "Target read failed"
+                            )
 
                         stats["pages"] = max(stats["pages"], page_result.page)
 
                         items = page_result.items or []
-                        log_event(
-                            logger,
-                            logging.DEBUG,
-                            run_id,
-                            "api",
-                            f"GET {adapter.report_entity} page={page_result.page} rows={page_size} items={len(items)}",
+                        logger.debug(
+                            "Target page fetched",
+                            scope="api",
+                            entity=adapter.report_entity,
+                            page=page_result.page,
+                            rows=page_size,
+                            items=len(items),
                         )
                         for raw in items:
                             key = adapter.get_item_key(raw)
@@ -154,7 +165,9 @@ class CacheRefreshUseCase:
                                 effective_include_deleted = include_deleted
                                 if effective_include_deleted is None:
                                     effective_include_deleted = bool(
-                                        getattr(adapter, "include_deleted_default", False)
+                                        getattr(
+                                            adapter, "include_deleted_default", False
+                                        )
                                     )
                                 if adapter.is_deleted(raw):
                                     if effective_include_deleted:
@@ -179,13 +192,17 @@ class CacheRefreshUseCase:
                                         continue
 
                                 mapped = adapter.map_target_to_cache(raw)
-                                result = self.cache_refresh.upsert(adapter.dataset, mapped)
+                                result = self.cache_refresh.upsert(
+                                    adapter.dataset, mapped
+                                )
                                 if result == UpsertResult.INSERTED:
                                     stats["inserted"] += 1
                                 else:
                                     stats["updated"] += 1
                                 if self.identity_syncer is not None:
-                                    id_field = self.identity_syncer.id_field_for(adapter.dataset)
+                                    id_field = self.identity_syncer.id_field_for(
+                                        adapter.dataset
+                                    )
                                     self.identity_syncer.sync(
                                         dataset=adapter.dataset,
                                         resolved_id=mapped.get(id_field),
@@ -209,20 +226,29 @@ class CacheRefreshUseCase:
                                 )
                             except Exception as exc:
                                 stats["failed"] += 1
-                                log_event(logger, logging.ERROR, run_id, "cache", f"Failed to upsert {key}: {exc}")
-                                report_errors, report_warnings = split_report_diagnostics(
-                                    [
-                                        diag_error(
-                                            catalog=catalog,
-                                            stage=DiagnosticStage.CACHE,
-                                            code="CACHE_ERROR",
-                                            field=None,
-                                            message=str(exc),
-                                            # row_ref отсутствует: refresh работает с page/key, а не с конкретной строкой
-                                            record_ref=None,
-                                        )
-                                    ],
-                                    [],
+                                logger.error(
+                                    "Failed to upsert cache item",
+                                    scope="cache",
+                                    dataset=adapter.dataset,
+                                    key=key,
+                                    error=str(exc),
+                                    error_type=exc.__class__.__name__,
+                                )
+                                report_errors, report_warnings = (
+                                    split_report_diagnostics(
+                                        [
+                                            diag_error(
+                                                catalog=catalog,
+                                                stage=DiagnosticStage.CACHE,
+                                                code="CACHE_ERROR",
+                                                field=None,
+                                                message=str(exc),
+                                                # row_ref отсутствует: refresh работает с page/key, а не с конкретной строкой
+                                                record_ref=None,
+                                            )
+                                        ],
+                                        [],
+                                    )
                                 )
                                 report_sink.emit(
                                     AddItemEvent(
@@ -247,10 +273,14 @@ class CacheRefreshUseCase:
                     stats_by_dataset[name]["count_total"] = count_total
                     expected_schema_hash = self._schema_hashes.get(name)
                     if expected_schema_hash:
-                        self.cache_refresh.set_meta(name, "schema_hash", expected_schema_hash)
+                        self.cache_refresh.set_meta(
+                            name, "schema_hash", expected_schema_hash
+                        )
                     self.cache_refresh.set_meta(name, "last_refresh_at", now_iso)
                     self.cache_refresh.set_meta(name, "last_refresh_run_id", run_id)
-                    self.cache_refresh.set_meta(name, "last_refresh_pages", str(stats_by_dataset[name]["pages"]))
+                    self.cache_refresh.set_meta(
+                        name, "last_refresh_pages", str(stats_by_dataset[name]["pages"])
+                    )
                     self.cache_refresh.set_meta(
                         name,
                         "last_refresh_items",
@@ -265,11 +295,19 @@ class CacheRefreshUseCase:
                 if api_base_url:
                     self.cache_refresh.set_meta(None, "source_api_base", api_base_url)
         except Exception as exc:
-            log_event(logger, logging.ERROR, run_id, "cache", f"Cache refresh failed: {exc}")
+            logger.error(
+                "Cache refresh failed",
+                scope="cache",
+                dataset=dataset,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+            )
             raise
 
         retries_used = 0
-        if hasattr(self.target_reader, "client") and hasattr(self.target_reader.client, "getRetryAttempts"):
+        if hasattr(self.target_reader, "client") and hasattr(
+            self.target_reader.client, "getRetryAttempts"
+        ):
             retries_used = self.target_reader.client.getRetryAttempts() or 0
         totals = _sum_stats(stats_by_dataset)
         target_id = None
@@ -297,12 +335,11 @@ class CacheRefreshUseCase:
         )
 
         duration_ms = int((time.monotonic() - start_monotonic) * 1000)
-        log_event(
-            logger,
-            logging.INFO,
-            run_id,
-            "cache",
-            f"cache-refresh done datasets={len(stats_by_dataset)} duration_ms={duration_ms}",
+        logger.info(
+            "Cache refresh completed",
+            scope="cache",
+            datasets_count=len(stats_by_dataset),
+            duration_ms=duration_ms,
         )
 
         return {

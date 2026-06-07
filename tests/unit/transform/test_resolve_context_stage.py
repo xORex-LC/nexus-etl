@@ -23,7 +23,7 @@ Integration:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -91,7 +91,16 @@ class _FakeResolver:
         self.build_batch_index_calls.append(matched_rows)
         return self._index
 
-    def resolve(self, matched: Any, *, target_id_map: Any, meta: Any = None, batch_index: Any = None):
+    def resolve(
+        self,
+        matched: Any,
+        *,
+        source_record: Any,
+        target_id_map: Any,
+        meta: Any = None,
+        batch_index: Any = None,
+    ):
+        _ = source_record
         # Return no-op resolved row
         return None, [], []
 
@@ -109,7 +118,7 @@ class TestResolveContextStage:
         stage = ResolveContextStage(batch_index=batch_index_svc, resolver=resolver)
 
         records = [_make_transform_result("r1"), _make_transform_result("r2")]
-        result = list(stage.run(iter(records)))
+        list(stage.run(iter(records)))
 
         assert len(resolver.build_batch_index_calls) == 1
         assert len(resolver.build_batch_index_calls[0]) == 2
@@ -221,7 +230,8 @@ class TestResolveContextAndResolveStagePair:
             def build_batch_index(self, rows):
                 return {"link:val": ["target-42"]}
 
-            def resolve(self, matched, *, target_id_map, meta=None, batch_index=None):
+            def resolve(self, matched, *, source_record, target_id_map, meta=None, batch_index=None):
+                _ = source_record
                 captured_index.update(batch_index or {})
                 return None, [], []
 
@@ -263,7 +273,8 @@ class TestResolveContextAndResolveStagePair:
 
         class _TrackingResolver:
             def build_batch_index(self, rows): return {}
-            def resolve(self, matched, *, target_id_map, meta=None, batch_index=None):
+            def resolve(self, matched, *, source_record, target_id_map, meta=None, batch_index=None):
+                _ = source_record
                 resolve_calls.append(matched)
                 return None, [], []
 

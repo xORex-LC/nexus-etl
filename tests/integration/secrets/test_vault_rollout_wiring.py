@@ -9,11 +9,19 @@ from typer.testing import CliRunner
 
 from connector.domain.secrets.secret_locator_service import SecretLocatorService
 from connector.domain.secrets.secret_vault_write_service import SecretVaultWriteService
-from connector.infra.secrets import FernetEnvelopeCipher, UnsealedVaultKeyProvider, VaultUnsealService
+from connector.infra.secrets import (
+    FernetEnvelopeCipher,
+    UnsealedVaultKeyProvider,
+    VaultUnsealService,
+)
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.sqlite.engine import open_sqlite
 from connector.main import app
-from tests.runtime_test_support import tracked_employees_runtime_roots, write_runtime_config
+from tests.runtime_test_support import (
+    latest_report_path,
+    tracked_employees_runtime_roots,
+    write_runtime_config,
+)
 from tests.vault_unseal_setup import TEST_UNSEAL_PASSPHRASE, initialize_test_vault
 
 runner = CliRunner()
@@ -158,6 +166,7 @@ def _vault_secret_exists(*, tmp_path: Path, run_id: str) -> bool:
         record = repo.get_secret(
             dataset="employees",
             field="password",
+            match_key=_MATCH_KEY,
             locator_hash=locator_hash,
             locator_version="v1",
             run_id=run_id,
@@ -208,7 +217,7 @@ def test_import_apply_staging_rollout_forces_dry_run(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0
 
-    report = _read_report(tmp_path / "reports" / f"report_import-apply_{run_id}.json")
+    report = _read_report(latest_report_path(tmp_path / "reports", "import-apply"))
     apply_ctx = report.get("context", {}).get("apply", {})
     rollout_ctx = apply_ctx.get("vault_rollout", {})
     assert apply_ctx.get("dry_run") is True
@@ -217,7 +226,9 @@ def test_import_apply_staging_rollout_forces_dry_run(tmp_path: Path) -> None:
     assert rollout_ctx.get("force_dry_run") is True
 
 
-def test_import_apply_explicit_dry_run_keeps_ephemeral_secret(tmp_path: Path, monkeypatch) -> None:
+def test_import_apply_explicit_dry_run_keeps_ephemeral_secret(
+    tmp_path: Path, monkeypatch
+) -> None:
     plan_path = tmp_path / "plan.json"
     run_id = "stage9-rollout-dry-run-no-retention"
     _write_ephemeral_plan(plan_path, run_id=run_id)
@@ -258,14 +269,16 @@ def test_import_apply_explicit_dry_run_keeps_ephemeral_secret(tmp_path: Path, mo
     assert result.exit_code == 0
     assert _vault_secret_exists(tmp_path=tmp_path, run_id=run_id) is True
 
-    report = _read_report(tmp_path / "reports" / f"report_import-apply_{run_id}.json")
+    report = _read_report(latest_report_path(tmp_path / "reports", "import-apply"))
     apply_ctx = report.get("context", {}).get("apply", {})
     assert apply_ctx.get("dry_run") is True
     assert apply_ctx.get("retention_stats") == {}
     assert apply_ctx.get("vault_maintenance") == {}
 
 
-def test_import_apply_staging_dry_run_keeps_ephemeral_secret(tmp_path: Path, monkeypatch) -> None:
+def test_import_apply_staging_dry_run_keeps_ephemeral_secret(
+    tmp_path: Path, monkeypatch
+) -> None:
     plan_path = tmp_path / "plan.json"
     run_id = "stage9-rollout-staging-no-retention"
     _write_ephemeral_plan(plan_path, run_id=run_id)
@@ -308,7 +321,7 @@ def test_import_apply_staging_dry_run_keeps_ephemeral_secret(tmp_path: Path, mon
     assert result.exit_code == 0
     assert _vault_secret_exists(tmp_path=tmp_path, run_id=run_id) is True
 
-    report = _read_report(tmp_path / "reports" / f"report_import-apply_{run_id}.json")
+    report = _read_report(latest_report_path(tmp_path / "reports", "import-apply"))
     apply_ctx = report.get("context", {}).get("apply", {})
     rollout_ctx = apply_ctx.get("vault_rollout", {})
     assert apply_ctx.get("dry_run") is True
@@ -318,7 +331,9 @@ def test_import_apply_staging_dry_run_keeps_ephemeral_secret(tmp_path: Path, mon
     assert rollout_ctx.get("force_dry_run") is True
 
 
-def test_import_apply_canary_percent_zero_blocks_requested_vault(tmp_path: Path) -> None:
+def test_import_apply_canary_percent_zero_blocks_requested_vault(
+    tmp_path: Path,
+) -> None:
     plan_path = tmp_path / "plan.json"
     run_id = "stage9-rollout-canary-block"
     _write_empty_plan(plan_path, run_id=run_id)

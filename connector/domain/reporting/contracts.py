@@ -33,6 +33,7 @@ class ReportContextKey(str, Enum):
     REPORT_POLICY = "report_policy"
     STATS = "stats"
     DICTIONARY = "dictionary"
+    TOPOLOGY = "topology"
     TARGET_RUNTIME = "target_runtime"
     VAULT_ROLLOUT = "vault_rollout"
     APPLY = "apply"
