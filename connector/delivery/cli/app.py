@@ -16,8 +16,10 @@ Out of scope:
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
 
 import typer
 
@@ -25,49 +27,77 @@ from connector.common.observability import (
     ObservabilityArtifactKind,
     ServiceComponent,
 )
-from connector.config.config import SettingsLoadError
-from connector.config.loader import load_app_config
-from connector.config.diagnostics import translate_settings_load_error
-from connector.config.projections import (
-    to_dataset_registry_path,
-    to_operational_paths,
-    to_runtime_path_overrides,
-)
 from connector.common.run_id import generate_run_id, resolve_pipeline_run_id
-from connector.delivery.cli.context import (
-    CommandPaths,
-    CommandContext,
-    UnboundCommandContext,
-)
 from connector.delivery.cli.requirements import Requirements
-from connector.delivery.cli.runtime import run_with_report, run_without_report
 from connector.delivery.cli import options as cli_options
-from connector.delivery.cli.containers import build_diagnostics_catalog
-from connector.delivery.cli.settings_slice_map import (
-    COMMAND_SETTINGS_SLICE_MAP,
-    COMMAND_TO_USECASE,
-    USECASE_SETTINGS_SLICE_MAP,
+from connector.delivery.cli.completions import (
+    complete_dir,
+    complete_path,
+    complete_plan,
 )
-from connector.delivery.commands import (
-    cache_clear as cache_clear_command,
-    cache_refresh as cache_refresh_command,
-    cache_status as cache_status_command,
-    check_api as check_api_command,
-    enrich as enrich_command,
-    import_apply as import_apply_command,
-    import_plan as import_plan_command,
-    maintenance_prune as maintenance_prune_command,
-    match as match_command,
-    mapping as mapping_command,
-    normalize as normalize_command,
-    obs_artifacts as obs_artifacts_command,
-    resolve as resolve_command,
-    vault_management as vault_management_command,
-)
-from connector.domain.models import DiagnosticStage
-from connector.domain.dsl.loader import configure_registry_path, configure_runtime_paths
 
-app = typer.Typer(no_args_is_help=True, add_completion=False)
+if TYPE_CHECKING:
+    from connector.delivery.cli.context import UnboundCommandContext
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Ленивая загрузка бизнес-логики (perf: тонкий init для shell-completion/--help).
+#
+# Построение Typer-дерева (и, как следствие, shell-completion) импортирует ТОЛЬКО
+# этот модуль. Хендлеры команд и runtime/DI-граф тянут usecases→domain→infra→polars
+# (~0.6с), поэтому их импорт отложен до фактического вызова команды через прокси и
+# обёртки ниже, а config/context импортируются локально в телах `main`/`_build_ctx`.
+# Инвариант «тонкого init» закреплён тестом import-budget.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class _LazyCommandModule:
+    """Прокси командного модуля: импорт откладывается до первого обращения к
+    атрибуту (`handler`/`Options`), т.е. до реального вызова команды."""
+
+    def __init__(self, module_name: str) -> None:
+        self._module_name = module_name
+        self._loaded: ModuleType | None = None
+
+    def __getattr__(self, attr: str) -> Any:
+        if self._loaded is None:
+            self._loaded = importlib.import_module(self._module_name)
+        return getattr(self._loaded, attr)
+
+
+def run_with_report(**kwargs: Any) -> None:
+    """Ленивая обёртка над runtime-фасадом (импорт отложен до вызова команды)."""
+    from connector.delivery.cli.runtime import run_with_report as _impl
+
+    _impl(**kwargs)
+
+
+def run_without_report(**kwargs: Any) -> None:
+    """Ленивая обёртка над runtime-фасадом (импорт отложен до вызова команды)."""
+    from connector.delivery.cli.runtime import run_without_report as _impl
+
+    _impl(**kwargs)
+
+
+cache_clear_command = _LazyCommandModule("connector.delivery.commands.cache_clear")
+cache_refresh_command = _LazyCommandModule("connector.delivery.commands.cache_refresh")
+cache_status_command = _LazyCommandModule("connector.delivery.commands.cache_status")
+check_api_command = _LazyCommandModule("connector.delivery.commands.check_api")
+enrich_command = _LazyCommandModule("connector.delivery.commands.enrich")
+import_apply_command = _LazyCommandModule("connector.delivery.commands.import_apply")
+import_plan_command = _LazyCommandModule("connector.delivery.commands.import_plan")
+maintenance_prune_command = _LazyCommandModule(
+    "connector.delivery.commands.maintenance_prune"
+)
+match_command = _LazyCommandModule("connector.delivery.commands.match")
+mapping_command = _LazyCommandModule("connector.delivery.commands.mapping")
+normalize_command = _LazyCommandModule("connector.delivery.commands.normalize")
+obs_artifacts_command = _LazyCommandModule("connector.delivery.commands.obs_artifacts")
+resolve_command = _LazyCommandModule("connector.delivery.commands.resolve")
+vault_management_command = _LazyCommandModule(
+    "connector.delivery.commands.vault_management"
+)
+
+app = typer.Typer(no_args_is_help=True, add_completion=True)
 cache_app = typer.Typer(no_args_is_help=True)
 import_app = typer.Typer(no_args_is_help=True)
 maintenance_app = typer.Typer(no_args_is_help=True)
@@ -86,6 +116,15 @@ def _build_ctx(
     *,
     command_key: str | None = None,
 ) -> UnboundCommandContext:
+    from connector.config.projections import to_operational_paths
+    from connector.delivery.cli.containers import build_diagnostics_catalog
+    from connector.delivery.cli.context import CommandContext, CommandPaths
+    from connector.delivery.cli.settings_slice_map import (
+        COMMAND_SETTINGS_SLICE_MAP,
+        COMMAND_TO_USECASE,
+        USECASE_SETTINGS_SLICE_MAP,
+    )
+
     app_config = ctx.obj.get("app_config")
     if app_config is None:
         raise RuntimeError("App config is not initialized")
@@ -128,7 +167,9 @@ def _build_ctx(
 @app.callback()
 def main(
     ctx: typer.Context,
-    config: str | None = typer.Option(None, "--config", help="Path to config.yml"),
+    config: str | None = typer.Option(
+        None, "--config", help="Path to config.yml", autocompletion=complete_path
+    ),
     run_id: str | None = typer.Option(
         None, "--run-id", help="Run identifier (UUID). If omitted, generated."
     ),
@@ -148,12 +189,17 @@ def main(
     log_json: bool | None = typer.Option(
         None, "--log-json", help="Enable JSON logging (reserved)"
     ),
-    log_dir: str | None = typer.Option(None, "--log-dir", help="Directory for logs."),
+    log_dir: str | None = typer.Option(
+        None, "--log-dir", help="Directory for logs.", autocompletion=complete_dir
+    ),
     report_dir: str | None = typer.Option(
-        None, "--report-dir", help="Directory for reports."
+        None, "--report-dir", help="Directory for reports.", autocompletion=complete_dir
     ),
     cache_dir: str | None = typer.Option(
-        None, "--cache-dir", help="Directory for cache (SQLite later)."
+        None,
+        "--cache-dir",
+        help="Directory for cache (SQLite later).",
+        autocompletion=complete_dir,
     ),
     host: str | None = typer.Option(None, "--host", help="API host/IP"),
     port: int | None = typer.Option(None, "--port", help="API port"),
@@ -164,12 +210,17 @@ def main(
         None, "--api-password", help="API password (avoid; use env/file)"
     ),
     api_passwordFile: str | None = typer.Option(
-        None, "--api-password-file", help="Read API password from file"
+        None,
+        "--api-password-file",
+        help="Read API password from file",
+        autocompletion=complete_path,
     ),
     tls_skip_verify: bool | None = typer.Option(
         None, "--tls-skip-verify", help="Disable TLS verification"
     ),
-    ca_file: str | None = typer.Option(None, "--ca-file", help="CA file path"),
+    ca_file: str | None = typer.Option(
+        None, "--ca-file", help="CA file path", autocompletion=complete_path
+    ),
     page_size: int | None = typer.Option(
         None, "--page-size", help="Page size for API pagination"
     ),
@@ -207,6 +258,21 @@ def main(
         help="Fail on unknown diagnostic codes",
     ),
 ):
+    from connector.config.config import SettingsLoadError
+    from connector.config.diagnostics import translate_settings_load_error
+    from connector.config.loader import load_app_config
+    from connector.config.projections import (
+        to_dataset_registry_path,
+        to_operational_paths,
+        to_runtime_path_overrides,
+    )
+    from connector.delivery.cli.containers import build_diagnostics_catalog
+    from connector.domain.dsl.loader import (
+        configure_registry_path,
+        configure_runtime_paths,
+    )
+    from connector.domain.models import DiagnosticStage
+
     if api_passwordFile and not api_password:
         p = Path(api_passwordFile)
         if not p.exists() or not p.is_file():
@@ -477,7 +543,9 @@ def importPlan(
 @import_app.command("apply")
 def import_apply(
     ctx: typer.Context,
-    plan: str | None = typer.Option(None, "--plan", help="Path to plan_import.json"),
+    plan: str | None = typer.Option(
+        None, "--plan", help="Path to plan_import.json", autocompletion=complete_plan
+    ),
     stopOnFirstError: bool | None = cli_options.STOP_ON_FIRST_ERROR,
     maxActions: int | None = cli_options.MAX_ACTIONS,
     dryRun: bool | None = cli_options.DRY_RUN,
