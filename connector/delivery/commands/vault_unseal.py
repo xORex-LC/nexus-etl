@@ -10,13 +10,15 @@
 
 from __future__ import annotations
 
-import typer
-
 from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.interaction import prompt_secret_with_gate
 
 
 def provide_runtime_unseal_passphrase(ctx: BoundCommandContext) -> None:
-    passphrase = str(typer.prompt("Введите unseal passphrase", hide_input=True))
+    passphrase = prompt_secret_with_gate(
+        "Введите unseal passphrase",
+        gate=ctx.container.observability.interactive_io_gate(),
+    )
     ctx.container.vault_unseal_passphrase.override(passphrase)
 
 

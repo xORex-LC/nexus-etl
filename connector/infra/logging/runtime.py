@@ -36,6 +36,7 @@ from structlog.processors import JSONRenderer
 from structlog.tracebacks import ExceptionDictTransformer
 from structlog.stdlib import ProcessorFormatter
 
+from connector.common.interactive_io import InteractiveIoGate
 from connector.common.observability import ObservabilityLayout, ServiceComponent
 from connector.config.models import LoggingConfig, LogLevelName
 from .redaction import LogRedactionEngine
@@ -122,6 +123,18 @@ class _JsonTextRenderer:
                 return json.dumps(value, ensure_ascii=False)
             return value
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+class _InteractiveConsoleSuppressFilter(logging.Filter):
+    """Подавлять console mirror, пока команда находится в интерактивном prompt-режиме."""
+
+    def __init__(self, interactive_io_gate: InteractiveIoGate) -> None:
+        super().__init__()
+        self._interactive_io_gate = interactive_io_gate
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        _ = record
+        return not self._interactive_io_gate.is_active()
 
 
 class DailySizeRotatingFileHandler(logging.Handler):
@@ -361,6 +374,7 @@ def build_structured_logging_runtime(
     clock: Callable[[], datetime] | None = None,
     app_version: str | None = None,
     git_rev: str | None = None,
+    interactive_io_gate: InteractiveIoGate | None = None,
 ) -> StructuredLoggingRuntime:
     """Сконфигурировать structlog runtime для одного service-component."""
     runtime_meta = LoggingRuntimeMeta(app_version=app_version, git_rev=git_rev)
@@ -378,6 +392,7 @@ def build_structured_logging_runtime(
         stderr_stream=stderr_stream,
         clock=clock,
         runtime_meta=runtime_meta,
+        interactive_io_gate=interactive_io_gate,
     )
     structlog.configure(
         processors=_build_structlog_processors(runtime_meta),
@@ -435,6 +450,7 @@ def _build_handler_stack(
     stderr_stream: TextIO | None,
     clock: Callable[[], datetime] | None,
     runtime_meta: LoggingRuntimeMeta,
+    interactive_io_gate: InteractiveIoGate | None,
 ) -> StructlogHandlerStack:
     console_handler: logging.Handler | None = None
     file_handler: DailySizeRotatingFileHandler | None = None
@@ -456,6 +472,10 @@ def _build_handler_stack(
                 runtime_meta=runtime_meta,
             )
         )
+        if interactive_io_gate is not None:
+            console_handler.addFilter(
+                _InteractiveConsoleSuppressFilter(interactive_io_gate)
+            )
         root_logger.addHandler(console_handler)
 
     if config.sinks.file.enabled:

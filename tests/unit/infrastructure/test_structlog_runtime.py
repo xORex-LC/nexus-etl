@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 import structlog
 
+from connector.common.interactive_io import InteractiveIoGate
 from connector.common.observability import (
     ObservabilityLayout,
     ObservabilityLayoutPolicy,
@@ -217,6 +218,47 @@ def test_component_override_allows_debug_only_for_selected_component(
 
     payloads = _json_line(stderr)
     assert [payload["event"] for payload in payloads] == ["keep-me"]
+    runtime.close()
+
+
+def test_console_mirror_is_suppressed_during_interactive_prompt_but_file_sink_keeps_event(
+    tmp_path: Path,
+) -> None:
+    stderr = io.StringIO()
+    interactive_io_gate = InteractiveIoGate()
+    runtime = build_structured_logging_runtime(
+        config=LoggingConfig(
+            sinks=LoggingSinksConfig(
+                file=FileLoggingSinkConfig(enabled=True, format="json"),
+                console=ConsoleLoggingSinkConfig(
+                    enabled=True, stream="stderr", format="json"
+                ),
+            )
+        ),
+        layout=_layout(tmp_path),
+        redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
+        component=ServiceComponent.MAPPER,
+        stderr_stream=stderr,
+        root_logger_name="",
+        interactive_io_gate=interactive_io_gate,
+    )
+    bind_observability_context(
+        run_id="run-2",
+        pipeline_run_id="pipe-2",
+        component=ServiceComponent.MAPPER,
+    )
+    logger = runtime.get_logger(
+        ServiceComponent.MAPPER,
+        logger_name="tests.runtime.prompt.mirror",
+    )
+
+    with interactive_io_gate.suppress_observability_mirror():
+        logger.info("hidden from console", scope="interactive")
+
+    assert stderr.getvalue() == ""
+    log_path = runtime.current_log_file_path()
+    assert log_path is not None
+    assert "hidden from console" in Path(log_path).read_text(encoding="utf-8")
     runtime.close()
 
 

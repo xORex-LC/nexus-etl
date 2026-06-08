@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import warnings
+from getpass import GetPassWarning
 from pathlib import Path
 
 from argon2 import PasswordHasher
@@ -13,12 +15,17 @@ runner = CliRunner()
 
 def _write_admin_hash(tmp_path: Path, *, password: str) -> Path:
     path = tmp_path / "vault-admin.env"
-    path.write_text(f"ANKEY_VAULT_ADMIN_PASSWORD_HASH={PasswordHasher().hash(password)}\n", encoding="utf-8")
+    path.write_text(
+        f"ANKEY_VAULT_ADMIN_PASSWORD_HASH={PasswordHasher().hash(password)}\n",
+        encoding="utf-8",
+    )
     path.chmod(0o600)
     return path
 
 
-def _write_config(tmp_path: Path, *, admin_password: str = "Vault-Admin-Password-2026") -> Path:
+def _write_config(
+    tmp_path: Path, *, admin_password: str = "Vault-Admin-Password-2026"
+) -> Path:
     cfg = tmp_path / "config.yml"
     cfg.write_text(
         "\n".join(
@@ -44,7 +51,13 @@ def _last_json_payload(output: str) -> dict[str, object]:
     raise AssertionError(f"JSON payload was not found in output:\n{output}")
 
 
-def _invoke(cfg: Path, args: list[str], *, admin_password: str = "Vault-Admin-Password-2026", input_text: str = ""):
+def _invoke(
+    cfg: Path,
+    args: list[str],
+    *,
+    admin_password: str = "Vault-Admin-Password-2026",
+    input_text: str = "",
+):
     return runner.invoke(
         app,
         ["--config", str(cfg), "vault-management", *args],
@@ -108,10 +121,14 @@ def test_vault_management_rotate_changes_unseal_passphrase(tmp_path: Path) -> No
     new_key = _last_json_payload(rotate_result.stdout)["active_key_version"]
     assert new_key != old_key
 
-    bad_status = _invoke(cfg, ["status", "--non-interactive", "--verify"], input_text="old-passphrase\n")
+    bad_status = _invoke(
+        cfg, ["status", "--non-interactive", "--verify"], input_text="old-passphrase\n"
+    )
     assert bad_status.exit_code != 0
 
-    good_status = _invoke(cfg, ["status", "--non-interactive", "--verify"], input_text="new-passphrase\n")
+    good_status = _invoke(
+        cfg, ["status", "--non-interactive", "--verify"], input_text="new-passphrase\n"
+    )
     assert good_status.exit_code == 0, good_status.stdout
 
 
@@ -124,7 +141,9 @@ def test_vault_management_resolves_relative_hash_file_against_runtime_root(
     datasets_dir = runtime_root / "datasets"
     environment_dir.mkdir(parents=True, exist_ok=True)
     datasets_dir.mkdir(parents=True, exist_ok=True)
-    (datasets_dir / "registry.yaml").write_text("targets: {}\ndatasets: {}\n", encoding="utf-8")
+    (datasets_dir / "registry.yaml").write_text(
+        "targets: {}\ndatasets: {}\n", encoding="utf-8"
+    )
     _write_admin_hash(environment_dir, password="Vault-Admin-Password-2026")
 
     cfg = runtime_root / "config.yml"
@@ -155,3 +174,48 @@ def test_vault_management_resolves_relative_hash_file_against_runtime_root(
     )
 
     assert result.exit_code == 0, result.stdout
+
+
+def test_vault_management_init_does_not_log_prompt_text_back_into_console(
+    tmp_path: Path,
+) -> None:
+    cfg = _write_config(tmp_path)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", GetPassWarning)
+        result = runner.invoke(
+            app,
+            ["--config", str(cfg), "vault-management", "init"],
+            input="\n".join(
+                [
+                    "y",
+                    "Vault-Admin-Password-2026",
+                    "unseal-passphrase",
+                    "unseal-passphrase",
+                    "",
+                ]
+            ),
+        )
+
+    assert result.exit_code == 0, result.output
+    assert (
+        result.output.count(
+            "Подтвердить выполнение vault-management операции 'init'? [y/N]:"
+        )
+        == 1
+    )
+    assert (
+        json.dumps(
+            "Подтвердить выполнение vault-management операции 'init'? [y/N]:",
+            ensure_ascii=True,
+        )
+        not in result.output
+    )
+    assert (
+        json.dumps("Введите пароль доступа к vault: ", ensure_ascii=True)
+        not in result.output
+    )
+    assert (
+        json.dumps("Введите новую unseal passphrase", ensure_ascii=True)
+        not in result.output
+    )

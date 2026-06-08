@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import structlog
 
+from connector.common.interactive_io import InteractiveIoGate
 from connector.common.observability import (
     ObservabilityLayout,
     ObservabilityLayoutPolicy,
@@ -172,4 +173,31 @@ def test_stream_capture_emits_native_structured_field(tmp_path: Path) -> None:
     captured = stderr.getvalue()
     assert 'event="captured line"' in captured
     assert "captured_stream=stdout" in captured
+    runtime.close()
+
+
+def test_stream_capture_skips_prompt_output_while_interactive_gate_is_active(
+    tmp_path: Path,
+) -> None:
+    stderr = io.StringIO()
+    interactive_io_gate = InteractiveIoGate()
+    runtime = _runtime(
+        tmp_path, stderr=stderr, console_enabled=True, file_enabled=False
+    )
+    logger = runtime.get_logger(
+        ServiceComponent.MATCHER,
+        logger_name="tests.topology.capture.prompt",
+    )
+    capture = StdStreamToLogger(
+        logger,
+        logging.INFO,
+        "stdout",
+        interactive_io_gate=interactive_io_gate,
+    )
+
+    with interactive_io_gate.suppress_observability_mirror():
+        capture.write("Введите пароль: ")
+        capture.flush()
+
+    assert "Введите пароль" not in stderr.getvalue()
     runtime.close()

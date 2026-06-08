@@ -20,6 +20,7 @@ import logging
 from typing import Any
 from typing import TextIO
 
+from connector.common.interactive_io import InteractiveIoGate
 from connector.infra.logging.redaction import LogRedactionEngine
 
 
@@ -37,17 +38,22 @@ class StdStreamToLogger:
         component: str,
         *,
         redaction_engine: LogRedactionEngine | None = None,
+        interactive_io_gate: InteractiveIoGate | None = None,
     ) -> None:
         self.logger = logger
         self.level = level
         self.component = component
         self.redaction_engine = redaction_engine
+        self.interactive_io_gate = interactive_io_gate
         self.buffer = ""
 
     def write(self, value: str) -> int:
         """Накопить входной текст и эмитить завершённые строки в лог."""
         if not value:
             return 0
+        if self._capture_suppressed():
+            self.buffer = ""
+            return len(value)
         self.buffer += value
         while "\n" in self.buffer:
             line, self.buffer = self.buffer.split("\n", 1)
@@ -56,6 +62,9 @@ class StdStreamToLogger:
 
     def flush(self) -> None:
         """Сбросить хвостовой буфер в лог, если там есть содержимое."""
+        if self._capture_suppressed():
+            self.buffer = ""
+            return
         self._emit_if_not_blank(self.buffer)
         self.buffer = ""
 
@@ -74,6 +83,12 @@ class StdStreamToLogger:
         if self.redaction_engine is None:
             return line
         return self.redaction_engine.redact_text(line)
+
+    def _capture_suppressed(self) -> bool:
+        return bool(
+            self.interactive_io_gate is not None
+            and self.interactive_io_gate.is_active()
+        )
 
 
 class TeeStream:

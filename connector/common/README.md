@@ -8,6 +8,7 @@
 
 | Файл | Что делает |
 |---|---|
+| `interactive_io.py` | `InteractiveIoGate` — process-local gate для временного подавления console/capture mirror во время интерактивных prompt-секций |
 | `observability.py` | `ServiceComponent`, `ObservabilityArtifactKind`, `ComponentIdentity`, `ObservabilityLayout` и policy/value-objects для observability-раскладки; layout владеет именованием log/report/plan/ledger артефактов |
 | `run_id.py` | `generate_run_id()` и `generate_pipeline_run_id()` — идентификаторы command-run и pipeline-run |
 | `runtime_paths.py` | `RuntimePaths`, `RuntimePathOverrides` — typed resolver корневых runtime-путей (datasets, cache, logs, reports, plans и т.д.); `@lru_cache` для синглтон-инстанса |

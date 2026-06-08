@@ -364,18 +364,21 @@ def run_with_report(
             session=observability_session,
             logger=logger,
         )
+        interactive_io_gate = container.observability.interactive_io_gate()
 
         stdout_logger_stream = StdStreamToLogger(
             logger,
             logging.INFO,
             "stdout",
             redaction_engine=observability_session.runtime.redaction_engine,
+            interactive_io_gate=interactive_io_gate,
         )
         stderr_logger_stream = StdStreamToLogger(
             logger,
             logging.ERROR,
             "stderr",
             redaction_engine=observability_session.runtime.redaction_engine,
+            interactive_io_gate=interactive_io_gate,
         )
         sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
         sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
@@ -701,18 +704,21 @@ def run_without_report(
             session=observability_session,
             logger=logger,
         )
+        interactive_io_gate = container.observability.interactive_io_gate()
 
         stdout_logger_stream = StdStreamToLogger(
             logger,
             logging.INFO,
             "stdout",
             redaction_engine=observability_session.runtime.redaction_engine,
+            interactive_io_gate=interactive_io_gate,
         )
         stderr_logger_stream = StdStreamToLogger(
             logger,
             logging.ERROR,
             "stderr",
             redaction_engine=observability_session.runtime.redaction_engine,
+            interactive_io_gate=interactive_io_gate,
         )
         sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
         sys.stderr = TeeStream(original_stderr, stderr_logger_stream)

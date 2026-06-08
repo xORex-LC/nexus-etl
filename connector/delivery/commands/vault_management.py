@@ -17,6 +17,10 @@ import structlog
 import typer
 
 from connector.delivery.cli.context import BoundCommandContext
+from connector.delivery.cli.interaction import (
+    confirm_with_gate,
+    prompt_secret_with_gate,
+)
 from connector.delivery.commands.common import result_with
 from connector.domain.diagnostics.command_result import CommandResult
 from connector.domain.diagnostics.policies import SystemErrorCode
@@ -70,7 +74,9 @@ class _NoopPostVerifier:
 _LOGGER = structlog.get_logger(__name__)
 
 
-def init_handler(ctx: BoundCommandContext, opts: InitOptions, report_sink) -> CommandResult:
+def init_handler(
+    ctx: BoundCommandContext, opts: InitOptions, report_sink
+) -> CommandResult:
     _ = report_sink
     try:
         gate_result = _prepare_manual_operation(ctx=ctx, opts=opts, operation="init")
@@ -89,9 +95,11 @@ def init_handler(ctx: BoundCommandContext, opts: InitOptions, report_sink) -> Co
                     "already_initialized": status.initialized,
                 }
             )
-            return result_with(SystemErrorCode.OK if can_apply else SystemErrorCode.DATA_INVALID)
+            return result_with(
+                SystemErrorCode.OK if can_apply else SystemErrorCode.DATA_INVALID
+            )
 
-        passphrase = _prompt_new_unseal_passphrase()
+        passphrase = _prompt_new_unseal_passphrase(ctx)
         result = usecase.init_keyring(passphrase=passphrase)
         _emit_json_payload(asdict(result))
         return result_with(SystemErrorCode.OK)
@@ -99,10 +107,14 @@ def init_handler(ctx: BoundCommandContext, opts: InitOptions, report_sink) -> Co
         return _map_error_to_result(operation="init", exc=exc)
 
 
-def status_handler(ctx: BoundCommandContext, opts: StatusOptions, report_sink) -> CommandResult:
+def status_handler(
+    ctx: BoundCommandContext, opts: StatusOptions, report_sink
+) -> CommandResult:
     _ = report_sink
     try:
-        gate_result = _verify_admin_access(ctx=ctx, non_interactive=opts.non_interactive, operation="status")
+        gate_result = _verify_admin_access(
+            ctx=ctx, non_interactive=opts.non_interactive, operation="status"
+        )
         if gate_result is not None:
             return gate_result
 
@@ -110,7 +122,7 @@ def status_handler(ctx: BoundCommandContext, opts: StatusOptions, report_sink) -
         status = usecase.status()
         verified = False
         if opts.verify and status.initialized:
-            usecase.verify_unseal(passphrase=_prompt_current_unseal_passphrase())
+            usecase.verify_unseal(passphrase=_prompt_current_unseal_passphrase(ctx))
             verified = True
         _emit_json_payload(_status_payload(status=status, verified=verified))
         return result_with(SystemErrorCode.OK)
@@ -118,7 +130,9 @@ def status_handler(ctx: BoundCommandContext, opts: StatusOptions, report_sink) -
         return _map_error_to_result(operation="status", exc=exc)
 
 
-def rotate_handler(ctx: BoundCommandContext, opts: RotateOptions, report_sink) -> CommandResult:
+def rotate_handler(
+    ctx: BoundCommandContext, opts: RotateOptions, report_sink
+) -> CommandResult:
     _ = report_sink
     try:
         gate_result = _prepare_manual_operation(ctx=ctx, opts=opts, operation="rotate")
@@ -138,10 +152,12 @@ def rotate_handler(ctx: BoundCommandContext, opts: RotateOptions, report_sink) -
                     "dek_total": status.dek_total,
                 }
             )
-            return result_with(SystemErrorCode.OK if can_apply else SystemErrorCode.DATA_INVALID)
+            return result_with(
+                SystemErrorCode.OK if can_apply else SystemErrorCode.DATA_INVALID
+            )
 
-        current_passphrase = _prompt_current_unseal_passphrase()
-        new_passphrase = _prompt_new_unseal_passphrase()
+        current_passphrase = _prompt_current_unseal_passphrase(ctx)
+        new_passphrase = _prompt_new_unseal_passphrase(ctx)
         result = usecase.rotate_and_rewrap(
             current_passphrase=current_passphrase,
             new_passphrase=new_passphrase,
@@ -152,7 +168,9 @@ def rotate_handler(ctx: BoundCommandContext, opts: RotateOptions, report_sink) -
         return _map_error_to_result(operation="rotate", exc=exc)
 
 
-def rewrap_handler(ctx: BoundCommandContext, opts: RewrapOptions, report_sink) -> CommandResult:
+def rewrap_handler(
+    ctx: BoundCommandContext, opts: RewrapOptions, report_sink
+) -> CommandResult:
     _ = report_sink
     try:
         gate_result = _prepare_manual_operation(ctx=ctx, opts=opts, operation="rewrap")
@@ -172,9 +190,13 @@ def rewrap_handler(ctx: BoundCommandContext, opts: RewrapOptions, report_sink) -
                     "dek_rewrap_required": status.dek_rewrap_required,
                 }
             )
-            return result_with(SystemErrorCode.OK if can_apply else SystemErrorCode.DATA_INVALID)
+            return result_with(
+                SystemErrorCode.OK if can_apply else SystemErrorCode.DATA_INVALID
+            )
 
-        result = usecase.rewrap_all_dek(passphrase=_prompt_current_unseal_passphrase())
+        result = usecase.rewrap_all_dek(
+            passphrase=_prompt_current_unseal_passphrase(ctx)
+        )
         _emit_json_payload(asdict(result))
         return result_with(SystemErrorCode.OK)
     except Exception as exc:  # noqa: BLE001
@@ -187,13 +209,20 @@ def _prepare_manual_operation(
     opts: CommonOptions,
     operation: str,
 ) -> CommandResult | None:
-    confirm_result = _confirm_operation(opts=opts, operation=operation)
+    confirm_result = _confirm_operation(ctx=ctx, opts=opts, operation=operation)
     if confirm_result is not None:
         return confirm_result
-    return _verify_admin_access(ctx=ctx, non_interactive=opts.non_interactive, operation=operation)
+    return _verify_admin_access(
+        ctx=ctx, non_interactive=opts.non_interactive, operation=operation
+    )
 
 
-def _confirm_operation(*, opts: CommonOptions, operation: str) -> CommandResult | None:
+def _confirm_operation(
+    *,
+    ctx: BoundCommandContext,
+    opts: CommonOptions,
+    operation: str,
+) -> CommandResult | None:
     if opts.dry_run or opts.force:
         return None
     if opts.non_interactive:
@@ -202,8 +231,9 @@ def _confirm_operation(*, opts: CommonOptions, operation: str) -> CommandResult 
             err=True,
         )
         return result_with(SystemErrorCode.DATA_INVALID)
-    confirmed = typer.confirm(
+    confirmed = confirm_with_gate(
         f"Подтвердить выполнение vault-management операции '{operation}'?",
+        gate=ctx.container.observability.interactive_io_gate(),
         default=False,
     )
     if confirmed:
@@ -237,17 +267,18 @@ def _build_key_management_usecase(
     return ctx.container.vault_key_management_usecase(post_verify=post_verify)
 
 
-def _prompt_current_unseal_passphrase() -> str:
-    return str(typer.prompt("Введите unseal passphrase", hide_input=True))
+def _prompt_current_unseal_passphrase(ctx: BoundCommandContext) -> str:
+    return prompt_secret_with_gate(
+        "Введите unseal passphrase",
+        gate=ctx.container.observability.interactive_io_gate(),
+    )
 
 
-def _prompt_new_unseal_passphrase() -> str:
-    return str(
-        typer.prompt(
-            "Введите новую unseal passphrase",
-            hide_input=True,
-            confirmation_prompt=True,
-        )
+def _prompt_new_unseal_passphrase(ctx: BoundCommandContext) -> str:
+    return prompt_secret_with_gate(
+        "Введите новую unseal passphrase",
+        gate=ctx.container.observability.interactive_io_gate(),
+        confirmation_prompt=True,
     )
 
 
@@ -277,7 +308,14 @@ def _map_error_to_result(*, operation: str, exc: Exception) -> CommandResult:
     if isinstance(exc, VaultAdminAccessDeniedError):
         typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
         return result_with(SystemErrorCode.AUTH_FORBIDDEN)
-    if isinstance(exc, (VaultAdminPasswordConfigError, SecretKeyConfigError, VaultManagementOperationError)):
+    if isinstance(
+        exc,
+        (
+            VaultAdminPasswordConfigError,
+            SecretKeyConfigError,
+            VaultManagementOperationError,
+        ),
+    ):
         if isinstance(exc, VaultDomainError):
             typer.echo(f"ERROR: {exc.code}: {exc}", err=True)
         else:

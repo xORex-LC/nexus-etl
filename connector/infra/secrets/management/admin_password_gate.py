@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import getpass
 import os
 import stat
@@ -22,6 +23,7 @@ import structlog
 from argon2 import PasswordHasher, exceptions as argon2_exceptions
 from argon2.exceptions import VerifyMismatchError
 
+from connector.common.interactive_io import InteractiveIoGate
 from connector.domain.secrets.errors import (
     VaultAdminAccessDeniedError,
     VaultAdminPasswordConfigError,
@@ -92,14 +94,18 @@ class VaultAdminPasswordGate:
         env: Mapping[str, str] | None = None,
         prompt_password: PromptFn | None = None,
         password_hasher: PasswordHasher | None = None,
+        interactive_io_gate: InteractiveIoGate | None = None,
     ) -> None:
-        self._require_admin_password_for_manual_ops = require_admin_password_for_manual_ops
+        self._require_admin_password_for_manual_ops = (
+            require_admin_password_for_manual_ops
+        )
         self._admin_password_hash_file = admin_password_hash_file
         self._admin_password_hash_name = admin_password_hash_name
         self._admin_password_env_var = admin_password_env_var
         self._env = env if env is not None else os.environ
         self._prompt_password = prompt_password or getpass.getpass
         self._password_hasher = password_hasher or PasswordHasher()
+        self._interactive_io_gate = interactive_io_gate
         self._logger = structlog.get_logger(__name__)
 
     def verify_manual_access(self, non_interactive: bool) -> None:
@@ -125,7 +131,9 @@ class VaultAdminPasswordGate:
         password_hash = self._read_password_hash(mode=mode)
         password = self._read_password(non_interactive=non_interactive, mode=mode)
         try:
-            self._verify_password(password_hash=password_hash, password=password, mode=mode)
+            self._verify_password(
+                password_hash=password_hash, password=password, mode=mode
+            )
         finally:
             password = ""
 
@@ -137,7 +145,9 @@ class VaultAdminPasswordGate:
                 hash_file=self._admin_password_hash_file,
                 hash_name=self._admin_password_hash_name,
             ).load_hash(mode=mode)
-            return self._validate_password_hash(raw_hash=raw_hash, mode=mode, source="file")
+            return self._validate_password_hash(
+                raw_hash=raw_hash, mode=mode, source="file"
+            )
 
         self._logger.warning(
             "vault_admin_password_gate_failed",
@@ -190,7 +200,8 @@ class VaultAdminPasswordGate:
             return value
 
         try:
-            value = self._prompt_password("Введите пароль доступа к vault: ")
+            with self._prompt_gate():
+                value = self._prompt_password("Введите пароль доступа к vault: ")
         except Exception as exc:  # pragma: no cover - зависит от TTY/runtime окружения.
             self._logger.warning(
                 "vault_admin_password_gate_failed",
@@ -214,6 +225,11 @@ class VaultAdminPasswordGate:
                 details={"reason": "empty_password_input", "mode": mode},
             )
         return value
+
+    def _prompt_gate(self):
+        if self._interactive_io_gate is None:
+            return contextlib.nullcontext()
+        return self._interactive_io_gate.suppress_observability_mirror()
 
     def _verify_password(self, *, password_hash: str, password: str, mode: str) -> None:
         try:
@@ -279,7 +295,10 @@ class VaultAdminPasswordGate:
             )
             raise VaultAdminAccessDeniedError(
                 "Vault admin password verification failed",
-                details={"reason": "password_verification_internal_error", "mode": mode},
+                details={
+                    "reason": "password_verification_internal_error",
+                    "mode": mode,
+                },
             ) from exc
 
 

@@ -46,6 +46,7 @@ from connector.config.projections import (
     to_vault_db_config,
 )
 from connector.delivery.cli.component_mapping import component_for_command
+from connector.common.interactive_io import InteractiveIoGate
 from connector.common.observability import ObservabilityLayout, ServiceComponent
 from connector.common.runtime_paths import detect_runtime_paths
 from connector.domain.transform.matcher.match_deps import (
@@ -222,6 +223,7 @@ def structured_logging_runtime_resource(
     redaction_engine: LogRedactionEngine,
     component: ServiceComponent,
     stderr_stream: TextIO,
+    interactive_io_gate: InteractiveIoGate,
 ) -> Iterator[StructuredLoggingRuntime]:
     """Создать и корректно закрыть structlog runtime для одного CLI-компонента."""
     runtime = build_structured_logging_runtime(
@@ -231,6 +233,7 @@ def structured_logging_runtime_resource(
         component=component,
         stderr_stream=stderr_stream,
         root_logger_name="",
+        interactive_io_gate=interactive_io_gate,
     )
     yield runtime
     runtime.close()
@@ -1175,6 +1178,7 @@ class ObservabilityContainer(containers.DeclarativeContainer):
     app_config = providers.Dependency(instance_of=AppConfig)
     component = providers.Dependency(instance_of=ServiceComponent)
     stderr_stream = providers.Dependency()
+    interactive_io_gate = providers.Dependency(instance_of=InteractiveIoGate)
 
     observability_layout = providers.Singleton(
         to_observability_layout,
@@ -1216,6 +1220,7 @@ class ObservabilityContainer(containers.DeclarativeContainer):
         redaction_engine=redaction_engine,
         component=component,
         stderr_stream=stderr_stream,
+        interactive_io_gate=interactive_io_gate,
     )
     logging_handler_stack = providers.Callable(
         lambda runtime: runtime.handler_stack,
@@ -1248,6 +1253,7 @@ class AppContainer(containers.DeclarativeContainer):
 
     app_config = providers.Dependency(instance_of=AppConfig)
     vault_unseal_passphrase = providers.Object(None)
+    interactive_io_gate = providers.Singleton(InteractiveIoGate)
 
     _cache_dir = providers.Callable(lambda s: s.paths.cache_dir, s=app_config)
     _api_settings = providers.Callable(lambda s: s.api, s=app_config)
@@ -1309,6 +1315,7 @@ class AppContainer(containers.DeclarativeContainer):
             lambda s: s.admin_password_env_var,
             s=_vault_management_settings,
         ),
+        interactive_io_gate=interactive_io_gate,
     )
 
     vault_post_verifier = providers.Factory(
@@ -1343,6 +1350,7 @@ class AppContainer(containers.DeclarativeContainer):
     observability = providers.Container(
         ObservabilityContainer,
         app_config=app_config,
+        interactive_io_gate=interactive_io_gate,
     )
 
     pipeline = providers.Container(

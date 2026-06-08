@@ -13,9 +13,10 @@
 | `dictionaries_container.py` | Отдельный DI-контейнер для справочников (выделен из-за объёма и независимости) |
 | `context.py` | `BoundCommandContext` — typed runtime context, передаваемый в каждый handler |
 | `component_mapping.py` | `component_for_command()` — разрешение CLI-команды в `ServiceComponent`, включая observability-команды `maintenance-prune` / `obs-*` |
+| `interaction.py` | `confirm_with_gate()` / `prompt_secret_with_gate()` — единая точка user-facing prompt-вызовов, синхронизированная с `InteractiveIoGate` |
 | `options.py` | Переиспользуемые `typer.Option` (`DATASET`, `REPORT_DIR`, `CACHE_DIR`, `VAULT_MODE`, …) — единая точка определения флага и его `autocompletion` |
 | `completions.py` | Side-effect-free `autocompletion`-коллбеки для значений опций (`complete_dataset`, `complete_path`, `complete_dir`, `complete_plan`, `complete_vault_mode`) |
-| `stream_capture.py` | `StdStreamToLogger`, `TeeStream` — CLI-специфичный перехват stdout/stderr с redaction и native structlog emission |
+| `stream_capture.py` | `StdStreamToLogger`, `TeeStream` — CLI-специфичный перехват stdout/stderr с redaction, native structlog emission и suppress-режимом на время интерактивных prompt-ов |
 
 ## Подпапки
 

@@ -17,6 +17,7 @@
 - CLI orchestration пишет JSON в `stderr` и активный лог в `var/logs/<component>/<YYYY-MM-DD>_<component>.log`.
 - Повторные запуски в тот же день дописывают в тот же файл; size-roll создаёт backup-файлы в том же component partition.
 - CLI call-sites пишут через native structlog `logger.info/warning/error(event, scope=..., **fields)`.
+- Во время интерактивных prompt-секций console mirror временно suppress-ится через `InteractiveIoGate`, но файловый sink продолжает писать события.
 
 ## Зависимости
 
