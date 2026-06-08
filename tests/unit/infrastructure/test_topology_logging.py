@@ -117,9 +117,9 @@ def test_structlog_topology_event_sink_writes_scope_and_fields(tmp_path: Path) -
     log_path = runtime.current_log_file_path()
     assert log_path is not None
     contents = Path(log_path).read_text(encoding="utf-8")
-    assert "scope=topology" in contents
+    assert "scope=topology |" in contents
     assert "event=bootstrap.start" in contents
-    assert "dataset=organizations" in contents
+    assert "dataset=organizations |" in contents
     assert "require_target=true" in contents
     runtime.close()
 
@@ -172,7 +172,7 @@ def test_stream_capture_emits_native_structured_field(tmp_path: Path) -> None:
 
     captured = stderr.getvalue()
     assert "[INFO] matcher: captured line" in captured
-    assert "captured_stream=stdout" in captured
+    assert " | captured_stream=stdout" in captured
     runtime.close()
 
 

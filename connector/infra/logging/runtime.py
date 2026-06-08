@@ -115,7 +115,7 @@ class _JsonTextRenderer:
         rendered_parts: list[str] = []
         for key, value in event_dict.items():
             rendered_parts.append(f"{key}={_format_text_value(value)}")
-        return " ".join(rendered_parts)
+        return " | ".join(rendered_parts)
 
 
 class _HumanConsoleRenderer:
@@ -149,7 +149,7 @@ class _HumanConsoleRenderer:
 
         if not extra_fields:
             return f"{prefix} {message}".rstrip()
-        return f"{prefix} {message} {' '.join(extra_fields)}".rstrip()
+        return f"{prefix} {message} | {' | '.join(extra_fields)}".rstrip()
 
     def _render_level(self, level: str) -> str:
         bracketed = f"[{level}]"
@@ -525,7 +525,7 @@ def _build_handler_stack(
         console_handler.setFormatter(
             _build_formatter(
                 redaction_engine=redaction_engine,
-                renderer=JSONRenderer()
+                renderer=JSONRenderer(ensure_ascii=False)
                 if config.sinks.console.format == "json"
                 else _HumanConsoleRenderer(
                     use_color=bool(getattr(console_stream, "isatty", lambda: False)())
@@ -551,7 +551,7 @@ def _build_handler_stack(
         file_handler.setFormatter(
             _build_formatter(
                 redaction_engine=redaction_engine,
-                renderer=JSONRenderer()
+                renderer=JSONRenderer(ensure_ascii=False)
                 if config.sinks.file.format == "json"
                 else _JsonTextRenderer(),
                 runtime_meta=runtime_meta,

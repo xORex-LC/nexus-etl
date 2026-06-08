@@ -126,6 +126,50 @@ def test_structlog_runtime_writes_json_to_stderr_with_correlation_fields(
     runtime.close()
 
 
+def test_structlog_runtime_json_output_preserves_cyrillic_without_ascii_escape(
+    tmp_path: Path,
+) -> None:
+    stderr = io.StringIO()
+    runtime = build_structured_logging_runtime(
+        config=LoggingConfig(
+            sinks=LoggingSinksConfig(
+                file=FileLoggingSinkConfig(enabled=True, format="json"),
+                console=ConsoleLoggingSinkConfig(
+                    enabled=True, stream="stderr", format="json"
+                ),
+            )
+        ),
+        layout=_layout(tmp_path),
+        redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
+        component=ServiceComponent.MAPPER,
+        stderr_stream=stderr,
+        root_logger_name="",
+    )
+    bind_observability_context(
+        run_id="run-ru",
+        pipeline_run_id="pipe-ru",
+        component=ServiceComponent.MAPPER,
+    )
+
+    runtime.get_logger(
+        ServiceComponent.MAPPER,
+        logger_name="tests.runtime.mapper.cyrillic",
+    ).info("Привет мир", field="Отдел геодезического контроля")
+
+    console_text = stderr.getvalue()
+    assert "\\u041f" not in console_text
+    assert "Привет мир" in console_text
+    assert "Отдел геодезического контроля" in console_text
+
+    log_path = runtime.current_log_file_path()
+    assert log_path is not None
+    file_text = Path(log_path).read_text(encoding="utf-8")
+    assert "\\u041f" not in file_text
+    assert "Привет мир" in file_text
+    assert "Отдел геодезического контроля" in file_text
+    runtime.close()
+
+
 def test_structlog_runtime_writes_human_console_text_with_colored_level(
     tmp_path: Path,
 ) -> None:
@@ -158,8 +202,8 @@ def test_structlog_runtime_writes_human_console_text_with_colored_level(
 
     line = stderr.getvalue().strip()
     assert "\033[32m[INFO]\033[0m vault core: Command started" in line
-    assert "run_id=run-1" in line
-    assert "pipeline_run_id=pipe-1" in line
+    assert " | run_id=run-1" in line
+    assert " | pipeline_run_id=pipe-1" in line
     runtime.close()
 
 
