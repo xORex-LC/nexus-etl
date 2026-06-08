@@ -30,6 +30,14 @@
 - Normalize DSL _(TODO)_ — Нормализация данных
 - Enrich DSL _(TODO)_ — Обогащение данных
 
+### Topology (dependency_tree)
+- [Topology Core](layers/topology/topology-core.md) — Построение/query графа иерархии, comparison ladder, anchoring
+- [Topology DSL](layers/topology/topology-dsl.md) — `TopologySpec`, source/target ingress, dual-form canonicalizer, consumer policies
+- [Topology Ports](layers/topology/topology-ports.md) — Узкие порты и DTO boundary-слоя
+- [Topology Infrastructure](layers/topology/topology-infra.md) — Cache/polars-ридеры и structlog event sink
+- [Topology Runtime](layers/topology/topology-runtime.md) — Bootstrap-lifecycle, activation matrix, build-vs-wire, short-circuit
+- [Topology Consumers](layers/topology/topology-consumers.md) — FK match/resolve (Phase 1a/1b) и source anchoring (Stage G)
+
 ### Load/Extract
 - Extract _(TODO)_ — Извлечение данных из источников
 - Load _(TODO)_ — Загрузка данных в целевую систему
