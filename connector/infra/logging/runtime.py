@@ -47,6 +47,14 @@ if TYPE_CHECKING:
 _LOG_SCHEMA_VERSION = "1.0"
 _HOSTNAME = socket.gethostname()
 _PID = os.getpid()
+_ANSI_RESET = "\033[0m"
+_LEVEL_ANSI = {
+    "debug": "\033[36m",
+    "info": "\033[32m",
+    "warning": "\033[33m",
+    "error": "\033[31m",
+    "critical": "\033[35m",
+}
 
 
 @dataclass(frozen=True)
@@ -106,23 +114,74 @@ class _JsonTextRenderer:
     ) -> str:
         rendered_parts: list[str] = []
         for key, value in event_dict.items():
-            rendered_parts.append(f"{key}={self._format_value(value)}")
+            rendered_parts.append(f"{key}={_format_text_value(value)}")
         return " ".join(rendered_parts)
 
-    def _format_value(self, value: Any) -> str:
-        if value is None:
-            return "null"
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, (int, float)):
-            return str(value)
-        if isinstance(value, str):
-            if value == "":
-                return '""'
-            if any(char.isspace() for char in value) or "=" in value:
-                return json.dumps(value, ensure_ascii=False)
-            return value
-        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+class _HumanConsoleRenderer:
+    """Рендерить console text как человекочитаемый однострочный event stream.
+
+    Формат ориентирован на оператора в терминале: сначала идёт уровень события,
+    затем короткий component/scope prefix и сам event. Остальные поля остаются в
+    виде компактных `key=value`, чтобы поток сохранял однострочную структуру.
+    """
+
+    def __init__(self, *, use_color: bool) -> None:
+        self._use_color = use_color
+
+    def __call__(
+        self, _logger: Any, _method_name: str, event_dict: dict[str, Any]
+    ) -> str:
+        level = str(event_dict.get("level", "info")).upper()
+        component = _optional_str(event_dict.get("component"))
+        scope = _optional_str(event_dict.get("scope"))
+        event = _optional_str(event_dict.get("event")) or ""
+
+        prefix = self._render_level(level)
+        owner = " ".join(part for part in (component, scope) if part)
+        message = f"{owner}: {event}" if owner else event
+
+        extra_fields: list[str] = []
+        for key, value in event_dict.items():
+            if key in {"level", "component", "scope", "event"}:
+                continue
+            extra_fields.append(f"{key}={_format_text_value(value)}")
+
+        if not extra_fields:
+            return f"{prefix} {message}".rstrip()
+        return f"{prefix} {message} {' '.join(extra_fields)}".rstrip()
+
+    def _render_level(self, level: str) -> str:
+        bracketed = f"[{level}]"
+        if not self._use_color:
+            return bracketed
+        color = _LEVEL_ANSI.get(level.lower())
+        if color is None:
+            return bracketed
+        return f"{color}{bracketed}{_ANSI_RESET}"
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _format_text_value(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        if value == "":
+            return '""'
+        if any(char.isspace() for char in value) or "=" in value:
+            return json.dumps(value, ensure_ascii=False)
+        return value
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
 class _InteractiveConsoleSuppressFilter(logging.Filter):
@@ -468,7 +527,9 @@ def _build_handler_stack(
                 redaction_engine=redaction_engine,
                 renderer=JSONRenderer()
                 if config.sinks.console.format == "json"
-                else _JsonTextRenderer(),
+                else _HumanConsoleRenderer(
+                    use_color=bool(getattr(console_stream, "isatty", lambda: False)())
+                ),
                 runtime_meta=runtime_meta,
             )
         )

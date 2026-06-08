@@ -152,7 +152,7 @@ def test_console_sink_writes_to_configured_stderr_stream(tmp_path: Path) -> None
 
     logger.info("mirrored", scope="test")
 
-    assert "event=mirrored" in stderr.getvalue()
+    assert "[INFO] matcher test: mirrored" in stderr.getvalue()
     runtime.close()
 
 
@@ -171,7 +171,7 @@ def test_stream_capture_emits_native_structured_field(tmp_path: Path) -> None:
     capture.flush()
 
     captured = stderr.getvalue()
-    assert 'event="captured line"' in captured
+    assert "[INFO] matcher: captured line" in captured
     assert "captured_stream=stdout" in captured
     runtime.close()
 

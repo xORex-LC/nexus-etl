@@ -75,6 +75,11 @@ def _json_line(buffer: io.StringIO) -> list[dict[str, object]]:
     return [json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()]
 
 
+class _TtyStringIO(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
 def test_structlog_runtime_writes_json_to_stderr_with_correlation_fields(
     tmp_path: Path,
 ) -> None:
@@ -118,6 +123,43 @@ def test_structlog_runtime_writes_json_to_stderr_with_correlation_fields(
     assert payload["schema_version"] == "1.0"
     assert payload["app_version"] == "1.2.3"
     assert payload["git_rev"] == "abc123"
+    runtime.close()
+
+
+def test_structlog_runtime_writes_human_console_text_with_colored_level(
+    tmp_path: Path,
+) -> None:
+    stderr = _TtyStringIO()
+    runtime = build_structured_logging_runtime(
+        config=LoggingConfig(
+            sinks=LoggingSinksConfig(
+                file=FileLoggingSinkConfig(enabled=False),
+                console=ConsoleLoggingSinkConfig(
+                    enabled=True, stream="stderr", format="text"
+                ),
+            )
+        ),
+        layout=_layout(tmp_path),
+        redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
+        component=ServiceComponent.VAULT,
+        stderr_stream=stderr,
+        root_logger_name="",
+    )
+    bind_observability_context(
+        run_id="run-1",
+        pipeline_run_id="pipe-1",
+        component=ServiceComponent.VAULT,
+    )
+
+    runtime.get_logger(
+        ServiceComponent.VAULT,
+        logger_name="tests.runtime.vault.console",
+    ).info("Command started", scope="core")
+
+    line = stderr.getvalue().strip()
+    assert "\033[32m[INFO]\033[0m vault core: Command started" in line
+    assert "run_id=run-1" in line
+    assert "pipeline_run_id=pipe-1" in line
     runtime.close()
 
 
