@@ -38,6 +38,13 @@
 - [Topology Runtime](layers/topology/topology-runtime.md) — Bootstrap-lifecycle, activation matrix, build-vs-wire, short-circuit
 - [Topology Consumers](layers/topology/topology-consumers.md) — FK match/resolve (Phase 1a/1b) и source anchoring (Stage G)
 
+### Observability
+- [Observability Model](layers/observability/observability-model.md) — `ServiceComponent`/`ComponentIdentity`/`ObservabilityArtifactKind`, `ObservabilityLayout` как единственный владелец имён, canonical artifact layout
+- [Observability Config](layers/observability/observability-config.md) — вложенная `ObservabilityConfig` + проекции; почему config, а не DSL
+- [Observability Logging](layers/observability/observability-logging.md) — structlog runtime, processors/корреляция, redaction surface, sinks (daily+size файл, JSON→stderr), dual-transport
+- [Observability Artifacts](layers/observability/observability-artifacts.md) — отчёты/планы (atomic), run ledger (jsonl/sqlite), retention sweeper, latest pointers
+- [Observability Runtime](layers/observability/observability-runtime.md) — wiring в lifecycle команды, best-effort, DI-тиры, CLI (`maintenance prune`, `obs latest|tail`)
+
 ### Load/Extract
 - Extract _(TODO)_ — Извлечение данных из источников
 - Load _(TODO)_ — Загрузка данных в целевую систему
