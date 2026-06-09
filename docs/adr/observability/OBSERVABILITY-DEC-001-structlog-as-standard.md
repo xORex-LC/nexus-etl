@@ -150,6 +150,7 @@ logging.basicConfig(handlers=[structlog.stdlib.ProcessorFormatter.wrap_for_forma
 
 - [OBSERVABILITY-PROBLEM-001](./OBSERVABILITY-PROBLEM-001-inconsistent-logging.md) — решаемая проблема
 - [OBSERVABILITY-DEC-002](./OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md) — развивает это решение: реализует structlog в новой подсистеме наблюдаемости
+- [OBSERVABILITY-DEC-003](./OBSERVABILITY-DEC-003-ecs-renderer-and-field-mapping.md) — развивает это решение: приводит JSON-вывод structlog к формату ECS
 - `connector/infra/logging/setup.py` — удаляется после миграции
 - `connector/delivery/cli/stream_capture.py` — целевое место для `StdStreamToLogger`/`TeeStream`
 

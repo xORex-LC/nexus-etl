@@ -208,6 +208,8 @@ docs/adr/
 | [OBSERVABILITY-DEC-001](./observability/OBSERVABILITY-DEC-001-structlog-as-standard.md) | Decision | structlog как единственный стандарт логирования | ❌ Открыто (миграция постепенная) | 2026-02-19 |
 | [OBSERVABILITY-PROBLEM-002](./observability/OBSERVABILITY-PROBLEM-002-flat-non-partitioned-artifacts.md) | Problem | Плоская непартиционированная раскладка логов/отчётов/планов без прод-модели | ✅ Закрыто | 2026-06-04 |
 | [OBSERVABILITY-DEC-002](./observability/OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md) | Decision | Per-component прод-раскладка наблюдаемости на structlog | ✅ Принято | 2026-06-04 |
+| [OBSERVABILITY-PROBLEM-003](./observability/OBSERVABILITY-PROBLEM-003-non-ecs-log-shape.md) | Problem | JSON-логи структурированы, но не в формате ECS (блокирует интеграцию с Elasticsearch) | ❌ Открыто | 2026-06-09 |
+| [OBSERVABILITY-DEC-003](./observability/OBSERVABILITY-DEC-003-ecs-renderer-and-field-mapping.md) | Decision | ECS-форма JSON-логов через подмену финального рендерера (dotted-ключи, один процессор) | 🟡 Предложено | 2026-06-09 |
 
 _(Список поддерживается как актуальный реестр ADR по слоям.)_
 

@@ -44,6 +44,7 @@
 - [Observability Logging](layers/observability/observability-logging.md) — structlog runtime, processors/корреляция, redaction surface, sinks (daily+size файл, JSON→stderr), dual-transport
 - [Observability Artifacts](layers/observability/observability-artifacts.md) — отчёты/планы (atomic), run ledger (jsonl/sqlite), retention sweeper, latest pointers
 - [Observability Runtime](layers/observability/observability-runtime.md) — wiring в lifecycle команды, best-effort, DI-тиры, CLI (`maintenance prune`, `obs latest|tail`)
+- [ECS Logging Conventions](layers/observability/ecs-logging-conventions.md) — каталог ECS-полей, правила уровней, словарь `event.action`; источник семантики (машинная истина — `ecs.py`)
 
 ### Load/Extract
 - Extract _(TODO)_ — Извлечение данных из источников
