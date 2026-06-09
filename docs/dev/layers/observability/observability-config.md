@@ -282,4 +282,4 @@ observability:
 
 | Дата | Изменение | Автор |
 |------|-----------|-------|
-| 2026-06 | Создан документ (DEC-002, Stage 1 nested config) | — |
+| 2026-06 | Создан документ (DEC-002, Stage 1 nested config) | xorex-LC |

@@ -95,7 +95,7 @@ run_with_report / run_without_report:
        container.observability.component.override(component_for_command(cmd))
        container.observability.stderr_stream.override(original_stderr)
        container.observability.logging_runtime.init()      # configure structlog (Resource)
-       logger = runtime.get_command_logger(...)
+       logger = runtime.get_logger(component)            # structlog BoundLogger
   3. bind_observability_context(run_id, pipeline_run_id, component, dataset)
   4. _run_observability_sweeper()                          # best-effort startup retention
   5. sys.stdout/stderr = TeeStream(original, StdStreamToLogger(redaction))
@@ -318,4 +318,4 @@ maintenance_prune.handler:
 
 | Дата | Изменение | Автор |
 |------|-----------|-------|
-| 2026-06 | Создан документ (DEC-002 Stages 4–6) | — |
+| 2026-06 | Создан документ (DEC-002 Stages 4–6) | xorex-LC |

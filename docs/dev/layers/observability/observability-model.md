@@ -417,4 +417,4 @@ policy = ObservabilityLayoutPolicy(partition_by_component=False)
 
 | Дата | Изменение | Автор |
 |------|-----------|-------|
-| 2026-06 | Создан документ (DEC-002, Stages 1–6) | — |
+| 2026-06 | Создан документ (DEC-002, Stages 1–6) | xorex-LC |
