@@ -158,6 +158,23 @@ class RuntimeObservabilitySession:
     log_file_path: str | None
 
 
+def _resolve_interactive_io_gate(container: AppContainer | None) -> Any | None:
+    """Возвращать интерактивный шлюз ввода-вывода, когда схема мониторинга его предоставляет.
+
+    Захват потока во время выполнения использует этот шлюз только в качестве необязательного
+    средства подавления подсказок. Дубликаты модульных тестов и ухудшенные пути выполнения
+    могут вообще не предоставлять подконтейнер мониторинга, поэтому этот поиск должен оставаться
+    максимально эффективным и никогда не должен приводить к сбою выполнения команды.
+    """
+    if container is None:
+        return None
+    try:
+        observability = container.observability
+        return observability.interactive_io_gate()
+    except AttributeError:
+        return None
+
+
 def _resolve_command_dataset(
     *,
     command_name: str,
@@ -364,7 +381,7 @@ def run_with_report(
             session=observability_session,
             logger=logger,
         )
-        interactive_io_gate = container.observability.interactive_io_gate()
+        interactive_io_gate = _resolve_interactive_io_gate(container)
 
         stdout_logger_stream = StdStreamToLogger(
             logger,
@@ -704,7 +721,7 @@ def run_without_report(
             session=observability_session,
             logger=logger,
         )
-        interactive_io_gate = container.observability.interactive_io_gate()
+        interactive_io_gate = _resolve_interactive_io_gate(container)
 
         stdout_logger_stream = StdStreamToLogger(
             logger,

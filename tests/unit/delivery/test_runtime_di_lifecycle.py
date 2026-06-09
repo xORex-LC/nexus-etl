@@ -85,6 +85,15 @@ class _FakeContainer:
             raise self._ledger_exc
 
 
+class _FakeContainerWithoutObservability:
+    def __init__(self) -> None:
+        self.app_config = _OverrideProbe()
+        self.target = SimpleNamespace(transport=_OverrideProbe())
+
+    def shutdown_resources(self) -> None:
+        return None
+
+
 @dataclass(frozen=True)
 class _FakeObservabilitySession:
     component: ServiceComponent
@@ -498,6 +507,81 @@ def test_run_without_report_passes_null_report_sink_to_handler(
     monkeypatch.setattr(runtime_module, "AppContainer", lambda: fake)
     monkeypatch.setattr(
         runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+
+    def _handler(_ctx, _opts, report_sink):
+        observed["report_sink"] = report_sink
+        return None
+
+    runtime_module.run_without_report(
+        ctx=_ctx(tmp_path),
+        command_name="mapping",
+        opts=SimpleNamespace(),
+        handler=_handler,
+        requirements=Requirements(),
+    )
+
+    assert isinstance(observed.get("report_sink"), NullReportSink)
+
+
+def test_run_with_report_tolerates_missing_interactive_io_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _capture_finalize(**kwargs):
+        captured["report_assembler"] = kwargs["report_assembler"]
+        return None
+
+    _patch_fake_observability(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        runtime_module, "AppContainer", lambda: _FakeContainerWithoutObservability()
+    )
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(
+        runtime_module, "_shutdown_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(runtime_module, "_finalize_report_artifacts", _capture_finalize)
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_publish_latest_artifact_pointers_for_report",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        runtime_module.runtime_orchestrator,
+        "_record_run_ledger_for_report",
+        lambda **_: None,
+    )
+
+    runtime_module.run_with_report(
+        ctx=_ctx(tmp_path),
+        command_name="mapping",
+        opts=SimpleNamespace(),
+        handler=lambda _ctx, _opts, _report: None,
+        requirements=Requirements(),
+    )
+
+    assert isinstance(captured.get("report_assembler"), ReportAssembler)
+
+
+def test_run_without_report_tolerates_missing_interactive_io_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    observed: dict[str, object] = {}
+
+    _patch_fake_observability(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        runtime_module, "AppContainer", lambda: _FakeContainerWithoutObservability()
+    )
+    monkeypatch.setattr(
+        runtime_module, "_initialize_container_resources", lambda **_: None
+    )
+    monkeypatch.setattr(
+        runtime_module, "_shutdown_container_resources", lambda **_: None
     )
 
     def _handler(_ctx, _opts, report_sink):

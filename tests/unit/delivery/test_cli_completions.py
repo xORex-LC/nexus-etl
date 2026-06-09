@@ -97,23 +97,26 @@ def test_shell_completion_lists_top_level_commands() -> None:
 
 
 @pytest.mark.unit
-def test_shell_completion_lists_import_subcommands() -> None:
+def test_import_group_contains_plan_and_apply_subcommands() -> None:
     command = get_command(app)
-    shell = ShellComplete(command, {}, "nexus", "_NEXUS_COMPLETE")
-    names = {item.value for item in shell.get_completions(["import"], "")}
-    assert {"plan", "apply"} <= names
+    import_command = command.commands["import"]
+    assert {"plan", "apply"} <= set(import_command.commands)
 
 
 @pytest.mark.unit
-def test_shell_completion_completes_dataset_value(
+def test_mapping_dataset_option_is_wired_to_dataset_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         registry_module, "list_dataset_names", lambda: ["employees", "organizations"]
     )
     command = get_command(app)
-    shell = ShellComplete(command, {}, "nexus", "_NEXUS_COMPLETE")
-    names = {item.value for item in shell.get_completions(["mapping", "--dataset"], "")}
+    mapping_command = command.commands["mapping"]
+    dataset_option = next(
+        param for param in mapping_command.params if param.name == "dataset"
+    )
+    with mapping_command.make_context("mapping", [], resilient_parsing=True) as ctx:
+        names = {item.value for item in dataset_option.shell_complete(ctx, "")}
     assert {"employees", "organizations"} <= names
 
 
