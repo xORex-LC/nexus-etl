@@ -1,6 +1,6 @@
 # Report Delivery — Runtime Orchestration и Artifact Lifecycle
 
-> **Run lifecycle**: `run_with_report()` создаёт `InMemoryReportContext` и `ReportSink` per-command, делегирует handler execution, применяет runtime result mapping, финализирует через `ReportAssembler` и рендерит JSON-артефакт через `IReportRenderer`.
+> **Run lifecycle**: `run_with_report()` создаёт `InMemoryReportContext` и `ReportSink` per-command, делегирует handler execution, применяет runtime result mapping, финализирует через `ReportAssembler` и рендерит JSON-артефакт через `JsonReportRenderer`.
 
 ## 📑 Содержание
 
@@ -12,7 +12,7 @@
 - [📐 run\_without\_report() — lifecycle без отчёта](#-run_without_report--lifecycle-без-отчёта)
 - [🎭 runtime\_result\_mapper — маппинг результата в report](#-runtime_result_mapper--маппинг-результата-в-report)
 - [🗂️ finalize\_report\_artifacts() — финализация отчёта](#-finalize_report_artifacts--финализация-отчёта)
-- [📊 IReportRenderer / JsonReportRenderer](#-ireportrenderer--jsonreportrenderer)
+- [📊 JsonReportRenderer](#-jsonreportrenderer)
 - [🚨 Exception Handling Matrix](#-exception-handling-matrix)
 - [🔌 Handler Contract](#-handler-contract)
 - [🏗️ DI Wiring — report NOT in containers](#-di-wiring--report-not-in-containers)
@@ -62,7 +62,7 @@ connector/delivery/cli/
 └── containers.py                # AppContainer DI
 
 connector/infra/artifacts/
-└── report_renderer.py           # IReportRenderer, JsonReportRenderer
+└── report_renderer.py           # JsonReportRenderer (конкретный класс, без Protocol)
 ```
 
 ---
@@ -114,8 +114,7 @@ connector/infra/artifacts/
 | `CommandHandler` | `runtime_contracts.py` | Protocol: `(ctx, opts, report_sink) → RuntimeExecutionResult` |
 | `RuntimeExecutionResult` | `runtime_contracts.py` | `TypeAlias = DomainCommandResult \| None` |
 | `RuntimeErrorWithCode` | `runtime_contracts.py` | Runtime validation error с фиксированным exit code |
-| `IReportRenderer` | `report_renderer.py` | Protocol: `render(envelope, report_dir, file_base_name) → str` |
-| `JsonReportRenderer` | `report_renderer.py` | JSON serializer для `ReportEnvelope` |
+| `JsonReportRenderer` | `report_renderer.py` | Конкретный класс (без Protocol): `render_with_layout(*, envelope, layout, component, now) → str` |
 | `ReportHandler` | `runtime.py` | Alias для `CommandHandler` |
 
 ---
@@ -355,35 +354,36 @@ def finalize_report_artifacts(*, report_sink, report_assembler, start_monotonic,
 
 ---
 
-## 📊 IReportRenderer / JsonReportRenderer
+## 📊 JsonReportRenderer
 
 > Файл: `connector/infra/artifacts/report_renderer.py`
 
-### Protocol
+**Конкретный класс, без Protocol.** Ранее существовавший `IReportRenderer(Protocol)` (введён в
+REPORT-DEC-001) **удалён в Stage Z** (native observability migration): при единственной реализации
+порт был свёрнут в конкретный класс. Вводить порт снова — в «last responsible moment», когда
+появится второй рендерер (например, JSONL-леджер отчётов или text-рендерер под `reporting.format`).
+Component-aware раскладка/атомарная запись — в [observability-artifacts.md](../observability/observability-artifacts.md).
 
 ```python
-@runtime_checkable
-class IReportRenderer(Protocol):
-    def render(self, *, envelope: ReportEnvelope, report_dir: str, file_base_name: str) -> str: ...
-```
-
-### JsonReportRenderer
-
-```python
-class JsonReportRenderer(IReportRenderer):
-    def render(self, *, envelope, report_dir, file_base_name) -> str:
-        Path(report_dir).mkdir(parents=True, exist_ok=True)
-        report_path = str(Path(report_dir) / f"{file_base_name}.json")
+class JsonReportRenderer:
+    def render_with_layout(
+        self,
+        *,
+        envelope: ReportEnvelope,
+        layout: ObservabilityLayout,
+        component: ServiceComponent | ComponentIdentity,
+        now: datetime | None = None,
+    ) -> str:
+        report_path = layout.report_file(component, now=now)   # reports/<component>/<datetime>_<component>.json
         payload = asdict_envelope(envelope)
-        with open(report_path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-        return report_path
+        atomic_write_json(path=report_path, payload=payload)   # temp + fsync + os.replace
+        return str(report_path)
 ```
 
-- `asdict_envelope()` конвертирует `ReportEnvelope` в plain dict (deep copy via `context.asdict_envelope()`)
-- UTF-8 encoding, `ensure_ascii=False` для кириллицы
-- `indent=2` для human-readable output
-- Возвращает абсолютный путь к записанному файлу
+- путь определяет `ObservabilityLayout.report_file` (component-партиция + datetime-имя);
+- `asdict_envelope()` конвертирует `ReportEnvelope` в plain dict;
+- запись атомарна (`atomic_write_json`: temp + `os.replace`); `ensure_ascii=False`, `indent=2`;
+- возвращает абсолютный путь к записанному файлу.
 
 ---
 
@@ -682,13 +682,19 @@ def exit_code_from_result(result: DomainCommandResult | None) -> int:
 
 ### Добавить новый формат рендеринга
 
-1. Реализовать `IReportRenderer` protocol:
+Сейчас рендерер — один конкретный класс (`JsonReportRenderer`), порта нет. Появление **второго**
+рендерера — это и есть «last responsible moment» для введения `Protocol`:
+
+1. Ввести `Protocol` (например `IReportRenderer` с методом `render_with_layout(...)`) и сделать
+   `JsonReportRenderer` его реализацией.
+2. Реализовать второй рендерер по тому же контракту:
    ```python
-   class HtmlReportRenderer(IReportRenderer):
-       def render(self, *, envelope, report_dir, file_base_name) -> str:
+   class HtmlReportRenderer:
+       def render_with_layout(self, *, envelope, layout, component, now=None) -> str:
            ...
    ```
-2. Использовать в `finalize_report_artifacts()` вместо `JsonReportRenderer()`
+3. Выбирать реализацию в `finalize_report_artifacts()` (например по `reporting.format`), при
+   необходимости — через DI-провайдер.
 
 ### Добавить новый runtime context block
 
