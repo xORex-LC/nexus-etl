@@ -207,6 +207,43 @@
 | `nexus.apply.max_actions` | apply start/summary | Runtime cap for processed items |
 | `nexus.apply.stop_on_first_error` | apply start/summary | Boolean stop policy at use-case level |
 | `nexus.apply.dry_run` | apply start/summary | Boolean dry-run mode |
+| `nexus.vault.runtime.mode` | vault runtime decision events | Normalized runtime mode: `auto`, `on`, `off` |
+| `nexus.vault.runtime.requested_vault` | vault runtime decision events | Boolean intent to use vault path after runtime mode evaluation |
+| `nexus.vault.runtime.requires_vault` | vault runtime decision events | Boolean: dataset/plan actually requires secret path |
+| `nexus.vault.runtime.explicit_mode` | vault runtime decision events | Boolean: mode was explicitly passed by operator |
+| `nexus.vault.runtime.reason` | vault runtime decision events | Stable reason code from runtime mode policy |
+| `nexus.vault.rollout.mode` | vault rollout decision events | `off`, `staging_dry_run`, `canary`, `full` |
+| `nexus.vault.rollout.enabled` | vault rollout decision events | Boolean: vault path enabled after rollout gate |
+| `nexus.vault.rollout.startup_guard_required` | vault rollout decision events | Boolean: startup guard must run |
+| `nexus.vault.rollout.force_dry_run` | vault rollout decision events | Boolean: rollout policy forced dry-run mode |
+| `nexus.vault.rollout.canary_bucket` | vault rollout decision events | Deterministic canary bucket `[0..99]` when applicable |
+| `nexus.vault.rollout.canary_selected` | vault rollout decision events | Boolean selection result for canary rollout |
+| `nexus.vault.rollout.reason` | vault rollout decision events | Stable reason code from rollout policy |
+| `nexus.vault.startup.storage_mode` | vault startup events | `writable` or `readonly` storage mode |
+| `nexus.vault.startup.probe_present` | vault startup events | Boolean: startup probe existed before guard ran |
+| `nexus.vault.startup.probe_created` | vault startup events | Boolean: guard had to auto-create probe |
+| `nexus.vault.startup.strict_readonly_policy` | vault startup events | Boolean strict-policy flag |
+| `nexus.vault.startup.reason` | vault startup failure events | Stable startup failure reason without sensitive details |
+| `nexus.vault.key.version` | vault startup/read/write events | Active wrap/master key version if safe to expose |
+| `nexus.vault.dek.version` | vault startup/read/write events | Active DEK version if safe to expose |
+| `nexus.secret.field.name` | secret read events | Secret field name only; no plaintext value |
+| `nexus.secret.fields_count` | secret write/summary events | Number of secret fields in one store batch |
+| `nexus.secret.hit` | secret read events | Boolean: secret record found and hydrated |
+| `nexus.secret.reason` | secret read/write events | Safe reason: `not_found`, `locator_context_missing`, `crypto_error`, ... |
+| `nexus.secret.locator.version` | secret read/write events | Locator contract version, currently `v1` |
+| `nexus.secret.source_ref.fields_count` | secret boundary events | Number of source-ref fields used for locator context |
+| `nexus.secret.match_key_fingerprint` | secret read/write events | Safe fingerprint of normalized `match_key` |
+| `nexus.secret.run_scope` | secret read/write events | `exact`, `default`, `global_fallback`, `none` |
+| `nexus.secret.lifecycle.mode` | secret retention events | `persistent` or `ephemeral` |
+| `nexus.secret.lifecycle.delete_on_success` | secret retention events | Boolean cleanup policy |
+| `nexus.secret.lifecycle.ttl_seconds` | secret retention events | TTL from normalized lifecycle policy |
+| `nexus.secret.retention.deleted` | secret retention summary | Number of deleted secret records |
+| `nexus.secret.retention.kept` | secret retention summary | Number of retained secret records |
+| `nexus.secret.retention.skipped` | secret retention summary | Number of skipped cleanup attempts |
+| `nexus.secret.retention.errors` | secret retention summary | Number of cleanup errors |
+| `nexus.secret.maintenance.cleanup_expired` | secret maintenance summary | Count returned by cleanup-expired hook |
+| `nexus.secret.maintenance.cleanup_orphans` | secret maintenance summary | Count returned by orphan cleanup hook |
+| `nexus.secret.maintenance.rewrap_candidates` | secret maintenance summary | Count returned by rewrap-candidates hook |
 | `nexus.target.operation.alias` | target write events | Canonical RequestSpec operation alias |
 | `nexus.target.transport` | target runtime/write events | Transport kind: `http`, ... |
 | `nexus.target.request.kind` | target request events | `write`, `read`, `check` |
@@ -256,6 +293,7 @@
 | External declarative artifacts | `nexus.dsl.*` | YAML/spec lifecycle до runtime execution |
 | Match decision state | `nexus.match.*` | typed decision, fuzzy/topology/dedup context; not cache provider telemetry |
 | Resolve decision / plan artifact | `nexus.resolve.*`, `nexus.plan.*` | operation decision and plan summary without payload/diff values |
+| Vault / secrets runtime | `nexus.vault.*`, `nexus.secret.*` | runtime mode, rollout gate, startup readiness, secret access and cleanup lifecycle |
 | Apply execution / target write | `nexus.apply.*`, `nexus.target.*` | apply item outcomes, target operation metadata, retry/fault context |
 
 ### Разграничение `trace.id` и `labels.pipeline_run_id`

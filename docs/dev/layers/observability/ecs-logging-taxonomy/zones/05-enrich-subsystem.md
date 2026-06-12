@@ -23,6 +23,8 @@ Enrich сейчас не логирует эти события напрямую
   previews только после явного sanitization.
 - `nexus.lookup.*` описывает механизм lookup/exists/canonicalize, а владелец решения задаётся
   через `nexus.stage.name=enrich`, `nexus.subsystem=enrich` и `nexus.enrich.operation.*`.
+- `enrich-secret-fields-stored` фиксирует stage-level факт capture/store boundary, но actual vault
+  runtime write lifecycle (`secret-written`, rollout/startup policy) живёт в Zone 11.
 
 ### Сверка с текущей моделью кода
 

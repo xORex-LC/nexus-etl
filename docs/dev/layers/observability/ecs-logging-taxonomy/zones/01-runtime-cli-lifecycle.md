@@ -72,6 +72,7 @@ bootstrap → validation → init → handler → finalize → pointers/ledger �
   command-specific delivery lifecycle, не общий runtime orchestration.
 - `target-write-*` — зона target/apply execution (Zone 10).
 - `cache-refresh-*` — зона cache.
-- `vault-init-*`, `admin-gate-*` — зона vault management.
+- `vault-runtime-*`, `secret-read`, `secret-written`, retention/maintenance — зона vault/secrets runtime lifecycle (Zone 11).
+- `vault-init-*`, `admin-gate-*` — отдельная зона vault management.
 
 ---

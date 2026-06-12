@@ -60,6 +60,10 @@
 | `cache-status-completed` / `cache-status-failed` | INFO/ERROR | Получение cache status завершено/провалено |
 | `cache-drift-detected` | WARNING | Несовпадение content-hash кэша |
 | `cache-rebuild-completed` / `cache-rebuild-failed` | INFO/ERROR | Cache rebuild завершён/провален |
+| `vault-runtime-evaluated` | INFO/ERROR | Runtime intent для vault-path вычислен |
+| `vault-rollout-evaluated` | INFO/ERROR | Rollout gate для vault-path вычислен |
+| `vault-startup-completed` | INFO | Vault startup guard успешно завершён |
+| `vault-startup-failed` | ERROR | Vault startup guard / key validation завершились ошибкой |
 | `target-write-started` / `target-write-completed` | DEBUG | Lifecycle одной target write-операции |
 | `target-write-failed` | ERROR | Запись в цель провалилась после retry или без retry-path |
 | `target-request-failed` | WARNING | Отдельная неуспешная target attempt до финального результата |
@@ -80,7 +84,9 @@
 | `pending-link-expired` | DEBUG/WARNING | Pending link истёк по TTL/policy |
 | `pending-link-conflicted` | DEBUG/WARNING | Pending link переведён в conflict |
 | `storage-operation-failed` | WARNING/ERROR | Storage backend operation завершилась ошибкой |
-| `secret-read` / `secret-written` | INFO | Доступ к vault (без значений) |
+| `secret-read` / `secret-written` | DEBUG/ERROR | Runtime read/write секретов без plaintext значений |
+| `secret-retention-completed` | DEBUG | Post-apply cleanup lifecycle секретов завершён |
+| `secret-maintenance-completed` | DEBUG | Best-effort maintenance hooks vault runtime завершены |
 | `config-loaded` | INFO | `AppConfig` валидирован и загружен |
 | `container-initialised` | INFO | DI-контейнер собран |
 

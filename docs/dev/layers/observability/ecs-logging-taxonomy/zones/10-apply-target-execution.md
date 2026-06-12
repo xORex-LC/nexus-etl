@@ -16,8 +16,7 @@
 - `plan-written`, `plan-build-*`, `resolve-*` остаются в зоне 9.
 - `cache refresh` / paged target read остаются в cache/state-store taxonomy.
 - `identity sync` и `secret retention` после успешного apply не должны размывать target-write
-  taxonomy: их лучше документировать отдельными зонами identity/vault, если появится отдельная
-  observability-потребность.
+  taxonomy: они живут в отдельных identity/vault runtime зонах (secret retention — Zone 11).
 - Raw request payload, raw response payload, raw `target_id`, auth headers и secret values
   не логируются.
 
