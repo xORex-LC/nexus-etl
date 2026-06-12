@@ -95,6 +95,6 @@ candidate filtering или post-row decisions.
 - `rule-*` enrich events — зона enrich subsystem.
 - `lookup-*`, `candidate-*`, `provider-*` telemetry — зоны enrich/cache/vault/dictionary.
 - match decision telemetry — зона match decision service.
-- `apply-item` и target request lifecycle — зона target/apply subsystem.
+- `apply-item` и target request lifecycle — зона target/apply subsystem (Zone 10).
 
 ---

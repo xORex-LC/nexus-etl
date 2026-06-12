@@ -29,6 +29,16 @@
 |---|---|---|
 | `trace.id` | всегда | UUID одного command/pipeline run; canonical correlation key для всех событий данного запуска |
 
+### `http.*` / `url.*`
+| Поле | Когда | Описание |
+|---|---|---|
+| `http.request.method` | HTTP target/cache/check events | HTTP method: `GET`, `POST`, `PUT`, `PATCH`, ... |
+| `http.request.body.bytes` | когда transport умеет оценить размер request body | Размер request body в байтах; без содержимого |
+| `http.response.status_code` | HTTP target/cache/check completion/failure events | Числовой HTTP status code |
+| `http.response.body.bytes` | когда transport умеет оценить размер response body | Размер response body в байтах; без содержимого |
+| `url.full` | endpoint-level runtime/check events | Полный endpoint URL, если он не содержит секретов и query-sensitive данных |
+| `url.path` | request/operation events | Path или path-template без чувствительных query/ids |
+
 ### `error.*` (только ERROR/CRITICAL) — **два источника**
 `error.*` собирается ИЛИ из ручных kwargs на call-site (`error_type`/`error`/`diag_code` — так уже
 пишет, напр., [orchestrator.py:494](../../../../../connector/delivery/cli/runtime/orchestrator.py)),
@@ -184,6 +194,41 @@
 | `nexus.plan.item.changes_count` | plan item events | Количество changes for update item |
 | `nexus.plan.item.secret_fields_count` | plan item events | Количество secret field refs in plan item |
 | `nexus.plan.item.target_id_fingerprint` | plan item events | Safe fingerprint target id; raw target id не логировать |
+| `nexus.apply.op` | apply item events | `create`, `update` |
+| `nexus.apply.status` | apply item events | `ok`, `warning`, `failed` |
+| `nexus.apply.target_id_fingerprint` | apply item events | Safe fingerprint target id during apply; raw target id forbidden |
+| `nexus.apply.items_total` | apply summary | Количество реально обработанных plan items |
+| `nexus.apply.created` | apply summary | Количество successful create actions |
+| `nexus.apply.updated` | apply summary | Количество successful update actions |
+| `nexus.apply.failed` | apply summary | Количество failed apply items |
+| `nexus.apply.skipped` | apply summary | Количество skipped items/rows inherited from plan summary or apply policy |
+| `nexus.apply.rows_with_warnings` | apply summary | Количество rows с warning outcome |
+| `nexus.apply.fatal_error` | apply summary | Boolean summary bit: был ли fatal error по stop policy |
+| `nexus.apply.max_actions` | apply start/summary | Runtime cap for processed items |
+| `nexus.apply.stop_on_first_error` | apply start/summary | Boolean stop policy at use-case level |
+| `nexus.apply.dry_run` | apply start/summary | Boolean dry-run mode |
+| `nexus.target.operation.alias` | target write events | Canonical RequestSpec operation alias |
+| `nexus.target.transport` | target runtime/write events | Transport kind: `http`, ... |
+| `nexus.target.request.kind` | target request events | `write`, `read`, `check` |
+| `nexus.target.request.payload_fields_count` | target request events | Количество top-level полей в request payload object |
+| `nexus.target.request.payload_items_count` | target request events | Количество элементов, если payload — list/collection |
+| `nexus.target.request.payload_redacted_fields` | target request events | Количество полей, замаскированных redaction policy |
+| `nexus.target.answer_code` | target write events | Non-HTTP or string-coded answer code |
+| `nexus.target.response.format` | target write events | `json`, `text`, `none`, ... |
+| `nexus.target.response.fields_count` | target response events | Количество top-level полей в response object |
+| `nexus.target.response.items_count` | target response events | Количество items в response list/rows payload |
+| `nexus.target.response.preview` | target failure events only | Sanitized + truncated preview body/response; только если redaction policy разрешает |
+| `nexus.target.response.preview_present` | target response/failure events | Boolean: есть ли пригодный safe preview |
+| `nexus.target.fault_kind` | target failed/retry events | `AUTH`, `DATA`, `THROTTLE`, `TRANSIENT`, ... |
+| `nexus.target.error_reason` | target failed events | Provider/driver-specific normalized reason |
+| `nexus.target.retry.attempt` | target retry/final events | Current retry ordinal for this write |
+| `nexus.target.retry.max_attempts` | target retry/final events | Configured retry ceiling |
+| `nexus.target.retry.directive` | target retry/failure events | `RETRY_BACKOFF`, `RETRY_AFTER`, `FAIL`, `ESCALATE` |
+| `nexus.target.retry.delay_ms` | target retry events | Planned delay before next attempt |
+| `nexus.target.retry.mutation` | target retry events | Optional retry mutation applied to RequestSpec |
+| `nexus.target.stats.requests_total` | apply summary | Total target requests issued during apply run |
+| `nexus.target.stats.retries_total` | apply summary | Total retries executed during apply run |
+| `nexus.target.stats.failures_total` | apply summary | Total target operations ended in failure during apply run |
 | `nexus.*` | по необходимости | Project-specific поля, для которых нет подходящего ECS canonical field |
 
 ### `labels.*` (лёгкая корреляция и простые keyword-теги)
@@ -211,6 +256,7 @@
 | External declarative artifacts | `nexus.dsl.*` | YAML/spec lifecycle до runtime execution |
 | Match decision state | `nexus.match.*` | typed decision, fuzzy/topology/dedup context; not cache provider telemetry |
 | Resolve decision / plan artifact | `nexus.resolve.*`, `nexus.plan.*` | operation decision and plan summary without payload/diff values |
+| Apply execution / target write | `nexus.apply.*`, `nexus.target.*` | apply item outcomes, target operation metadata, retry/fault context |
 
 ### Разграничение `trace.id` и `labels.pipeline_run_id`
 

@@ -30,6 +30,7 @@
 - [Zone 7: DSL Artifact Lifecycle](./ecs-logging-taxonomy/zones/07-dsl-artifact-lifecycle.md)
 - [Zone 8: Match Decision Service](./ecs-logging-taxonomy/zones/08-match-decision-service.md)
 - [Zone 9: Resolve / Plan Decision & Artifact Lifecycle](./ecs-logging-taxonomy/zones/09-resolve-plan-lifecycle.md)
+- [Zone 10: Apply Execution / Target Write Lifecycle](./ecs-logging-taxonomy/zones/10-apply-target-execution.md)
 
 ### Cross-Cutting Reference
 

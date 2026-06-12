@@ -46,6 +46,9 @@
 | `plan-item-skipped` | DEBUG | Resolved row skipped, plan item не создан |
 | `plan-item-failed` | DEBUG | Resolved result excluded from plan due to errors |
 | `plan-written` / `plan-write-failed` | INFO/ERROR | Plan artifact записан/не записан |
+| `apply-started` | INFO | Старт apply-цикла по готовому plan artifact |
+| `apply-item` | DEBUG/WARNING/ERROR | Per-item outcome apply use-case |
+| `apply-completed` | INFO/ERROR | Apply summary завершён с агрегированным outcome |
 | `cache-hit` / `cache-miss` | DEBUG | Legacy/compat результат кэш-лукапа; новый provider path — `lookup-completed` |
 | `cache-refresh-started` / `cache-refresh-completed` | INFO | Старт/завершение cache refresh |
 | `cache-refresh-failed` | ERROR | Cache refresh завершился ошибкой |
@@ -57,9 +60,10 @@
 | `cache-status-completed` / `cache-status-failed` | INFO/ERROR | Получение cache status завершено/провалено |
 | `cache-drift-detected` | WARNING | Несовпадение content-hash кэша |
 | `cache-rebuild-completed` / `cache-rebuild-failed` | INFO/ERROR | Cache rebuild завершён/провален |
-| `target-write-started` / `target-write-completed` | INFO | Запись в целевую систему (apply) |
-| `target-write-failed` | ERROR | Запись в цель провалилась после retry |
-| `retry-attempt` | WARNING | Транзиентная ошибка, повтор |
+| `target-write-started` / `target-write-completed` | DEBUG | Lifecycle одной target write-операции |
+| `target-write-failed` | ERROR | Запись в цель провалилась после retry или без retry-path |
+| `target-request-failed` | WARNING | Отдельная неуспешная target attempt до финального результата |
+| `retry-attempt` | DEBUG | Запланирован повтор target-операции |
 | `record-skipped` | WARNING | Запись отброшена (с причиной) |
 | `enrich-record-completed` | DEBUG | Enrich обработал одну запись и сформировал summary |
 | `enrich-operation-completed` | TRACE | Enrich operation/rule выполнена для записи |

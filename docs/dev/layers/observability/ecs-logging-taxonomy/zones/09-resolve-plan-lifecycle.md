@@ -12,7 +12,7 @@
 - Resolve taxonomy отвечает за per-record решение операции и link/pending outcomes.
 - Plan taxonomy отвечает за build/write summary и plan artifact lifecycle.
 - Identity match status и fuzzy/topology candidate matching остаются в match taxonomy.
-- Target HTTP/write/retry остаётся в apply/target taxonomy.
+- Target HTTP/write/retry остаётся в apply/target taxonomy (Zone 10).
 - Pending lifecycle использует общий `nexus.pending.*`, но owner action может быть resolve-specific,
   когда pending создаётся или переигрывается внутри resolve flow.
 - Raw payload, diff values, source_ref values, pending payload и target ids не логируются.

@@ -71,7 +71,7 @@
 
 - `stage-started`, `stage-completed`, `stage-failed` — отдельная зона pipeline stage lifecycle.
 - `cache-refresh-*`, `cache-status-*`, `cache-open-failed` — зона cache.
-- `apply-item`, `apply-completed`, `target-write-*` — зона target/apply execution.
+- `apply-item`, `apply-completed`, `target-write-*` — зона target/apply execution (Zone 10).
 - `dictionary-lookup`, `lookup-hit/miss`, candidate telemetry — зона enrich/dictionary.
 
 ---
