@@ -80,6 +80,119 @@
 | `nexus.record.identity.value_fingerprint` | record-level identity-aware events | Safe fingerprint identity value; raw identity value не логируется |
 | `nexus.record.source.kind` | source/record provenance events | Тип origin: `csv`, `plan`, `pending`, `api`, ... |
 | `nexus.record.source.path` | source lifecycle / sparse record diagnostics | Относительный путь источника; не эмитить на каждую запись без необходимости |
+| `nexus.source.type` | source ingestion events | Runtime source type: `file`, `db`, `api`; current supported ingest path is `file` |
+| `nexus.source.format` | source ingestion events | Physical source format: `csv`, ... |
+| `nexus.source.location` | source resolution events | Logical `source.location` from `SourceSpec`, not per-record |
+| `nexus.source.path_kind` | source resolution events | `relative`, `absolute`, `logical`, `unknown` |
+| `nexus.source.encoding` | CSV source events | Encoding used to open CSV |
+| `nexus.source.delimiter` | CSV source events | Single-character CSV delimiter, escaped if needed |
+| `nexus.source.has_header` | CSV source events | Boolean source config |
+| `nexus.source.header.present` | header/contract events | Boolean observed header state |
+| `nexus.source.columns.count` | header/contract/read summary | Observed physical or synthetic column count |
+| `nexus.source.columns.fingerprint` | header/contract/read summary | Safe hash of ordered column names; do not log raw header list by default |
+| `nexus.source.declared_fields_count` | source contract events | Number of fields declared in `SourceSpec.fields` |
+| `nexus.source.missing_columns_count` | source contract events | Count of declared fields missing in observed header/columns |
+| `nexus.source.extra_columns_count` | source contract events | Count of observed header/columns absent from declared fields |
+| `nexus.source.records_total` | source read completion/failure | Records yielded before completion/failure |
+| `nexus.source.blank_rows_skipped` | source read summary | Blank CSV rows skipped by reader |
+| `nexus.source.rows_with_nulls` | source read summary | Rows containing at least one null-normalized value |
+| `nexus.source.null_values_total` | source read summary | Total values normalized to null by `parse_null()` |
+| `nexus.source.record.fields_count` | source per-record/sampled events | Number of fields in one `SourceRecord.values` |
+| `nexus.source.record.null_fields_count` | source per-record/sampled events | Number of null fields in one `SourceRecord.values` |
+| `nexus.source.record.empty_fields_count` | source per-record/sampled events | Number of empty raw fields if tracked before null normalization |
+| `nexus.source.failure.line_no` | source failure events | CSV line where structural failure happened, when known |
+| `nexus.source.failure.expected_columns` | source column-count failures | Expected column count |
+| `nexus.source.failure.actual_columns` | source column-count failures | Actual column count |
+| `nexus.source.failure.layer` | source failure events | `dsl`, `resolver`, `reader`, `extractor` |
+| `nexus.source.reason` | source failures/degraded events | Stable reason: `file_not_found`, `missing_header`, `column_count_mismatch`, `decode_error`, ... |
+| `nexus.diagnostic.code` | diagnostics bridge events | Domain diagnostic code when keeping it separate from normalized `error.code` |
+| `nexus.normalize.rules_total` | normalize record summary | Количество compiled normalize rules for current dataset/spec |
+| `nexus.normalize.rules_applied` | normalize record summary | Количество rules with non-empty op chain applied to the row |
+| `nexus.normalize.rules_skipped` | normalize record/rule events | Количество skipped rules; reason in `nexus.normalize.skip.reason` |
+| `nexus.normalize.rules_failed` | normalize record/rule failure events | Количество rules that emitted normalize-local issues |
+| `nexus.normalize.fields_touched_count` | normalize record summary / validation | Количество fields touched by normalize rules |
+| `nexus.normalize.changed_fields_count` | normalize record summary | Количество fields whose normalized value differs from input; no values |
+| `nexus.normalize.null_fields_count` | normalize record summary | Количество null fields after normalize, if computed |
+| `nexus.normalize.warnings_count` | normalize record summary | Normalize-local warning count for one record |
+| `nexus.normalize.errors_count` | normalize record summary | Normalize-local error count for one record |
+| `nexus.normalize.rule.field` | normalize rule events | Field name affected by normalize rule; value forbidden |
+| `nexus.normalize.rule.index` | normalize rule events | Rule ordinal inside compiled normalize rules |
+| `nexus.normalize.rule.ops_count` | normalize rule events | Number of operations in the rule chain |
+| `nexus.normalize.rule.on_error` | normalize rule events | Rule error policy: `error` or `warn` |
+| `nexus.normalize.rule.op_names` | optional normalize TRACE events | Operation names only; no args by default |
+| `nexus.normalize.op.name` | optional normalize operation TRACE events | Single DSL operation name when instrumenting operation-chain execution |
+| `nexus.normalize.op.index` | optional normalize operation TRACE events | Operation ordinal inside rule chain |
+| `nexus.normalize.value.input_type` | normalize rule events | Safe type name before applying rule; no value |
+| `nexus.normalize.value.output_type` | normalize rule events | Safe type name after applying rule; no value |
+| `nexus.normalize.value.changed` | normalize rule events | Boolean value-change signal without before/after values |
+| `nexus.normalize.validation.scope` | normalize validation events | `touched_fields` or `full_row` from build options |
+| `nexus.normalize.validation.fields_checked_count` | normalize validation events | Number of sink fields checked |
+| `nexus.normalize.validation.issues_count` | normalize validation failure events | Total sink validation issues |
+| `nexus.normalize.validation.required_missing_count` | normalize validation failure events | Count of required/nullability failures |
+| `nexus.normalize.validation.type_invalid_count` | normalize validation failure events | Count of type mismatch failures |
+| `nexus.normalize.skip.reason` | normalize skipped events | `upstream_failed`, `no_ops`, future policy reason |
+| `nexus.normalize.failure.reason` | normalize failed/degraded events | `dsl_op_failed`, `sink_required_missing`, `sink_type_invalid`, `boundary_error`, ... |
+| `nexus.normalize.upstream.errors_count` | normalize upstream skip events | Count of upstream errors carried into Normalize |
+| `nexus.normalize.upstream.warnings_count` | normalize upstream skip events | Count of upstream warnings carried into Normalize |
+| `nexus.topology.pipeline_dataset` | topology activation/bootstrap events | Dataset currently processed by command |
+| `nexus.topology.dataset` | topology runtime events | Dataset that owns topology spec/snapshot |
+| `nexus.topology.side` | topology build/readiness events | `source` or `target` |
+| `nexus.topology.consumer` | topology comparison events | Consumer path: `match`, `resolve`, `source_validation` |
+| `nexus.topology.activation.sources` | topology activation/bootstrap events | Activation sources: `match`, `resolve`, `source_validation` |
+| `nexus.topology.activation.capability_enabled` | topology activation events | Whether dataset topology capability is enabled |
+| `nexus.topology.activation.requires_source` | topology activation/bootstrap events | Whether source topology validation is required |
+| `nexus.topology.activation.requires_target` | topology activation/bootstrap events | Whether target topology snapshot is required |
+| `nexus.topology.activation.target_failure_is_hard` | topology activation events | Whether target readiness failure short-circuits command |
+| `nexus.topology.activation.skipped_reason` | topology skip events | `command_not_supported`, `checkpoint_before_topology_consumer`, `capability_disabled`, ... |
+| `nexus.topology.activation.error` | topology activation failure events | Safe activation error summary |
+| `nexus.topology.source.mode` | topology spec/runtime summary | `path_columns` or `adjacency_list` |
+| `nexus.topology.source.path_columns_count` | topology spec/runtime summary | Number of source path columns; names optional elsewhere |
+| `nexus.topology.source.node_id_field` | source validation/filter events | Source node id field name only |
+| `nexus.topology.source.node_id_fingerprint` | source validation/filter events | Safe fingerprint of source node id |
+| `nexus.topology.source.nodes_count` | source validation summary | Number of source adjacency nodes |
+| `nexus.topology.source.anchored_count` | source validation summary | Number of source nodes anchored to target/root |
+| `nexus.topology.source.dropped_count` | source validation/filter summary | Number of dropped/unanchored source nodes |
+| `nexus.topology.source.drop.reason` | source filter events | `missing_parent`, `unanchored_subtree`, `cycle` |
+| `nexus.topology.source.dropped_by_reason.*` | source validation summary | Count per drop reason |
+| `nexus.topology.source.on_unanchored` | source validation/filter events | Policy: `skip`, `warn`, `hard_error` |
+| `nexus.topology.target.mode` | topology spec/runtime summary | Currently `adjacency_list` |
+| `nexus.topology.target.node_id_field` | target build start events | Target node id field name only |
+| `nexus.topology.target.parent_id_field` | target build start events | Target parent id field name only |
+| `nexus.topology.target.label_field` | target build start events | Target label field name only |
+| `nexus.topology.target.membership_count` | source validation summary | Count of target membership ids read for anchoring |
+| `nexus.topology.normalization.version` | topology canonicalizer/build events | Safe normalization version/fingerprint |
+| `nexus.topology.canonicalizer.ops_count` | topology canonicalizer events | Number of canonicalization ops |
+| `nexus.topology.canonicalizer.op_names` | topology canonicalizer events | Operation names only; no args |
+| `nexus.topology.nodes_count` | topology build/readiness events | Number of nodes in topology snapshot |
+| `nexus.topology.roots_count` | topology build completion events | Number of roots in topology snapshot |
+| `nexus.topology.max_depth` | topology build completion events | Maximum computed depth in topology snapshot |
+| `nexus.topology.built_sides` | topology bootstrap completion events | Built artifacts: `source`, `source_validation`, `target` |
+| `nexus.topology.bootstrap.status` | topology bootstrap completion events | `ok`, `warn`, `error`, `skipped` |
+| `nexus.topology.errors_count` | topology bootstrap/source validation summary | Count of topology diagnostics with error severity |
+| `nexus.topology.warnings_count` | topology bootstrap/source validation summary | Count of topology diagnostics with warning severity |
+| `nexus.topology.cache_snapshot_revision` | topology readiness/build metadata | Safe cache revision/run id if non-sensitive |
+| `nexus.topology.readiness.ready` | topology readiness events | Boolean readiness result |
+| `nexus.topology.readiness.decision` | topology readiness events | `ready`, `required_failure`, `optional_skip` |
+| `nexus.topology.readiness.reason` | topology readiness events | `ready`, `snapshot_empty`, `max_age_exceeded`, ... |
+| `nexus.topology.freshness.present` | topology readiness events | Whether freshness metadata exists |
+| `nexus.topology.freshness.age_seconds` | topology readiness events | Target snapshot age in seconds |
+| `nexus.topology.freshness.max_age_seconds` | topology readiness events | Policy threshold |
+| `nexus.topology.graph.algorithm` | topology graph diagnostics | Cycle/topological algorithm name, e.g. `graphlib` |
+| `nexus.topology.graph.has_cycle` | topology graph diagnostics | Boolean cycle check result |
+| `nexus.topology.node.id_fingerprint` | topology graph diagnostics | Safe fingerprint of topology node id |
+| `nexus.topology.node.synthetic_id_fingerprint` | source path graph diagnostics | Safe fingerprint of generated source node id |
+| `nexus.topology.node.canonical_name_fingerprint` | topology graph diagnostics | Safe fingerprint of canonical name/label |
+| `nexus.topology.parent.id_fingerprint` | topology graph diagnostics | Safe fingerprint of parent topology node id |
+| `nexus.topology.path.depth` | topology path/comparison events | Number of canonical path segments |
+| `nexus.topology.path.fingerprint` | topology path/comparison events | Safe fingerprint of canonical path; no segments |
+| `nexus.topology.comparison.mode` | topology consumer events | `exact_canonical_path`, `exact_leaf_parent_chain`, `exact_leaf_root_depth`, `ambiguous`, `no_match` |
+| `nexus.topology.comparison.reason` | topology consumer events | Safe reason from comparison core |
+| `nexus.topology.comparison.candidates_count` | topology consumer events | Number of target candidates considered |
+| `nexus.topology.comparison.matched_count` | topology consumer events | Number of candidates matched by topology |
+| `nexus.topology.comparison.ambiguous` | topology consumer events | Boolean ambiguity result |
+| `nexus.topology.comparison.ladder` | topology consumer events | Ordered comparison mode names from policy |
+| `nexus.topology.comparison.rungs_evaluated` | topology consumer events | Number of ladder rungs evaluated |
+| `nexus.topology.failure.reason` | topology failure events | Stable failure reason |
 | `nexus.enrich.operation.name` | enrich record/rule events | Имя compiled enrich operation / DSL rule (`EnrichmentOperation.name`) |
 | `nexus.enrich.operation.type` | enrich rule events | `COMPUTE`, `LOOKUP`, `GENERATE`, `MEMBERSHIP`, ... |
 | `nexus.enrich.operation.outcome` | enrich rule/record events | `APPLIED`, `SKIPPED`, `WARNED`, `FAILED`, `NEEDS_RESOLVE` |
@@ -244,6 +357,37 @@
 | `nexus.secret.maintenance.cleanup_expired` | secret maintenance summary | Count returned by cleanup-expired hook |
 | `nexus.secret.maintenance.cleanup_orphans` | secret maintenance summary | Count returned by orphan cleanup hook |
 | `nexus.secret.maintenance.rewrap_candidates` | secret maintenance summary | Count returned by rewrap-candidates hook |
+| `nexus.vault.management.operation` | vault-management events | `init`, `status`, `rotate`, `rewrap` |
+| `nexus.vault.management.operation_id` | vault-management mutation events | Internal `vault_mgmt_<uuid>` operation id, distinct from `trace.id` |
+| `nexus.vault.management.dry_run` | vault-management events | CLI dry-run mode |
+| `nexus.vault.management.force` | vault-management events | CLI force flag skipped confirm step |
+| `nexus.vault.management.non_interactive` | vault-management/admin gate events | CLI/admin input mode |
+| `nexus.vault.management.verify_requested` | vault-management events | Whether post-verify was requested |
+| `nexus.vault.management.verified` | vault status events | Whether status included unseal/startup verify |
+| `nexus.vault.management.can_apply` | vault dry-run events | Dry-run applicability decision |
+| `nexus.vault.management.initialized` | vault status/dry-run events | Whether unseal metadata exists |
+| `nexus.vault.management.active_key_version` | vault-management events | Safe active master key version identifier |
+| `nexus.vault.management.key_versions_count` | vault status events | Number of available persisted key versions |
+| `nexus.vault.management.dek_total` | vault status/rotate/rewrap events | Number of DEK records |
+| `nexus.vault.management.dek_rewrap_required` | vault status/dry-run events | DEK records requiring rewrap to active key |
+| `nexus.vault.management.dek_rewrapped_count` | vault rotate/rewrap events | Aggregate count of DEK records rewrapped |
+| `nexus.vault.management.rotated_at` | vault init/rotate result events | UTC timestamp returned by lifecycle result |
+| `nexus.vault.management.last_rotation_result` | vault status/result events | Last rotation state: `ok`, `failed`, `rotating`, ... |
+| `nexus.vault.management.last_rotation_reason` | vault status/result events | Stable safe reason for last rotation state |
+| `nexus.vault.management.last_rotation_run_id` | vault status events | Previous management operation id if available |
+| `nexus.vault.management.reason` | vault-management failures/degraded decisions | Stable safe reason from domain details |
+| `nexus.vault.admin_gate.required` | admin gate events | Boolean: admin password gate enforced by policy |
+| `nexus.vault.admin_gate.mode` | admin gate events | `interactive` or `non_interactive` |
+| `nexus.vault.admin_gate.reason` | admin gate failure/skip events | Stable safe reason |
+| `nexus.vault.admin_gate.hash_source` | admin gate events | `file`, `env`, `none`; never hash value |
+| `nexus.vault.admin_gate.hash_file_configured` | admin gate events | Boolean: hash file was configured |
+| `nexus.vault.admin_gate.file_mode` | admin gate config failures | Safe POSIX mode string, e.g. `0o600` |
+| `nexus.vault.unseal.kdf_algo` | unseal verify/init/rotate events | KDF algorithm, e.g. `argon2id` |
+| `nexus.vault.unseal.kdf_time_cost` | unseal verify/init/rotate events | Argon2id time cost without salts |
+| `nexus.vault.unseal.kdf_memory_cost_kib` | unseal verify/init/rotate events | Argon2id memory cost without salts |
+| `nexus.vault.unseal.kdf_parallelism` | unseal verify/init/rotate events | Argon2id parallelism without salts |
+| `nexus.vault.unseal.kdf_hash_len` | unseal verify/init/rotate events | Derived key length metadata |
+| `nexus.vault.unseal.hmac_algo` | unseal verify/init/rotate events | HMAC algorithm name, never digest |
 | `nexus.target.operation.alias` | target write events | Canonical RequestSpec operation alias |
 | `nexus.target.transport` | target runtime/write events | Transport kind: `http`, ... |
 | `nexus.target.request.kind` | target request events | `write`, `read`, `check` |
@@ -288,12 +432,16 @@
 | Business dataset | `event.dataset` | лучший ECS-fit для имени обрабатываемого датасета |
 | Pipeline stage | `nexus.stage.name` | у внутренней стадии нет устойчивого ECS canonical field; это project-specific execution axis |
 | Source/business record reference | `nexus.record.*` | у ECS нет точного canonical объекта для ETL source-row provenance |
+| Extract / source ingestion | `file.*`, `nexus.source.*`, sparse `nexus.record.source.*` | physical source location, CSV profile, stream counters and structural source failures |
+| Normalize / data quality stage | `nexus.normalize.*` | runtime rule application, touched fields, type/nullability validation and safe data-quality counters |
+| Topology subsystem | `nexus.topology.*` | topology activation, graph build/readiness, source anchoring and match/resolve comparison signal |
 | Persistent identity/pending state | `nexus.identity.*`, `nexus.pending.*` | это resolver/apply state, а не refreshable cache |
 | Low-level backend/storage | `nexus.storage.*` | SQLite/JSONL operational layer, отдельно от business subsystem |
 | External declarative artifacts | `nexus.dsl.*` | YAML/spec lifecycle до runtime execution |
 | Match decision state | `nexus.match.*` | typed decision, fuzzy/topology/dedup context; not cache provider telemetry |
 | Resolve decision / plan artifact | `nexus.resolve.*`, `nexus.plan.*` | operation decision and plan summary without payload/diff values |
-| Vault / secrets runtime | `nexus.vault.*`, `nexus.secret.*` | runtime mode, rollout gate, startup readiness, secret access and cleanup lifecycle |
+| Vault / secrets runtime | `nexus.vault.runtime.*`, `nexus.vault.rollout.*`, `nexus.vault.startup.*`, `nexus.secret.*` | runtime mode, rollout gate, startup readiness, secret access and cleanup lifecycle |
+| Vault management | `nexus.vault.management.*`, `nexus.vault.admin_gate.*`, `nexus.vault.unseal.*` | manual init/status/rotate/rewrap and admin access lifecycle |
 | Apply execution / target write | `nexus.apply.*`, `nexus.target.*` | apply item outcomes, target operation metadata, retry/fault context |
 
 ### Разграничение `trace.id` и `labels.pipeline_run_id`

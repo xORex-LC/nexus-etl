@@ -9,6 +9,34 @@
 | `stage-started` | INFO | Старт стадии пайплайна |
 | `stage-completed` | INFO | Завершение стадии с `event.outcome`+`event.duration` |
 | `stage-failed` | ERROR | Стадия упала с необработанным исключением |
+| `source-resolved` / `source-resolution-failed` | INFO/ERROR | Runtime source location resolved / failed |
+| `source-read-started` / `source-read-completed` / `source-read-failed` | INFO/ERROR | Physical source stream lifecycle |
+| `source-header-read` | DEBUG/WARNING | CSV header/column profile observed |
+| `source-contract-evaluated` | INFO/DEBUG/WARNING | Observed source columns compared with source contract |
+| `source-stream-wrapped` / `source-stream-failed` | DEBUG/ERROR | Extractor converted source stream into `TransformResult` boundary |
+| `source-record-read` / `source-blank-row-skipped` | TRACE | Optional sampled per-record/blank-row source diagnostics |
+| `normalize-record-completed` | DEBUG/WARNING | Normalize обработал одну запись без fatal diagnostics |
+| `normalize-record-failed` | DEBUG/ERROR | Normalize завершил запись fatal diagnostics или boundary error |
+| `normalize-record-skipped` | DEBUG | Normalize пропустил запись из-за upstream failure/policy |
+| `normalize-rule-applied` | TRACE | Одна normalize rule / operation chain успешно применена |
+| `normalize-rule-skipped` | TRACE/DEBUG | Normalize rule пропущена (`no_ops` или future policy) |
+| `normalize-rule-failed` | DEBUG/WARNING/ERROR | Normalize rule / operation chain вернула DSL/runtime issue |
+| `normalize-validation-completed` | DEBUG | Sink validation после Normalize завершилась без issues |
+| `normalize-validation-failed` | DEBUG/WARNING/ERROR | Sink validation после Normalize вернула issues |
+| `topology-activation-evaluated` | DEBUG/INFO/ERROR | Topology requirement/capability decision вычислен |
+| `topology-bootstrap-started` / `topology-bootstrap-completed` | INFO | Pre-handler topology bootstrap lifecycle |
+| `topology-bootstrap-skipped` / `topology-bootstrap-short-circuited` | DEBUG/ERROR | Bootstrap не нужен или остановил команду диагностикой |
+| `topology-spec-loaded` | INFO/DEBUG | Runtime summary загруженной topology spec |
+| `topology-canonicalizer-compiled` | INFO/DEBUG | Topology canonicalizer compiled for runtime |
+| `topology-target-build-started` / `topology-target-build-completed` | INFO | Target topology snapshot build lifecycle |
+| `topology-readiness-evaluated` | INFO/WARNING/ERROR | Target topology readiness/freshness decision |
+| `topology-source-validation-completed` | INFO/WARNING/ERROR | Source anchoring validation summary |
+| `topology-node-ingested` / `topology-path-ingested` | TRACE/DEBUG | Optional graph build diagnostics without raw ids |
+| `topology-cycle-checked` | DEBUG | Target graph cycle check completed |
+| `topology-source-row-filtered` | DEBUG/WARNING/ERROR | Source topology filter marked/dropped one row |
+| `topology-comparison-completed` | DEBUG/TRACE | Shared topology comparison result for consumers |
+| `topology-match-refined` | DEBUG | Topology signal refined match decision |
+| `topology-link-resolution-completed` | DEBUG/WARNING/ERROR | Topology signal resolved/disambiguated a resolve link |
 | `spec-loaded` / `spec-registry-built` / `spec-validation-failed` | DEBUG/INFO/ERROR | Legacy/compat generic spec actions; новый путь использует `dsl-*` |
 | `dsl-registry-loaded` / `dsl-registry-built` | DEBUG/INFO | DSL registry загружен/собран |
 | `dsl-registry-build-failed` | ERROR | Сборка DSL registry завершилась ошибкой |
@@ -64,6 +92,14 @@
 | `vault-rollout-evaluated` | INFO/ERROR | Rollout gate для vault-path вычислен |
 | `vault-startup-completed` | INFO | Vault startup guard успешно завершён |
 | `vault-startup-failed` | ERROR | Vault startup guard / key validation завершились ошибкой |
+| `admin-gate-skipped` / `admin-gate-passed` / `admin-gate-failed` | INFO/WARNING/ERROR | Проверка admin-доступа для `vault-management` |
+| `vault-init-started` / `vault-init-completed` / `vault-init-failed` | INFO/ERROR | Первичная инициализация vault-management metadata |
+| `vault-status-completed` / `vault-status-failed` | INFO/ERROR | Read-only snapshot состояния vault-management |
+| `vault-rotate-started` / `vault-rotate-completed` / `vault-rotate-failed` | INFO/ERROR | Смена unseal passphrase и rewrap DEK |
+| `vault-rewrap-started` / `vault-rewrap-completed` / `vault-rewrap-failed` | INFO/ERROR | Rewrap DEK без смены passphrase |
+| `vault-dry-run-evaluated` | INFO | Dry-run применимость manual vault operation вычислена |
+| `vault-unseal-verified` / `vault-unseal-failed` | INFO/WARNING/ERROR | Проверка unseal passphrase against persisted metadata |
+| `vault-post-verify-completed` / `vault-post-verify-failed` | INFO/ERROR | Post-verify startup readiness для keyring завершён |
 | `target-write-started` / `target-write-completed` | DEBUG | Lifecycle одной target write-операции |
 | `target-write-failed` | ERROR | Запись в цель провалилась после retry или без retry-path |
 | `target-request-failed` | WARNING | Отдельная неуспешная target attempt до финального результата |

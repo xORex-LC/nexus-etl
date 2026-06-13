@@ -32,6 +32,10 @@
 - [Zone 9: Resolve / Plan Decision & Artifact Lifecycle](./ecs-logging-taxonomy/zones/09-resolve-plan-lifecycle.md)
 - [Zone 10: Apply Execution / Target Write Lifecycle](./ecs-logging-taxonomy/zones/10-apply-target-execution.md)
 - [Zone 11: Vault / Secrets Runtime Lifecycle](./ecs-logging-taxonomy/zones/11-vault-secrets-runtime-lifecycle.md)
+- [Zone 12: Vault Management Lifecycle](./ecs-logging-taxonomy/zones/12-vault-management-lifecycle.md)
+- [Zone 13: Extract / Source Ingestion](./ecs-logging-taxonomy/zones/13-extract-source-ingestion.md)
+- [Zone 14: Normalize / Data Quality Stage](./ecs-logging-taxonomy/zones/14-normalize-stage.md)
+- [Zone 15: Topology Subsystem](./ecs-logging-taxonomy/zones/15-topology-subsystem.md)
 
 ### Cross-Cutting Reference
 

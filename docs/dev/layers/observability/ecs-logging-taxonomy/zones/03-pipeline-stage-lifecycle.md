@@ -20,7 +20,7 @@ candidate filtering или post-row decisions.
 - Stage zone допустима и для full pipeline run, и для debug-команд, которые останавливаются на
   конкретной стадии.
 - `extract` сейчас является source/adapter перед `PipelineOrchestrator`, а не stage с
-  `stage_name`; для него нужна отдельная input/source taxonomy или отдельное wiring-решение.
+  `stage_name`; его input/source taxonomy описана в Zone 13.
 - `plan` и `apply` не являются transform stage lifecycle в текущей модели: `plan` относится к
   PlanBuilder/command zone, `apply` — к target/apply subsystem.
 
@@ -91,6 +91,7 @@ candidate filtering или post-row decisions.
 
 ### Что останется на следующие зоны
 
+- Extract/source ingestion lifecycle — Zone 13.
 - record context для `record-*`, `rule-*`, diagnostics/reporting/apply — зона record context.
 - `rule-*` enrich events — зона enrich subsystem.
 - `lookup-*`, `candidate-*`, `provider-*` telemetry — зоны enrich/cache/vault/dictionary.

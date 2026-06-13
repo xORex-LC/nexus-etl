@@ -16,8 +16,8 @@ enrich/apply. Она отвечает на вопрос: **включили ли
 - `enrich-secret-fields-stored` остаётся в enrich taxonomy: это stage-level бизнес-сигнал, что
   enrich собрал и передал secret candidates в store boundary.
 - `apply-item`, `apply-completed`, `target-write-*` остаются в apply/target taxonomy.
-- `vault-init-*`, `vault-rotate-*`, `vault-rewrap-*`, `admin-gate-*` не входят сюда: это будущая
-  зона vault management.
+- `vault-init-*`, `vault-status-*`, `vault-rotate-*`, `vault-rewrap-*`, `admin-gate-*` не входят
+  сюда: это [Zone 12](./12-vault-management-lifecycle.md).
 - `vault-startup-failed` остаётся общим command/runtime failure event из Zone 1, но его
   детальный field profile для `vault` owner-смысла определяется этой зоной.
 - Plaintext secret values, passphrase, master key material, DEK plaintext, ciphertext, raw
@@ -135,10 +135,13 @@ enrich/apply. Она отвечает на вопрос: **включили ли
 - `ApplySummary.retention_stats` and `VaultRetentionService.run_maintenance()` already provide
   aggregate counters for `secret-retention-completed` / `secret-maintenance-completed`.
 
-### Что останется на следующую vault-зону
+### Что вынесено в vault-management зону
 
-- `vault-init-*`, `vault-rotate-*`, `vault-rewrap-*` — manual lifecycle operations.
+- `vault-init-*`, `vault-status-*`, `vault-rotate-*`, `vault-rewrap-*` — manual lifecycle operations.
 - `admin-gate-*` — password gate and manual access control telemetry.
-- Post-verify / post-rotate semantics for `vault-management status --verify`.
+- `vault-unseal-*`, `vault-post-verify-*` для `vault-management status --verify`,
+  `init`, `rotate`, `rewrap`.
+
+См. [Zone 12: Vault Management Lifecycle](./12-vault-management-lifecycle.md).
 
 ---

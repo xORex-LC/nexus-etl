@@ -67,6 +67,45 @@
 | cache_command_service.py:120 | info | Cache clear completed | `cache-clear-completed` | success |
 | cache_command_service.py:134 | error | Cache clear failed | `cache-clear-failed` | failure |
 
+### Extract / source ingestion (`component` = command-specific; planned ECS mapping)
+| Call-site | Lvl | message сейчас | event.action | outcome |
+|---|---|---|---|---|
+| runtime/orchestrator.py:1363–1388 | — | source preflight validation | `source-resolved` / `source-resolution-failed` | success/failure |
+| datasets/yaml_spec.py:59–80 | — | build CSV record source | `source-resolved` | success |
+| infra/sources/csv_reader.py:24–65 | — | CSV iterator open/read/parse | `source-read-started` / `source-header-read` / `source-read-completed` / `source-read-failed` | success/failure |
+| infra/sources/csv_reader.py:34,55 | — | blank row skipped | `source-blank-row-skipped` | success |
+| domain/transform/core/extractor.py:31–44 | — | SourceRecord wrapped into TransformResult | `source-stream-wrapped` | success |
+| domain/transform/core/extractor.py:45–66 | — | source exception converted to SOURCE_ERROR | `source-stream-failed` | failure |
+
+### Normalize / data quality (`component` = normalizer/planner; planned ECS mapping)
+| Call-site | Lvl | message сейчас | event.action | outcome |
+|---|---|---|---|---|
+| domain/transform/stages/stages.py:438–442 | — | upstream failure forwarded | `normalize-record-skipped` | unknown |
+| domain/transform/stages/stages.py:443–459 | — | normalize boundary diagnostics | `normalize-record-failed` | failure |
+| domain/transform/normalize/normalizer_core.py:85–93 | — | per-rule op chain applied/skipped | `normalize-rule-applied` / `normalize-rule-skipped` / `normalize-rule-failed` | success/unknown/failure |
+| domain/transform/normalize/normalizer_core.py:95–113 | — | sink validation after normalize | `normalize-validation-completed` / `normalize-validation-failed` | success/failure |
+| domain/transform/normalize/normalizer_core.py:115–129 | — | final per-record normalize result | `normalize-record-completed` / `normalize-record-failed` | success/unknown/failure |
+
+### Topology subsystem (`component` = topology/planner/matcher/resolver; native sink exists)
+| Call-site | Lvl | message сейчас | event.action | outcome |
+|---|---|---|---|---|
+| topology_bootstrap.py:595–604 | info | `bootstrap.start` | `topology-bootstrap-started` | — |
+| topology_bootstrap.py:606–615 | info | `spec.loaded` | `topology-spec-loaded` | success |
+| topology_bootstrap.py:617–625 | info | `canonicalizer.compiled` | `topology-canonicalizer-compiled` | success |
+| runtime/topology_bootstrap.py:323–335 | info | `target.build.start` | `topology-target-build-started` | — |
+| topology_bootstrap.py:760–773 | info/warn/error | `readiness.evaluated` / `readiness.empty` / `readiness.stale` | `topology-readiness-evaluated` | success/unknown/failure |
+| topology_bootstrap.py:707–721 | info | `target.build.finish` | `topology-target-build-completed` | success |
+| topology_bootstrap.py:658–669 | info | `source.validation.finish` | `topology-source-validation-completed` | success/unknown/failure |
+| topology_bootstrap.py:724–734 | info | `bootstrap.finish` | `topology-bootstrap-completed` | success/unknown/failure |
+| runtime/topology_bootstrap.py:117–122,151–157,250–257 | error | `bootstrap.short_circuit` | `topology-bootstrap-short-circuited` | failure |
+| runtime/topology_bootstrap.py:137–144 | debug | `bootstrap.skipped` | `topology-bootstrap-skipped` | unknown |
+| topology_bootstrap.py:252–264 | debug | `target.node_ingested` | `topology-node-ingested` | success |
+| topology_bootstrap.py:266–278 | debug | `source.path_ingested` | `topology-path-ingested` | success |
+| topology_bootstrap.py:280–289 | debug | `target.cycle_check` | `topology-cycle-checked` | success/failure |
+| source_topology_filter.py:37–75 | — | source row filtered by anchoring verdict | `topology-source-row-filtered` | unknown/failure |
+| match_core.py:475–566 | — | topology refines match decision | `topology-match-refined` / `topology-comparison-completed` | success/unknown/failure |
+| resolve_core.py:460–554 | — | topology disambiguates resolve link | `topology-link-resolution-completed` / `topology-comparison-completed` | success/unknown/failure |
+
 ### Vault management (`component` = vault; messages — коды → станут человеческими)
 | Call-site | Lvl | message сейчас | event.action | outcome |
 |---|---|---|---|---|
@@ -76,7 +115,7 @@
 | management/vault/usecase.py:198 | info | *vault_mgmt_rotate* (op=success) | `vault-rotate-completed` | success |
 | management/vault/usecase.py:222 | info | *vault_mgmt_rewrap* | `vault-rewrap-started` | — |
 
-### Vault admin gate (`infra/secrets/admin_password_gate.py`; `component` = vault)
+### Vault admin gate (`infra/secrets/management/admin_password_gate.py`; `component` = vault)
 | Call-site | Lvl | message сейчас | event.action | outcome |
 |---|---|---|---|---|
 | :124 | info | *vault_admin_password_gate_skipped* | `admin-gate-skipped` | — |
