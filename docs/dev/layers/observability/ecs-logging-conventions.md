@@ -36,6 +36,7 @@
 - [Zone 13: Extract / Source Ingestion](./ecs-logging-taxonomy/zones/13-extract-source-ingestion.md)
 - [Zone 14: Normalize / Data Quality Stage](./ecs-logging-taxonomy/zones/14-normalize-stage.md)
 - [Zone 15: Topology Subsystem](./ecs-logging-taxonomy/zones/15-topology-subsystem.md)
+- [Zone 16: Map / Mapping Stage](./ecs-logging-taxonomy/zones/16-map-stage.md)
 
 ### Cross-Cutting Reference
 

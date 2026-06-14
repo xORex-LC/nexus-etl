@@ -51,8 +51,7 @@ identity. Её observability должна отвечать на вопрос: **
 | `normalize-record-skipped` | DEBUG decision | `debug` | `unknown` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.subsystem=normalize`, `nexus.stage.name=normalize`, `nexus.normalize.skip.reason=upstream_failed`, `nexus.normalize.upstream.errors_count`, `nexus.normalize.upstream.warnings_count` | `NormalizeStage.run()` / `NormalizerCore.normalize()` sees failed upstream result |
 | `normalize-record-completed` | DEBUG decision | `debug` / `warning` | `success` / `unknown` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.subsystem=normalize`, `nexus.stage.name=normalize`, `nexus.normalize.rules_total`, `nexus.normalize.rules_applied`, `nexus.normalize.rules_skipped`, `nexus.normalize.fields_touched_count`, `nexus.normalize.changed_fields_count`, `nexus.normalize.warnings_count`, `nexus.normalize.validation.scope` | after one row is normalized without fatal errors |
 | `normalize-record-failed` | DEBUG/ERROR decision | `error` | `failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id`, `error.code`, `error.message` | `nexus.subsystem=normalize`, `nexus.stage.name=normalize`, `nexus.normalize.rules_total`, `nexus.normalize.rules_applied`, `nexus.normalize.rules_failed`, `nexus.normalize.fields_touched_count`, `nexus.normalize.failure.reason`, `nexus.diagnostic.code` | after one row ends with normalize-local fatal diagnostics or boundary error |
-| `normalize-rule-applied` | TRACE diagnostic | `trace` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.subsystem=normalize`, `nexus.stage.name=normalize`, `nexus.normalize.rule.field`, `nexus.normalize.rule.index`, `nexus.normalize.rule.ops_count`, `nexus.normalize.rule.on_error`, `nexus.normalize.value.input_type`, `nexus.normalize.value.output_type`, `nexus.normalize.value.changed` | optional sampled event after one rule operation chain succeeds |
-| `normalize-rule-skipped` | TRACE/DEBUG diagnostic | `trace` | `unknown` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.subsystem=normalize`, `nexus.stage.name=normalize`, `nexus.normalize.rule.field`, `nexus.normalize.rule.index`, `nexus.normalize.skip.reason=no_ops` | compiled rule has no ops or future policy says not applicable |
+| `normalize-rule-applied` | TRACE diagnostic | `trace` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.subsystem=normalize`, `nexus.stage.name=normalize`, `nexus.normalize.rule.field`, `nexus.normalize.rule.index`, `nexus.normalize.rule.ops_count`, `nexus.normalize.rule.on_error`, `nexus.normalize.value.changed` | optional sampled event after one rule operation chain succeeds |
 | `normalize-rule-failed` | DEBUG diagnostic | `debug` / `warning` / `error` | `failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id`, `error.code` | `nexus.subsystem=normalize`, `nexus.stage.name=normalize`, `nexus.normalize.rule.field`, `nexus.normalize.rule.index`, `nexus.normalize.rule.ops_count`, `nexus.normalize.rule.on_error`, `nexus.normalize.failure.reason=dsl_op_failed`, `nexus.diagnostic.code` | `apply_ops()` returns one or more `DslIssue` for a rule |
 | `normalize-validation-completed` | DEBUG decision | `debug` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.subsystem=normalize`, `nexus.stage.name=normalize`, `nexus.normalize.validation.scope`, `nexus.normalize.validation.fields_checked_count`, `nexus.normalize.validation.issues_count=0` | sink validation completed without issues |
 | `normalize-validation-failed` | DEBUG/WARNING decision | `warning` / `error` | `failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id`, `error.code` | `nexus.subsystem=normalize`, `nexus.stage.name=normalize`, `nexus.normalize.validation.scope`, `nexus.normalize.validation.fields_checked_count`, `nexus.normalize.validation.issues_count`, `nexus.normalize.validation.required_missing_count`, `nexus.normalize.validation.type_invalid_count`, `nexus.diagnostic.code` | sink validation produced issues (`SINK_REQUIRED_MISSING`, `SINK_TYPE_INVALID`, etc.) |
@@ -61,8 +60,9 @@ identity. Её observability должна отвечать на вопрос: **
 
 - `normalize-record-completed` не заменяет `stage-completed`. Первое описывает одну запись, второе
   агрегирует всю stage execution.
-- `normalize-rule-applied` и `normalize-rule-skipped` являются TRACE/forensic events. Baseline ES
-  мониторинг должен жить на `normalize-record-*` + `stage-completed`.
+- `normalize-rule-applied` является TRACE/forensic event. Baseline ES
+  мониторинг должен жить на `normalize-record-*` + `stage-completed`. Rule с пустым op-chain (`no_ops`)
+  не эмитит отдельное событие — он отражается только в счётчике `nexus.normalize.rules_skipped`.
 - `normalize-rule-failed` фиксирует проблему DSL operation chain на конкретном поле. Если эта
   проблема по `on_error=warn` не делает запись failed, итоговая запись всё равно получает
   `normalize-record-completed` с `event.outcome=unknown`.
@@ -99,9 +99,6 @@ identity. Её observability должна отвечать на вопрос: **
 | `nexus.normalize.rule.index` | recommended | ordinal in compiled rule list |
 | `nexus.normalize.rule.ops_count` | required on rule-level events | length of op chain |
 | `nexus.normalize.rule.on_error` | recommended | `error` / `warn` |
-| `nexus.normalize.rule.op_names` | optional | operation names only; no args by default |
-| `nexus.normalize.op.name`, `nexus.normalize.op.index` | optional TRACE | only if instrumentation is inside operation-chain execution |
-| `nexus.normalize.value.input_type`, `nexus.normalize.value.output_type` | optional | type names only, no values |
 | `nexus.normalize.value.changed` | recommended on rule-level events | boolean; no before/after values |
 | `nexus.normalize.validation.scope` | required when sink validation runs | `touched_fields` / `full_row` |
 | `nexus.normalize.validation.fields_checked_count` | recommended | number of sink fields checked |

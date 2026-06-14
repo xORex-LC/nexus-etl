@@ -31,6 +31,9 @@ candidate filtering или post-row decisions.
   миллисекундах и `stats={"items": N}` — количество элементов, вышедших из stage stream.
 - `PipelineHooks.on_stage_error(stage_name, exc, duration_ms)` отдаёт stage name, exception и
   duration в миллисекундах.
+- `PipelineHooks.on_stage_abort(stage_name, duration_ms)` вызывается при `GeneratorExit` — частичное
+  потребление стрима, когда downstream перестал тянуть (напр. `apply` с `max_actions` /
+  `stop_on_first_error`, ранний обрыв ленивого конвейера).
 - `StageResultReporter` даёт row-level counters только там, где use case прогоняет результаты
   через reporter: `rows_total`, stage-specific ok label (`mapped_ok`, `normalized_ok`,
   `enriched_ok`, `matched_ok`, `resolved_ok`), stage-specific failed label
@@ -48,6 +51,7 @@ candidate filtering или post-row decisions.
 | `stage-started` | INFO milestone | `info` | — | `event.action`, `trace.id`, `service.type`, `nexus.stage.name` | `event.dataset`, `nexus.subsystem` | `PipelineHooks.on_stage_start` |
 | `stage-completed` | INFO milestone | `info` | `success` | `event.action`, `event.outcome`, `trace.id`, `service.type`, `nexus.stage.name`, `event.duration` | `event.dataset`, `nexus.stage.items_count`, reporter-derived counters when available, `nexus.subsystem` | `PipelineHooks.on_stage_complete` or reporter finalization |
 | `stage-failed` | INFO milestone | `error` | `failure` | `event.action`, `event.outcome`, `trace.id`, `service.type`, `nexus.stage.name`, `error.*` | `event.dataset`, `event.duration`, `nexus.stage.items_count`, `nexus.subsystem` | `PipelineHooks.on_stage_error` or stage-level fatal failure |
+| `stage-aborted` | DEBUG decision | `debug`/`warning` | `unknown` | `event.action`, `event.outcome`, `trace.id`, `service.type`, `nexus.stage.name` | `event.dataset`, `event.duration`, `nexus.stage.items_count`, `nexus.subsystem` | `PipelineHooks.on_stage_abort` (GeneratorExit / частичное потребление стрима) |
 
 ### Нормализация и анти-дублирование
 
@@ -59,12 +63,15 @@ candidate filtering или post-row decisions.
   Эти поля принадлежат subsystem/event-detail зонам.
 - Если debug-команда завершилась на конкретной стадии, она может эмитить и command-level event,
   и `stage-completed`: это разные observability perspectives, не дубликаты.
+- `stage-aborted` — только при `GeneratorExit` до полного исчерпания (partial consumption). Не путать
+  с `stage-completed` (полное исчерпание) и `stage-failed` (исключение). Если стадия не получила ни
+  одного элемента, не эмитить ничего (start_time guard в `_monitored`).
 
 ### Минимальный field profile для зоны
 
 | Поле | Статус | Примечание |
 |---|---|---|
-| `event.action` | required | `stage-started`, `stage-completed`, `stage-failed` |
+| `event.action` | required | `stage-started`, `stage-completed`, `stage-failed`, `stage-aborted` |
 | `event.outcome` | required on completion/failure | `success` / `failure` |
 | `trace.id` | required | основной correlation key запуска |
 | `service.type` | required | кто исполняет стадию в текущем flow |

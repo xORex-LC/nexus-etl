@@ -106,6 +106,36 @@
 | `nexus.source.failure.layer` | source failure events | `dsl`, `resolver`, `reader`, `extractor` |
 | `nexus.source.reason` | source failures/degraded events | Stable reason: `file_not_found`, `missing_header`, `column_count_mismatch`, `decode_error`, ... |
 | `nexus.diagnostic.code` | diagnostics bridge events | Domain diagnostic code when keeping it separate from normalized `error.code` |
+| `nexus.mapping.rules_total` | mapping record summary | Количество compiled mapping rules |
+| `nexus.mapping.rules_applied` | mapping record summary | Количество rules that assigned at least one target |
+| `nexus.mapping.rules_failed` | mapping record/rule failure events | Количество rules that emitted mapping-local issues |
+| `nexus.mapping.fields_touched_count` | mapping record summary / validation | Количество output fields touched by mapping rules |
+| `nexus.mapping.targets_assigned_count` | mapping record/rule summary | Количество target assignments performed |
+| `nexus.mapping.warnings_count` | mapping record summary | Mapping-local warning count for one record |
+| `nexus.mapping.errors_count` | mapping record summary | Mapping-local error count for one record |
+| `nexus.mapping.source_fields_count` | mapping spec/runtime summary | Количество declared source columns in `MappingSpec.source_columns` |
+| `nexus.mapping.source.fields_count` | mapping rule events | Number of source fields read by one rule |
+| `nexus.mapping.source.missing_count` | mapping record/rule failure events | Count of missing source fields for a record/rule |
+| `nexus.mapping.source.field` | mapping rule events | Source field name only; value forbidden |
+| `nexus.mapping.target.field` | mapping rule/target events | Target field name only; value forbidden |
+| `nexus.mapping.rule.index` | mapping rule events | Rule ordinal inside compiled mapping rules |
+| `nexus.mapping.rule.ops_count` | mapping rule events | Number of operations in the rule chain |
+| `nexus.mapping.rule.required` | mapping rule events | Mapping rule `required` flag |
+| `nexus.mapping.rule.on_error` | mapping rule events | Rule error policy: `error` or `warn` |
+| `nexus.mapping.secret_candidates_count` | mapping record summary | Count of fields marked as secret candidates; no secret values |
+| `nexus.mapping.meta.rules_total` | mapping meta events | Number of compiled meta rules |
+| `nexus.mapping.meta.rules_applied` | mapping record summary | Number of meta rules that produced non-null meta values |
+| `nexus.mapping.meta.rules_failed` | mapping record/rule failure events | Number of meta rules with issues |
+| `nexus.mapping.meta.path` | mapping meta rule events | Meta target path only; value forbidden |
+| `nexus.mapping.validation.scope` | mapping schema/sink validation events | `mapping_schema`, `sink_full_row`, future `sink_touched_fields` |
+| `nexus.mapping.validation.fields_checked_count` | mapping validation events | Number of schema/sink fields checked |
+| `nexus.mapping.validation.issues_count` | mapping validation failure events | Total mapping schema/sink validation issues |
+| `nexus.mapping.validation.required_missing_count` | mapping validation failure events | Count of required/nullability failures |
+| `nexus.mapping.validation.type_invalid_count` | mapping validation failure events | Count of type mismatch failures when type checks are enabled |
+| `nexus.mapping.skip.reason` | mapping skipped events | `upstream_failed` or future policy reason |
+| `nexus.mapping.failure.reason` | mapping failed/degraded events | `missing_source_column`, `required_field_missing`, `dsl_op_failed`, `sink_required_missing`, `boundary_error`, ... |
+| `nexus.mapping.upstream.errors_count` | mapping upstream skip events | Count of upstream errors carried from Extract |
+| `nexus.mapping.upstream.warnings_count` | mapping upstream skip events | Count of upstream warnings carried from Extract |
 | `nexus.normalize.rules_total` | normalize record summary | Количество compiled normalize rules for current dataset/spec |
 | `nexus.normalize.rules_applied` | normalize record summary | Количество rules with non-empty op chain applied to the row |
 | `nexus.normalize.rules_skipped` | normalize record/rule events | Количество skipped rules; reason in `nexus.normalize.skip.reason` |
@@ -119,11 +149,6 @@
 | `nexus.normalize.rule.index` | normalize rule events | Rule ordinal inside compiled normalize rules |
 | `nexus.normalize.rule.ops_count` | normalize rule events | Number of operations in the rule chain |
 | `nexus.normalize.rule.on_error` | normalize rule events | Rule error policy: `error` or `warn` |
-| `nexus.normalize.rule.op_names` | optional normalize TRACE events | Operation names only; no args by default |
-| `nexus.normalize.op.name` | optional normalize operation TRACE events | Single DSL operation name when instrumenting operation-chain execution |
-| `nexus.normalize.op.index` | optional normalize operation TRACE events | Operation ordinal inside rule chain |
-| `nexus.normalize.value.input_type` | normalize rule events | Safe type name before applying rule; no value |
-| `nexus.normalize.value.output_type` | normalize rule events | Safe type name after applying rule; no value |
 | `nexus.normalize.value.changed` | normalize rule events | Boolean value-change signal without before/after values |
 | `nexus.normalize.validation.scope` | normalize validation events | `touched_fields` or `full_row` from build options |
 | `nexus.normalize.validation.fields_checked_count` | normalize validation events | Number of sink fields checked |
@@ -162,7 +187,6 @@
 | `nexus.topology.target.membership_count` | source validation summary | Count of target membership ids read for anchoring |
 | `nexus.topology.normalization.version` | topology canonicalizer/build events | Safe normalization version/fingerprint |
 | `nexus.topology.canonicalizer.ops_count` | topology canonicalizer events | Number of canonicalization ops |
-| `nexus.topology.canonicalizer.op_names` | topology canonicalizer events | Operation names only; no args |
 | `nexus.topology.nodes_count` | topology build/readiness events | Number of nodes in topology snapshot |
 | `nexus.topology.roots_count` | topology build completion events | Number of roots in topology snapshot |
 | `nexus.topology.max_depth` | topology build completion events | Maximum computed depth in topology snapshot |
@@ -264,8 +288,6 @@
 | `nexus.match.drop.reason` | source dedup/drop events | `duplicate_source`, `conflict_source` |
 | `nexus.match.dedup.outcome` | source dedup events | `first`, `duplicate`, `conflict` |
 | `nexus.match.include_deleted` | cache lookup policy context | Boolean include-deleted policy used by matcher |
-| `nexus.match.batch.size` | match stage runtime events | Configured micro-batch size |
-| `nexus.match.batch.flush_interval_ms` | match stage runtime events | Configured micro-batch flush interval |
 | `nexus.resolve.op` | resolve decision / plan item events | `create`, `update`, `skip` |
 | `nexus.resolve.status` | resolve decision events | `resolved`, `pending`, `failed`, `skipped` |
 | `nexus.resolve.reason_code` | resolve decision events | `match_ambiguous`, `no_changes`, `changes_detected`, `link_pending`, `target_id_missing`, ... |
@@ -289,8 +311,6 @@
 | `nexus.resolve.link.topology.reason` | topology-backed link events | Safe topology reason without raw evidence |
 | `nexus.resolve.batch_index.keys_count` | resolve_context completion events | Количество lookup keys in batch index |
 | `nexus.resolve.batch_index.values_count` | resolve_context completion events | Суммарное количество resolved ids in batch index |
-| `nexus.resolve.batch.size` | resolve runtime events | Configured micro-batch size |
-| `nexus.resolve.batch.flush_interval_ms` | resolve runtime events | Configured micro-batch flush interval |
 | `nexus.pending.replay.rows_count` | pending replay events | Количество pending rows loaded for replay |
 | `nexus.pending.decode.skipped_count` | pending decode events | Количество invalid pending rows skipped |
 | `nexus.pending.expired.count` | pending expiry events | Количество expired pending links drained/reported |
@@ -433,6 +453,7 @@
 | Pipeline stage | `nexus.stage.name` | у внутренней стадии нет устойчивого ECS canonical field; это project-specific execution axis |
 | Source/business record reference | `nexus.record.*` | у ECS нет точного canonical объекта для ETL source-row provenance |
 | Extract / source ingestion | `file.*`, `nexus.source.*`, sparse `nexus.record.source.*` | physical source location, CSV profile, stream counters and structural source failures |
+| Map / field projection stage | `nexus.mapping.*` | source field projection, mapping rule execution, target assignment and first schema gate |
 | Normalize / data quality stage | `nexus.normalize.*` | runtime rule application, touched fields, type/nullability validation and safe data-quality counters |
 | Topology subsystem | `nexus.topology.*` | topology activation, graph build/readiness, source anchoring and match/resolve comparison signal |
 | Persistent identity/pending state | `nexus.identity.*`, `nexus.pending.*` | это resolver/apply state, а не refreshable cache |

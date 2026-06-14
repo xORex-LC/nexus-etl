@@ -9,17 +9,23 @@
 | `stage-started` | INFO | Старт стадии пайплайна |
 | `stage-completed` | INFO | Завершение стадии с `event.outcome`+`event.duration` |
 | `stage-failed` | ERROR | Стадия упала с необработанным исключением |
+| `stage-aborted` | DEBUG/WARNING | Стадия прервана при частичном потреблении стрима (`GeneratorExit`), до полного исчерпания |
 | `source-resolved` / `source-resolution-failed` | INFO/ERROR | Runtime source location resolved / failed |
 | `source-read-started` / `source-read-completed` / `source-read-failed` | INFO/ERROR | Physical source stream lifecycle |
 | `source-header-read` | DEBUG/WARNING | CSV header/column profile observed |
 | `source-contract-evaluated` | INFO/DEBUG/WARNING | Observed source columns compared with source contract |
 | `source-stream-wrapped` / `source-stream-failed` | DEBUG/ERROR | Extractor converted source stream into `TransformResult` boundary |
 | `source-record-read` / `source-blank-row-skipped` | TRACE | Optional sampled per-record/blank-row source diagnostics |
+| `mapping-record-completed` | DEBUG/WARNING | Map обработал одну запись без fatal diagnostics |
+| `mapping-record-failed` | DEBUG/ERROR | Map завершил запись fatal diagnostics или boundary error |
+| `mapping-record-skipped` | DEBUG | Map пропустил запись из-за upstream failure |
+| `mapping-rule-applied` | TRACE | Одна mapping/meta rule прочитала source, применила ops и назначила target (meta — через `nexus.mapping.meta.path`) |
+| `mapping-rule-failed` | DEBUG/WARNING/ERROR | Mapping/meta rule вернула DSL/runtime issue |
+| `mapping-validation-completed` / `mapping-validation-failed` | DEBUG/WARNING/ERROR | Mapping/sink schema gate без/с issues; область — `nexus.mapping.validation.scope` |
 | `normalize-record-completed` | DEBUG/WARNING | Normalize обработал одну запись без fatal diagnostics |
 | `normalize-record-failed` | DEBUG/ERROR | Normalize завершил запись fatal diagnostics или boundary error |
 | `normalize-record-skipped` | DEBUG | Normalize пропустил запись из-за upstream failure/policy |
 | `normalize-rule-applied` | TRACE | Одна normalize rule / operation chain успешно применена |
-| `normalize-rule-skipped` | TRACE/DEBUG | Normalize rule пропущена (`no_ops` или future policy) |
 | `normalize-rule-failed` | DEBUG/WARNING/ERROR | Normalize rule / operation chain вернула DSL/runtime issue |
 | `normalize-validation-completed` | DEBUG | Sink validation после Normalize завершилась без issues |
 | `normalize-validation-failed` | DEBUG/WARNING/ERROR | Sink validation после Normalize вернула issues |
@@ -31,13 +37,12 @@
 | `topology-target-build-started` / `topology-target-build-completed` | INFO | Target topology snapshot build lifecycle |
 | `topology-readiness-evaluated` | INFO/WARNING/ERROR | Target topology readiness/freshness decision |
 | `topology-source-validation-completed` | INFO/WARNING/ERROR | Source anchoring validation summary |
-| `topology-node-ingested` / `topology-path-ingested` | TRACE/DEBUG | Optional graph build diagnostics without raw ids |
-| `topology-cycle-checked` | DEBUG | Target graph cycle check completed |
+| `topology-node-ingested` / `topology-path-ingested` | TRACE | Optional graph build diagnostics without raw ids (high-cardinality, TRACE-only) |
+| `topology-cycle-checked` | TRACE | Target graph cycle check completed (TRACE-only) |
 | `topology-source-row-filtered` | DEBUG/WARNING/ERROR | Source topology filter marked/dropped one row |
 | `topology-comparison-completed` | DEBUG/TRACE | Shared topology comparison result for consumers |
 | `topology-match-refined` | DEBUG | Topology signal refined match decision |
 | `topology-link-resolution-completed` | DEBUG/WARNING/ERROR | Topology signal resolved/disambiguated a resolve link |
-| `spec-loaded` / `spec-registry-built` / `spec-validation-failed` | DEBUG/INFO/ERROR | Legacy/compat generic spec actions; новый путь использует `dsl-*` |
 | `dsl-registry-loaded` / `dsl-registry-built` | DEBUG/INFO | DSL registry загружен/собран |
 | `dsl-registry-build-failed` | ERROR | Сборка DSL registry завершилась ошибкой |
 | `dsl-spec-discovered` | TRACE | DSL spec artifact найден |
@@ -77,7 +82,6 @@
 | `apply-started` | INFO | Старт apply-цикла по готовому plan artifact |
 | `apply-item` | DEBUG/WARNING/ERROR | Per-item outcome apply use-case |
 | `apply-completed` | INFO/ERROR | Apply summary завершён с агрегированным outcome |
-| `cache-hit` / `cache-miss` | DEBUG | Legacy/compat результат кэш-лукапа; новый provider path — `lookup-completed` |
 | `cache-refresh-started` / `cache-refresh-completed` | INFO | Старт/завершение cache refresh |
 | `cache-refresh-failed` | ERROR | Cache refresh завершился ошибкой |
 | `cache-refresh-dataset-completed` | DEBUG | Refresh одного cache dataset завершён |

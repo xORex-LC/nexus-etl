@@ -61,7 +61,7 @@ Match/Resolve.
 | `topology-bootstrap-skipped` | DEBUG decision | `debug` | `unknown` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.activation.skipped_reason`, `nexus.topology.activation.sources` | current `bootstrap.skipped` |
 | `topology-bootstrap-short-circuited` | INFO milestone | `error` | `failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `error.code`, `error.message` | `nexus.subsystem=topology`, `nexus.topology.failure.reason`, `nexus.topology.side`, `nexus.diagnostic.code` | current `bootstrap.short_circuit` |
 | `topology-spec-loaded` | INFO/DEBUG milestone | `info` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.dataset`, `nexus.topology.source.mode`, `nexus.topology.target.mode`, `nexus.topology.source.path_columns_count` | current `spec.loaded` |
-| `topology-canonicalizer-compiled` | INFO/DEBUG milestone | `info` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.normalization.version`, `nexus.topology.canonicalizer.ops_count`, `nexus.topology.canonicalizer.op_names` | current `canonicalizer.compiled` |
+| `topology-canonicalizer-compiled` | INFO/DEBUG milestone | `info` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.normalization.version`, `nexus.topology.canonicalizer.ops_count` | current `canonicalizer.compiled` |
 | `topology-target-build-started` | INFO milestone | `info` | — | `event.action`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.dataset`, `nexus.topology.target.node_id_field`, `nexus.topology.target.parent_id_field`, `nexus.topology.target.label_field` | current `target.build.start` |
 | `topology-readiness-evaluated` | INFO/WARNING/ERROR decision | `info`/`warning`/`error` | `success`/`unknown`/`failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.side=target`, `nexus.topology.readiness.ready`, `nexus.topology.readiness.decision`, `nexus.topology.readiness.reason`, `nexus.topology.freshness.present`, `nexus.topology.freshness.age_seconds`, `nexus.topology.freshness.max_age_seconds`, `nexus.cache.schema_hash.actual` or `nexus.topology.cache_snapshot_revision` | current `readiness.*` |
 | `topology-target-build-completed` | INFO milestone | `info` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.side=target`, `nexus.topology.nodes_count`, `nexus.topology.roots_count`, `nexus.topology.max_depth` | current `target.build.finish` |
@@ -72,9 +72,9 @@ Match/Resolve.
 
 | Action | Bucket | Default level | Outcome | Required ECS fields | Typical project fields | Emission point |
 |---|---|---|---|---|---|---|
-| `topology-node-ingested` | TRACE/DEBUG diagnostic | `debug` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.side=target`, `nexus.topology.node.id_fingerprint`, `nexus.topology.parent.id_fingerprint`, `nexus.topology.node.canonical_name_fingerprint` | current `target.node_ingested` |
-| `topology-path-ingested` | TRACE/DEBUG diagnostic | `debug` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.side=source`, `nexus.topology.path.depth`, `nexus.topology.path.fingerprint`, `nexus.topology.node.synthetic_id_fingerprint` | current `source.path_ingested` |
-| `topology-cycle-checked` | DEBUG decision | `debug` | `success`/`failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.graph.algorithm=graphlib`, `nexus.topology.nodes_count`, `nexus.topology.graph.has_cycle` | current `target.cycle_check` |
+| `topology-node-ingested` | TRACE diagnostic | `trace` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.side=target`, `nexus.topology.node.id_fingerprint`, `nexus.topology.parent.id_fingerprint`, `nexus.topology.node.canonical_name_fingerprint` | current `target.node_ingested` |
+| `topology-path-ingested` | TRACE diagnostic | `trace` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.side=source`, `nexus.topology.path.depth`, `nexus.topology.path.fingerprint`, `nexus.topology.node.synthetic_id_fingerprint` | current `source.path_ingested` |
+| `topology-cycle-checked` | TRACE diagnostic | `trace` | `success`/`failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=topology`, `nexus.topology.graph.algorithm=graphlib`, `nexus.topology.nodes_count`, `nexus.topology.graph.has_cycle` | current `target.cycle_check` |
 | `topology-source-row-filtered` | DEBUG/WARNING decision | `debug`/`warning`/`error` | `unknown`/`failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.subsystem=topology`, `nexus.stage.name=source_topology_filter`, `nexus.topology.source.node_id_field`, `nexus.topology.source.node_id_fingerprint`, `nexus.topology.source.on_unanchored`, `nexus.topology.source.drop.reason`, `error.code=TOPOLOGY_SOURCE_UNANCHORED` | `SourceTopologyFilterStage.run()` applies dropped verdict |
 
 ### Canonical taxonomy для topology consumers
@@ -97,8 +97,8 @@ events. The topology-specific actions above are useful if implementation keeps t
   and `readiness.stale` into one action with `nexus.topology.readiness.reason`.
 - `topology-bootstrap-short-circuited` is command-affecting and should be ERROR when it produces a
   `CommandResult` with diagnostics.
-- `topology-node-ingested` / `topology-path-ingested` are DEBUG/TRACE only. Do not enable them as
-  INFO baseline on large hierarchies.
+- `topology-node-ingested` / `topology-path-ingested` / `topology-cycle-checked` are TRACE only. Do not
+  enable them as INFO/DEBUG baseline on large hierarchies.
 - Match/Resolve topology evidence must be summarized, not logged as `evidence` dict. Current evidence
   includes source segments and candidate ids.
 - If a graph id is operationally needed, log a fingerprint field. Raw graph ids are allowed only after
@@ -123,7 +123,6 @@ events. The topology-specific actions above are useful if implementation keeps t
 | `nexus.topology.source.mode`, `nexus.topology.target.mode` | recommended on spec/runtime summary | currently `path_columns` or `adjacency_list` |
 | `nexus.topology.normalization.version` | required after canonicalizer compile | safe version/fingerprint |
 | `nexus.topology.canonicalizer.ops_count` | recommended | op count only |
-| `nexus.topology.canonicalizer.op_names` | optional | operation names only, no args |
 | `nexus.topology.nodes_count`, `nexus.topology.roots_count`, `nexus.topology.max_depth` | required on build completion | aggregate graph shape |
 | `nexus.topology.readiness.ready`, `nexus.topology.readiness.decision`, `nexus.topology.readiness.reason` | required on readiness | readiness/freshness outcome |
 | `nexus.topology.freshness.present`, `nexus.topology.freshness.age_seconds`, `nexus.topology.freshness.max_age_seconds` | recommended on readiness | freshness policy facts |

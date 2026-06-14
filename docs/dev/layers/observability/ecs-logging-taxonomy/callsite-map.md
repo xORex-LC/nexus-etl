@@ -20,6 +20,15 @@
 | orchestrator.py:983 | error | Container shutdown failed | `container-shutdown-failed` | failure |
 | orchestrator.py:992 | error | Container shutdown completed with errors | `container-shutdown-completed` | failure |
 
+### Planned lifecycle call-sites (определены; call-site ещё не эмитит)
+| Call-site | Lvl | message сейчас | event.action | outcome |
+|---|---|---|---|---|
+| orchestrator.py bootstrap (после observability init; source `LoadedAppConfig`, config/loader.py:121) | — | config validated | `config-loaded` | success |
+| orchestrator.py:358,698 (`create_container()` + wiring) | — | DI container wired | `container-initialised` | success |
+| orchestrator.py success branch (рядом с finalize; сейчас эмитятся только `run-started`/`run-failed`) | — | command completed | `run-completed` | success |
+| domain/secrets/secret_vault_read_service.py:60 (`get_secret`, в apply; через secret sink — domain logger-free) | — | secret hydrated | `secret-read` | success/failure |
+| domain/secrets/secret_vault_write_service.py:62 (`put_many`, из `EnricherCore._store_secrets`) | — | secrets stored | `secret-written` | success/failure |
+
 ### Observability best-effort (`component` = observability/команда)
 | Call-site | Lvl | message сейчас | event.action | outcome |
 |---|---|---|---|---|
@@ -77,12 +86,25 @@
 | domain/transform/core/extractor.py:31–44 | — | SourceRecord wrapped into TransformResult | `source-stream-wrapped` | success |
 | domain/transform/core/extractor.py:45–66 | — | source exception converted to SOURCE_ERROR | `source-stream-failed` | failure |
 
+### Mapping / field projection (`component` = mapper/planner; planned ECS mapping)
+| Call-site | Lvl | message сейчас | event.action | outcome |
+|---|---|---|---|---|
+| domain/transform/stages/stages.py:390–396 | — | upstream failure forwarded | `mapping-record-skipped` | unknown |
+| domain/transform/stages/stages.py:398–413 | — | mapping boundary diagnostics | `mapping-record-failed` | failure |
+| domain/transform/mapping/mapper_core.py:81–87 | — | per-rule source read, ops and assignment | `mapping-rule-applied` / `mapping-rule-failed` | success/failure |
+| domain/transform/mapping/mapper_core.py:114–151 | — | source field resolution and DSL op chain | `mapping-rule-applied` / `mapping-rule-failed` | success/failure |
+| domain/transform/mapping/mapper_core.py:184–225 | — | target field assignment and required target check | `mapping-rule-applied` / `mapping-rule-failed` | success/failure |
+| domain/transform/mapping/mapper_core.py:227–252 | — | mapping schema required-field validation (scope=mapping_schema) | `mapping-validation-completed` / `mapping-validation-failed` | success/failure |
+| domain/transform/mapping/mapper_core.py:254–274 | — | sink schema validation after Map (scope=sink_full_row) | `mapping-validation-completed` / `mapping-validation-failed` | success/failure |
+| domain/transform/mapping/mapper_core.py:94–101,153–169,295–319 | — | meta rule resolution and meta assignment (meta via `nexus.mapping.meta.path`) | `mapping-rule-applied` / `mapping-rule-failed` | success/failure |
+| domain/transform/mapping/mapper_core.py:103–112 | — | final per-record mapping result | `mapping-record-completed` / `mapping-record-failed` | success/failure |
+
 ### Normalize / data quality (`component` = normalizer/planner; planned ECS mapping)
 | Call-site | Lvl | message сейчас | event.action | outcome |
 |---|---|---|---|---|
 | domain/transform/stages/stages.py:438–442 | — | upstream failure forwarded | `normalize-record-skipped` | unknown |
 | domain/transform/stages/stages.py:443–459 | — | normalize boundary diagnostics | `normalize-record-failed` | failure |
-| domain/transform/normalize/normalizer_core.py:85–93 | — | per-rule op chain applied/skipped | `normalize-rule-applied` / `normalize-rule-skipped` / `normalize-rule-failed` | success/unknown/failure |
+| domain/transform/normalize/normalizer_core.py:85–93 | — | per-rule op chain applied (no_ops → counter only) | `normalize-rule-applied` / `normalize-rule-failed` | success/failure |
 | domain/transform/normalize/normalizer_core.py:95–113 | — | sink validation after normalize | `normalize-validation-completed` / `normalize-validation-failed` | success/failure |
 | domain/transform/normalize/normalizer_core.py:115–129 | — | final per-record normalize result | `normalize-record-completed` / `normalize-record-failed` | success/unknown/failure |
 

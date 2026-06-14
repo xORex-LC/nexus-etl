@@ -45,7 +45,7 @@ source-dedup и передаёт результат в resolve.
 | `match-topology-refined` | DEBUG/TRACE decision | `debug`/`trace` | `success`/`failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.match.topology.applied`, `nexus.match.topology.mode`, `nexus.match.topology.reason`, `nexus.match.status`, `nexus.match.reason_code` | after topology refinement |
 | `match-source-dedup-checked` | TRACE diagnostic | `trace` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.match.dedup.outcome`, `nexus.match.identity.value_fingerprint` | source dedup check returned first/duplicate/conflict |
 | `match-source-dedup-dropped` | DEBUG/WARNING/ERROR decision | `debug`/`warning`/`error` | `failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `nexus.record.id` | `nexus.match.drop.reason`, `nexus.match.dedup.outcome`, `error.code` | duplicate/conflict policy drops row |
-| `match-scope-cleared` | DEBUG decision | `debug` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=match`, `nexus.match.batch.size` optional | runtime scope cleanup after match stage |
+| `match-scope-cleared` | DEBUG decision | `debug` | `success` | `event.action`, `event.outcome`, `trace.id`, `event.dataset` | `nexus.subsystem=match` | runtime scope cleanup after match stage |
 | `match-scope-clear-failed` | DEBUG decision | `warning` | `failure` | `event.action`, `event.outcome`, `trace.id`, `event.dataset`, `error.*` | `nexus.subsystem=match` | best-effort runtime scope cleanup failed |
 
 `not_found` и `ambiguous` — это валидные match decisions, поэтому
