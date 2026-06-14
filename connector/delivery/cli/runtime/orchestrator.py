@@ -43,6 +43,7 @@ from connector.infra.artifacts.report_renderer import JsonReportRenderer
 from connector.common.observability import (
     ObservabilityArtifactKind,
     ObservabilityLayout,
+    RuntimeLifecycleEvents,
     ServiceComponent,
 )
 from connector.delivery.cli.stream_capture import StdStreamToLogger, TeeStream
@@ -155,6 +156,7 @@ class RuntimeObservabilitySession:
     layout: ObservabilityLayout
     runtime: StructuredLoggingRuntime
     logger: Any
+    runtime_lifecycle: RuntimeLifecycleEvents
     log_file_path: str | None
 
 
@@ -210,13 +212,54 @@ def _initialize_observability_session(
         component,
         logger_name=f"nexus.{component.value}.{command_name}",
     )
+    runtime_lifecycle = container.observability.runtime_lifecycle_events()
+    container.pipeline.pipeline_lifecycle_events.override(
+        container.observability.pipeline_lifecycle_events
+    )
     return RuntimeObservabilitySession(
         component=component,
         layout=layout,
         runtime=runtime,
         logger=logger,
+        runtime_lifecycle=runtime_lifecycle,
         log_file_path=runtime.current_log_file_path(),
     )
+
+
+def _emit_run_completed(
+    *,
+    session: RuntimeObservabilitySession | None,
+    command_name: str,
+    start_monotonic: float,
+    final_result: Any,
+    exit_code_from_result: Callable[[Any], int],
+) -> None:
+    """Эмитить command completion lifecycle event, если runtime уже активен."""
+    if session is None:
+        return
+    runtime_lifecycle = getattr(session, "runtime_lifecycle", None)
+    if runtime_lifecycle is None:
+        return
+    duration_ns = int((time.monotonic() - start_monotonic) * 1_000_000_000)
+    runtime_lifecycle.run_completed(
+        command_name=command_name,
+        success=exit_code_from_result(final_result) == 0,
+        duration_ns=duration_ns,
+    )
+
+
+def _emit_run_started(
+    *,
+    session: RuntimeObservabilitySession | None,
+    command_name: str,
+) -> None:
+    """Эмитить command start lifecycle event, если session поддерживает этот порт."""
+    if session is None:
+        return
+    runtime_lifecycle = getattr(session, "runtime_lifecycle", None)
+    if runtime_lifecycle is None:
+        return
+    runtime_lifecycle.run_started(command_name=command_name)
 
 
 def _run_observability_sweeper(
@@ -400,7 +443,7 @@ def run_with_report(
         sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
         sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
 
-        logger.info("Command started", scope="core")
+        _emit_run_started(session=observability_session, command_name=command_name)
 
         validate_requirements(ctx, opts, requirements)
 
@@ -637,6 +680,13 @@ def run_with_report(
                 final_result=exit_result,
                 exit_code_from_result=exit_code_from_result,
             )
+            _emit_run_completed(
+                session=observability_session,
+                command_name=command_name,
+                start_monotonic=start_monotonic,
+                final_result=exit_result,
+                exit_code_from_result=exit_code_from_result,
+            )
         finally:
             close_observability_runtime(container)
             clear_observability_context()
@@ -740,7 +790,7 @@ def run_without_report(
         sys.stdout = TeeStream(original_stdout, stdout_logger_stream)
         sys.stderr = TeeStream(original_stderr, stderr_logger_stream)
 
-        logger.info("Command started", scope="core")
+        _emit_run_started(session=observability_session, command_name=command_name)
 
         validate_requirements(ctx, opts, requirements)
 
@@ -877,6 +927,13 @@ def run_without_report(
                 started_at=started_at,
                 log_file_path=log_file_path,
                 plan_path=_resolve_runtime_plan_path(ctx=ctx, opts=opts),
+                final_result=exit_result,
+                exit_code_from_result=exit_code_from_result,
+            )
+            _emit_run_completed(
+                session=observability_session,
+                command_name=command_name,
+                start_monotonic=start_monotonic,
                 final_result=exit_result,
                 exit_code_from_result=exit_code_from_result,
             )

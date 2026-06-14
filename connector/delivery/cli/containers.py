@@ -47,7 +47,11 @@ from connector.config.projections import (
 )
 from connector.delivery.cli.component_mapping import component_for_command
 from connector.common.interactive_io import InteractiveIoGate
-from connector.common.observability import ObservabilityLayout, ServiceComponent
+from connector.common.observability import (
+    ObservabilityLayout,
+    PipelineLifecycleEvents,
+    ServiceComponent,
+)
 from connector.common.runtime_paths import detect_runtime_paths
 from connector.domain.transform.matcher.match_deps import (
     MatchBatchSettings,
@@ -146,6 +150,11 @@ from connector.infra.secrets import (
 from connector.infra.secrets.sqlite import SqliteVaultRepository
 from connector.infra.secrets.sqlite.schema import ensure_vault_schema
 from connector.infra.sqlite.engine import SqliteEngine, open_sqlite
+from connector.infra.logging.event_sink import StructlogObservabilityEventSink
+from connector.infra.logging.lifecycle import (
+    PipelineLifecycleEventAdapter,
+    RuntimeLifecycleEventAdapter,
+)
 from connector.infra.logging.redaction import LogRedactionEngine
 from connector.infra.observability.ledger import build_run_ledger_backend
 from connector.infra.observability.pointers import LatestArtifactPointerPublisher
@@ -858,6 +867,9 @@ class PipelineContainer(containers.DeclarativeContainer):
 
     dataset_spec = providers.Dependency(instance_of=object)
     app_config = providers.Dependency(instance_of=object)
+    pipeline_lifecycle_events: providers.Provider[PipelineLifecycleEvents | None] = (
+        providers.Object(None)
+    )
     cache_roles = providers.Dependency(instance_of=object)
     catalog = providers.Dependency(instance_of=object)
     run_id = providers.Dependency(instance_of=str)
@@ -976,6 +988,11 @@ class PipelineContainer(containers.DeclarativeContainer):
         PlanningPipelineHooks,
         pending_expiry=pending_expiry,
         match_scope=match_scope,
+        pipeline_lifecycle=pipeline_lifecycle_events,
+    )
+    pipeline_lifecycle_hooks = providers.Singleton(
+        lambda hooks: hooks.lifecycle_hooks(),
+        hooks=plan_hooks,
     )
     resolve_stage_hooks = providers.Singleton(
         lambda hooks: hooks.plan_hooks(),
@@ -1148,6 +1165,7 @@ class PipelineContainer(containers.DeclarativeContainer):
             StageName.RESOLVE: resolve_stage,
         },
         checkpoints=providers.Object(PIPELINE_CHECKPOINTS),
+        default_hooks=pipeline_lifecycle_hooks,
     )
 
     planning_pipeline = providers.Factory(
@@ -1225,6 +1243,25 @@ class ObservabilityContainer(containers.DeclarativeContainer):
     logging_handler_stack = providers.Callable(
         lambda runtime: runtime.handler_stack,
         runtime=logging_runtime,
+    )
+    event_sink = providers.Factory(
+        StructlogObservabilityEventSink,
+        logger=providers.Callable(
+            lambda runtime, active_component: runtime.get_logger(
+                active_component,
+                logger_name=f"nexus.{active_component.value}.lifecycle",
+            ),
+            runtime=logging_runtime,
+            active_component=component,
+        ),
+    )
+    runtime_lifecycle_events = providers.Factory(
+        RuntimeLifecycleEventAdapter,
+        sink=event_sink,
+    )
+    pipeline_lifecycle_events = providers.Factory(
+        PipelineLifecycleEventAdapter,
+        sink=event_sink,
     )
 
 

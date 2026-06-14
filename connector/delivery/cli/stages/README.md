@@ -10,7 +10,7 @@
 |---|---|
 | `registry.py` | `build_stage_factory()` — регистрирует typed factory functions для базовых стадий; содержит комментарий почему `match`/`resolve` — Singleton, а не Factory |
 | `config.py` | `CheckpointName` и `StageName` enum — имена контрольных точек и порядок стадий, включая `source_topology_filter_stage` после `map` |
-| `composer.py` | `PipelineComposer` — собирает последовательность стадий из `StageDescriptor` в исполняемый конвейер |
+| `composer.py` | `PipelineComposer` — собирает последовательность стадий из `StageDescriptor` в исполняемый конвейер и подставляет default lifecycle hooks, если команда не передала свои hooks явно |
 
 ## Зависимости
 

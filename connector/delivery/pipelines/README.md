@@ -9,7 +9,7 @@ Lifecycle-aware пайплайн для команды `import plan`. Инкап
 | Файл | Назначение |
 |---|---|
 | `planning_pipeline.py` | `PlanningPipeline` — lifecycle-aware конвейер; `open()` возвращает поток `TransformResult`; управляет `dedup_store.reset()`, lifecycle match-scope через hooks, очисткой expired pending |
-| `planning_pipeline_hooks.py` | Хуки стадий для `PlanningPipeline`: `on_stage_complete("match")` — очистка match-runtime scope |
+| `planning_pipeline_hooks.py` | Хуки стадий для `PlanningPipeline`: lifecycle callbacks в observability adapter, `on_stage_complete("match")` — очистка match-runtime scope, `on_stage_complete("resolve")` — sweep expired pending |
 
 ## Порядок стадий внутри
 
