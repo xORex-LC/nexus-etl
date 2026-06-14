@@ -438,6 +438,47 @@ def test_resolver_validates_sink_for_resolved_mutations():
     assert any(err.code == "SINK_TYPE_INVALID" and err.field == "manager_id" for err in errors)
 
 
+def test_resolver_emits_warning_when_merge_policy_tries_to_overwrite_explicit_fields():
+    engine = _make_engine()
+    settings = ResolverSettings(
+        pending_ttl_seconds=120,
+        pending_max_attempts=5,
+        pending_sweep_interval_seconds=0,
+        pending_on_expire="error",
+        pending_allow_partial=False,
+        pending_retention_days=14,
+    )
+    catalog = build_catalog("employees", strict=True)
+    cache_gateway = SqliteCacheGateway.from_engine(cache_engine=engine, identity_engine=engine, cache_specs=[])
+    cache_roles = build_sqlite_cache_role_ports(cache_gateway)
+
+    resolver = ResolveCore(
+        ResolveRules(
+            build_desired_state=lambda *_: {},
+            merge_policy=lambda _existing, desired: {**desired, "manager_id": "overwritten"},
+        ),
+        LinkRules(),
+        cache_gateway=cache_roles.planning_runtime,
+        settings=settings,
+        catalog=catalog,
+        codec=PendingCodecAdapter(),
+    )
+
+    matched = _make_matched_row()
+    resolved, errors, warnings = resolver.resolve(
+        matched,
+        source_record=_make_source_record(),
+        target_id_map={},
+    )
+
+    assert resolved is not None
+    assert errors == []
+    assert resolved.desired_state["manager_id"] == "mgr"
+    assert any(item.code == "RESOLVE_MERGE_POLICY_OVERWRITE_IGNORED" for item in warnings)
+    warning = next(item for item in warnings if item.code == "RESOLVE_MERGE_POLICY_OVERWRITE_IGNORED")
+    assert warning.details == {"fields": ["manager_id"]}
+
+
 def test_resolver_uses_topology_to_disambiguate_link_candidates():
     engine = _make_engine()
     settings = ResolverSettings(

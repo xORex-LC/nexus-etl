@@ -240,6 +240,11 @@ def build_core_catalog(*, strict: bool) -> ErrorCatalog:
             severity=DiagnosticSeverity.ERROR,
         ),
         CatalogEntry(
+            "RESOLVE_MERGE_POLICY_OVERWRITE_IGNORED",
+            SystemErrorCode.DATA_INVALID,
+            severity=DiagnosticSeverity.WARNING,
+        ),
+        CatalogEntry(
             "RESOLVE_CONFIG_MISSING",
             SystemErrorCode.INTERNAL_ERROR,
             severity=DiagnosticSeverity.ERROR,

@@ -20,7 +20,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
-import logging
 
 from connector.domain.models import DiagnosticStage, DiagnosticItem
 from connector.domain.ports.cache.roles import ResolveRuntimePort
@@ -54,8 +53,6 @@ from connector.domain.transform_dsl.compilers.resolve import (
     ResolveRules,
     SecretLifecyclePolicy,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -197,10 +194,16 @@ class ResolveCore:
                     key for key, value in original_desired.items() if key in merged and merged[key] != value
                 ]
                 if overwritten:
-                    logger.warning(
-                        "merge_policy tried to overwrite desired fields; preserving source values. row_id=%s fields=%s",
-                        matched.row_ref.row_id,
-                        overwritten,
+                    warnings.append(
+                        diag_warning(
+                            catalog=self.catalog,
+                            stage=DiagnosticStage.RESOLVE,
+                            code="RESOLVE_MERGE_POLICY_OVERWRITE_IGNORED",
+                            field="desired_state",
+                            message="merge_policy attempted to overwrite explicit desired_state fields; source values preserved",
+                            record_ref=matched.row_ref,
+                            details={"fields": overwritten},
+                        )
                     )
                 for key, value in original_desired.items():
                     merged[key] = value

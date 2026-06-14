@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-import warnings
-from getpass import GetPassWarning
+import sys
 from pathlib import Path
 
 from argon2 import PasswordHasher
 from typer.testing import CliRunner
 
 from connector.main import app
+from connector.infra.secrets.management import admin_password_gate
 
 runner = CliRunner()
 
@@ -178,26 +178,40 @@ def test_vault_management_resolves_relative_hash_file_against_runtime_root(
 
 def test_vault_management_init_does_not_log_prompt_text_back_into_console(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     cfg = _write_config(tmp_path)
+    prompted: list[str] = []
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", GetPassWarning)
-        result = runner.invoke(
-            app,
-            ["--config", str(cfg), "vault-management", "init"],
-            input="\n".join(
-                [
-                    "y",
-                    "Vault-Admin-Password-2026",
-                    "unseal-passphrase",
-                    "unseal-passphrase",
-                    "",
-                ]
-            ),
-        )
+    def _prompt_password_from_stdin(prompt: str) -> str:
+        prompted.append(prompt)
+        line = sys.stdin.readline()
+        if not line:
+            raise EOFError("stdin exhausted while reading vault admin password")
+        return line.rstrip("\n")
+
+    monkeypatch.setattr(
+        admin_password_gate.getpass,
+        "getpass",
+        _prompt_password_from_stdin,
+    )
+
+    result = runner.invoke(
+        app,
+        ["--config", str(cfg), "vault-management", "init"],
+        input="\n".join(
+            [
+                "y",
+                "Vault-Admin-Password-2026",
+                "unseal-passphrase",
+                "unseal-passphrase",
+                "",
+            ]
+        ),
+    )
 
     assert result.exit_code == 0, result.output
+    assert prompted == ["Введите пароль доступа к vault: "]
     assert (
         result.output.count(
             "Подтвердить выполнение vault-management операции 'init'? [y/N]:"
