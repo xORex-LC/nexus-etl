@@ -26,7 +26,16 @@ from connector.domain.transform.stages.stages import (
 
 
 class PipelineComposer:
-    """Собирать pipeline orchestrators из checkpoint и stage-provider registries."""
+    """Собирать pipeline orchestrators из checkpoint и stage-provider registries.
+
+    Инварианты:
+        - Stage providers разрешаются лениво внутри `compose()`, уже в активном
+          command-specific `override()` контексте DI-контейнера.
+        - Неизвестный checkpoint или stage name падает через `KeyError`: это
+          конфигурационная ошибка assembly layer, а не runtime branch.
+        - Возвращаемый `PipelineOrchestrator` stateless относительно composer-а;
+          composer не хранит состояние конкретного запуска pipeline.
+    """
 
     def __init__(
         self,

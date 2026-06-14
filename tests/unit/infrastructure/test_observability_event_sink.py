@@ -71,7 +71,7 @@ def test_event_sink_emits_event_contract_as_structlog_kwargs() -> None:
     ]
 
 
-def test_event_sink_adds_manual_error_fields_and_exception_flag() -> None:
+def test_event_sink_adds_manual_error_fields_and_exception_object() -> None:
     logger = _Logger()
     sink = StructlogObservabilityEventSink(logger=logger)
     exc = RuntimeError("boom")
@@ -99,7 +99,7 @@ def test_event_sink_adds_manual_error_fields_and_exception_flag() -> None:
                 "error_type": "RuntimeError",
                 "error_message": "boom",
                 "error_code": "STAGE_FAILED",
-                "exc_info": True,
+                "exc_info": exc,
             },
         )
     ]

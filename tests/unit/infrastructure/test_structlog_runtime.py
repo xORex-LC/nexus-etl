@@ -15,9 +15,12 @@ from structlog.stdlib import ProcessorFormatter
 
 from connector.common.interactive_io import InteractiveIoGate
 from connector.common.observability import (
+    LogLevel,
     ObservabilityLayout,
     ObservabilityLayoutPolicy,
     ObservabilityRedactionPolicy,
+    ObservabilityError,
+    ObservabilityEvent,
     ServiceComponent,
 )
 from connector.common.runtime_paths import RuntimePathOverrides, detect_runtime_paths
@@ -30,6 +33,7 @@ from connector.config.models import (
 )
 from connector.delivery.cli.stream_capture import StdStreamToLogger
 from connector.infra.logging.ecs import ecs_transform
+from connector.infra.logging.event_sink import StructlogObservabilityEventSink
 from connector.infra.logging.redaction import LogRedactionEngine
 from connector.infra.logging.runtime import (
     DailySizeRotatingFileHandler,
@@ -183,6 +187,57 @@ def test_text_formatter_does_not_enable_ecs_transform(tmp_path: Path) -> None:
     )
 
     assert ecs_transform not in _formatter_processors(runtime)
+    runtime.close()
+
+
+def test_event_sink_preserves_exception_traceback_outside_except_frame(
+    tmp_path: Path,
+) -> None:
+    stderr = io.StringIO()
+    runtime = build_structured_logging_runtime(
+        config=LoggingConfig(
+            sinks=LoggingSinksConfig(
+                file=FileLoggingSinkConfig(enabled=False),
+                console=ConsoleLoggingSinkConfig(
+                    enabled=True, stream="stderr", format="json"
+                ),
+            )
+        ),
+        layout=_layout(tmp_path),
+        redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
+        component=ServiceComponent.PLANNER,
+        stderr_stream=stderr,
+        root_logger_name="",
+    )
+    try:
+        raise RuntimeError("outside-frame")
+    except RuntimeError as raised:
+        exc = raised
+
+    sink = StructlogObservabilityEventSink(
+        logger=runtime.get_logger(
+            ServiceComponent.PLANNER,
+            logger_name="tests.runtime.exception.sink",
+        )
+    )
+    sink.emit(
+        ObservabilityEvent(
+            action="stage-failed",
+            message="Pipeline stage failed",
+            level=LogLevel.ERROR,
+            error=ObservabilityError(
+                type="RuntimeError",
+                message="outside-frame",
+            ),
+        ),
+        exc_info=exc,
+    )
+
+    payload = _json_line(stderr)[0]
+    assert payload["error.type"] == "RuntimeError"
+    assert payload["error.message"] == "outside-frame"
+    assert '"exc_type": "RuntimeError"' in str(payload["error.stack_trace"])
+    assert '"exc_value": "outside-frame"' in str(payload["error.stack_trace"])
     runtime.close()
 
 

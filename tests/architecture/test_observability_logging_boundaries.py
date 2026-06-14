@@ -51,6 +51,12 @@ EXPECTED_STRUCTURAL_ROOTS = frozenset(
 ALLOWED_ECS_TRANSFORM_IMPORTS = {
     "connector/infra/logging/runtime.py",
 }
+KNOWN_USECASE_LOGGING_BACKEND_IMPORTS = frozenset(
+    {
+        "connector/usecases/management/vault/usecase.py: structlog",
+        "connector/usecases/resolve_usecase.py: structlog",
+    }
+)
 
 
 def _python_files(root: Path) -> list[Path]:
@@ -129,6 +135,25 @@ def test_ecs_transform_is_imported_only_by_logging_runtime() -> None:
     assert violations == [], (
         "ecs_transform must remain the final logging runtime processor:\n"
         + "\n".join(violations)
+    )
+
+
+def test_usecases_do_not_add_new_logging_backend_imports() -> None:
+    current: set[str] = set()
+    usecases_root = CONNECTOR_ROOT / "usecases"
+    for path in _python_files(usecases_root):
+        rel = _rel(path)
+        for module in _imports(path):
+            if module == "structlog" or module.startswith("structlog."):
+                current.add(f"{rel}: structlog")
+            if module.startswith("connector.infra.logging"):
+                current.add(f"{rel}: {module}")
+
+    assert current == KNOWN_USECASE_LOGGING_BACKEND_IMPORTS, (
+        "Usecases must not add direct logging backend imports. "
+        "Remove fixed legacy entries from KNOWN_USECASE_LOGGING_BACKEND_IMPORTS "
+        "when migrating them to observability ports.\nCurrent:\n"
+        + "\n".join(sorted(current))
     )
 
 

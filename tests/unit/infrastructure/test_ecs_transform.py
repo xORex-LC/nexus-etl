@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from connector.common.observability import ServiceComponent
 from connector.infra.logging.ecs import (
     STRUCTURAL_ROOTS,
     ecs_transform,
@@ -122,3 +123,19 @@ def test_taxonomy_aliases_cover_phase_one_lifecycle_fields() -> None:
     assert aliases["duration_ns"] == "event.duration"
     assert aliases["stage_name"] == "nexus.stage.name"
     assert aliases["items_count"] == "nexus.stage.items_count"
+    assert aliases["component"] == "service.type"
+
+
+@pytest.mark.parametrize("component", list(ServiceComponent))
+def test_component_alias_maps_to_service_type(component: ServiceComponent) -> None:
+    payload = ecs_transform(
+        _Logger(),
+        "info",
+        {
+            "event": "Component event",
+            "component": component.value,
+        },
+    )
+
+    assert payload["service.type"] == component.value
+    assert "labels.component" not in payload

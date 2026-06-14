@@ -267,8 +267,8 @@ actions:
   - event.action
   - trace.id
   - event.outcome
-  emission_point: planned
-  description: Завершение прогона с `event.outcome`
+  emission_point: graceful command completion, including non-zero diagnostic exit
+  description: Завершение прогона с `event.outcome`; failure outcome означает graceful non-zero exit, а не unhandled exception
 - name: run-failed
   zone: 01-runtime-cli-lifecycle
   bucket: milestone
@@ -282,8 +282,8 @@ actions:
   - error.type
   - error.message
   - trace.id
-  emission_point: unhandled command-level exception
-  description: Прогон команды/пайплайна завершился ошибкой
+  emission_point: unhandled command-level exception; Phase 3 migration target for the current legacy raw logger.error path
+  description: Неперехваченное исключение на command-level; не дублирует graceful `run-completed` с failure outcome
 - name: run-started
   zone: 01-runtime-cli-lifecycle
   bucket: milestone

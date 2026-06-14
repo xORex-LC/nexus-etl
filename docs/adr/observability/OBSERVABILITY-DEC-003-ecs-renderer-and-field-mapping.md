@@ -182,8 +182,8 @@ class ObservabilityEvent:
 - `level`, `outcome`, `kind` могут быть явно заданы adapter-ом, но по умолчанию подтягиваются из
   `actions.yaml`;
 - `duration_ns` маппится в `event.duration`;
-- `error` несёт безопасные `type/message/code` и, при наличии живого exception, передаётся sink-ом в
-  structlog через `exc_info`.
+- `error` несёт безопасные `type/message/code` и, при наличии exception object, передаётся sink-ом в
+  structlog через `exc_info=exc`, а не через ambient `exc_info=True`.
 
 `fields` не является escape hatch для raw ECS. Запрещены reserved keys и structural roots:
 `@timestamp`, `message`, `component`, `ecs`, `event`, `error`, `exception`, `labels`, `log`,
@@ -203,6 +203,10 @@ class ObservabilityEvent:
 `event.category` и `event.type` не входят в базовый контракт этого решения, потому что текущая
 machine taxonomy хранит `kind`, но не хранит `category/type`. Они могут быть добавлены позже, если
 появятся в YAML registry как обязательная часть taxonomy.
+
+Для run lifecycle `run-completed` означает завершение command execution с `event.outcome`, включая
+graceful non-zero diagnostic exit. `run-failed` резервируется для необработанного command-level
+exception и подключается позже при миграции legacy exception-path.
 
 Для pipeline lifecycle должны использоваться существующие `PipelineHooks`: `on_stage_start`,
 `on_stage_complete`, `on_stage_error`, `on_stage_abort`. Логирование stage lifecycle не добавляется
@@ -311,6 +315,8 @@ Architecture/import guards:
 - `domain` does not import ECS/logging modules.
 - future observability package boundary should allow host adapters for config/DI/SQLite, but not
   reverse imports from package to application delivery code.
+- Phase 1 использует AST architecture tests для observability-specific правил; новые import-linter
+  contracts добавляются только если AST-guards перестанут покрывать boundary.
 
 Operational smoke:
 
@@ -343,6 +349,10 @@ Operational smoke:
   необходимости, ограниченного набора `labels.*`;
 - стратегию index template / component template нужно оформить отдельным DEC или follow-up design note
   до production rollout в Elasticsearch.
+
+Также во Phase 2 нужно заменить runtime-чтение taxonomy YAML внутри `ecs_transform` на заранее
+валидированный registry, передаваемый в renderer при wiring. Logging hot path должен оставаться
+fail-safe: ошибка загрузки taxonomy не должна валить command execution.
 
 ---
 

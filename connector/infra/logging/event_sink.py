@@ -80,7 +80,7 @@ def _dispatch_log(
 ) -> None:
     kwargs = dict(fields)
     if exc_info is not None:
-        kwargs["exc_info"] = True
+        kwargs["exc_info"] = exc_info
     if level == LogLevel.CRITICAL:
         logger.critical(message, **kwargs)
     elif level == LogLevel.ERROR:
