@@ -39,6 +39,7 @@ from structlog.stdlib import ProcessorFormatter
 from connector.common.interactive_io import InteractiveIoGate
 from connector.common.observability import ObservabilityLayout, ServiceComponent
 from connector.config.models import LoggingConfig, LogLevelName
+from .ecs import ecs_transform
 from .redaction import LogRedactionEngine
 
 if TYPE_CHECKING:
@@ -475,6 +476,7 @@ def _build_structlog_processors(runtime_meta: LoggingRuntimeMeta) -> list[Any]:
     return [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
+        structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         _add_schema_version,
         _build_runtime_meta_processor(runtime_meta),
@@ -482,20 +484,54 @@ def _build_structlog_processors(runtime_meta: LoggingRuntimeMeta) -> list[Any]:
     ]
 
 
+def _build_foreign_pre_chain(runtime_meta: LoggingRuntimeMeta) -> list[Any]:
+    """Собрать enrichment-chain для stdlib/foreign logging записей.
+
+    Structlog call-sites уже проходят через `_build_structlog_processors()` и
+    завершаются `ProcessorFormatter.wrap_for_formatter`. Foreign `logging`
+    записи попадают сразу в `ProcessorFormatter`, поэтому получают тот же
+    enrichment-набор, но без финальной упаковки для formatter.
+    """
+    processors = _build_structlog_processors(runtime_meta)
+    return [
+        processor
+        for processor in processors
+        if processor is not ProcessorFormatter.wrap_for_formatter
+    ]
+
+
+def _build_formatter_processors(
+    *,
+    redaction_engine: LogRedactionEngine,
+    renderer: Any,
+    ecs_enabled: bool,
+) -> list[Any]:
+    """Собрать общий финальный processor-chain для structlog и foreign логов."""
+    processors: list[Any] = [
+        structlog.processors.ExceptionRenderer(ExceptionDictTransformer()),
+        redaction_engine.processor,
+        ProcessorFormatter.remove_processors_meta,
+    ]
+    if ecs_enabled:
+        processors.append(ecs_transform)
+    processors.append(renderer)
+    return processors
+
+
 def _build_formatter(
     *,
     redaction_engine: LogRedactionEngine,
     renderer: Any,
     runtime_meta: LoggingRuntimeMeta,
+    ecs_enabled: bool,
 ) -> ProcessorFormatter:
     return ProcessorFormatter(
-        foreign_pre_chain=_build_structlog_processors(runtime_meta)[:-1],
-        processors=[
-            structlog.processors.ExceptionRenderer(ExceptionDictTransformer()),
-            redaction_engine.processor,
-            ProcessorFormatter.remove_processors_meta,
-            renderer,
-        ],
+        foreign_pre_chain=_build_foreign_pre_chain(runtime_meta),
+        processors=_build_formatter_processors(
+            redaction_engine=redaction_engine,
+            renderer=renderer,
+            ecs_enabled=ecs_enabled,
+        ),
     )
 
 
@@ -531,6 +567,7 @@ def _build_handler_stack(
                     use_color=bool(getattr(console_stream, "isatty", lambda: False)())
                 ),
                 runtime_meta=runtime_meta,
+                ecs_enabled=config.sinks.console.format == "json",
             )
         )
         if interactive_io_gate is not None:
@@ -555,6 +592,7 @@ def _build_handler_stack(
                 if config.sinks.file.format == "json"
                 else _JsonTextRenderer(),
                 runtime_meta=runtime_meta,
+                ecs_enabled=config.sinks.file.format == "json",
             )
         )
         root_logger.addHandler(file_handler)

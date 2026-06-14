@@ -15,6 +15,14 @@
 
 from __future__ import annotations
 
+from connector.common.observability.events import (
+    EventKind,
+    EventOutcome,
+    LogFieldValue,
+    LogLevel,
+    ObservabilityError,
+    ObservabilityEvent,
+)
 from connector.common.observability.layout import (
     ClockMode,
     ComponentIdentity,
@@ -26,15 +34,29 @@ from connector.common.observability.layout import (
     RuntimePathsLike,
     ServiceComponent,
 )
+from connector.common.observability.ports import (
+    ObservabilityEventSink,
+    PipelineLifecycleEvents,
+    RuntimeLifecycleEvents,
+)
 
 __all__ = [
     "ClockMode",
     "ComponentIdentity",
+    "EventKind",
+    "EventOutcome",
     "LedgerBackendName",
+    "LogFieldValue",
+    "LogLevel",
     "ObservabilityArtifactKind",
+    "ObservabilityError",
+    "ObservabilityEvent",
+    "ObservabilityEventSink",
     "ObservabilityLayout",
     "ObservabilityLayoutPolicy",
     "ObservabilityRedactionPolicy",
+    "PipelineLifecycleEvents",
     "RuntimePathsLike",
+    "RuntimeLifecycleEvents",
     "ServiceComponent",
 ]

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 import structlog
+from structlog.stdlib import ProcessorFormatter
 
 from connector.common.interactive_io import InteractiveIoGate
 from connector.common.observability import (
@@ -28,6 +29,7 @@ from connector.config.models import (
     LoggingSinksConfig,
 )
 from connector.delivery.cli.stream_capture import StdStreamToLogger
+from connector.infra.logging.ecs import ecs_transform
 from connector.infra.logging.redaction import LogRedactionEngine
 from connector.infra.logging.runtime import (
     DailySizeRotatingFileHandler,
@@ -75,6 +77,14 @@ def _json_line(buffer: io.StringIO) -> list[dict[str, object]]:
     return [json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()]
 
 
+def _formatter_processors(runtime) -> list[object]:
+    handler = runtime.handler_stack.console_handler
+    assert handler is not None
+    formatter = handler.formatter
+    assert isinstance(formatter, ProcessorFormatter)
+    return list(formatter.processors)
+
+
 class _TtyStringIO(io.StringIO):
     def isatty(self) -> bool:
         return True
@@ -114,15 +124,65 @@ def test_structlog_runtime_writes_json_to_stderr_with_correlation_fields(
     ).info("row processed", row_ref="r-1")
 
     payload = _json_line(stderr)[0]
-    assert payload["event"] == "row processed"
-    assert payload["run_id"] == "run-1"
-    assert payload["pipeline_run_id"] == "pipe-1"
-    assert payload["component"] == "mapper"
-    assert payload["dataset"] == "employees"
-    assert payload["level"] == "info"
-    assert payload["schema_version"] == "1.0"
-    assert payload["app_version"] == "1.2.3"
-    assert payload["git_rev"] == "abc123"
+    assert payload["message"] == "row processed"
+    assert payload["trace.id"] == "run-1"
+    assert payload["labels.pipeline_run_id"] == "pipe-1"
+    assert payload["service.type"] == "mapper"
+    assert payload["event.dataset"] == "employees"
+    assert payload["log.level"] == "info"
+    assert payload["labels.schema_version"] == "1.0"
+    assert payload["service.version"] == "1.2.3"
+    assert payload["labels.git_rev"] == "abc123"
+    assert payload["log.logger"] == "tests.runtime.mapper.child"
+    runtime.close()
+
+
+def test_json_formatter_processor_order_places_ecs_after_processor_cleanup(
+    tmp_path: Path,
+) -> None:
+    runtime = build_structured_logging_runtime(
+        config=LoggingConfig(
+            sinks=LoggingSinksConfig(
+                file=FileLoggingSinkConfig(enabled=False),
+                console=ConsoleLoggingSinkConfig(
+                    enabled=True, stream="stderr", format="json"
+                ),
+            )
+        ),
+        layout=_layout(tmp_path),
+        redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
+        component=ServiceComponent.MAPPER,
+        stderr_stream=io.StringIO(),
+        root_logger_name="",
+    )
+
+    processors = _formatter_processors(runtime)
+
+    assert processors.index(
+        ProcessorFormatter.remove_processors_meta
+    ) < processors.index(ecs_transform)
+    assert processors[-2] is ecs_transform
+    runtime.close()
+
+
+def test_text_formatter_does_not_enable_ecs_transform(tmp_path: Path) -> None:
+    runtime = build_structured_logging_runtime(
+        config=LoggingConfig(
+            sinks=LoggingSinksConfig(
+                file=FileLoggingSinkConfig(enabled=False),
+                console=ConsoleLoggingSinkConfig(
+                    enabled=True, stream="stderr", format="text"
+                ),
+            )
+        ),
+        layout=_layout(tmp_path),
+        redaction_engine=LogRedactionEngine(ObservabilityRedactionPolicy()),
+        component=ServiceComponent.MAPPER,
+        stderr_stream=io.StringIO(),
+        root_logger_name="",
+    )
+
+    assert ecs_transform not in _formatter_processors(runtime)
     runtime.close()
 
 
@@ -303,7 +363,7 @@ def test_component_override_allows_debug_only_for_selected_component(
     ).debug("keep-me")
 
     payloads = _json_line(stderr)
-    assert [payload["event"] for payload in payloads] == ["keep-me"]
+    assert [payload["message"] for payload in payloads] == ["keep-me"]
     runtime.close()
 
 
@@ -416,6 +476,6 @@ def test_redaction_covers_kwargs_regex_traceback_foreign_and_capture(
     assert "captured-secret" not in raw_output
     assert "***" in raw_output
     payloads = _json_line(stderr)
-    assert any(payload["event"] == "foreign token=***" for payload in payloads)
-    assert any(payload["event"] == "password=***" for payload in payloads)
+    assert any(payload["message"] == "foreign token=***" for payload in payloads)
+    assert any(payload["message"] == "password=***" for payload in payloads)
     runtime.close()

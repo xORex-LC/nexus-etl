@@ -52,6 +52,7 @@ fields:
   sensitive: false
   description: Runtime command exit code
 - key: nexus.subsystem
+  aliases: [scope, subsystem]
   ecs_type: keyword
   owner: nexus
   tier: core

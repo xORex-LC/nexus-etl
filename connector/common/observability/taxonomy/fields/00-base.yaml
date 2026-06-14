@@ -12,6 +12,7 @@
 #   owner        ecs | nexus | labels
 #   tier         core | extended | trace
 #   sensitive    true → raw запрещён (только fingerprint/count); кормит redaction
+#   aliases      short runtime field names accepted by ObservabilityEvent.fields / structlog kwargs
 #   source       откуда берётся значение в коде (опц.)
 #   description  краткое назначение
 # ============================================================================
@@ -33,12 +34,14 @@ fields:
   sensitive: false
   description: ECS schema version
 - key: error.code
+  aliases: [error_code, diag_code]
   ecs_type: keyword
   owner: ecs
   tier: extended
   sensitive: false
   description: Domain diagnostic/error code
 - key: error.message
+  aliases: [error, error_message]
   ecs_type: text
   owner: ecs
   tier: extended
@@ -51,24 +54,28 @@ fields:
   sensitive: false
   description: Redacted stack trace
 - key: error.type
+  aliases: [error_type]
   ecs_type: keyword
   owner: ecs
   tier: extended
   sensitive: false
   description: Exception class or domain error type
 - key: event.action
+  aliases: [action]
   ecs_type: keyword
   owner: ecs
   tier: core
   sensitive: false
   description: Canonical event.action from actions.yaml
 - key: event.dataset
+  aliases: [dataset]
   ecs_type: keyword
   owner: ecs
   tier: core
   sensitive: false
   description: Business dataset being processed
 - key: event.duration
+  aliases: [duration_ns]
   ecs_type: long
   owner: ecs
   tier: core
@@ -81,12 +88,14 @@ fields:
   sensitive: false
   description: Event end timestamp
 - key: event.kind
+  aliases: [kind]
   ecs_type: keyword
   owner: ecs
   tier: core
   sensitive: false
   description: event | metric | state
 - key: event.outcome
+  aliases: [outcome]
   ecs_type: keyword
   owner: ecs
   tier: core
@@ -99,12 +108,14 @@ fields:
   sensitive: false
   description: Event start timestamp
 - key: file.path
+  aliases: [file_path, log_file_path, report_path, plan_path]
   ecs_type: keyword
   owner: ecs
   tier: extended
   sensitive: false
   description: Safe artifact/file path
 - key: host.name
+  aliases: [host]
   ecs_type: keyword
   owner: ecs
   tier: extended
@@ -135,6 +146,7 @@ fields:
   sensitive: false
   description: HTTP status code
 - key: labels.pipeline_run_id
+  aliases: [pipeline_run_id]
   ecs_type: keyword
   owner: labels
   tier: core
@@ -183,6 +195,7 @@ fields:
   sensitive: false
   description: Process name
 - key: process.pid
+  aliases: [pid]
   ecs_type: long
   owner: ecs
   tier: extended
@@ -201,12 +214,14 @@ fields:
   sensitive: false
   description: Service name
 - key: service.type
+  aliases: [component]
   ecs_type: keyword
   owner: ecs
   tier: core
   sensitive: false
   description: Component identity
 - key: service.version
+  aliases: [app_version]
   ecs_type: keyword
   owner: ecs
   tier: core
@@ -219,6 +234,7 @@ fields:
   sensitive: false
   description: Optional span id
 - key: trace.id
+  aliases: [run_id]
   ecs_type: keyword
   owner: ecs
   tier: core

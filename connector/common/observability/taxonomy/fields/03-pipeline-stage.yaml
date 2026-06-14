@@ -16,12 +16,14 @@ fields:
   sensitive: false
   description: Canonical generic failed counter; в report context дополнительно есть stage-specific failed label
 - key: nexus.stage.items_count
+  aliases: [items_count, items]
   ecs_type: long
   owner: nexus
   tier: extended
   sensitive: false
   description: Количество элементов, вышедших из stage stream (`PipelineHooks` `stats["items"]`)
 - key: nexus.stage.name
+  aliases: [stage, stage_name]
   ecs_type: keyword
   owner: nexus
   tier: core
