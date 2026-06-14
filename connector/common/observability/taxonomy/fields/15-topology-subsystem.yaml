@@ -1,0 +1,359 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 15 (topology subsystem)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.topology.activation.capability_enabled
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Whether dataset topology capability is enabled
+- key: nexus.topology.activation.error
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Safe activation error summary
+- key: nexus.topology.activation.requires_source
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Whether source topology validation is required
+- key: nexus.topology.activation.requires_target
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Whether target topology snapshot is required
+- key: nexus.topology.activation.skipped_reason
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`command_not_supported`, `checkpoint_before_topology_consumer`, `capability_disabled`, '
+- key: nexus.topology.activation.sources
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Activation sources: `match`, `resolve`, `source_validation`'
+- key: nexus.topology.activation.target_failure_is_hard
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Whether target readiness failure short-circuits command
+- key: nexus.topology.bootstrap.status
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`ok`, `warn`, `error`, `skipped`'
+- key: nexus.topology.built_sides
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Built artifacts: `source`, `source_validation`, `target`'
+- key: nexus.topology.cache_snapshot_revision
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Safe cache revision/run id if non-sensitive
+- key: nexus.topology.canonicalizer.ops_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of canonicalization ops
+- key: nexus.topology.comparison.ambiguous
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean ambiguity result
+- key: nexus.topology.comparison.candidates_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of target candidates considered
+- key: nexus.topology.comparison.ladder
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Ordered comparison mode names from policy
+- key: nexus.topology.comparison.matched_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of candidates matched by topology
+- key: nexus.topology.comparison.mode
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`exact_canonical_path`, `exact_leaf_parent_chain`, `exact_leaf_root_depth`, `ambiguous`, `no_match`'
+- key: nexus.topology.comparison.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Safe reason from comparison core
+- key: nexus.topology.comparison.rungs_evaluated
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of ladder rungs evaluated
+- key: nexus.topology.consumer
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Consumer path: `match`, `resolve`, `source_validation`'
+- key: nexus.topology.dataset
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Dataset that owns topology spec/snapshot
+- key: nexus.topology.errors_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of topology diagnostics with error severity
+- key: nexus.topology.failure.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Stable failure reason
+- key: nexus.topology.freshness.age_seconds
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Target snapshot age in seconds
+- key: nexus.topology.freshness.max_age_seconds
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Policy threshold
+- key: nexus.topology.freshness.present
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Whether freshness metadata exists
+- key: nexus.topology.graph.algorithm
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Cycle/topological algorithm name, e.g. `graphlib`
+- key: nexus.topology.graph.has_cycle
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean cycle check result
+- key: nexus.topology.max_depth
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Maximum computed depth in topology snapshot
+- key: nexus.topology.node.canonical_name_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint of canonical name/label
+- key: nexus.topology.node.id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint of topology node id
+- key: nexus.topology.node.synthetic_id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint of generated source node id
+- key: nexus.topology.nodes_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of nodes in topology snapshot
+- key: nexus.topology.normalization.version
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Safe normalization version/fingerprint
+- key: nexus.topology.parent.id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint of parent topology node id
+- key: nexus.topology.path.depth
+  ecs_type: long
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Number of canonical path segments
+- key: nexus.topology.path.fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint of canonical path; no segments
+- key: nexus.topology.pipeline_dataset
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Dataset currently processed by command
+- key: nexus.topology.readiness.decision
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`ready`, `required_failure`, `optional_skip`'
+- key: nexus.topology.readiness.ready
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean readiness result
+- key: nexus.topology.readiness.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`ready`, `snapshot_empty`, `max_age_exceeded`, '
+- key: nexus.topology.roots_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of roots in topology snapshot
+- key: nexus.topology.side
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`source` or `target`'
+- key: nexus.topology.source.anchored_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of source nodes anchored to target/root
+- key: nexus.topology.source.drop.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`missing_parent`, `unanchored_subtree`, `cycle`'
+- key: nexus.topology.source.dropped_by_reason.*
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count per drop reason
+- key: nexus.topology.source.dropped_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of dropped/unanchored source nodes
+- key: nexus.topology.source.mode
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`path_columns` or `adjacency_list`'
+- key: nexus.topology.source.node_id_field
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Source node id field name only
+- key: nexus.topology.source.node_id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint of source node id
+- key: nexus.topology.source.nodes_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of source adjacency nodes
+- key: nexus.topology.source.on_unanchored
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Policy: `skip`, `warn`, `hard_error`'
+- key: nexus.topology.source.path_columns_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of source path columns; names optional elsewhere
+- key: nexus.topology.target.label_field
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Target label field name only
+- key: nexus.topology.target.membership_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of target membership ids read for anchoring
+- key: nexus.topology.target.mode
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Currently `adjacency_list`
+- key: nexus.topology.target.node_id_field
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Target node id field name only
+- key: nexus.topology.target.parent_id_field
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Target parent id field name only
+- key: nexus.topology.warnings_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of topology diagnostics with warning severity

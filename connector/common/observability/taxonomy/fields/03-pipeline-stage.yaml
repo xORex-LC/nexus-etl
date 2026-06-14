@@ -1,0 +1,60 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 03 (pipeline stage lifecycle)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.stage.failed_rows
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Canonical generic failed counter; в report context дополнительно есть stage-specific failed label
+- key: nexus.stage.items_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество элементов, вышедших из stage stream (`PipelineHooks` `stats["items"]`)
+- key: nexus.stage.name
+  ecs_type: keyword
+  owner: nexus
+  tier: core
+  sensitive: false
+  description: 'Canonical internal pipeline stage name из `StageContract.stage_name`: `map`, `normalize`, `enrich`, `match`,
+    `resolve_context`, `resolve`'
+- key: nexus.stage.ok_rows
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Canonical generic ok counter; в report context дополнительно есть stage-specific ok label
+- key: nexus.stage.rows_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Row counter из `StageResultReporter.snapshot()` / `publish_context()`
+- key: nexus.stage.vault_candidates_fields_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Суммарное число secret/vault candidate fields
+- key: nexus.stage.vault_candidates_rows
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Rows с secret/vault candidate fields
+- key: nexus.stage.warnings_rows
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Число rows с warnings по reporter policy

@@ -1,0 +1,221 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 10 (apply / target execution)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.apply.created
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество successful create actions
+- key: nexus.apply.dry_run
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean dry-run mode
+- key: nexus.apply.failed
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество failed apply items
+- key: nexus.apply.fatal_error
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Boolean summary bit: был ли fatal error по stop policy'
+- key: nexus.apply.items_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество реально обработанных plan items
+- key: nexus.apply.max_actions
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Runtime cap for processed items
+- key: nexus.apply.op
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`create`, `update`'
+- key: nexus.apply.rows_with_warnings
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество rows с warning outcome
+- key: nexus.apply.skipped
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество skipped items/rows inherited from plan summary or apply policy
+- key: nexus.apply.status
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`ok`, `warning`, `failed`'
+- key: nexus.apply.stop_on_first_error
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean stop policy at use-case level
+- key: nexus.apply.target_id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint target id during apply; raw target id forbidden
+- key: nexus.apply.updated
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество successful update actions
+- key: nexus.target.answer_code
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Non-HTTP or string-coded answer code
+- key: nexus.target.error_reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Provider/driver-specific normalized reason
+- key: nexus.target.fault_kind
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`AUTH`, `DATA`, `THROTTLE`, `TRANSIENT`, '
+- key: nexus.target.operation.alias
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Canonical RequestSpec operation alias
+- key: nexus.target.request.kind
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`write`, `read`, `check`'
+- key: nexus.target.request.payload_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество top-level полей в request payload object
+- key: nexus.target.request.payload_items_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество элементов, если payload — list/collection
+- key: nexus.target.request.payload_redacted_fields
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество полей, замаскированных redaction policy
+- key: nexus.target.response.fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество top-level полей в response object
+- key: nexus.target.response.format
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`json`, `text`, `none`, '
+- key: nexus.target.response.items_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество items в response list/rows payload
+- key: nexus.target.response.preview
+  ecs_type: text
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Sanitized + truncated preview body/response; только если redaction policy разрешает
+- key: nexus.target.response.preview_present
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: 'Boolean: есть ли пригодный safe preview'
+- key: nexus.target.retry.attempt
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Current retry ordinal for this write
+- key: nexus.target.retry.delay_ms
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Planned delay before next attempt
+- key: nexus.target.retry.directive
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`RETRY_BACKOFF`, `RETRY_AFTER`, `FAIL`, `ESCALATE`'
+- key: nexus.target.retry.max_attempts
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Configured retry ceiling
+- key: nexus.target.retry.mutation
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Optional retry mutation applied to RequestSpec
+- key: nexus.target.stats.failures_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Total target operations ended in failure during apply run
+- key: nexus.target.stats.requests_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Total target requests issued during apply run
+- key: nexus.target.stats.retries_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Total retries executed during apply run
+- key: nexus.target.transport
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Transport kind: `http`, '

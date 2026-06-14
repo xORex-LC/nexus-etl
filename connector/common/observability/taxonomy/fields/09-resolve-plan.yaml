@@ -1,0 +1,215 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 09 (resolve / plan lifecycle)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.plan.failed_rows
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`PlanSummary.failed_rows`'
+- key: nexus.plan.item.changes_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество changes for update item
+- key: nexus.plan.item.op
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`create`, `update`; per-item only'
+- key: nexus.plan.item.secret_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Количество secret field refs in plan item
+- key: nexus.plan.item.target_id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint target id; raw target id не логировать
+- key: nexus.plan.items_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество items in plan artifact
+- key: nexus.plan.planned_create
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`PlanSummary.planned_create`'
+- key: nexus.plan.planned_update
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`PlanSummary.planned_update`'
+- key: nexus.plan.rows_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`PlanSummary.rows_total`'
+- key: nexus.plan.skipped_rows
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`PlanSummary.skipped`'
+- key: nexus.plan.valid_rows
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`PlanSummary.valid_rows`'
+- key: nexus.resolve.batch_index.keys_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество lookup keys in batch index
+- key: nexus.resolve.batch_index.values_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Суммарное количество resolved ids in batch index
+- key: nexus.resolve.changed_fields
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Имена изменённых полей только если безопасно; no values
+- key: nexus.resolve.changes_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество changed fields; values не логировать
+- key: nexus.resolve.link.candidates_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество candidate ids found
+- key: nexus.resolve.link.field
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Link field name
+- key: nexus.resolve.link.lookup_key_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint lookup key; raw key запрещён
+- key: nexus.resolve.link.outcome
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`resolved`, `pending`, `ambiguous`, `missing`, `failed`'
+- key: nexus.resolve.link.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Safe reason: `no_candidates`, `multiple_candidates`, `topology_missing`, '
+- key: nexus.resolve.link.resolved_id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint resolved id
+- key: nexus.resolve.link.target_dataset
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Target dataset of resolved link
+- key: nexus.resolve.link.topology.applied
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean topology link resolver applied
+- key: nexus.resolve.link.topology.mode
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Topology link resolution mode
+- key: nexus.resolve.link.topology.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Safe topology reason without raw evidence
+- key: nexus.resolve.op
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`create`, `update`, `skip`'
+- key: nexus.resolve.reason_code
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`match_ambiguous`, `no_changes`, `changes_detected`, `link_pending`, `target_id_missing`, '
+- key: nexus.resolve.secret_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Количество secret fields referenced by resolved row / plan item
+- key: nexus.resolve.secret_lifecycle.delete_on_success
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Boolean cleanup policy
+- key: nexus.resolve.secret_lifecycle.mode
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: '`persistent`, `ephemeral`'
+- key: nexus.resolve.secret_lifecycle.ttl_seconds
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Secret lifecycle TTL, если задан
+- key: nexus.resolve.source_ref.fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество fields in `ResolvedRow.source_ref`; raw source_ref не логировать
+- key: nexus.resolve.status
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`resolved`, `pending`, `failed`, `skipped`'
+- key: nexus.resolve.target_id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint target id; raw target id не логировать

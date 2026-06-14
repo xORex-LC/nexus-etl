@@ -1,0 +1,215 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 06 (state stores & providers)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.cache.dataset
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Cache dataset/snapshot owner: `employees`, `organizations`, '
+- key: nexus.cache.drift.detected
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean drift result
+- key: nexus.cache.drift.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Причина drift: `schema_version_mismatch`, `hash_mismatch`, '
+- key: nexus.cache.include_deleted
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean include-deleted policy
+- key: nexus.cache.operation
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`refresh`, `clear`, `status`, `rebuild`, `upsert`, `count`, `read_all`, `find`, `find_one`'
+- key: nexus.cache.rebuild.trigger
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`manual`, `drift_policy`, `clear`, '
+- key: nexus.cache.refresh.items
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество source items, обработанных при refresh
+- key: nexus.cache.refresh.pages
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество target pages, обработанных при refresh
+- key: nexus.cache.refresh.scope
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`dataset`, `all`, `with_dependencies`'
+- key: nexus.cache.role
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Роль использования: `admin`, `refresh_sync`, `enrich_lookup`, `match_lookup`, `topology_read`'
+- key: nexus.cache.rows.failed
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество failed source items
+- key: nexus.cache.rows.inserted
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество inserted snapshot rows
+- key: nexus.cache.rows.skipped
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество skipped source items
+- key: nexus.cache.rows.total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Итоговое количество rows в cache dataset/table
+- key: nexus.cache.rows.updated
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество updated snapshot rows
+- key: nexus.cache.schema_hash.actual
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Фактический schema/content hash, если не чувствителен
+- key: nexus.cache.schema_hash.expected
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Ожидаемый schema/content hash, если не чувствителен
+- key: nexus.cache.table
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Logical/physical cache table name, если нужно диагностировать schema/SQL
+- key: nexus.identity.candidates_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество resolved ids/candidates в identity index
+- key: nexus.identity.key_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint identity key; raw identity key не логируется
+- key: nexus.identity.resolved_id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint target/resolved id, если id чувствителен или внешний
+- key: nexus.pending.attempts
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество попыток разрешения pending link
+- key: nexus.pending.decode.skipped_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество invalid pending rows skipped
+- key: nexus.pending.expired.count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество expired pending links drained/reported
+- key: nexus.pending.id
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Внутренний pending id; можно логировать, если он не раскрывает payload
+- key: nexus.pending.lookup_key_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint lookup key unresolved link
+- key: nexus.pending.purged.count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество stale pending rows purged
+- key: nexus.pending.replay.rows_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество pending rows loaded for replay
+- key: nexus.pending.retention_days
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Configured pending retention window
+- key: nexus.pending.status
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`pending`, `resolved`, `expired`, `conflict`'
+- key: nexus.pending.ttl_seconds
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: TTL pending link, если применимо
+- key: nexus.storage.backend
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Backend implementation: `sqlite`, `jsonl`, '
+- key: nexus.storage.database
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Logical DB/component: `cache`, `identity`, `vault`, `ledger`; не полный путь'
+- key: nexus.storage.operation
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`open`, `schema-init`, `transaction`, `commit`, `rollback`, `vacuum`, '

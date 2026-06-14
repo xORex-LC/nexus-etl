@@ -1,0 +1,53 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 04 (record context)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.record.id
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Opaque row id из `RowRef.row_id` / `RecordRef.row_id`; не обязан совпадать с business identity
+- key: nexus.record.identity.primary
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Имя primary identity field, например `employee_id`, `login`, `external_id`
+- key: nexus.record.identity.value_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint identity value; raw identity value не логируется
+- key: nexus.record.line_no
+  ecs_type: long
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Номер строки исходного файла, если источник поддерживает line number
+- key: nexus.record.ordinal
+  ecs_type: long
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Порядковый номер записи внутри текущего stream/batch, если отличается от `line_no`
+- key: nexus.record.source.kind
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: 'Тип origin: `csv`, `plan`, `pending`, `api`, '
+- key: nexus.record.source.path
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Относительный путь источника; не эмитить на каждую запись без необходимости

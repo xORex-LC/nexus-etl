@@ -1,0 +1,191 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 16 (map stage)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.mapping.errors_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Mapping-local error count for one record
+- key: nexus.mapping.failure.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`missing_source_column`, `required_field_missing`, `dsl_op_failed`, `sink_required_missing`, `boundary_error`, '
+- key: nexus.mapping.fields_touched_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество output fields touched by mapping rules
+- key: nexus.mapping.meta.path
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Meta target path only; value forbidden
+- key: nexus.mapping.meta.rules_applied
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of meta rules that produced non-null meta values
+- key: nexus.mapping.meta.rules_failed
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of meta rules with issues
+- key: nexus.mapping.meta.rules_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of compiled meta rules
+- key: nexus.mapping.rule.index
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Rule ordinal inside compiled mapping rules
+- key: nexus.mapping.rule.on_error
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: 'Rule error policy: `error` or `warn`'
+- key: nexus.mapping.rule.ops_count
+  ecs_type: long
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Number of operations in the rule chain
+- key: nexus.mapping.rule.required
+  ecs_type: boolean
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Mapping rule `required` flag
+- key: nexus.mapping.rules_applied
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество rules that assigned at least one target
+- key: nexus.mapping.rules_failed
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество rules that emitted mapping-local issues
+- key: nexus.mapping.rules_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество compiled mapping rules
+- key: nexus.mapping.secret_candidates_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Count of fields marked as secret candidates; no secret values
+- key: nexus.mapping.skip.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`upstream_failed` or future policy reason'
+- key: nexus.mapping.source.field
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Source field name only; value forbidden
+- key: nexus.mapping.source.fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of source fields read by one rule
+- key: nexus.mapping.source.missing_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of missing source fields for a record/rule
+- key: nexus.mapping.source_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество declared source columns in `MappingSpec.source_columns`
+- key: nexus.mapping.target.field
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Target field name only; value forbidden
+- key: nexus.mapping.targets_assigned_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество target assignments performed
+- key: nexus.mapping.upstream.errors_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of upstream errors carried from Extract
+- key: nexus.mapping.upstream.warnings_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of upstream warnings carried from Extract
+- key: nexus.mapping.validation.fields_checked_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of schema/sink fields checked
+- key: nexus.mapping.validation.issues_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Total mapping schema/sink validation issues
+- key: nexus.mapping.validation.required_missing_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of required/nullability failures
+- key: nexus.mapping.validation.scope
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`mapping_schema`, `sink_full_row`, future `sink_touched_fields`'
+- key: nexus.mapping.validation.type_invalid_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of type mismatch failures when type checks are enabled
+- key: nexus.mapping.warnings_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Mapping-local warning count for one record

@@ -9,7 +9,7 @@
 | Файл | Что делает |
 |---|---|
 | `interactive_io.py` | `InteractiveIoGate` — process-local gate для временного подавления console/capture mirror во время интерактивных prompt-секций |
-| `observability.py` | `ServiceComponent`, `ObservabilityArtifactKind`, `ComponentIdentity`, `ObservabilityLayout` и policy/value-objects для observability-раскладки; layout владеет именованием log/report/plan/ledger артефактов |
+| `observability/` | Пакет observability shared kernel: `layout.py` (`ServiceComponent`, `ObservabilityArtifactKind`, `ComponentIdentity`, `ObservabilityLayout` + policy/value-objects; layout владеет именованием log/report/plan/ledger артефактов), `taxonomy/` (машинно-авторитетная ECS-таксономия логов: `actions.yaml`, `fields/<zone>.yaml`) |
 | `run_id.py` | `generate_run_id()` и `generate_pipeline_run_id()` — идентификаторы command-run и pipeline-run |
 | `runtime_paths.py` | `RuntimePaths`, `RuntimePathOverrides` — typed resolver корневых runtime-путей (datasets, cache, logs, reports, plans и т.д.); `@lru_cache` для синглтон-инстанса |
 | `sanitize.py` | `mask_secret(value)` → `"***"` и `is_masked_secret()` — безопасный вывод секретов в логах |

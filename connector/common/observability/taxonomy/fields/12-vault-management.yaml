@@ -1,0 +1,197 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 12 (vault management lifecycle)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.vault.admin_gate.file_mode
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Safe POSIX mode string, e.g. `0o600`
+- key: nexus.vault.admin_gate.hash_file_configured
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Boolean: hash file was configured'
+- key: nexus.vault.admin_gate.hash_source
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`file`, `env`, `none`; never hash value'
+- key: nexus.vault.admin_gate.mode
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`interactive` or `non_interactive`'
+- key: nexus.vault.admin_gate.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Stable safe reason
+- key: nexus.vault.admin_gate.required
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Boolean: admin password gate enforced by policy'
+- key: nexus.vault.management.active_key_version
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Safe active master key version identifier
+- key: nexus.vault.management.can_apply
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Dry-run applicability decision
+- key: nexus.vault.management.dek_rewrap_required
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: DEK records requiring rewrap to active key
+- key: nexus.vault.management.dek_rewrapped_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Aggregate count of DEK records rewrapped
+- key: nexus.vault.management.dek_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of DEK records
+- key: nexus.vault.management.dry_run
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: CLI dry-run mode
+- key: nexus.vault.management.force
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: CLI force flag skipped confirm step
+- key: nexus.vault.management.initialized
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Whether unseal metadata exists
+- key: nexus.vault.management.key_versions_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of available persisted key versions
+- key: nexus.vault.management.last_rotation_reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Stable safe reason for last rotation state
+- key: nexus.vault.management.last_rotation_result
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Last rotation state: `ok`, `failed`, `rotating`, '
+- key: nexus.vault.management.last_rotation_run_id
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Previous management operation id if available
+- key: nexus.vault.management.non_interactive
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: CLI/admin input mode
+- key: nexus.vault.management.operation
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`init`, `status`, `rotate`, `rewrap`'
+- key: nexus.vault.management.operation_id
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Internal `vault_mgmt_<uuid>` operation id, distinct from `trace.id`
+- key: nexus.vault.management.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Stable safe reason from domain details
+- key: nexus.vault.management.rotated_at
+  ecs_type: date
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: UTC timestamp returned by lifecycle result
+- key: nexus.vault.management.verified
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Whether status included unseal/startup verify
+- key: nexus.vault.management.verify_requested
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Whether post-verify was requested
+- key: nexus.vault.unseal.hmac_algo
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: HMAC algorithm name, never digest
+- key: nexus.vault.unseal.kdf_algo
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: KDF algorithm, e.g. `argon2id`
+- key: nexus.vault.unseal.kdf_hash_len
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Derived key length metadata
+- key: nexus.vault.unseal.kdf_memory_cost_kib
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Argon2id memory cost without salts
+- key: nexus.vault.unseal.kdf_parallelism
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Argon2id parallelism without salts
+- key: nexus.vault.unseal.kdf_time_cost
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Argon2id time cost without salts

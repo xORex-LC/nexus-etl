@@ -1,0 +1,161 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 13 (extract / source ingestion)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.source.blank_rows_skipped
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Blank CSV rows skipped by reader
+- key: nexus.source.columns.count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Observed physical or synthetic column count
+- key: nexus.source.columns.fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe hash of ordered column names; do not log raw header list by default
+- key: nexus.source.declared_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of fields declared in `SourceSpec.fields`
+- key: nexus.source.delimiter
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Single-character CSV delimiter, escaped if needed
+- key: nexus.source.encoding
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Encoding used to open CSV
+- key: nexus.source.extra_columns_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of observed header/columns absent from declared fields
+- key: nexus.source.failure.actual_columns
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Actual column count
+- key: nexus.source.failure.expected_columns
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Expected column count
+- key: nexus.source.failure.layer
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`dsl`, `resolver`, `reader`, `extractor`'
+- key: nexus.source.failure.line_no
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: CSV line where structural failure happened, when known
+- key: nexus.source.format
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Physical source format: `csv`, '
+- key: nexus.source.has_header
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean source config
+- key: nexus.source.header.present
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean observed header state
+- key: nexus.source.location
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Logical `source.location` from `SourceSpec`, not per-record
+- key: nexus.source.missing_columns_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of declared fields missing in observed header/columns
+- key: nexus.source.null_values_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Total values normalized to null by `parse_null()`
+- key: nexus.source.path_kind
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`relative`, `absolute`, `logical`, `unknown`'
+- key: nexus.source.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Stable reason: `file_not_found`, `missing_header`, `column_count_mismatch`, `decode_error`, '
+- key: nexus.source.record.empty_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Number of empty raw fields if tracked before null normalization
+- key: nexus.source.record.fields_count
+  ecs_type: long
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Number of fields in one `SourceRecord.values`
+- key: nexus.source.record.null_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Number of null fields in one `SourceRecord.values`
+- key: nexus.source.records_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Records yielded before completion/failure
+- key: nexus.source.rows_with_nulls
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Rows containing at least one null-normalized value
+- key: nexus.source.type
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Runtime source type: `file`, `db`, `api`; current supported ingest path is `file`'

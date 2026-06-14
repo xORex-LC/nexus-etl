@@ -1,0 +1,238 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / base
+# ----------------------------------------------------------------------------
+# Каталог разбит по зонам (1:1 с docs/.../zones/). Этот файл — base/ecs core +
+# labels; зональные поля — в соседних NN-*.yaml. Загрузчик склеивает все файлы
+# каталога в единый реестр; глобальная уникальность `key` проверяется контракт-
+# тестом.
+#
+# СХЕМА ЗАПИСИ:
+#   key          dotted ECS / nexus.* путь (он же ключ в JSON-логе)
+#   ecs_type     ES mapping type: keyword | long | float | boolean | date | text | ip | object
+#   owner        ecs | nexus | labels
+#   tier         core | extended | trace
+#   sensitive    true → raw запрещён (только fingerprint/count); кормит redaction
+#   source       откуда берётся значение в коде (опц.)
+#   description  краткое назначение
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: '@timestamp'
+  ecs_type: date
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Event time, UTC ISO-8601
+- key: ecs.version
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: ECS schema version
+- key: error.code
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Domain diagnostic/error code
+- key: error.message
+  ecs_type: text
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Safe error message
+- key: error.stack_trace
+  ecs_type: text
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Redacted stack trace
+- key: error.type
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Exception class or domain error type
+- key: event.action
+  ecs_type: keyword
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Canonical event.action from actions.yaml
+- key: event.dataset
+  ecs_type: keyword
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Business dataset being processed
+- key: event.duration
+  ecs_type: long
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Duration in nanoseconds
+- key: event.end
+  ecs_type: date
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Event end timestamp
+- key: event.kind
+  ecs_type: keyword
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: event | metric | state
+- key: event.outcome
+  ecs_type: keyword
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: success | failure | unknown
+- key: event.start
+  ecs_type: date
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Event start timestamp
+- key: file.path
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Safe artifact/file path
+- key: host.name
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Host name
+- key: http.request.body.bytes
+  ecs_type: long
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Request body size in bytes
+- key: http.request.method
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: HTTP method
+- key: http.response.body.bytes
+  ecs_type: long
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Response body size in bytes
+- key: http.response.status_code
+  ecs_type: long
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: HTTP status code
+- key: labels.pipeline_run_id
+  ecs_type: keyword
+  owner: labels
+  tier: core
+  sensitive: false
+  description: Wider execution correlation id
+- key: log.level
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Lowercase log level
+- key: log.logger
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Logger name
+- key: log.origin.file.line
+  ecs_type: long
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Origin file line
+- key: log.origin.file.name
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Origin file name
+- key: log.origin.function
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Origin function for debug traces
+- key: message
+  ecs_type: text
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Human-readable log message
+- key: process.name
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Process name
+- key: process.pid
+  ecs_type: long
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Process id
+- key: service.environment
+  ecs_type: keyword
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Runtime environment
+- key: service.name
+  ecs_type: keyword
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Service name
+- key: service.type
+  ecs_type: keyword
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Component identity
+- key: service.version
+  ecs_type: keyword
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Application version
+- key: span.id
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Optional span id
+- key: trace.id
+  ecs_type: keyword
+  owner: ecs
+  tier: core
+  sensitive: false
+  description: Correlation id for one command/pipeline run
+- key: url.full
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Safe endpoint URL
+- key: url.path
+  ecs_type: keyword
+  owner: ecs
+  tier: extended
+  sensitive: false
+  description: Safe URL path or template

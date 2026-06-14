@@ -1,0 +1,119 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 08 (match decision service)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.match.candidates.count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество candidates considered/found/ranked
+- key: nexus.match.candidates.returned
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество top candidates included in decision
+- key: nexus.match.dedup.outcome
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`first`, `duplicate`, `conflict`'
+- key: nexus.match.drop.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`duplicate_source`, `conflict_source`'
+- key: nexus.match.fingerprint.fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Количество fields participating in desired-state fingerprint
+- key: nexus.match.identity.primary
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Identity primary field name only; no raw value
+- key: nexus.match.identity.rule.name
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Compiled `IdentityRule.name` from match DSL
+- key: nexus.match.identity.value_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint of identity primary value; raw identity value is forbidden
+- key: nexus.match.include_deleted
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean include-deleted policy used by matcher
+- key: nexus.match.mode
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`exact`, `fuzzy`, topology match mode when selected via topology'
+- key: nexus.match.reason_code
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`identity_exact`, `identity_not_found`, `fuzzy_accept`, `fuzzy_tie`, `topology_ambiguous`, '
+- key: nexus.match.score
+  ecs_type: float
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Numeric score of selected/best candidate, if available
+- key: nexus.match.selected.target_id_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Safe fingerprint of selected target id; raw target id is avoided
+- key: nexus.match.source_links.count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество source link hints built for resolve
+- key: nexus.match.status
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`matched`, `not_found`, `ambiguous`, `conflict_source`'
+- key: nexus.match.topology.applied
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean, whether topology refinement was invoked/applied
+- key: nexus.match.topology.mode
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`exact_canonical_path`, `exact_leaf_parent_chain`, `ambiguous`, `no_match`, '
+- key: nexus.match.topology.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Topology result reason without raw evidence payload

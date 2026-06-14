@@ -1,0 +1,2707 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — ACTIONS (словарь event.action)
+# ----------------------------------------------------------------------------
+# Машинно-авторитетный источник значений `event.action`.
+# Covers docs/dev/layers/observability/ecs-logging-taxonomy event dictionary
+# and canonical action tables from every zone document.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+actions:
+- name: cache-init-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - error.type
+  - error.message
+  - trace.id
+  emission_point: sqlite/cache init failure
+  description: sqlite/cache init failure
+- name: command-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - error.type
+  - error.message
+  - trace.id
+  emission_point: unhandled command-level exception
+  description: unhandled command-level exception
+- name: command-started
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - service.type
+  emission_point: runtime enters command execution
+  description: runtime enters command execution
+- name: config-load-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - error.type
+  - error.message
+  - trace.id
+  emission_point: '`SettingsLoadError` path'
+  description: '`SettingsLoadError` path'
+- name: config-loaded
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: '`AppConfig` валидирован и загружен'
+- name: container-initialised
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: DI-контейнер собран
+- name: ledger-append-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: decision
+  default_level: warning
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: backend append failed
+  description: backend append failed
+- name: ledger-record-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: decision
+  default_level: warning
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: report/non-report ledger record build failed
+  description: report/non-report ledger record build failed
+- name: log-written
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: non-report path finalized active log
+  description: non-report path finalized active log
+- name: pointer-publish-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: decision
+  default_level: warning
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: latest pointer update failed
+  description: latest pointer update failed
+- name: report-finalize-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - error.type
+  - error.message
+  - trace.id
+  emission_point: final report assembly or write failed
+  description: final report assembly or write failed
+- name: report-written
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: report JSON persisted successfully
+  description: report JSON persisted successfully
+- name: resource-init-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - error.type
+  - error.message
+  - trace.id
+  emission_point: generic DI/runtime init failure
+  description: generic DI/runtime init failure
+- name: resource-shutdown-completed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: shutdown finished with one or more failures
+  description: shutdown finished with one or more failures
+- name: resource-shutdown-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - error.type
+  - error.message
+  - trace.id
+  emission_point: one subcontainer shutdown failed
+  description: one subcontainer shutdown failed
+- name: retention-sweep-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: decision
+  default_level: warning
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: startup sweeper failed
+  description: startup sweeper failed
+- name: run-completed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Завершение прогона с `event.outcome`
+- name: run-started
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Старт прогуна команды/пайплайна
+- name: runtime-validation-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - error.type
+  - error.message
+  - trace.id
+  emission_point: invalid CLI/runtime requirements
+  description: invalid CLI/runtime requirements
+- name: api-check-completed
+  zone: 02-command-delivery-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  - service.type
+  emission_point: check-api command completed
+  description: check-api command completed
+  levels:
+  - info
+  - error
+- name: apply-failed
+  zone: 02-command-delivery-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  - service.type
+  - error.type
+  - error.message
+  emission_point: import apply command failed semantically
+  description: import apply command failed semantically
+- name: debug-stage-completed
+  zone: 02-command-delivery-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  - service.type
+  - nexus.stage.name
+  emission_point: debug stage command completed with stage artifact/result
+  description: debug stage command completed with stage artifact/result
+  levels:
+  - info
+  - error
+- name: identity-init-failed
+  zone: 02-command-delivery-lifecycle
+  bucket: decision
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  - service.type
+  - error.type
+  - error.message
+  emission_point: apply-specific identity bootstrap failed
+  description: apply-specific identity bootstrap failed
+- name: stage-aborted
+  zone: 03-pipeline-stage-lifecycle
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Стадия прервана при частичном потреблении стрима (`GeneratorExit`), до полного исчерпания
+  levels:
+  - debug
+  - warning
+- name: stage-completed
+  zone: 03-pipeline-stage-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: metric
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Завершение стадии с `event.outcome`+`event.duration`
+- name: stage-failed
+  zone: 03-pipeline-stage-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Стадия упала с необработанным исключением
+- name: stage-started
+  zone: 03-pipeline-stage-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - nexus.stage.name
+  emission_point: planned
+  description: Старт стадии пайплайна
+- name: record-skipped
+  zone: 04-record-context
+  bucket: decision
+  default_level: warning
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Запись отброшена (с причиной)
+- name: enrich-operation-completed
+  zone: 05-enrich-subsystem
+  bucket: milestone
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Enrich operation/rule выполнена для записи
+- name: enrich-operation-skipped
+  zone: 05-enrich-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Enrich operation/rule пропущена по policy/condition
+- name: enrich-record-completed
+  zone: 05-enrich-subsystem
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Enrich обработал одну запись и сформировал summary
+- name: enrich-resolve-requested
+  zone: 05-enrich-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Enrich создал resolve hint из неоднозначных candidates
+- name: enrich-secret-fields-stored
+  zone: 05-enrich-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Enrich записал secret fields в vault и очистил row values
+- name: lookup-completed
+  zone: 05-enrich-subsystem
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Provider lookup/exists/canonicalize в cache/dictionary/vault context
+  levels:
+  - trace
+  - debug
+- name: lookup-started
+  zone: 05-enrich-subsystem
+  bucket: milestone
+  default_level: debug
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Provider lookup/exists/canonicalize в cache/dictionary/vault context
+  levels:
+  - trace
+  - debug
+- name: cache-clear-completed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Очистка cache завершена/провалена
+  levels:
+  - info
+  - error
+- name: cache-clear-failed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Очистка cache завершена/провалена
+  levels:
+  - info
+  - error
+- name: cache-drift-detected
+  zone: 06-state-stores-and-providers
+  bucket: decision
+  default_level: warning
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Несовпадение content-hash кэша
+- name: cache-item-upsert-failed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Ошибка записи одного source item в cache snapshot
+  levels:
+  - debug
+  - error
+- name: cache-item-upserted
+  zone: 06-state-stores-and-providers
+  bucket: diagnostic
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Один source item записан в cache snapshot
+- name: cache-page-fetched
+  zone: 06-state-stores-and-providers
+  bucket: diagnostic
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Target page получена во время cache refresh
+  levels:
+  - trace
+  - debug
+- name: cache-rebuild-completed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Cache rebuild завершён/провален
+  levels:
+  - info
+  - error
+- name: cache-rebuild-failed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Cache rebuild завершён/провален
+  levels:
+  - info
+  - error
+- name: cache-refresh-completed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: metric
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Старт/завершение cache refresh
+- name: cache-refresh-dataset-completed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Refresh одного cache dataset завершён
+- name: cache-refresh-failed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Cache refresh завершился ошибкой
+- name: cache-refresh-started
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Старт/завершение cache refresh
+- name: cache-status-completed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Получение cache status завершено/провалено
+  levels:
+  - info
+  - error
+- name: cache-status-failed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Получение cache status завершено/провалено
+  levels:
+  - info
+  - error
+- name: identity-lookup-completed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Identity index lookup завершён
+- name: identity-source-resolved
+  zone: 06-state-stores-and-providers
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Source record помечена как resolved
+- name: identity-upsert-completed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Identity index обновлён после resolve/apply
+- name: pending-link-conflicted
+  zone: 06-state-stores-and-providers
+  bucket: decision
+  default_level: warning
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Pending link переведён в conflict
+  levels:
+  - debug
+  - warning
+- name: pending-link-created
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Resolve создал pending link
+- name: pending-link-expired
+  zone: 06-state-stores-and-providers
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Pending link истёк по TTL/policy
+  levels:
+  - debug
+  - warning
+- name: pending-link-resolved
+  zone: 06-state-stores-and-providers
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Pending link разрешён
+- name: pending-link-touched
+  zone: 06-state-stores-and-providers
+  bucket: decision
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Pending link получил новую попытку обработки
+- name: storage-operation-failed
+  zone: 06-state-stores-and-providers
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Storage backend operation завершилась ошибкой
+  levels:
+  - warning
+  - error
+- name: dsl-compile-failed
+  zone: 07-dsl-artifact-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Валидный DSL spec не удалось скомпилировать в runtime object
+- name: dsl-load-failed
+  zone: 07-dsl-artifact-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Чтение DSL файла или YAML parse завершились ошибкой
+- name: dsl-registry-build-failed
+  zone: 07-dsl-artifact-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Сборка DSL registry завершилась ошибкой
+- name: dsl-registry-built
+  zone: 07-dsl-artifact-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: DSL registry загружен/собран
+  levels:
+  - debug
+  - info
+- name: dsl-registry-loaded
+  zone: 07-dsl-artifact-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: DSL registry загружен/собран
+  levels:
+  - debug
+  - info
+- name: dsl-spec-compiled
+  zone: 07-dsl-artifact-lifecycle
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: DSL spec скомпилирован в runtime object
+- name: dsl-spec-discovered
+  zone: 07-dsl-artifact-lifecycle
+  bucket: decision
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: DSL spec artifact найден
+- name: dsl-spec-loaded
+  zone: 07-dsl-artifact-lifecycle
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: DSL spec YAML загружен
+- name: dsl-spec-parsed
+  zone: 07-dsl-artifact-lifecycle
+  bucket: decision
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: DSL spec разобран из YAML
+  levels:
+  - trace
+  - debug
+- name: dsl-spec-validated
+  zone: 07-dsl-artifact-lifecycle
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: DSL spec прошёл validation
+- name: dsl-validation-failed
+  zone: 07-dsl-artifact-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Structural/semantic validation DSL spec завершилась ошибкой
+- name: match-fuzzy-ranked
+  zone: 08-match-decision-service
+  bucket: decision
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Fuzzy candidates были ranked/scored
+- name: match-identity-resolved
+  zone: 08-match-decision-service
+  bucket: decision
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Identity rule дала usable identity
+- name: match-record-completed
+  zone: 08-match-decision-service
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Match сформировал typed decision для записи
+- name: match-record-failed
+  zone: 08-match-decision-service
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Match не смог сформировать корректный row-level result
+  levels:
+  - debug
+  - error
+- name: match-scope-clear-failed
+  zone: 08-match-decision-service
+  bucket: milestone
+  default_level: warning
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Runtime scope matcher очищен/не очищен
+  levels:
+  - debug
+  - warning
+- name: match-scope-cleared
+  zone: 08-match-decision-service
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Runtime scope matcher очищен/не очищен
+  levels:
+  - debug
+  - warning
+- name: match-source-dedup-checked
+  zone: 08-match-decision-service
+  bucket: decision
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Source dedup check завершён
+- name: match-source-dedup-dropped
+  zone: 08-match-decision-service
+  bucket: decision
+  default_level: debug
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Source dedup policy дропнула запись
+  levels:
+  - debug
+  - warning
+  - error
+- name: match-topology-refined
+  zone: 08-match-decision-service
+  bucket: decision
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Topology уточнила match decision
+  levels:
+  - trace
+  - debug
+- name: pending-decode-skipped
+  zone: 09-resolve-plan-lifecycle
+  bucket: decision
+  default_level: warning
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Invalid pending rows skipped during replay
+- name: plan-build-completed
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: metric
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Сборка plan началась/завершилась
+  levels:
+  - debug
+  - info
+- name: plan-build-failed
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Сборка plan завершилась ошибкой
+- name: plan-build-started
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - nexus.stage.name
+  emission_point: planned
+  description: Сборка plan началась/завершилась
+  levels:
+  - debug
+  - info
+- name: plan-item-created
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Plan item добавлен в artifact payload
+  levels:
+  - trace
+  - debug
+- name: plan-item-failed
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: debug
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Resolved result excluded from plan due to errors
+- name: plan-item-skipped
+  zone: 09-resolve-plan-lifecycle
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Resolved row skipped, plan item не создан
+- name: plan-write-failed
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Plan artifact записан/не записан
+  levels:
+  - info
+  - error
+- name: plan-written
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Plan artifact записан/не записан
+  levels:
+  - info
+  - error
+- name: resolve-context-index-built
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: ResolveContext построил batch index
+- name: resolve-link-completed
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Link field resolved/pending/ambiguous/missing
+  levels:
+  - trace
+  - debug
+- name: resolve-link-max-attempts-reached
+  zone: 09-resolve-plan-lifecycle
+  bucket: decision
+  default_level: warning
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Pending link достиг max attempts
+  levels:
+  - warning
+  - error
+- name: resolve-link-pending-created
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Создан pending link для unresolved link field
+  levels:
+  - debug
+  - warning
+- name: resolve-merge-overwrite-blocked
+  zone: 09-resolve-plan-lifecycle
+  bucket: decision
+  default_level: warning
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Merge policy tried to overwrite source values
+- name: resolve-op-selected
+  zone: 09-resolve-plan-lifecycle
+  bucket: decision
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Выбрана операция `create`/`update`/`skip`
+  levels:
+  - trace
+  - debug
+- name: resolve-pending-expired
+  zone: 09-resolve-plan-lifecycle
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Expired pending обработан по policy
+  levels:
+  - debug
+  - warning
+  - error
+- name: resolve-pending-purged
+  zone: 09-resolve-plan-lifecycle
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Stale pending rows удалены retention purge
+- name: resolve-pending-replayed
+  zone: 09-resolve-plan-lifecycle
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Pending rows загружены для replay
+- name: resolve-record-completed
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Resolve сформировал operation decision для записи
+- name: resolve-record-failed
+  zone: 09-resolve-plan-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Resolve не смог сформировать корректный row-level result
+  levels:
+  - debug
+  - error
+- name: apply-completed
+  zone: 10-apply-target-execution
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: metric
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Apply summary завершён с агрегированным outcome
+  levels:
+  - info
+  - error
+- name: apply-item
+  zone: 10-apply-target-execution
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Per-item outcome apply use-case
+  levels:
+  - debug
+  - warning
+  - error
+- name: apply-started
+  zone: 10-apply-target-execution
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Старт apply-цикла по готовому plan artifact
+- name: retry-attempt
+  zone: 10-apply-target-execution
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Запланирован повтор target-операции
+- name: target-request-failed
+  zone: 10-apply-target-execution
+  bucket: milestone
+  default_level: warning
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Отдельная неуспешная target attempt до финального результата
+- name: target-write-completed
+  zone: 10-apply-target-execution
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Lifecycle одной target write-операции
+- name: target-write-failed
+  zone: 10-apply-target-execution
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Запись в цель провалилась после retry или без retry-path
+- name: target-write-started
+  zone: 10-apply-target-execution
+  bucket: milestone
+  default_level: debug
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Lifecycle одной target write-операции
+- name: secret-maintenance-completed
+  zone: 11-vault-secrets-runtime-lifecycle
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Best-effort maintenance hooks vault runtime завершены
+- name: secret-read
+  zone: 11-vault-secrets-runtime-lifecycle
+  bucket: decision
+  default_level: debug
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Runtime read/write секретов без plaintext значений
+  levels:
+  - debug
+  - error
+- name: secret-retention-completed
+  zone: 11-vault-secrets-runtime-lifecycle
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Post-apply cleanup lifecycle секретов завершён
+- name: secret-written
+  zone: 11-vault-secrets-runtime-lifecycle
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Runtime read/write секретов без plaintext значений
+  levels:
+  - debug
+  - error
+- name: vault-rollout-evaluated
+  zone: 11-vault-secrets-runtime-lifecycle
+  bucket: decision
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Rollout gate для vault-path вычислен
+  levels:
+  - info
+  - error
+- name: vault-runtime-evaluated
+  zone: 11-vault-secrets-runtime-lifecycle
+  bucket: decision
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Runtime intent для vault-path вычислен
+  levels:
+  - info
+  - error
+- name: vault-startup-completed
+  zone: 11-vault-secrets-runtime-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Vault startup guard успешно завершён
+- name: vault-startup-failed
+  zone: 11-vault-secrets-runtime-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Vault startup guard / key validation завершились ошибкой
+- name: admin-gate-failed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Проверка admin-доступа для `vault-management`
+  levels:
+  - info
+  - warning
+  - error
+- name: admin-gate-passed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Проверка admin-доступа для `vault-management`
+  levels:
+  - info
+  - warning
+  - error
+- name: admin-gate-skipped
+  zone: 12-vault-management-lifecycle
+  bucket: decision
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Проверка admin-доступа для `vault-management`
+  levels:
+  - info
+  - warning
+  - error
+- name: vault-dry-run-evaluated
+  zone: 12-vault-management-lifecycle
+  bucket: decision
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Dry-run применимость manual vault operation вычислена
+- name: vault-init-completed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Первичная инициализация vault-management metadata
+  levels:
+  - info
+  - error
+- name: vault-init-failed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Первичная инициализация vault-management metadata
+  levels:
+  - info
+  - error
+- name: vault-init-started
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Первичная инициализация vault-management metadata
+  levels:
+  - info
+  - error
+- name: vault-post-verify-completed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Post-verify startup readiness для keyring завершён
+  levels:
+  - info
+  - error
+- name: vault-post-verify-failed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Post-verify startup readiness для keyring завершён
+  levels:
+  - info
+  - error
+- name: vault-rewrap-completed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Rewrap DEK без смены passphrase
+  levels:
+  - info
+  - error
+- name: vault-rewrap-failed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Rewrap DEK без смены passphrase
+  levels:
+  - info
+  - error
+- name: vault-rewrap-started
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Rewrap DEK без смены passphrase
+  levels:
+  - info
+  - error
+- name: vault-rotate-completed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Смена unseal passphrase и rewrap DEK
+  levels:
+  - info
+  - error
+- name: vault-rotate-failed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Смена unseal passphrase и rewrap DEK
+  levels:
+  - info
+  - error
+- name: vault-rotate-started
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Смена unseal passphrase и rewrap DEK
+  levels:
+  - info
+  - error
+- name: vault-status-completed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Read-only snapshot состояния vault-management
+  levels:
+  - info
+  - error
+- name: vault-status-failed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Read-only snapshot состояния vault-management
+  levels:
+  - info
+  - error
+- name: vault-unseal-failed
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Проверка unseal passphrase against persisted metadata
+  levels:
+  - info
+  - warning
+  - error
+- name: vault-unseal-verified
+  zone: 12-vault-management-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Проверка unseal passphrase against persisted metadata
+  levels:
+  - info
+  - warning
+  - error
+- name: source-blank-row-skipped
+  zone: 13-extract-source-ingestion
+  bucket: decision
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Optional sampled per-record/blank-row source diagnostics
+- name: source-contract-evaluated
+  zone: 13-extract-source-ingestion
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Observed source columns compared with source contract
+  levels:
+  - debug
+  - info
+  - warning
+- name: source-header-read
+  zone: 13-extract-source-ingestion
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: CSV header/column profile observed
+  levels:
+  - debug
+  - warning
+- name: source-read-completed
+  zone: 13-extract-source-ingestion
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Physical source stream lifecycle
+  levels:
+  - info
+  - error
+- name: source-read-failed
+  zone: 13-extract-source-ingestion
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Physical source stream lifecycle
+  levels:
+  - info
+  - error
+- name: source-read-started
+  zone: 13-extract-source-ingestion
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Physical source stream lifecycle
+  levels:
+  - info
+  - error
+- name: source-record-read
+  zone: 13-extract-source-ingestion
+  bucket: diagnostic
+  default_level: trace
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Optional sampled per-record/blank-row source diagnostics
+- name: source-resolution-failed
+  zone: 13-extract-source-ingestion
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Runtime source location resolved / failed
+  levels:
+  - info
+  - error
+- name: source-resolved
+  zone: 13-extract-source-ingestion
+  bucket: decision
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Runtime source location resolved / failed
+  levels:
+  - info
+  - error
+- name: source-stream-failed
+  zone: 13-extract-source-ingestion
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  emission_point: planned
+  description: Extractor converted source stream into `TransformResult` boundary
+  levels:
+  - debug
+  - error
+- name: source-stream-wrapped
+  zone: 13-extract-source-ingestion
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Extractor converted source stream into `TransformResult` boundary
+  levels:
+  - debug
+  - error
+- name: normalize-record-completed
+  zone: 14-normalize-stage
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Normalize обработал одну запись без fatal diagnostics
+  levels:
+  - debug
+  - warning
+- name: normalize-record-failed
+  zone: 14-normalize-stage
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Normalize завершил запись fatal diagnostics или boundary error
+  levels:
+  - debug
+  - error
+- name: normalize-record-skipped
+  zone: 14-normalize-stage
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Normalize пропустил запись из-за upstream failure/policy
+- name: normalize-rule-applied
+  zone: 14-normalize-stage
+  bucket: diagnostic
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Одна normalize rule / operation chain успешно применена
+- name: normalize-rule-failed
+  zone: 14-normalize-stage
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Normalize rule / operation chain вернула DSL/runtime issue
+  levels:
+  - debug
+  - warning
+  - error
+- name: normalize-validation-completed
+  zone: 14-normalize-stage
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Sink validation после Normalize завершилась без issues
+- name: normalize-validation-failed
+  zone: 14-normalize-stage
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Sink validation после Normalize вернула issues
+  levels:
+  - debug
+  - warning
+  - error
+- name: topology-activation-evaluated
+  zone: 15-topology-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Topology requirement/capability decision вычислен
+  levels:
+  - debug
+  - info
+  - error
+- name: topology-bootstrap-completed
+  zone: 15-topology-subsystem
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Pre-handler topology bootstrap lifecycle
+- name: topology-bootstrap-short-circuited
+  zone: 15-topology-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Bootstrap не нужен или остановил команду диагностикой
+  levels:
+  - debug
+  - error
+- name: topology-bootstrap-skipped
+  zone: 15-topology-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Bootstrap не нужен или остановил команду диагностикой
+  levels:
+  - debug
+  - error
+- name: topology-bootstrap-started
+  zone: 15-topology-subsystem
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Pre-handler topology bootstrap lifecycle
+- name: topology-canonicalizer-compiled
+  zone: 15-topology-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Topology canonicalizer compiled for runtime
+  levels:
+  - debug
+  - info
+- name: topology-comparison-completed
+  zone: 15-topology-subsystem
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Shared topology comparison result for consumers
+  levels:
+  - trace
+  - debug
+- name: topology-cycle-checked
+  zone: 15-topology-subsystem
+  bucket: diagnostic
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Target graph cycle check completed (TRACE-only)
+- name: topology-link-resolution-completed
+  zone: 15-topology-subsystem
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Topology signal resolved/disambiguated a resolve link
+  levels:
+  - debug
+  - warning
+  - error
+- name: topology-match-refined
+  zone: 15-topology-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Topology signal refined match decision
+- name: topology-node-ingested
+  zone: 15-topology-subsystem
+  bucket: diagnostic
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Optional graph build diagnostics without raw ids (high-cardinality, TRACE-only)
+- name: topology-path-ingested
+  zone: 15-topology-subsystem
+  bucket: diagnostic
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Optional graph build diagnostics without raw ids (high-cardinality, TRACE-only)
+- name: topology-readiness-evaluated
+  zone: 15-topology-subsystem
+  bucket: decision
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Target topology readiness/freshness decision
+  levels:
+  - info
+  - warning
+  - error
+- name: topology-source-row-filtered
+  zone: 15-topology-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Source topology filter marked/dropped one row
+  levels:
+  - debug
+  - warning
+  - error
+- name: topology-source-validation-completed
+  zone: 15-topology-subsystem
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Source anchoring validation summary
+  levels:
+  - info
+  - warning
+  - error
+- name: topology-spec-loaded
+  zone: 15-topology-subsystem
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Runtime summary загруженной topology spec
+  levels:
+  - debug
+  - info
+- name: topology-target-build-completed
+  zone: 15-topology-subsystem
+  bucket: milestone
+  default_level: info
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  emission_point: planned
+  description: Target topology snapshot build lifecycle
+- name: topology-target-build-started
+  zone: 15-topology-subsystem
+  bucket: milestone
+  default_level: info
+  outcome: none
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: planned
+  description: Target topology snapshot build lifecycle
+- name: mapping-record-completed
+  zone: 16-map-stage
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Map обработал одну запись без fatal diagnostics
+  levels:
+  - debug
+  - warning
+- name: mapping-record-failed
+  zone: 16-map-stage
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Map завершил запись fatal diagnostics или boundary error
+  levels:
+  - debug
+  - error
+- name: mapping-record-skipped
+  zone: 16-map-stage
+  bucket: decision
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Map пропустил запись из-за upstream failure
+- name: mapping-rule-applied
+  zone: 16-map-stage
+  bucket: diagnostic
+  default_level: trace
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Одна mapping/meta rule прочитала source, применила ops и назначила target (meta — через `nexus.mapping.meta.path`)
+- name: mapping-rule-failed
+  zone: 16-map-stage
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Mapping/meta rule вернула DSL/runtime issue
+  levels:
+  - debug
+  - warning
+  - error
+- name: mapping-validation-completed
+  zone: 16-map-stage
+  bucket: milestone
+  default_level: debug
+  outcome: on_completion
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - nexus.stage.name
+  emission_point: planned
+  description: Mapping/sink schema gate без/с issues; область — `nexus.mapping.validation.scope`
+  levels:
+  - debug
+  - warning
+  - error
+- name: mapping-validation-failed
+  zone: 16-map-stage
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  - event.outcome
+  - error.type
+  - error.message
+  - nexus.stage.name
+  emission_point: planned
+  description: Mapping/sink schema gate без/с issues; область — `nexus.mapping.validation.scope`
+  levels:
+  - debug
+  - warning
+  - error

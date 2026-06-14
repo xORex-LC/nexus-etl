@@ -1,0 +1,101 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 05 (enrich subsystem)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.enrich.decision
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Решение применения: `applied`, `policy_skip`, `conflict_skipped`, '
+- key: nexus.enrich.field.name
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Target field / mutated field name; secret values не логируются
+- key: nexus.enrich.operation.name
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Имя compiled enrich operation / DSL rule (`EnrichmentOperation.name`)
+- key: nexus.enrich.operation.outcome
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`APPLIED`, `SKIPPED`, `WARNED`, `FAILED`, `NEEDS_RESOLVE`'
+- key: nexus.enrich.operation.type
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`COMPUTE`, `LOOKUP`, `GENERATE`, `MEMBERSHIP`, '
+- key: nexus.enrich.operations_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество enrich operations, реально учтённых для записи
+- key: nexus.enrich.resolve_requests_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество resolve hints, созданных из неоднозначностей
+- key: nexus.enrich.secret_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Количество secret fields, записанных в vault и очищенных из row
+- key: nexus.enrich.source
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Источник выбранного candidate: `computed`, `generated`, provider name'
+- key: nexus.enrich.updated_fields
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество полей, обновлённых enrich operation events
+- key: nexus.lookup.hit
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean hit/miss для lookup/exists
+- key: nexus.lookup.key_fingerprint
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: true
+  description: Безопасный fingerprint lookup key; raw key не логируется
+- key: nexus.lookup.operation
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`lookup`, `exists`, `canonicalize`, provider-specific operation family'
+- key: nexus.lookup.provider.name
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Runtime provider: `cache.by_field`, `cache.exists_by_field`, `dictionary.by_key`, '
+- key: nexus.lookup.result_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество найденных candidate rows

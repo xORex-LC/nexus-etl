@@ -1,0 +1,12 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 02 (command delivery lifecycle)
+# ----------------------------------------------------------------------------
+# Zone 02 currently reuses base ECS fields, nexus.stage.*, nexus.plan.* and
+# nexus.apply.* from neighboring zones. Keep the file as an explicit marker so
+# loaders and documentation coverage checks can stay 1:1 with zone documents.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields: []

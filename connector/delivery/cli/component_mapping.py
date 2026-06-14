@@ -2,13 +2,13 @@
 
 Модуль отвечает за разрешение логического `ServiceComponent` по имени CLI-команды.
 Это знание принадлежит delivery-слою (вокабуляр команд), а не cross-cutting `common/`:
-`ServiceComponent` остаётся в `common/observability.py`, а привязка к именам команд — здесь.
+`ServiceComponent` остаётся в `common/observability/layout.py`, а привязка к именам команд — здесь.
 
 Границы ответственности:
     - Разрешать `command_name` → `ServiceComponent` (fail-fast на неизвестной команде).
 
 Вне ответственности:
-    - Определение самого `ServiceComponent` и layout-резолвинг (живут в `common/observability.py`).
+    - Определение самого `ServiceComponent` и layout-резолвинг (живут в `common/observability/layout.py`).
     - DI wiring и lifecycle (composition root в `containers.py`).
 """
 

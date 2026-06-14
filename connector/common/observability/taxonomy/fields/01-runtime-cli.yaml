@@ -1,0 +1,59 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 01 (runtime / CLI lifecycle)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.artifact.kind
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: 'Artifact kind: log, report, plan, ledger, pointer'
+- key: nexus.diagnostic.code
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Domain diagnostic code when keeping it separate from normalized `error.code`
+- key: nexus.observability.phase
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Best-effort observability phase
+- key: nexus.resource.failed_subcontainers
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of failed subcontainers
+- key: nexus.resource.phase
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Resource lifecycle phase
+- key: nexus.resource.subcontainer
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Resource subcontainer name
+- key: nexus.runtime.exit_code
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Runtime command exit code
+- key: nexus.subsystem
+  ecs_type: keyword
+  owner: nexus
+  tier: core
+  sensitive: false
+  description: Internal functional subsystem

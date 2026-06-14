@@ -1,7 +1,7 @@
 """Observability infrastructure — retention, ledger и runtime adapters
 
 Пакет собирает infra-компоненты observability, которые работают поверх
-value-object layout/policy из `common/observability.py`. На текущем этапе здесь
+value-object layout/policy из `common/observability/layout.py`. На текущем этапе здесь
 живут безопасная ретенция observability-артефактов и append-only run ledger.
 """
 

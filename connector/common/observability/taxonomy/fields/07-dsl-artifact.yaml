@@ -1,0 +1,66 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 07 (DSL artifact lifecycle)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.dsl.error.count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество collected DSL errors
+- key: nexus.dsl.operation.name
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Имя DSL operation в operation chain; runtime execution errors остаются stage events
+- key: nexus.dsl.phase
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`discover`, `load`, `parse`, `validate`, `compile`, `registry-build`, `default-resolve`'
+- key: nexus.dsl.rule.name
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Имя rule внутри stage spec
+- key: nexus.dsl.spec.count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество specs/artifacts processed
+- key: nexus.dsl.spec.kind
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`registry`, `dataset`, `source`, `mapping`, `normalize`, `enrich`, `match`, `resolve`, `sink`, `cache`, `dictionary`,
+    `target`, '
+- key: nexus.dsl.spec.name
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Имя spec/rule/dataset, если оно есть в артефакте
+- key: nexus.dsl.spec.path
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Относительный путь YAML/spec artifact; absolute path только для локального debug
+- key: nexus.dsl.yaml.path
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: YAML key path, например `datasets.employees.report`

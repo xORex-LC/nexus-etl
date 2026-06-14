@@ -1,0 +1,149 @@
+# ============================================================================
+# nexus-etl ECS logging taxonomy — FIELDS / Zone 14 (normalize stage)
+# ----------------------------------------------------------------------------
+# Machine-readable field taxonomy generated from docs/dev/layers/observability/
+# ecs-logging-taxonomy. Схема записи — см. 00-base.yaml.
+# ============================================================================
+
+schema_version: 1
+ecs_version: "8.11"
+
+fields:
+- key: nexus.normalize.changed_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество fields whose normalized value differs from input; no values
+- key: nexus.normalize.errors_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Normalize-local error count for one record
+- key: nexus.normalize.failure.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`dsl_op_failed`, `sink_required_missing`, `sink_type_invalid`, `boundary_error`, '
+- key: nexus.normalize.fields_touched_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество fields touched by normalize rules
+- key: nexus.normalize.null_fields_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество null fields after normalize, if computed
+- key: nexus.normalize.rule.field
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Field name affected by normalize rule; value forbidden
+- key: nexus.normalize.rule.index
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Rule ordinal inside compiled normalize rules
+- key: nexus.normalize.rule.on_error
+  ecs_type: keyword
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: 'Rule error policy: `error` or `warn`'
+- key: nexus.normalize.rule.ops_count
+  ecs_type: long
+  owner: nexus
+  tier: trace
+  sensitive: false
+  description: Number of operations in the rule chain
+- key: nexus.normalize.rules_applied
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество rules with non-empty op chain applied to the row
+- key: nexus.normalize.rules_failed
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество rules that emitted normalize-local issues
+- key: nexus.normalize.rules_skipped
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество skipped rules; reason in `nexus.normalize.skip.reason`
+- key: nexus.normalize.rules_total
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Количество compiled normalize rules for current dataset/spec
+- key: nexus.normalize.skip.reason
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`upstream_failed`, `no_ops`, future policy reason'
+- key: nexus.normalize.upstream.errors_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of upstream errors carried into Normalize
+- key: nexus.normalize.upstream.warnings_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of upstream warnings carried into Normalize
+- key: nexus.normalize.validation.fields_checked_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Number of sink fields checked
+- key: nexus.normalize.validation.issues_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Total sink validation issues
+- key: nexus.normalize.validation.required_missing_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of required/nullability failures
+- key: nexus.normalize.validation.scope
+  ecs_type: keyword
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: '`touched_fields` or `full_row` from build options'
+- key: nexus.normalize.validation.type_invalid_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Count of type mismatch failures
+- key: nexus.normalize.value.changed
+  ecs_type: boolean
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Boolean value-change signal without before/after values
+- key: nexus.normalize.warnings_count
+  ecs_type: long
+  owner: nexus
+  tier: extended
+  sensitive: false
+  description: Normalize-local warning count for one record
