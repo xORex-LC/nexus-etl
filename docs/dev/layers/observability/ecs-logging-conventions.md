@@ -1,9 +1,11 @@
 # ECS Logging Conventions
 
 > Статус: планирование taxonomy и ECS-миграции
-> Машинно-авторитетный источник после внедрения: `connector/infra/logging/ecs.py`
+> Canonical human entry point: этот документ
+> Машинно-авторитетные источники после внедрения: `connector/common/observability/taxonomy/actions.yaml`,
+> `connector/common/observability/taxonomy/fields/*.yaml` и runtime mapping в `connector/infra/logging/ecs.py`
 
-Этот документ теперь служит **точкой входа** в набор более мелких документов по ECS-таксономии
+Этот документ служит **единственной точкой входа** в набор более мелких документов по ECS-таксономии
 логирования. Полная модель разбита по тематическим секциям, чтобы отдельно развивать:
 
 - общую vocabulary и field profile;
@@ -50,6 +52,9 @@
 2. Затем `Field Catalog` для ECS/nexus/labels vocabulary.
 3. Затем нужную zone-документацию для конкретного слоя или подсистемы.
 4. `Event Action Dictionary` и `Call-Site Map` использовать как поперечные справочники и миграционный backlog.
+
+`overview-and-principles.md` остаётся детальной prose-расшифровкой модели, но не отдельной второй
+точкой входа. Ссылаться из ADR и из других dev-doc следует в первую очередь на этот документ.
 
 ## Связанные документы
 

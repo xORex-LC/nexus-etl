@@ -625,3 +625,218 @@ dev)? `ECS_VERSION` — константа в `ecs.py` (не конфиг). Об
 - [ecs-logging-conventions.md](../../dev/layers/observability/ecs-logging-conventions.md) — семантика полей/уровней/действий
 - [observability-logging.md](../../dev/layers/observability/observability-logging.md) — текущий runtime/процессоры/redaction
 - `connector/infra/logging/runtime.py`, `connector/infra/logging/ecs.py` (новый)
+
+---
+
+## План Phase 1
+
+### Цель фазы
+
+Собрать первый production-ready срез ECS-логгирования так, чтобы:
+- все машинные JSON-логи проходили через единый `ecs_transform`;
+- observability-логика была локализована внутри своей зоны, без протекания ECS-деталей в стадии и
+  прикладные use case;
+- у нас появился минимальный, но устойчивый runtime-контур для дальнейшего наполнения зон
+  (`pipeline`, `vault`, `cache`, `apply`) без пересборки архитектуры;
+- архитектурные границы были защищены guard-тестами и import-boundary проверками заранее, а не постфактум.
+
+### Что именно считаем результатом Phase 1
+
+Phase 1 не пытается сразу покрыть весь проект новыми `event.action` call-site'ами. Фаза закрывает
+каркас и первый вертикальный срез:
+- ECS renderer/transform в logging runtime;
+- контракт внутреннего observability-события;
+- внутренний sink/adapter слой внутри observability;
+- один опорный lifecycle-срез через runtime/pipeline hooks;
+- guard-тесты на границы, reserved keys и processor order.
+
+Иными словами: к концу фазы у нас должен быть не «весь проект уже переложен на ECS», а корректная
+архитектурная ось, через которую последующие изменения будут добавляться без расползания ответственности.
+
+### Архитектурное устройство Phase 1
+
+#### 1. Внутренний контракт observability
+
+Базовый объект события остаётся intention-level контрактом, а не финальным ECS-документом:
+- `connector/common/observability/events.py`
+- `ObservabilityEvent` = frozen dataclass
+- содержит принятые атрибуты контракта: `action`, `message`, `fields`, `level`, `outcome`, `kind`,
+  `duration_ns`, `error`
+- `dataset`, `stage`, `diag_code` и прочие доменные атрибуты живут внутри `fields`, а не как
+  ad-hoc top-level поля
+- не содержит ECS-specific dotted keys как часть публичного API
+
+Это важно: ECS-форма должна рождаться в renderer/transform слое, а не быть формой общения между
+use case, стадиями и адаптерами.
+
+#### 2. Внутренний transport внутри observability
+
+Внутри observability разрешён generic sink:
+- `connector/common/observability/ports.py`
+- `ObservabilityEventSink` принимает `ObservabilityEvent`
+
+Но наружу он не торчит как глобальный порт для всех зон. Для потребителей будут узкие фасады:
+- `PipelineLifecycleLogger`
+- далее отдельно `VaultObservabilityPort`, `CacheObservabilityPort`, `ApplyObservabilityPort`
+
+То есть generic sink используется как внутренняя транспортная ось observability-пакета, а не как
+универсальный «лог-порт на всё приложение».
+
+Для Phase 1 этого достаточно: отдельный `domain/ports/observability.py` не нужен, потому что первый
+vertical slice идёт через orchestrator / lifecycle hooks и ещё не вводит самостоятельного
+usecase-facing consumer-а. Если такой consumer появится во Phase 2, тогда и вводится отдельный
+domain/usecase-facing port.
+
+#### 3. Zone-specific adapters на входе
+
+Наружные компоненты не должны знать:
+- как выглядит ECS;
+- какие поля являются reserved;
+- как устроен structlog/runtime;
+- как собирается `event.kind`, `log.logger`, `ecs.version` и т.д.
+
+Поэтому Phase 1 вводит узкий фасад для pipeline lifecycle:
+- адаптер в observability слое принимает семантически понятные аргументы;
+- строит `ObservabilityEvent`;
+- отправляет его во внутренний sink;
+- sink уже переводит событие в structlog вызов/runtime emission.
+
+#### 4. ECS renderer как последняя трансформация перед JSONRenderer
+
+Ответственность `ecs_transform`:
+- принять event dict после context merge, level/timestamp enrichment, redaction и exception rendering;
+- нормализовать запись в ECS shape;
+- перенести наши поля в `event.*`, `labels.*`, `error.*`, `service.*`, `process.*`, `trace.*`;
+- защитить reserved keys (`component`, системные ECS поля, processor meta);
+- не падать на foreign/stdlib логах;
+- оставить text/human renderer вне ECS-обязательств.
+
+Принцип: весь ECS-aware mapping живёт только здесь и в связанных helper-объектах этой же зоны.
+
+#### 5. Runtime wiring и процессорный конвейер
+
+Phase 1 фиксирует целевой порядок JSON-конвейера:
+1. context merge / runtime meta
+2. stdlib/structlog metadata
+3. exception normalization
+4. redaction
+5. cleanup processor meta
+6. `ecs_transform`
+7. `JSONRenderer`
+
+Ключевой инвариант: redaction идёт до ECS render, чтобы masking происходил ещё на сырых значениях,
+а `ecs_transform` уже работал с безопасным payload.
+
+#### 6. Точка входа первого vertical slice
+
+Первый slice берём не с vault/cache, а с runtime/pipeline lifecycle:
+- run started / run completed;
+- stage started / stage completed / stage failed;
+- один seam для интеграции: `PipelineHooks` или ближайшая lifecycle orchestration boundary.
+
+Почему именно так:
+- это наименьший риск по бизнес-логике;
+- даёт максимальную видимость в логах сразу;
+- задаёт шаблон для последующего подключения остальных зон;
+- не требует встраивать логгирование внутрь stage core.
+
+### Модули и ответственность в Phase 1
+
+#### `connector/common/observability/`
+- event contract (`ObservabilityEvent`)
+- internal generic sink protocol + zone-facing narrow ports для lifecycle
+- без structlog, без runtime wiring, без file/handler concerns
+
+#### `connector/infra/logging/ecs.py`
+- `ecs_transform`
+- taxonomy lookup helpers / validators, если они действительно нужны на runtime-path
+- reserved-key policy
+- field mapping helpers
+
+#### `connector/infra/logging/runtime.py`
+- processor pipeline wiring
+- вызов `ecs_transform` только на JSON sinks
+- сохранение текущих invariants по stderr/file transport
+
+#### `connector/infra/observability/` или `connector/infra/logging/`
+- sink implementation, которая принимает `ObservabilityEvent` и эмитит structlog запись
+- тонкие adapter implementations для pipeline lifecycle
+
+#### `connector/delivery/cli/containers.py`
+- только DI wiring
+- создание runtime/sink/adapters
+- никакой ECS mapping логики
+
+#### `connector/usecases/` / pipeline orchestration
+- только вызов узкого lifecycle-порта
+- без прямого structlog kwargs, без dotted ECS keys, без знания про taxonomy storage
+
+### Что входит в реализацию Phase 1
+
+1. Ввести минимальный event contract и внутренний sink внутри observability зоны.
+2. Реализовать `ecs_transform` и подключить его в JSON runtime pipeline.
+3. Определить и зафиксировать reserved keys / ownership полей.
+4. Провести первый lifecycle slice через pipeline hooks/orchestrator boundary.
+5. Написать guard-тесты, которые запрещают разнос логики ECS за пределы observability.
+6. Подготовить import-linter/architecture проверки, отражающие целевую модель.
+
+### Что сознательно НЕ входит в Phase 1
+
+- массовый перенос всех existing log call-site'ов на новый контракт;
+- покрытие всех зон (`vault`, `cache`, `apply`, `dictionaries`) новыми адаптерами;
+- полный enum/class hierarchy для всех `event.action`;
+- расширение на `event.category` / `event.type`;
+- миграция текстового console renderer в ECS-представление;
+- внешние зависимости ради formatter/runtime, если текущий слой решает задачу сам.
+
+### Порядок реализации
+
+1. Зафиксировать файловую карту и финальные границы модулей в коде и тестах.
+2. Ввести event contract и внутренний sink без подключения call-site'ов.
+3. Реализовать `ecs_transform` как чистый processor с unit/golden тестами.
+4. Подключить `ecs_transform` в runtime только для JSON sinks.
+5. Добавить pipeline lifecycle adapter и один вертикальный slice.
+6. Добить guard-тесты на запрет обходных путей.
+7. После стабилизации каркаса переходить к наполнению зон во Phase 2.
+
+### Checklist Phase 1
+
+- [ ] Создан минимальный `ObservabilityEvent` contract в observability package.
+- [ ] Определён внутренний `ObservabilityEventSink` и он не экспортируется как глобальный app-wide порт.
+- [ ] Для pipeline lifecycle заведён узкий zone-specific adapter/port.
+- [ ] `ecs_transform` реализован как чистый processor без побочных эффектов.
+- [ ] `ecs_transform` устойчив к foreign/stdlib логам и неполным event dict.
+- [ ] JSON file sink использует `ecs_transform`.
+- [ ] JSON console sink использует `ecs_transform`.
+- [ ] Text/human sink не зависит от ECS mapping.
+- [ ] Redaction выполняется до `ecs_transform`.
+- [ ] Reserved keys policy совпадает с полным множеством structural roots и покрыта тестом.
+- [ ] `fields` запрещает dotted keys и structural-root aliases, это покрыто тестом.
+- [ ] Processor order зафиксирован тестом.
+- [ ] Pipeline lifecycle slice проходит через hooks/orchestration seam, а не через stage core.
+- [ ] В stage core/use case нет прямого знания о dotted ECS keys.
+- [ ] Добавлен guard-тест на запрет прямого ECS field mapping вне observability зоны.
+- [ ] Добавлен guard-тест на запрет прямого structlog/event-emission в неподходящих слоях, где должен идти adapter.
+- [ ] Import-linter/architecture checks отражают целевые границы observability слоя.
+
+### Finally Checkup для завершения Phase 1
+
+Фаза считается завершённой, если одновременно выполняются все условия:
+
+- [ ] Любой JSON-лог проекта проходит через один и тот же `ecs_transform`.
+- [ ] Ни один use case, stage core или domain service не формирует ECS-dotted fields вручную.
+- [ ] Наружные зоны взаимодействуют с observability через узкий adapter/port, а не через generic sink напрямую.
+- [ ] `component`, `service.*`, `ecs.version`, `event.kind`, `labels.*` ownership закреплены внутри observability слоя.
+- [ ] `fields` принимает только short-name aliases / безопасные доменные ключи и не принимает dotted ECS keys.
+- [ ] Redaction, exception rendering и ECS transform выстроены в корректном порядке и это защищено тестом.
+- [ ] Foreign/stdlib логи не ломают JSON pipeline и не требуют специальных call-site patch'ей.
+- [ ] Первый lifecycle slice (`run-*`, `stage-*`) пишет ожидаемые ECS-события end-to-end.
+- [ ] Architecture/import guard'ы зелёные и блокируют расползание логики за границы observability.
+- [ ] ADR не расходится с worknote: в ADR только принятые решения, в worknote осталась реализационная детализация.
+
+### Критерий готовности к Phase 2
+
+После завершения этой фазы мы должны быть в состоянии:
+- подключать новые зоны по образцу `pipeline lifecycle adapter -> ObservabilityEvent -> sink -> ecs_transform`;
+- расширять taxonomy и field mapping без правок в stage core;
+- переносить legacy call-site'ы по одному кластеру за раз, не ломая runtime и не перепридумывая архитектуру.

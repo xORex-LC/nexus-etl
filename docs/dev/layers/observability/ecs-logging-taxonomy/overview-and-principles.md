@@ -1,8 +1,10 @@
 # Overview and Principles
 
 > **Статус**: Планируется (вводится [OBSERVABILITY-DEC-003](../../../../adr/observability/OBSERVABILITY-DEC-003-ecs-renderer-and-field-mapping.md), Фаза 1)
-> **Машинно-авторитетный источник**: `connector/infra/logging/ecs.py` (таблица маппинга + enum'ы `EventAction`/`EventOutcome`/`EventKind`)
-> **Этот документ**: прозаический каталог для людей — что есть какое поле, какой уровень когда, какие действия существуют и как пополнять словарь.
+> **Canonical navigation entry**: [ecs-logging-conventions.md](../ecs-logging-conventions.md)
+> **Машинно-авторитетные источники**: `connector/common/observability/taxonomy/actions.yaml`,
+> `connector/common/observability/taxonomy/fields/*.yaml`, runtime mapping в `connector/infra/logging/ecs.py`
+> **Этот документ**: детальная prose-расшифровка семантики и принципов, а не отдельный competing entry point.
 
 ## 📋 Обзор
 
@@ -74,9 +76,9 @@
     несут`, но и `на каком уровне детализации` они допустимы: `INFO milestone/summary`,
     `DEBUG record/decision`, `TRACE rule-by-rule / execution seam`. Иначе одна и та же зона
     начнёт логироваться с разной плотностью и без общего контракта.
-14. **У taxonomy два источника истины: human и machine.**
-    Этот документ — человекочитаемая семантика и правила. Кодовый модуль (`ecs.py` /
-    `ecs_taxonomy.py`) — машинно-авторитетный реестр enum'ов, buckets и validation helpers.
+14. **У taxonomy два уровня истины: machine registry и human semantics.**
+    YAML taxonomy (`actions.yaml`, `fields/*.yaml`) + runtime mapping в `ecs.py` образуют
+    машинно-проверяемый слой. Этот документ фиксирует семантику и правила для людей.
 
 ---
 
@@ -84,13 +86,15 @@
 
 | Что | Где | Почему там |
 |---|---|---|
-| Таблица соответствия (внутренний ключ → ECS) | `ecs.py` | Один процессор-источник, проверяется контрактным тестом |
-| Словарь `event.action` (членство) | `EventAction` (StrEnum) в `ecs.py` | Машинно-валидируется; «добавить» = член enum |
-| `event.outcome` / `event.kind` (членство) | `EventOutcome` / `EventKind` в `ecs.py` | То же |
+| Таблица соответствия (short-name alias → canonical dotted key) | `fields/*.yaml` + helpers в `ecs.py` | Один machine registry без silent hardcode; проверяется контрактным тестом |
+| Таблица соответствия (внутренний key set → ECS output) | `ecs.py` | Один runtime processor-источник, использующий YAML registry |
+| Словарь `event.action` (членство) | `actions.yaml` и производный enum/helper в common-layer | Машинно-валидируется; адаптеры не должны нести произвольные action |
+| `event.outcome` / `event.kind` (членство) | типы/enum в common-layer | Runtime-neutral contracts выше infra |
 | `ECS_VERSION` | константа в `ecs.py` | Декларируется в `ecs.version`, апгрейд — ревью |
-| Описания действий, правила уровней, каталог полей | **этот документ** | Людям нужны описания, которых enum не несёт |
+| Описания действий, правила уровней, каталог полей | `ecs-logging-conventions.md` + linked docs | Людям нужны описания и навигация, которых registry не несёт |
 
-Правило против дрейфа: **членство** — авторитетно в коде (enum + тест); **описания** — здесь.
-Добавление действия правит оба места (контрактный тест сверяет, что enum и используемые значения согласованы).
+Правило против дрейфа: machine-членство и alias mapping авторитетны в YAML/common contracts;
+runtime transform обязан проходить contract tests против них; prose-документация не дублирует
+машинный реестр вручную.
 
 ---
