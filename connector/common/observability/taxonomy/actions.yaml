@@ -10,6 +10,32 @@ schema_version: 1
 ecs_version: "8.11"
 
 actions:
+- name: artifact-tail
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: '`obs tail` displayed/failed artifact tail'
+  description: '`obs tail` CLI displayed or failed artifact tail'
+- name: artifact-view
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: '`obs latest` displayed/failed latest artifact'
+  description: '`obs latest` CLI displayed or failed latest artifact'
 - name: cache-init-failed
   zone: 01-runtime-cli-lifecycle
   bucket: milestone
@@ -25,34 +51,6 @@ actions:
   - trace.id
   emission_point: sqlite/cache init failure
   description: sqlite/cache init failure
-- name: command-failed
-  zone: 01-runtime-cli-lifecycle
-  bucket: milestone
-  default_level: error
-  outcome: always
-  kind: event
-  status: planned
-  required_fields:
-  - event.action
-  - event.outcome
-  - error.type
-  - error.message
-  - trace.id
-  emission_point: unhandled command-level exception
-  description: unhandled command-level exception
-- name: command-started
-  zone: 01-runtime-cli-lifecycle
-  bucket: milestone
-  default_level: info
-  outcome: none
-  kind: event
-  status: planned
-  required_fields:
-  - event.action
-  - trace.id
-  - service.type
-  emission_point: runtime enters command execution
-  description: runtime enters command execution
 - name: config-load-failed
   zone: 01-runtime-cli-lifecycle
   bucket: milestone
@@ -217,6 +215,34 @@ actions:
   - trace.id
   emission_point: one subcontainer shutdown failed
   description: one subcontainer shutdown failed
+- name: retention-prune-completed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: info
+  outcome: success
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: '`maintenance prune` completed'
+  description: Manual retention prune completed
+- name: retention-prune-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - error.type
+  - error.message
+  - trace.id
+  emission_point: '`maintenance prune` failed'
+  description: Manual retention prune failed
 - name: retention-sweep-failed
   zone: 01-runtime-cli-lifecycle
   bucket: decision
@@ -243,6 +269,21 @@ actions:
   - event.outcome
   emission_point: planned
   description: Завершение прогона с `event.outcome`
+- name: run-failed
+  zone: 01-runtime-cli-lifecycle
+  bucket: milestone
+  default_level: error
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - error.type
+  - error.message
+  - trace.id
+  emission_point: unhandled command-level exception
+  description: Прогон команды/пайплайна завершился ошибкой
 - name: run-started
   zone: 01-runtime-cli-lifecycle
   bucket: milestone
@@ -253,8 +294,9 @@ actions:
   required_fields:
   - event.action
   - trace.id
-  emission_point: planned
-  description: Старт прогуна команды/пайплайна
+  - service.type
+  emission_point: runtime enters command execution
+  description: Старт прогона команды/пайплайна
 - name: runtime-validation-failed
   zone: 01-runtime-cli-lifecycle
   bucket: milestone
@@ -410,6 +452,44 @@ actions:
   - event.outcome
   emission_point: planned
   description: Запись отброшена (с причиной)
+- name: dictionary-initialized
+  zone: 05-enrich-subsystem
+  bucket: milestone
+  default_level: info
+  outcome: success
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: dictionary runtime initialized
+  description: Dictionary runtime initialized
+- name: dictionary-lookup
+  zone: 05-enrich-subsystem
+  bucket: decision
+  default_level: debug
+  outcome: always
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - event.outcome
+  - trace.id
+  emission_point: dictionary lookup hit/miss/error (current telemetry)
+  description: Dictionary lookup hit/miss/error; canonical runtime path is lookup-completed
+- name: dictionary-source-empty
+  zone: 05-enrich-subsystem
+  bucket: decision
+  default_level: warning
+  outcome: unknown
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: dictionary source returned no rows
+  description: Dictionary source empty (DICT_SOURCE_EMPTY)
 - name: enrich-operation-completed
   zone: 05-enrich-subsystem
   bucket: milestone
@@ -721,6 +801,18 @@ actions:
   levels:
   - info
   - error
+- name: cache-sync-issue
+  zone: 06-state-stores-and-providers
+  bucket: decision
+  default_level: warning
+  outcome: unknown
+  kind: event
+  status: planned
+  required_fields:
+  - event.action
+  - trace.id
+  emission_point: cache sync value expression issue in dsl adapter
+  description: Cache sync value expression issue (non-fatal)
 - name: identity-lookup-completed
   zone: 06-state-stores-and-providers
   bucket: milestone

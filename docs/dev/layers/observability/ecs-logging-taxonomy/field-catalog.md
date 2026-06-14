@@ -39,6 +39,11 @@
 | `url.full` | endpoint-level runtime/check events | Полный endpoint URL, если он не содержит секретов и query-sensitive данных |
 | `url.path` | request/operation events | Path или path-template без чувствительных query/ids |
 
+### `file.*`
+| Поле | Когда | Описание |
+|---|---|---|
+| `file.path` | report/plan/log artifact events | Относительный путь записанного артефакта (`report-written` / `plan-written` / `log-written`) |
+
 ### `error.*` (только ERROR/CRITICAL) — **два источника**
 `error.*` собирается ИЛИ из ручных kwargs на call-site (`error_type`/`error`/`diag_code` — так уже
 пишет, напр., [orchestrator.py:494](../../../../../connector/delivery/cli/runtime/orchestrator.py)),
@@ -65,6 +70,12 @@
 | Поле | Когда | Описание |
 |---|---|---|
 | `nexus.subsystem` | ситуативно | Внутренняя функциональная зона: `core`, `config`, `dsl`, `report`, `log`, `observability`, `cache`, `vault`, … |
+| `nexus.runtime.exit_code` | runtime-validation events | Планируемый CLI/exit code при runtime-validation failure |
+| `nexus.resource.phase` | resource init/shutdown events | `init` / `shutdown` |
+| `nexus.resource.subcontainer` | resource shutdown/init failure events | Имя subcontainer при сбое инициализации/останова |
+| `nexus.resource.failed_subcontainers` | resource shutdown summary | Кол-во/список subcontainers, упавших при shutdown |
+| `nexus.observability.phase` | observability best-effort events | `retention-sweep`, `ledger-build`, `ledger-append`, `pointer-publish` |
+| `nexus.artifact.kind` | observability artifact events | Тип артефакта: `log`, `report`, `plan` |
 | `nexus.stage.name` | внутри pipeline stage events | Canonical internal pipeline stage name из `StageContract.stage_name`: `map`, `normalize`, `enrich`, `match`, `resolve_context`, `resolve` |
 | `nexus.stage.items_count` | stage completion/error, когда есть hook stats | Количество элементов, вышедших из stage stream (`PipelineHooks` `stats["items"]`) |
 | `nexus.stage.rows_total` | stage completion, reporter-derived | Row counter из `StageResultReporter.snapshot()` / `publish_context()` |

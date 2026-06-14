@@ -1,374 +1,336 @@
-# OBSERVABILITY-DEC-003: ECS-форма JSON-логов через подмену финального рендерера
+# OBSERVABILITY-DEC-003: ECS JSON rendering and logging taxonomy boundary
 
-> **Статус**: Предложено
-> **Дата принятия**: 2026-06-09
+> **Статус**: Принято
+> **Дата принятия**: 2026-06-14
 > **Решает проблему**: [OBSERVABILITY-PROBLEM-003](./OBSERVABILITY-PROBLEM-003-non-ecs-log-shape.md)
-> **Развивает**: [OBSERVABILITY-DEC-001](./OBSERVABILITY-DEC-001-structlog-as-standard.md) (structlog как стандарт)
+> **Развивает**: [OBSERVABILITY-DEC-001](./OBSERVABILITY-DEC-001-structlog-as-standard.md) и
+> [OBSERVABILITY-DEC-002](./OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md)
 > **Участники решения**: @xorex-LC
 
 ---
 
-## 📋 Контекст
+## Контекст
 
-JSON-логи структурированы, но не в ECS — это блокирует прямую интеграцию с Elasticsearch
-([OBSERVABILITY-PROBLEM-003](./OBSERVABILITY-PROBLEM-003-non-ecs-log-shape.md)). Нужно привести
-**только финальный JSON-вывод** к ECS, не трогая транспорт, корреляцию, redaction и человекочитаемые
-синки ([DEC-002](./OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md)).
+После DEC-001/DEC-002 приложение уже пишет структурированные JSON-логи через `structlog`, разделяет
+stdout/stderr, применяет redaction и раскладывает runtime-артефакты по `ServiceComponent`.
+Оставшаяся проблема: JSON-форма не соответствует Elastic Common Schema (ECS), поэтому Elasticsearch
+требует ingest-side переименований или получает нестабильные поля.
 
----
-
-## 🎯 Решение
-
-Ввести **один structlog-процессор `ecs_transform` (dict → dict)**, который маппит наш внутренний
-`event_dict` в ECS-форму с **dotted-ключами**, и поставить его **в `ProcessorFormatter` непосредственно
-перед `JSONRenderer`** — только на JSON-синках. Все существующие context-процессоры
-(`merge_contextvars`, `add_log_level`, `TimeStamper`, `schema_version`, runtime-meta) и redaction
-остаются нетронутыми.
-
-Ключевые принципы решения:
-
-1. **Меняется только последний шаг рендера, а не цепочка контекста.** Рендеринг у нас живёт не в
-   `structlog.configure()`, а в `ProcessorFormatter` на хендлерах (цепочка структлога заканчивается
-   на `ProcessorFormatter.wrap_for_formatter`). Поэтому ECS-маппинг — это вставка одного процессора в
-   `_build_formatter`, без изменения call-sites и без новой зависимости.
-2. **SRP:** маппинг (`ecs_transform`, dict→dict) отделён от сериализации (`JSONRenderer`, dict→str).
-   Маппинг юнит-тестируется без парсинга JSON.
-3. **Dotted-ключи** (`"log.level"`, `"event.action"`, `"labels.run_id"`) — валидный ECS; Filebeat/ES
-   разворачивают их в объекты автоматически. Проще генерировать и читать глазами в файле.
-4. **ECS — только на JSON-синках.** Человекочитаемые рендереры (`_HumanConsoleRenderer`,
-   `_JsonTextRenderer`) не меняются.
-5. **Свой процессор, а не библиотека `ecs-logging`.** Полный контроль над порядком
-   redaction → map → render и над dual-transport инвариантом; библиотека хочет быть formatter'ом и
-   конфликтует с нашим `ProcessorFormatter` + redaction. `ecs.version` проставляем сами.
+Задача этого решения - привести **только финальный JSON-вывод** к ECS и одновременно зафиксировать,
+где живёт taxonomy полей и событий. Транспорт, layout, contextvars-корреляция, redaction,
+человекочитаемые sink-и и lifecycle observability-артефактов остаются в рамках DEC-001/DEC-002.
 
 ---
 
-## 🏗️ Архитектурное решение
+## Решение
 
-### Порядок процессоров в `ProcessorFormatter` (JSON-синк)
+Ввести один финальный structlog processor `ecs_transform` (`dict -> dict`) и включать его только для
+JSON sink-ов непосредственно перед `JSONRenderer` внутри `ProcessorFormatter`.
 
-Текущий (`_build_formatter`, `connector/infra/logging/runtime.py`):
+Целевой порядок для JSON sink:
 
+```text
+ExceptionRenderer(ExceptionDictTransformer())
+  -> LogRedactionEngine.processor
+  -> ProcessorFormatter.remove_processors_meta
+  -> ecs_transform
+  -> JSONRenderer
 ```
-ExceptionRenderer(ExceptionDictTransformer()) → redaction → remove_processors_meta → JSONRenderer
-```
 
-Целевой:
+Для text/human sink-ов порядок не меняется: ECS-преобразование применяется только к JSON-выводу.
 
-```
-ExceptionRenderer(ExceptionDictTransformer()) → redaction → remove_processors_meta → ecs_transform → JSONRenderer
-```
+Почему именно так:
 
-**Почему именно этот порядок (инварианты):**
-- `ecs_transform` стоит **после redaction** — redaction матчит по нашим внутренним именам ключей;
-  переименование в ECS до redaction увело бы ключи из-под маскирования.
-- `ecs_transform` стоит **после `remove_processors_meta`** — чтобы служебные structlog-ключи
-  (`_record`, `_from_structlog`) уже были вырезаны и не утекли в `labels.*` через catch-all.
-- `ecs_transform` стоит **перед `JSONRenderer`** — рендерер просто сериализует уже-ECS dict.
+- Redaction остаётся до ECS-переименования, поэтому маскирование продолжает работать по текущим
+  внутренним ключам и по traceback payload.
+- `remove_processors_meta` остаётся до `ecs_transform`, чтобы служебные `_record` и
+  `_from_structlog` не попали в выходной лог.
+- `ecs_transform` отделён от сериализации: его можно unit-тестировать как чистую функцию без парсинга
+  JSON и без поднятия CLI runtime.
+- Call-site-ы не обязаны сразу эмитить dotted ECS-ключи: переход выполняется централизованно.
 
-Для текстовых синков порядок не меняется (ECS-процессор туда не добавляется).
+---
 
-### Новый компонент
+## Taxonomy sources
 
-- `EcsFieldTransformer` (или функция-процессор `ecs_transform`) в новом модуле
-  `connector/infra/logging/ecs.py` — **машинно-авторитетный** источник правды по ECS-маппингу и
-  словарям семантики:
-  - Чистая функция вида `(_logger, _method, event_dict) -> event_dict` (структлог-процессор).
-  - Константы `ECS_VERSION = "8.11"`, `SERVICE_NAME = "nexus-etl"`.
-  - Таблица соответствия полей (внутренний ключ → ECS-таргет).
-  - **Словари семантики как код** (легко пополнять — добавить член enum):
-    `EventAction` (StrEnum, словарь `event.action`), `EventOutcome` (`success`/`failure`/`unknown`),
-    `EventKind` (`event`/`metric`/`state`). Эти enum'ы валидируются контрактным тестом, поэтому
-    «пополнить словарь» = добавить член, а не править строки по всему коду.
-  - Не делает I/O, не знает про синки/хендлеры — чистый dict→dict.
+ADR не хранит словарь полей и `event.action`. Детальная taxonomy теперь вынесена в отдельные
+машинные и человекочитаемые источники:
 
-Прозаический человекочитаемый дом семантики (каталог `event.action` с описаниями, правила уровней,
-как добавить поле/действие) — dev-doc
-[`docs/dev/layers/observability/ecs-logging-conventions.md`](../../dev/layers/observability/ecs-logging-conventions.md).
-Машинная истина — в `ecs.py` (enum'ы), описания — в dev-doc; добавление действия правит оба (тест
-сверяет членство enum).
-
-### Точное соответствие полей (внутреннее → ECS dotted)
-
-| Внутренний ключ (сейчас) | ECS-ключ | Примечание |
+| Что | Где | Роль |
 |---|---|---|
-| `timestamp` | `@timestamp` | ISO-8601 UTC (offset `+00:00`/`Z` — оба валидны для ES) |
-| `event` (строка-сообщение) | `message` | переименование; снимает конфликт с ECS-объектом `event` |
-| `level` | `log.level` | значения уже lowercase (`info`/`warning`/…) |
-| *(имя логгера)* | `log.logger` | добавить `structlog.stdlib.add_logger_name` в цепочку контекста |
-| `component` | `labels.component` | из `.bind(component=…)` |
-| `run_id` | `labels.run_id` | из contextvars; первичный correlation key |
-| `pipeline_run_id` | `labels.pipeline_run_id` | из contextvars |
-| `dataset` | `event.dataset` | ECS-каноничный для имени датасета |
-| `stage` | `labels.stage` | стадия пайплайна |
-| `scope` | `labels.scope` | наш scope-концепт |
-| `schema_version` | `labels.schema_version` | наша версия конверта; отлична от `ecs.version` |
-| `host` | `host.name` | |
-| `pid` | `process.pid` | |
-| `app_version` | `service.version` | |
-| `git_rev` | `labels.git_rev` | |
-| `exception` (dict от `ExceptionDictTransformer`) | `error.type` / `error.message` / `error.stack_trace` | `type`←класс верхнего исключения, `message`←строка, `stack_trace`←развёрнутый трейс |
-| *(новый)* `action` | `event.action` | verb-noun kebab-case; словарь — `EventAction` в `ecs.py` (каталог с описаниями — в `ecs-logging-conventions.md`) |
-| *(новый)* `outcome` | `event.outcome` | `success` / `failure` / `unknown` |
-| *(новый)* `duration_ns` | `event.duration` | наносекунды (ECS-тип long) |
-| *(новый)* `kind` | `event.kind` | `event` (default) / `metric` / `state` |
-| *(добавляется константой)* | `ecs.version` | `"8.11"` |
-| *(добавляется константой)* | `service.name` | `"nexus-etl"` |
-| **любой прочий бизнес-kwarg** | `labels.<key>` | **catch-all**: ничего не теряем, выход остаётся валидным ECS |
+| Машинный словарь `event.action` | `connector/common/observability/taxonomy/actions.yaml` | Canonical action registry: action name, zone, bucket, default level, outcome policy, required fields |
+| Машинный каталог полей | `connector/common/observability/taxonomy/fields/*.yaml` | Canonical field registry по зонам: ECS/nexus/labels key, type, tier, sensitivity |
+| Человекочитаемая навигация | `docs/dev/layers/observability/ecs-logging-conventions.md` | Entry point для правил уровней, зон и ссылок |
+| Зональная семантика | `docs/dev/layers/observability/ecs-logging-taxonomy/zones/*.md` | Описание, где и зачем эмитится событие конкретной зоны |
+| Call-site backlog | `docs/dev/layers/observability/ecs-logging-taxonomy/callsite-map.md` | Инвентарь текущих логирующих точек и миграционный план |
 
-**Catch-all** — ключевое правило: всё, что не имеет явного ECS-таргета, уезжает в `labels.*`
-(санкционированный ECS «мешок» произвольных keyword-полей). Так переход не теряет данные и не требует
-одномоментной правки всех call-sites.
+После реализации `ecs_transform` runtime-модуль `connector/infra/logging/ecs.py` становится
+исполняемым маппером ECS-формы. Он не должен дублировать полную taxonomy: enum/registry в коде
+должны строиться из YAML или проверяться контрактными тестами против YAML.
 
-### Поток данных
+Правило владения:
 
+- YAML taxonomy - источник допустимых действий и полей.
+- `ecs_transform` - источник правил преобразования runtime `event_dict` в ECS JSON.
+- Zone adapters - источник удобных методов для call-site-ов, чтобы бизнес-код не собирал ECS-поля
+  вручную.
+- ADR - только архитектурное решение и инварианты.
+
+---
+
+## Отношение к `ecs-logging`
+
+Полное подключение библиотеки `ecs-logging` как production formatter не принимается на текущем этапе.
+Причина не в качестве библиотеки, а в несовпадении роли: она закрывает formatter/rendering layer, а в
+проекте уже есть `ProcessorFormatter` с несколькими sink-ами, redaction до render и dual transport.
+
+Что не используем:
+
+- `ecs_logging.StructlogFormatter` как терминальный renderer вместо нашего `ProcessorFormatter`.
+- `ecs_logging.StdlibFormatter` как отдельный formatter для foreign/stdlib logs.
+- Автоматическое владение shape-ом логов библиотекой в обход нашей taxonomy.
+
+Что можно рассмотреть позже:
+
+- Использовать библиотеку как reference/dev tool при проверке ожидаемых ECS field names.
+- Сверять наши emitted dotted keys с официальным ECS field set в контрактных тестах.
+
+Пока production dependency не добавляется. `ecs.version` и mapping rules контролируются внутри
+observability logging layer.
+
+---
+
+## Архитектурные границы
+
+`ecs_transform` принадлежит observability logging layer. В текущей структуре это
+`connector/infra/logging/ecs.py`; при выделении отдельного пакета этот модуль должен переехать вместе
+с observability runtime.
+
+Запрещено:
+
+- заводить ECS mapping в `delivery`, `usecases`, `domain` или отдельных pipeline stage modules;
+- писать dotted ECS keys напрямую в каждом call-site как основной паттерн;
+- дублировать словарь событий в ADR, README или коде без проверки против YAML taxonomy;
+- обходить `LogRedactionEngine` новым formatter-ом или отдельной JSON-сериализацией.
+
+Generic event sink является внутренним транспортом observability logging layer, например:
+
+```python
+class ObservabilityEventSink(Protocol):
+    def emit(self, event: ObservabilityEvent) -> None: ...
 ```
-log.info("msg", action="stage-started", stage="normalize", record_count=10)
-        │  (+ contextvars: run_id/pipeline_run_id/component/dataset)
-        ▼
-[structlog chain: merge_contextvars → add_log_level → add_logger_name → TimeStamper → schema_version → runtime_meta → wrap_for_formatter]
-        ▼  (ProcessorFormatter на JSON-хендлере)
-ExceptionRenderer → redaction → remove_processors_meta → ecs_transform → JSONRenderer
-        ▼
-{"@timestamp":"…","message":"msg","log.level":"info","log.logger":"nexus.normalizer",
- "event.action":"stage-started","event.dataset":"employees","labels.run_id":"…",
- "labels.stage":"normalize","labels.record_count":10,"service.name":"nexus-etl","ecs.version":"8.11"}
+
+Этот sink не является рекомендуемым публичным API для usecase-ов. Usecase-facing API должен быть
+узким и zone-specific: `RuntimeLifecycleEvents`, `PipelineStageEvents`, `VaultManagementEvents`,
+`ApplyTargetEvents` и т.п. Такие фасады знают семантику зоны и собирают корректный
+`ObservabilityEvent`; transport/rendering остаются ниже.
+
+Иными словами:
+
+- внутри observability logging layer есть один generic transport sink;
+- наружу для прикладного кода выдаются узкие semantic ports/adapters по зонам;
+- прикладной код не вызывает `emit(action="...")` и не знает строковые `event.action`;
+- новые zone-specific Protocol вводятся по мере появления реального consumer-а, а не заранее для
+  всех зон taxonomy.
+
+---
+
+## Event contract
+
+Runtime-событие описывает намерение, а не ECS JSON. Базовая модель:
+
+```python
+@dataclass(frozen=True)
+class ObservabilityEvent:
+    action: str
+    message: str
+    fields: Mapping[str, LogFieldValue] = field(default_factory=dict)
+    level: LogLevel | None = None
+    outcome: EventOutcome | None = None
+    kind: EventKind | None = None
+    duration_ns: int | None = None
+    error: ObservabilityError | None = None
 ```
 
----
+Где:
 
-## ✅ Почему это решение?
+- `action` - канонический `event.action` из YAML taxonomy;
+- `message` - человекочитаемый текст, не машинный код события;
+- `fields` - доменные поля без dotted ECS keys;
+- `level`, `outcome`, `kind` могут быть явно заданы adapter-ом, но по умолчанию подтягиваются из
+  `actions.yaml`;
+- `duration_ns` маппится в `event.duration`;
+- `error` несёт безопасные `type/message/code` и, при наличии живого exception, передаётся sink-ом в
+  structlog через `exc_info`.
 
-**Преимущества**:
-- ✅ **Аддитивно и обратимо** — один процессор + переименования; транспорт/корреляция/redaction/
-  текстовые синки не трогаются.
-- ✅ **Единый источник правды по ECS** (`ecs.py`) — OCP/DRY; новые поля добавляются в одном месте.
-- ✅ **Call-sites не правятся для Фазы 1** — catch-all в `labels.*` сохраняет совместимость.
-- ✅ **Без новой зависимости** — согласуется с духом DEC-001 (structlog уже в проекте).
-- ✅ **Прямая отправка в ES** без ingest-переименований на стороне кластера.
+`fields` не является escape hatch для raw ECS. Запрещены reserved keys: `component`, `labels`,
+`event`, `error`, `exception`, `ecs.version`, `log`, `service`, `host`, `process`. Неизвестные
+безопасные поля могут попасть в `labels.*`; известные поля маппятся в ECS/nexus keys централизованно.
 
-**Недостатки (компромиссы)**:
-- ⚠️ Dotted-ключи менее «каноничны», чем вложенные объекты (но ES/Filebeat принимают их как есть, а
-  читать в файле проще).
-- ⚠️ Сами тащим соответствие `ecs.version` (нужно отслеживать апгрейды ECS) — приемлемо: версия одна,
-  меняется редко, зафиксирована константой.
-- ⚠️ Реальная ценность `event.action`/`outcome`/`duration` появляется только после наполнения
-  call-sites (Фаза 2) — но Фаза 1 уже делает поток валидным ECS.
+`event.category` и `event.type` не входят в базовый контракт этого решения, потому что текущая
+machine taxonomy хранит `kind`, но не хранит `category/type`. Они могут быть добавлены позже, если
+появятся в YAML registry как обязательная часть taxonomy.
 
-**Альтернативы, которые отклонили**:
-- ❌ **Библиотека `ecs-logging` (полное подключение)** — хочет быть finalize-formatter'ом,
-  конфликтует с нашим `ProcessorFormatter` + redaction; меньше контроля над порядком и
-  dual-transport инвариантом. Развёрнутый разбор рисков — в разделе ниже.
-- ❌ **Дотированные ECS-ключи прямо на call-sites** (`extra={"event.action": …}`) — верботно,
-  размазывает ECS-знание по всему коду, ломает эргономику structlog.
-- ❌ **ingest-pipeline в Elasticsearch** — дублирование маппинга, дрейф источник↔кластер, лишняя точка
-  отказа.
-- ❌ **Вложенные объекты вместо dotted** — чище по спеке, но сложнее собирать и хуже читается в сыром
-  логе; выгода для ES нулевая (он принимает оба варианта).
+Для pipeline lifecycle должны использоваться существующие `PipelineHooks`: `on_stage_start`,
+`on_stage_complete`, `on_stage_error`, `on_stage_abort`. Логирование stage lifecycle не добавляется
+в сами stage implementations и не меняет `StageContract`.
 
 ---
 
-## ❌ Почему отклонено полное подключение `ecs-logging`
+## Pydantic and runtime models
 
-Рассматривали «полную» замену нашего рендера официальной библиотекой Elastic `ecs-logging`
-(`StructlogFormatter` для structlog + `StdlibFormatter` для stdlib-логов). Отклонено: она борется с
-тремя несущими решениями [DEC-002](./OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md)
-(stdlib-bridge, dual transport, redaction-surface). Риски по убыванию серьёзности:
+Pydantic используется на trust boundary taxonomy YAML:
 
-1. **🔴 Обход redaction в трейсбэках (security-регрессия).** Сейчас порядок жёсткий:
-   `ExceptionRenderer(ExceptionDictTransformer())` → **redaction** → render
-   (`runtime.py`, `_build_formatter`). Трейсбэк превращается в данные ДО маскирования, и redaction по
-   нему проходит. `StructlogFormatter` — терминальный рендерер: он сам строит `error.stack_trace` в
-   момент рендера, ПОСЛЕ наших процессоров. Секрет в тексте исключения (`ValueError(f"token={…}")`)
-   соберётся в `error.stack_trace` за пределами `LogRedactionEngine` → прямой обход маскирования
-   (нарушает раздел 8 CLAUDE.md и redaction-surface для трейсбэков, см. `observability-logging.md`).
-2. **🔴 Ломается dual transport (инвариант DEC-002).** У нас разные рендереры на разных синках
-   (console-JSON→stderr, file logfmt/JSON, human-console) — выбор по `config.sinks.*.format`, потому
-   что рендер живёт в `ProcessorFormatter` на каждом хендлере. `StructlogFormatter` ставится ОДНИМ
-   терминальным процессором в `structlog.configure()` и не умеет «JSON на одном хендлере, текст на
-   другом» → форсирует ECS-JSON для всего вывода и убивает человекочитаемые синки. Сохранить их можно
-   только не используя библиотеку для них — т.е. это уже гибрид, а не «полное» подключение.
-3. **🟠 Foreign-логи теряют корреляцию и ECS.** Логи httpx/sqlite3 сейчас ECS-ифицируются и получают
-   `run_id` через `foreign_pre_chain` (stdlib-bridge). У библиотеки для stdlib свой `StdlibFormatter`,
-   не знающий про наши contextvars и redaction → «полное» подключение даёт два несвязанных форматтера и
-   пропажу `run_id`/маскирования на foreign-логах.
-4. **🟠 Нет catch-all в `labels.*` → mapping explosion в ES.** Наш процессор уводит всё неучтённое
-   (`scope`, `pipeline_run_id`, `op`, …) в `labels.*`. `ecs-logging` кладёт незнакомые ключи в корень
-   по своим правилам → рост числа полей в индексе и конфликты типов (keyword vs object) в ES.
-5. **🟡 Расходится с принятой формой (dotted vs nested).** Решено эмитить dotted-ключи; библиотека
-   эмитит вложенные объекты. Для ES оба валидны, но это отменяет принятый выбор и хуже читается в файле.
-6. **🟡 Новая зависимость + Nuitka standalone.** +1 runtime-dep (сейчас 12 в `pyproject.toml`), которую
-   надо вшить в standalone-сборку и прогнать `smoke-standalone`; версия ECS жёстко связывается с
-   версией пакета (апгрейд ECS = апгрейд библиотеки).
-7. **🟡 Широкая переделка тестов.** Golden-тесты stderr-JSON, 5 surfaces redaction и
-   no-stdout-double-emit завязаны на нашу форму и путь обработки исключений. Смена ломает их широко, а
-   redaction-тест на трейсбэк (п.1) становится непроходимым.
+- `ActionTaxonomyEntry` / `ActionTaxonomyRegistry` для `actions.yaml`;
+- `FieldTaxonomyEntry` / `FieldTaxonomyRegistry` для `fields/*.yaml`;
+- validators для kebab-case action names, уникальности ключей, допустимых `zone`, `bucket`,
+  `default_level`, `outcome`, `kind`, `ecs_type`, `owner`, `tier`.
 
-**Что у библиотеки всё же хорошо** (и почему это не перевешивает): гарантированная
-ECS-version-совместимость, поддерживаемый маппинг и обработка `error.*`, меньше своего кода — но эти
-плюсы реализуются только для greenfield single-sink JSON-сервиса без stdlib-bridge и без своей
-redaction. Наш случай иной.
-
-**Реалистичный максимум — гибрид, а не «полное»:** взять у `ecs-logging` лишь *справочник имён полей*
-как dict→dict шаг ВНУТРИ нашего `ProcessorFormatter` (до сериализации нашим `JSONRenderer`), сохранив
-порядок `redaction → map → render`, dual transport и `labels`-catch-all. Но это ровно то, что делает
-собственный `ecs_transform` — только ценой внешней зависимости ради таблицы соответствия на ~40 строк.
-Поэтому выбран свой процессор.
+Runtime hot path не должен валидировать каждую log-запись через Pydantic. Для runtime-событий
+достаточно `dataclass(frozen=True)` и `StrEnum`/`Literal`-типов, а корректность поддерживается
+unit/contract tests.
 
 ---
 
-## 🛠️ Реализация (план, без кода)
+## Implementation plan
 
-### Ключевые файлы
+### Phase 1: ECS renderer contract
+
+Код:
 
 | Файл | Изменение |
-|------|-----------|
-| `connector/infra/logging/ecs.py` | **Новый**: `ecs_transform` процессор + ECS-константы + маппинг |
-| `connector/infra/logging/runtime.py` | Вставить `ecs_transform` перед `JSONRenderer` в `_build_formatter` (оба JSON-синка); добавить `add_logger_name` в `_build_structlog_processors` |
-| `connector/infra/logging/README.md` | Описать ECS-слой и порядок процессоров |
-| `tests/unit/.../logging/test_ecs_transform.py` | **Новый**: таблица соответствия, catch-all, error.*, отсутствие пустых полей |
-| `docs/dev/layers/observability/observability-logging.md` | Секция «ECS rendering» + ссылка на DEC-003 |
+|---|---|
+| `connector/infra/logging/ecs.py` | Новый `ecs_transform`, ECS constants, field mapping, error mapping, catch-all |
+| `connector/infra/logging/runtime.py` | Вставить `ecs_transform` только перед JSONRenderer; добавить logger name processor |
+| `connector/infra/logging/README.md` | Зафиксировать processor order и boundary ECS слоя |
 
-### Инварианты (must hold)
-1. **redaction → remove_processors_meta → ecs_transform → JSONRenderer** — строгий порядок.
-2. **Dual transport** — ECS только на JSON-синках; текстовые рендереры не меняются; JSON по-прежнему
-   на stderr, не на stdout.
-3. **Catch-all в `labels.*`** — ни один бизнес-kwarg не теряется и не ломает ECS-форму.
-4. **`message` ≠ `event`-объект** — строка сообщения уходит в `message`, ключ `event` в выходе не
-   остаётся (только `event.*`).
-5. **Никаких секретов** — redaction отрабатывает до ECS-переименования.
+Минимальные инварианты Phase 1:
 
-### Фазировка
-- **Фаза 1 (эта итерация — после утверждения ADR):** `ecs_transform` + переименования + `ecs.version`/
-  `service.name` + `add_logger_name`. Снаружи поток — валидный ECS. Call-sites не трогаем.
-- **Фаза 2 (отдельно):** словарь `event.action` + проставление `outcome`/`duration_ns` на
-  lifecycle-точках (run/stage start-complete-fail) в orchestrator и стадиях. Это даёт Kibana-аналитику.
-- **Фаза 3 (опц.):** `log.origin.*` на DEBUG через `CallsiteParameterAdder`; `service.environment` из
-  конфига.
+- JSON logs contain `@timestamp`, `message`, `log.level`, `log.logger`, `ecs.version`,
+  `service.name`.
+- `event` как строковое сообщение не остаётся root key; оно становится `message`.
+- Unknown business kwargs go under `labels.*` or an approved project namespace.
+- Text sinks remain unchanged.
+- Redaction still happens before ECS transformation.
 
----
+### Phase 2: Taxonomy registry and guards
 
-## 🧪 Валидация решения
+Код:
 
-**Тесты (Фаза 1)**:
-- ✅ Каждый ключ из таблицы соответствия маппится; `@timestamp`/`message`/`log.level` присутствуют.
-- ✅ Catch-all: произвольный kwarg → `labels.<key>`; `_record`/`_from_structlog` отсутствуют.
-- ✅ `exception` → `error.type`/`error.message`/`error.stack_trace`.
-- ✅ Текстовые синки не меняются (golden-тест человекочитаемого вывода).
-- ✅ Redaction по-прежнему маскирует чувствительные ключи (порядок процессоров не сломал маскирование).
-- ✅ JSON по-прежнему на stderr, не на stdout (dual-transport).
+| Файл | Изменение |
+|---|---|
+| `connector/common/observability/taxonomy/` | Оставить YAML source of truth |
+| `connector/infra/logging/taxonomy.py` или будущий package module | Pydantic loader/registry для YAML taxonomy |
+| `tests/unit/.../test_ecs_taxonomy.py` | Contract tests YAML registry, action names, field keys, duplicates |
 
-**Контрактные тесты ECS-совместимости (CI-гейт, `pytest -m unit`)** — это механизм поддержания
-совместимости во времени (детали стратегии — в разделе «🔧 Поддержание ECS-совместимости»):
-1. **Golden-контракт.** Репрезентативные события (info / warning / error-с-исключением) прогоняются
-   через *реальную* цепочку процессоров; проверяется точный набор ключей и их JSON-типы. Ловит
-   случайные переименования и регрессии порядка процессоров.
-2. **Валидация против ECS-схемы.** Вендоренный статический срез определений полей ECS для
-   `ECS_VERSION` (из официального `ecs_flat.yml` тега `v8.11.0`, только эмитируемые поля) → каждый
-   dotted-ключ либо известное ECS-поле с совпадающим типом, либо под открытыми `labels.*`/`tags`.
-   Без runtime-зависимости (фикстура только для тестов).
-3. **«Нет неизвестных корневых ключей».** В корне — только разрешённый ECS-набор; всё прочее обязано
-   быть под `labels.*`. Машинно форсирует catch-all и не даёт mapping explosion на источнике.
-4. **Гарантии типов.** Числовые labels → int; не-скаляры в `labels.*` → строка/JSON (через
-   `_format_text_value`). Под тестом.
+Минимальные инварианты Phase 2:
 
-**Проверка готовности к ES**:
-1. Прогнать `nexus import plan` в JSON-режиме, собрать stderr.
-2. Каждая строка — валидный JSON с `@timestamp`/`message`/`log.level`/`ecs.version`.
-3. Прогнать через `filebeat test` / отправить в dev-ES → поля разложились по ECS без ingest-правил.
+- `actions.yaml` валидируется как registry.
+- Все `required_fields` action-ов существуют в field registry.
+- Все field keys имеют разрешённый root (`ecs`, `event`, `log`, `error`, `trace`, `service`,
+  `host`, `process`, `file`, `http`, `url`, `nexus`, `labels`, `tags`, `@timestamp`).
+- Sensitive fields не допускают raw-value logging policy.
+
+### Phase 3: Event contract and zone adapters
+
+Начинать с зон, где уже есть стабильные call-site-ы:
+
+1. Zone 1: Runtime Orchestrator / CLI Lifecycle.
+2. Zone 2: Command-Specific Delivery Lifecycle.
+3. Zone 12: Vault Management Lifecycle.
+
+Каждая zone adapter должна принимать domain/usecase DTO или явно типизированные параметры и
+эмитить `ObservabilityEvent` через общий sink. Она не должна знать про `ProcessorFormatter`,
+файлы логов, redaction или Elasticsearch.
+
+Первый vertical slice должен пройти путь:
+
+```text
+zone-specific method -> ObservabilityEvent -> ObservabilityEventSink
+  -> structlog kwargs -> ecs_transform -> JSONRenderer
+```
 
 ---
 
-## 🔧 Поддержание ECS-совместимости
+## Validation
 
-«Совместимость» — два обязательства: (1) наш вывод соответствует спеке ECS той версии, что мы
-декларируем в `ecs.version`; (2) Elasticsearch стабильно его принимает (без mapping explosion и
-конфликтов типов). Держим это так:
+Unit tests:
 
-### 1. Один источник правды + закреплённая версия
-Вся таблица соответствия — только в `connector/infra/logging/ecs.py`; версия — константа
-`ECS_VERSION` (она же эмитится в `ecs.version`). Добавление/переименование поля — правка в одном
-месте; апгрейд ECS — осознанное ревью-изменение константы, а не неявный дрейф.
+- `ecs_transform` maps core structlog keys to ECS dotted keys.
+- `ecs_transform` maps exception dict to `error.*` after redaction.
+- unknown fields are moved to `labels.*` or approved `nexus.*`.
+- no unknown root keys escape the transformer.
+- JSON formatter uses `ecs_transform`; text formatter does not.
+- logger name is present in JSON logs.
 
-### 2. Контракт проверяется на каждом PR, а не вручную
-Совместимость гарантируется тремя контрактными тестами из раздела «Валидация» (golden-контракт +
-валидация против вендоренной ECS-схемы + «нет неизвестных корневых ключей») плюс гарантиями типов.
-Разъедется — падает CI (`pytest -m unit`), а не прод.
+Taxonomy contract tests:
 
-### 3. Процедура апгрейда версии ECS (по чеклисту, редко)
-1. Bump `ECS_VERSION` в `ecs.py`.
-2. Обновить вендоренный срез определений полей (`tests/.../ecs_fields_<version>.{yml,json}`) из
-   соответствующего тега `elastic/ecs`.
-3. Прогнать schema-тест; починить переименованные/устаревшие поля, на которые он укажет.
-4. Запись в «История» этого ADR.
+- action names are unique kebab-case values.
+- field keys are unique dotted paths.
+- every action `required_fields` entry exists in field registry.
+- every action zone has a matching zone document or approved migration status.
+- YAML `ecs_version` values match the runtime `ECS_VERSION`.
 
-Частота низкая (ECS major выходит редко); тест сам показывает, что именно разъехалось.
+Architecture/import guards:
 
-### 4. Защита на стороне ES (defense-in-depth, операционное требование)
-Половина совместимости — кластерная: применить ECS-совместимый index/component-template (Filebeat/
-Elastic Agent их несут), выставить `mapping.total_fields.limit`, для `labels.*` рассмотреть
-`dynamic: runtime`/`false`, чтобы произвольные labels не плодили поля. Вне репозитория, но часть
-стратегии.
+- observability logging modules do not import `connector.delivery` or `connector.usecases`.
+- `domain` does not import ECS/logging modules.
+- future observability package boundary should allow host adapters for config/DI/SQLite, but not
+  reverse imports from package to application delivery code.
 
-### 5. Гайд для контрибьюторов
-Семантика живёт в репозитории: машинно-авторитетные словари (`EventAction`/`EventOutcome`/`EventKind`)
-и таблица маппинга — в `connector/infra/logging/ecs.py`; прозаический каталог с описаниями, правила
-уровней и «как добавить поле/действие» — в dev-doc
-[`ecs-logging-conventions.md`](../../dev/layers/observability/ecs-logging-conventions.md). Правило:
-новое поле проходит через маппинг в `ecs.py` либо осознанно остаётся в `labels.*`; новое действие —
-член `EventAction` + строка в каталоге dev-doc; **корневые не-ECS ключи изобретать нельзя** (тест №3
-это и ловит).
+Operational smoke:
 
-### Честная цена
-Мы владеем маппингом, поэтому бремя ровно два пункта: держать `ecs.py` единственным местом маппинга
-и синхронизировать вендоренный срез полей при bump версии. Оба самоконтролируемы тестами. Размен
-против библиотеки `ecs-logging`: ~40 строк фикстуры вместо security/transport-рисков из раздела
-«Почему отклонено».
+- run a CLI command with JSON console sink;
+- verify stderr lines are valid JSON;
+- verify stdout remains presenter-only;
+- verify secrets in event fields and traceback text are redacted.
 
 ---
 
-## ⚠️ Риски и ограничения
+## Risks
 
-- ⚠️ **Дрейф `ecs.version`** — версия ECS зашита константой. *Митигация*: одна точка (`ecs.py`) +
-  schema-тест против вендоренного среза полей; процедура апгрейда — в разделе
-  «🔧 Поддержание ECS-совместимости».
-- ⚠️ **Дубли семантики `dataset`** (`event.dataset` vs возможный `labels.dataset`). *Митигация*:
-  фиксируем единственный таргет — `event.dataset`; не мирроринг.
-- ⚠️ **Неполный ECS до Фазы 2** — `event.action`/`outcome`/`duration` пустые, пока call-sites не
-  наполнены. *Митигация*: Фаза 1 уже валидна как ECS; наполнение — инкрементально.
-- ⚠️ **Незнакомые kwarg-типы в `labels.*`** (ES любит keyword/скаляры). *Митигация*: в `ecs_transform`
-  приводить не-скаляры к строке/JSON, как уже делает `_format_text_value`.
+| Риск | Митигация |
+|---|---|
+| Drift между YAML taxonomy и runtime enums/mapping | Contract tests: YAML registry vs code constants |
+| Mapping explosion в Elasticsearch из-за произвольных kwargs | catch-all under `labels.*`, scalar/JSON-string coercion, no unknown root keys test |
+| Security regression в traceback redaction | processor order test: redaction before `ecs_transform` |
+| ECS fields start appearing in business layers | import-linter/architecture tests and zone adapters |
+| Incomplete `event.action` coverage during migration | Phase 1 accepts valid ECS shape first; Phase 3 migrates zones incrementally |
 
 ---
 
-## 🔄 Влияние на другие компоненты
+## Влияние на компоненты
 
-| Компонент | Влияние | Требуемые изменения |
-|-----------|---------|---------------------|
-| `runtime.py` (`_build_formatter`/`_build_structlog_processors`) | Прямое | Вставка процессора, `add_logger_name` |
-| `LogRedactionEngine` | Нет | Порядок сохраняет redaction до ECS |
-| Текстовые рендереры | Нет | ECS их не касается |
-| Call-sites (usecases/infra/delivery) | Нет (Фаза 1) / точечно (Фаза 2) | catch-all сохраняет совместимость |
-| `ecs.py` (словари `EventAction`/`EventOutcome`/`EventKind`) | Новый | Машинно-авторитетный источник семантики |
-| `docs/dev/layers/observability/ecs-logging-conventions.md` | Новый | Прозаический каталог полей/уровней/действий |
-
----
-
-## 🔗 Связанные документы
-
-- [OBSERVABILITY-PROBLEM-003](./OBSERVABILITY-PROBLEM-003-non-ecs-log-shape.md) — решаемая проблема
-- [OBSERVABILITY-DEC-001](./OBSERVABILITY-DEC-001-structlog-as-standard.md) — развиваемое решение (structlog)
-- [OBSERVABILITY-DEC-002](./OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md) — транспорт/раскладка (не меняется)
-- [ecs-logging-conventions.md](../../dev/layers/observability/ecs-logging-conventions.md) — каталог ECS-полей, правила уровней, словарь `event.action` (источник семантики)
-- `connector/infra/logging/runtime.py` — целевая точка вставки `ecs_transform`
-- `connector/infra/logging/ecs.py` — новый модуль маппинга + словари семантики (`EventAction`/…)
+| Компонент | Влияние |
+|---|---|
+| `connector/infra/logging/runtime.py` | Adds ECS processor for JSON sinks |
+| `connector/infra/logging/redaction.py` | No behavior change; remains before ECS transform |
+| `connector/common/observability/taxonomy/` | Becomes machine-readable contract for actions/fields |
+| `docs/dev/layers/observability/ecs-logging-taxonomy/` | Remains human-readable semantic catalog and migration backlog |
+| `delivery/cli/containers.py` | Later wires event sink and zone adapters through `ObservabilityContainer` |
+| call-sites | Phase 1 no broad changes; later migrate through zone adapters |
 
 ---
 
-## 📝 История
+## Связанные документы
+
+- [OBSERVABILITY-PROBLEM-003](./OBSERVABILITY-PROBLEM-003-non-ecs-log-shape.md)
+- [OBSERVABILITY-DEC-001](./OBSERVABILITY-DEC-001-structlog-as-standard.md)
+- [OBSERVABILITY-DEC-002](./OBSERVABILITY-DEC-002-per-component-prod-observability-layout.md)
+- [ECS Logging Conventions](../../dev/layers/observability/ecs-logging-conventions.md)
+- [Event Action Dictionary](../../dev/layers/observability/ecs-logging-taxonomy/event-action-dictionary.md)
+- [Field Catalog](../../dev/layers/observability/ecs-logging-taxonomy/field-catalog.md)
+- [Call-Site Map](../../dev/layers/observability/ecs-logging-taxonomy/callsite-map.md)
+- `connector/common/observability/taxonomy/actions.yaml`
+- `connector/common/observability/taxonomy/fields/*.yaml`
+- `connector/infra/logging/runtime.py`
+- `connector/infra/logging/redaction.py`
+
+---
+
+## История
 
 | Дата | Событие |
-|------|---------|
-| 2026-06-09 | Решение предложено (дизайн зафиксирован; реализация — отдельным шагом) |
-| 2026-06-09 | Добавлены раздел «Поддержание ECS-совместимости» и контрактные тесты (golden + schema-validation + no-unknown-root-keys) |
-| 2026-06-09 | Семантика вынесена в репозиторий: словари как enum в `ecs.py` + dev-doc `ecs-logging-conventions.md` |
+|---|---|
+| 2026-06-09 | Решение предложено: ECS JSON shape через финальный structlog processor |
+| 2026-06-14 | Решение принято: taxonomy вынесена из ADR в YAML/dev-docs; `ecs_transform` остаётся финальным JSON processor; generic event sink внутренний, наружу - zone-specific adapters |

@@ -17,7 +17,7 @@
 
 - `vault-runtime-evaluated`, `vault-rollout-evaluated`, `vault-startup-*`, `secret-read`,
   `secret-written`, `secret-retention-*` остаются в Zone 11.
-- `command-started` / `command-failed` остаются в Zone 1/2 как общий CLI lifecycle.
+- `run-started` / `run-failed` остаются в Zone 1/2 как общий CLI lifecycle.
 - Prompt lifecycle не логируется как отдельная baseline telemetry: фиксируем только безопасный итог
   admin gate или unseal verify.
 - Passphrase, admin password, Argon2 salt, HMAC salt/digest, master key material, DEK plaintext,

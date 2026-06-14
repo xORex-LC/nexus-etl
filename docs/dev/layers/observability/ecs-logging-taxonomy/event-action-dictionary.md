@@ -6,6 +6,7 @@
 |---|---|---|
 | `run-started` | INFO | Старт прогуна команды/пайплайна |
 | `run-completed` | INFO | Завершение прогона с `event.outcome` |
+| `run-failed` | ERROR | Прогон команды/пайплайна завершился ошибкой |
 | `stage-started` | INFO | Старт стадии пайплайна |
 | `stage-completed` | INFO | Завершение стадии с `event.outcome`+`event.duration` |
 | `stage-failed` | ERROR | Стадия упала с необработанным исключением |

@@ -15,10 +15,10 @@
 | orchestrator.py:857 | info | Log written | `log-written` | success |
 | orchestrator.py:1056 | info | Report written | `report-written` | success |
 | orchestrator.py:1058 | error | Report finalization failed | `report-finalize-failed` | failure |
-| orchestrator.py:929,950 | error | Container *init failed | `container-init-failed` | failure |
+| orchestrator.py:929,950 | error | Container *init failed | `resource-init-failed` | failure |
 | orchestrator.py:940 | error | Vault startup error | `vault-startup-failed` | failure |
-| orchestrator.py:983 | error | Container shutdown failed | `container-shutdown-failed` | failure |
-| orchestrator.py:992 | error | Container shutdown completed with errors | `container-shutdown-completed` | failure |
+| orchestrator.py:983 | error | Container shutdown failed | `resource-shutdown-failed` | failure |
+| orchestrator.py:992 | error | Container shutdown completed with errors | `resource-shutdown-completed` | failure |
 
 ### Planned lifecycle call-sites (определены; call-site ещё не эмитит)
 | Call-site | Lvl | message сейчас | event.action | outcome |
@@ -53,7 +53,7 @@
 | check_api.py:43 | info | API check succeeded | `api-check-completed` | success |
 | check_api.py:61 | error | API check failed | `api-check-completed` | failure |
 | cache_refresh.py:126 | error | Cache refresh failed | `cache-refresh-failed` | failure |
-| common.py:29,45 | error | Failed to open cache DB | `cache-open-failed` | failure |
+| common.py:29,45 | error | Failed to open cache DB | `cache-init-failed` | failure |
 | common.py:60 | error | Vault startup error | `vault-startup-failed` | failure |
 
 ### Apply per-item (`component` = applier; `delivery/telemetry/apply_logging_sink.py`)
@@ -69,7 +69,7 @@
 |---|---|---|---|---|
 | cache_refresh_service.py:87 | info | Cache refresh started | `cache-refresh-started` | — |
 | cache_refresh_service.py:154 | debug | Target page fetched | `cache-page-fetched` | success |
-| cache_refresh_service.py:229 | error | Failed to upsert cache item | `cache-upsert-failed` | failure |
+| cache_refresh_service.py:229 | error | Failed to upsert cache item | `cache-item-upsert-failed` | failure |
 | cache_refresh_service.py:298 | error | Cache refresh failed | `cache-refresh-failed` | failure |
 | cache_refresh_service.py:338 | info | Cache refresh completed | `cache-refresh-completed` | success |
 | cache_command_service.py:94 | error | Cache status failed | `cache-status-failed` | failure |
@@ -161,7 +161,7 @@
 ### Прочие (domain/usecases)
 | Call-site | Lvl | message сейчас | event.action | outcome |
 |---|---|---|---|---|
-| resolve_core.py:200 | warning | merge_policy tried to overwrite… (`%s`-стиль!) | `merge-conflict` | unknown |
+| resolve_core.py:200 | warning | merge_policy tried to overwrite… (`%s`-стиль!) | `resolve-merge-overwrite-blocked` | unknown |
 | resolve_usecase.py:83 | warning | *pending_codec_skipped_invalid* | `pending-decode-skipped` | unknown |
 | infra/cache/dsl_adapter.py:129 | warning | cache sync value expr issue (`%s`-стиль!) | `cache-sync-issue` | unknown |
 

@@ -17,7 +17,7 @@
 
 ### Принципы именно для этой зоны
 
-- Runtime-события (`command-started`, `report-written`, `resource-init-failed`) не дублируются
+- Runtime-события (`run-started`, `report-written`, `resource-init-failed`) не дублируются
   здесь. Зона 2 описывает только специфический outcome конкретной команды.
 - Различия между командами выражаются прежде всего через `service.type`, а не через искусственное
   размножение почти одинаковых action для каждого шага одной и той же команды.
@@ -70,7 +70,7 @@
 ### Что останется на следующие зоны
 
 - `stage-started`, `stage-completed`, `stage-failed` — отдельная зона pipeline stage lifecycle.
-- `cache-refresh-*`, `cache-status-*`, `cache-open-failed` — зона cache.
+- `cache-refresh-*`, `cache-status-*`, `cache-init-failed` — зона cache.
 - `apply-item`, `apply-completed`, `target-write-*` — зона target/apply execution (Zone 10).
 - `dictionary-lookup`, `lookup-hit/miss`, candidate telemetry — зона enrich/dictionary.
 
